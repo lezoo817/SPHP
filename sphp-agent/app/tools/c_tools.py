@@ -84,6 +84,19 @@ def register_c_tools() -> None:
         },
     ))
 
+    register(ToolDef(
+        name="search_medical_knowledge",
+        description="检索医疗科普知识库，获取疾病、药品、健康相关的权威科普内容",
+        scope=ToolScope.C_END,
+        security_level=SecurityLevel.L1,
+        requires_confirmation=False,
+        api_method="LOCAL",
+        api_path="knowledge.search",
+        param_schema={
+            "query": {"type": "string", "description": "检索问题，如'高血压日常注意事项'"},
+        },
+    ))
+
     # ---- L2: 业务操作（需用户确认） ----
     register(ToolDef(
         name="create_registration",

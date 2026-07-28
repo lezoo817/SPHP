@@ -38,9 +38,11 @@ def create_app() -> FastAPI:
     # ---- 路由注册 ----
     from app.api.chat import router as chat_router
     from app.api.confirm import router as confirm_router
+    from app.api.knowledge import router as knowledge_router
 
     app.include_router(chat_router, prefix="/api/agent", tags=["对话"])
     app.include_router(confirm_router, prefix="/api/agent", tags=["确认"])
+    app.include_router(knowledge_router)
 
     @app.get("/health")
     async def health() -> dict:

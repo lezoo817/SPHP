@@ -68,8 +68,11 @@ def execute(tool_name: str, params: dict, user_context: dict, confirm_token: str
         if not _verify_params(pending["params"], params):
             return {"status": "error", "message": "参数不一致，请重新操作"}
 
-    # ---- 放行：调后端 API ----
-    result = _call_backend(tool, params, user_context)
+    # ---- 放行：执行工具 ----
+    if tool.api_method == "LOCAL":
+        result = _call_local(tool, params)
+    else:
+        result = _call_backend(tool, params, user_context)
 
     # ---- 审计日志 ----
     _audit_log.append({
@@ -143,3 +146,13 @@ def _call_backend(tool: ToolDef, params: dict, user_context: dict) -> dict:
         return resp.json()
     except httpx.HTTPError as e:
         return {"error": f"后端调用失败: {e}"}
+
+
+def _call_local(tool: ToolDef, params: dict) -> dict:
+    """执行本地工具（不走 Java 后端，直接在 Python 内处理）。"""
+    if tool.api_path == "knowledge.search":
+        from app.knowledge.search import search_knowledge
+        results = search_knowledge(query=params.get("query", ""))
+        return {"results": results}
+
+    return {"error": f"未知的本地工具: {tool.api_path}"}

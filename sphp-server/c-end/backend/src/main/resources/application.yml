@@ -7,12 +7,12 @@ spring:
   application:
     name: sphp-patient-backend
 
-  # ---- MySQL ----
+  # ---- PostgreSQL ----
   datasource:
-    url: jdbc:mysql://localhost:3306/sphp?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
-    username: root
-    password: root
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:postgresql://localhost:5432/sphp
+    username: sphp
+    password: sphp123
+    driver-class-name: org.postgresql.Driver
 
   # ---- Redis ----
   data:
@@ -46,4 +46,4 @@ sphp:
 
   # ---- 号源预扣超时 ----
   registration:
-    payment-timeout: 900  # 支付超时 15 分钟（秒）
+    payment-timeout: 300  # 支付超时 5 分钟（秒）
