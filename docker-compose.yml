@@ -1,0 +1,45 @@
+# 智愈先锋 - 开发环境中间件
+# 使用方法：docker compose up -d
+# 停止：docker compose down
+# 清数据：docker compose down -v
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: sphp-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: sphp
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./sql:/docker-entrypoint-initdb.d  # 自动执行 sql/ 下的 .sql 文件
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  redis:
+    image: redis:7-alpine
+    container_name: sphp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: sphp-rabbitmq
+    ports:
+      - "5672:5672"     # AMQP 端口
+      - "15672:15672"   # 管理界面（guest/guest）
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+volumes:
+  mysql-data:
+  redis-data:
+  rabbitmq-data:
