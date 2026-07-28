@@ -68,6 +68,19 @@ def register_b_tools() -> None:
         },
     ))
 
+    register(ToolDef(
+        name="search_clinical_knowledge",
+        description="检索临床知识库，获取诊疗指南、药品说明、循证医学参考",
+        scope=ToolScope.B_END,
+        security_level=SecurityLevel.L1,
+        requires_confirmation=False,
+        api_method="LOCAL",
+        api_path="knowledge.search",
+        param_schema={
+            "query": {"type": "string", "description": "检索问题，如'2型糖尿病一线用药指南'"},
+        },
+    ))
+
     # ---- L2: 病历整理（需医生确认） ----
     register(ToolDef(
         name="generate_draft_record",

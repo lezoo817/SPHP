@@ -4,19 +4,24 @@
 # 清数据：docker compose down -v
 
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: sphp-mysql
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: sphp-postgres
     ports:
-      - "3306:3306"
+      - "5432:5432"
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: sphp
+      POSTGRES_USER: sphp
+      POSTGRES_PASSWORD: sphp123
+      POSTGRES_DB: sphp
       TZ: Asia/Shanghai
     volumes:
-      - mysql-data:/var/lib/mysql
+      - pg-data:/var/lib/postgresql/data
       - ./sql:/docker-entrypoint-initdb.d  # 自动执行 sql/ 下的 .sql 文件
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sphp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -40,6 +45,6 @@ services:
       - rabbitmq-data:/var/lib/rabbitmq
 
 volumes:
-  mysql-data:
+  pg-data:
   redis-data:
   rabbitmq-data:
