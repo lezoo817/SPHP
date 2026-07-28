@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     c_end_base_url: str = "http://localhost:8082"   # C 端后端（患者挂号/问诊/购药）
 
     # ---- LLM 供应商 ----
-    default_llm_provider: str = "deepseek"
+    default_llm_provider: str = "zhipu"
 
     # ---- DeepSeek ----
     deepseek_api_key: str = ""
