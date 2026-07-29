@@ -76,11 +76,11 @@
                 <version>${redis.version}</version>
             </dependency>
 
-            <!-- RabbitMQ -->
-            <dependency>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-starter-amqp</artifactId>
-            </dependency>
+            <!-- RabbitMQ 已有springboot自动管理,各自模块自己添加-->
+<!--            <dependency>-->
+<!--                <groupId>org.springframework.boot</groupId>-->
+<!--                <artifactId>spring-boot-starter-amqp</artifactId>-->
+<!--            </dependency>-->
 
             <!-- PostgreSQL 42.7-->
             <dependency>
