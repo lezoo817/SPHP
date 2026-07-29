@@ -9,23 +9,50 @@ spring:
 
   # ---- PostgreSQL ----
   datasource:
-    url: jdbc:postgresql://localhost:5432/sphp
-    username: sphp
-    password: sphp123
     driver-class-name: org.postgresql.Driver
+    type: com.zaxxer.hikari.HikariDataSource
+    username: postgres
+    password: postgres
+    url: jdbc:postgresql://118.25.102.33:5432/sphp?client_encoding=UTF8
+    hikari:
+      connection-timeout: 5000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      maximum-pool-size: 10
+      minimum-idle: 5
+      pool-name: SphpHikariPool
 
   # ---- Redis ----
   data:
     redis:
-      host: localhost
+      host: 118.25.102.33
       port: 6379
+      password: 123456
+      database: 0
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 5
 
   # ---- RabbitMQ ----
   rabbitmq:
-    host: localhost
+    host: 118.25.102.33
     port: 5672
-    username: guest
-    password: guest
+    username: admin
+    password: 123456
+    virtual-host: /
+    connection-timeout: 1000ms
+    dynamic: true
+    listener:
+      simple:
+        auto-startup: true
+        acknowledge-mode: auto
+        concurrency: 5
+        max-concurrency: 10
+      direct:
+        auto-startup: true
 
 # ---- MyBatis-Plus ----
 mybatis-plus:
@@ -36,7 +63,8 @@ mybatis-plus:
     db-config:
       logic-delete-field: deleted
       logic-delete-value: 1
-      logic-not-delete-value: 0
+      logic-not-delete-value: "null"
+
 
 sphp:
   cors:
