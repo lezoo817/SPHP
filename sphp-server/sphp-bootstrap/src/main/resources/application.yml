@@ -1,0 +1,60 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: sphp-bootstrap
+
+  # ---- PostgreSQL ----
+  datasource:
+    url: jdbc:postgresql://localhost:5432/sphp
+    username: sphp
+    password: sphp123
+    driver-class-name: org.postgresql.Driver
+
+  # ---- Redis ----
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  # ---- RabbitMQ ----
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
+# ---- MyBatis-Plus ----
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+sphp:
+  cors:
+    # 允许访问统一后端的本地前端来源。
+    allowed-origins:
+      - http://localhost:8000
+      - http://localhost:8001
+
+  jwt:
+    # C 端患者 Token 签名密钥。
+    patient:
+      secret: sphp-patient-jwt-secret-change-in-production
+      expiration: 7200
+    # B 端医生和管理员 Token 签名密钥。
+    admin:
+      secret: sphp-admin-jwt-secret-change-in-production
+      expiration: 7200
+
+  # ---- 号源预扣超时 ----
+  registration:
+    payment-timeout: 300

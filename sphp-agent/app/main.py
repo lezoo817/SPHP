@@ -5,14 +5,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config.settings import get_settings
+from app.infrastructure.config.settings import get_settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动：注册工具
-    from app.tools.c_tools import register_c_tools
-    from app.tools.b_tools import register_b_tools
+    from app.engine.tools.c_tools import register_c_tools
+    from app.engine.tools.b_tools import register_b_tools
     register_c_tools()
     register_b_tools()
     yield
@@ -36,9 +36,9 @@ def create_app() -> FastAPI:
     )
 
     # ---- 路由注册 ----
-    from app.api.chat import router as chat_router
-    from app.api.confirm import router as confirm_router
-    from app.api.knowledge import router as knowledge_router
+    from app.api.routes.chat import router as chat_router
+    from app.api.routes.confirm import router as confirm_router
+    from app.api.routes.knowledge import router as knowledge_router
 
     app.include_router(chat_router, prefix="/api/agent", tags=["对话"])
     app.include_router(confirm_router, prefix="/api/agent", tags=["确认"])

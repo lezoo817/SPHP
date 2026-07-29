@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+.venv_old38/
 *.egg-info/
 
 # 环境变量
@@ -18,6 +19,8 @@ venv/
 .DS_Store
 Thumbs.db
 
+#test
+tests/
 
 #docs
 docs/
