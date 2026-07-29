@@ -18,6 +18,8 @@ venv/
 .DS_Store
 Thumbs.db
 
+#test
+tests/
 
 #docs
 docs/
