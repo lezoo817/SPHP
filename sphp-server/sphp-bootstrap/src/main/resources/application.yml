@@ -39,6 +39,12 @@ mybatis-plus:
       logic-not-delete-value: 0
 
 sphp:
+  cors:
+    # 允许访问统一后端的本地前端来源。
+    allowed-origins:
+      - http://localhost:8000
+      - http://localhost:8001
+
   jwt:
     # C 端患者 Token 签名密钥。
     patient:

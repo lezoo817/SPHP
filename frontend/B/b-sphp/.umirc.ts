@@ -1,6 +1,7 @@
 import { defineConfig } from '@umijs/max';
 
 export default defineConfig({
+  port: 8000,
   antd: {},
   access: {},
   model: {},
