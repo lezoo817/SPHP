@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     dashscope_model: str = "qwen-plus"
 
+    # ---- 硅基流动 SiliconFlow（Embedding 向量化，BAAI/bge-m3）----
+    siliconflow_api_key: str = ""
+    siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
+    siliconflow_embedding_model: str = "BAAI/bge-m3"
+
     # ---- PostgreSQL + pgvector（知识库向量存储） ----
     pg_host: str = "localhost"
     pg_port: int = 5432

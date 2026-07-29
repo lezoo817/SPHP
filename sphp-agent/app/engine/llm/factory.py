@@ -2,7 +2,7 @@
 
 三家供应商均兼容 OpenAI 接口：
 - ChatOpenAI 用 model / api_key / base_url 接入对话模型
-- OpenAIEmbeddings 用同样的方式接入向量化模型（当前使用智谱 embedding-3）
+- OpenAIEmbeddings 用同样的方式接入向量化模型（当前使用硅基流动 BAAI/bge-m3）
 """
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -36,19 +36,20 @@ def build_llm(provider: str | None = None, temperature: float = 0.3) -> ChatOpen
 
 
 def build_embedding() -> OpenAIEmbeddings:
-    """构造向量化模型实例（智谱 embedding-3，OpenAI 兼容接口）。
+    """构造向量化模型实例（硅基流动 BAAI/bge-m3，OpenAI 兼容接口）。
 
     用于知识库文档切分后的向量化入库，以及检索时的 query 向量化。
+    bge-m3 输出维度 1024，需与 pgvector 表维度一致。
     """
     settings = get_settings()
 
-    if not settings.zhipu_api_key:
+    if not settings.siliconflow_api_key:
         raise ValueError(
-            "未配置智谱 API key，请在 .env 中填入 ZHIPU_API_KEY（embedding 模型依赖智谱）"
+            "未配置硅基流动 API key，请在 .env 中填入 SILICONFLOW_API_KEY（embedding 依赖）"
         )
 
     return OpenAIEmbeddings(
-        model=settings.zhipu_embedding_model,
-        api_key=settings.zhipu_api_key,
-        base_url=settings.zhipu_base_url,
+        model=settings.siliconflow_embedding_model,
+        api_key=settings.siliconflow_api_key,
+        base_url=settings.siliconflow_base_url,
     )
