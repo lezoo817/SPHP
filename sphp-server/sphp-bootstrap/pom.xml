@@ -8,25 +8,29 @@
         <groupId>com.sphp</groupId>
         <artifactId>sphp-server</artifactId>
         <version>1.0.0</version>
-        <relativePath>../../pom.xml</relativePath>
     </parent>
 
-    <artifactId>sphp-patient-backend</artifactId>
-    <name>sphp-patient-backend</name>
-    <description>C 端后端 - 用户挂号/问诊/购药/健康档案（端口 8082）</description>
+    <artifactId>sphp-bootstrap</artifactId>
+    <name>sphp-bootstrap</name>
+    <description>智愈先锋统一后端启动模块</description>
 
     <dependencies>
-        <!-- 共享模块 -->
+        <!-- 公共基础能力 -->
         <dependency>
             <groupId>com.sphp</groupId>
             <artifactId>sphp-core</artifactId>
         </dependency>
 
-        <!-- Lombok -->
+        <!-- B 端业务模块 -->
         <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <optional>true</optional>
+            <groupId>com.sphp</groupId>
+            <artifactId>B-backend</artifactId>
+        </dependency>
+
+        <!-- C 端业务模块 -->
+        <dependency>
+            <groupId>com.sphp</groupId>
+            <artifactId>C-backend</artifactId>
         </dependency>
     </dependencies>
 
@@ -46,5 +50,4 @@
             </plugin>
         </plugins>
     </build>
-
 </project>

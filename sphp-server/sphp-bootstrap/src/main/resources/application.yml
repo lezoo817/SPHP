@@ -1,11 +1,11 @@
 server:
-  port: 8082
+  port: 8080
   servlet:
     context-path: /api
 
 spring:
   application:
-    name: sphp-patient-backend
+    name: sphp-bootstrap
 
   # ---- PostgreSQL ----
   datasource:
@@ -38,12 +38,17 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
-# ---- JWT ----
 sphp:
   jwt:
-    secret: sphp-patient-jwt-secret-change-in-production
-    expiration: 7200  # 单位：秒（2小时）
+    # C 端患者 Token 签名密钥。
+    patient:
+      secret: sphp-patient-jwt-secret-change-in-production
+      expiration: 7200
+    # B 端医生和管理员 Token 签名密钥。
+    admin:
+      secret: sphp-admin-jwt-secret-change-in-production
+      expiration: 7200
 
   # ---- 号源预扣超时 ----
   registration:
-    payment-timeout: 300  # 支付超时 5 分钟（秒）
+    payment-timeout: 300
