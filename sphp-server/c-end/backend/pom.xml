@@ -19,7 +19,7 @@
         <!-- 共享模块 -->
         <dependency>
             <groupId>com.sphp</groupId>
-            <artifactId>sphp-shared</artifactId>
+            <artifactId>sphp-core</artifactId>
         </dependency>
 
         <!-- Lombok -->
