@@ -10,7 +10,7 @@
         <version>1.0.0</version>
     </parent>
 
-    <artifactId>sphp-shared</artifactId>
+    <artifactId>sphp-core</artifactId>
     <name>sphp-shared</name>
     <description>B/C 端共享模块 - 实体、配置、工具类、安全</description>
 
