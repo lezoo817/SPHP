@@ -1,6 +1,6 @@
 [project]
 name = "sphp-agent"
-version = "0.1.0"
+version = "2.0.0"
 description = "智愈先锋 AI Agent 服务"
 requires-python = ">=3.11"
 dependencies = [
@@ -9,6 +9,9 @@ dependencies = [
     "langchain-openai>=1.4",
     "langgraph>=1.2",
     "langchain-community>=0.3",
+
+    # MCP 协议
+    "mcp>=1.0",
 
     # 知识库 RAG
     "langchain-postgres>=0.0.14",
