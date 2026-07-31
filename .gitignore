@@ -134,6 +134,7 @@ $RECYCLE.BIN/
 .jb/
 .claude/
 openspec/
+
 # ==================== claude code ====================
 CLAUDE.md
 
@@ -141,3 +142,4 @@ CLAUDE.md
 docs/
 /AGENTS.md
 /CodeMap.md
+/sphp-server/sphp-bootstrap/src/main/resources/application-dev.yml
