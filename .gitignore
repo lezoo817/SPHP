@@ -134,6 +134,10 @@ $RECYCLE.BIN/
 .jb/
 .claude/
 openspec/
+# ==================== claude code ====================
+CLAUDE.md
 
-# ==================== wanglufei的个人文集 ====================
-/CLAUDE.md
+# ==================== 文件 ====================
+docs/
+/AGENTS.md
+/CodeMap.md

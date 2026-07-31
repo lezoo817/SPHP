@@ -9,7 +9,7 @@ from functools import lru_cache
 from langchain_postgres import PGVector
 
 from app.infrastructure.config.settings import get_settings
-from app.engine.llm.factory import build_embedding
+from app.engine.rag.embedder import build_embedding
 
 
 @lru_cache
