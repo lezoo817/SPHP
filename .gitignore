@@ -136,3 +136,8 @@ $RECYCLE.BIN/
 openspec/
 # ==================== claude code ====================
 CLAUDE.md
+
+# ==================== 文件 ====================
+docs/
+/AGENTS.md
+/CodeMap.md
