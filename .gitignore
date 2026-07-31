@@ -142,3 +142,4 @@ CLAUDE.md
 docs/
 /AGENTS.md
 /CodeMap.md
+/sphp-server/sphp-bootstrap/src/main/resources/application-dev.yml
