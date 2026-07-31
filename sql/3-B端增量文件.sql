@@ -176,4 +176,3 @@ CREATE INDEX IF NOT EXISTS idx_consult_record_patient
 -- ============================================================
 -- SELECT column_name FROM information_schema.columns WHERE table_name = 'schedule' AND column_name = 'dept_id';
 -- SELECT column_name FROM information_schema.columns WHERE table_name = 'doctor' AND column_name = 'b_user_id';
--- SELECT indexname FROM pg_indexes WHERE tablename IN ('schedule', 'doctor') AND indexname LIKE 'idx_%';

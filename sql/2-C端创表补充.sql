@@ -94,11 +94,11 @@ BEGIN
         ADD CONSTRAINT ck_drug_order_logistics_status
             CHECK (
                 logistics_status IN (
-                                     'PENDING_SHIPMENT', #待发货
-                                     'SHIPPED', #已发货
-                                     'IN_TRANSIT', #运输中
-                                     'TO_RECEIVE', #待收货
-                                     'RECEIVED' #已收货
+                                     'PENDING_SHIPMENT', -- 待发货
+                                     'SHIPPED', -- 已发货
+                                     'IN_TRANSIT', -- 运输中
+                                     'TO_RECEIVE', -- 待收货
+                                     'RECEIVED' -- 已收货
                     )
                 );
     END IF;
