@@ -1,6 +1,7 @@
-"""LangGraph 主图共享状态定义。
+"""LangGraph 主图共享状态定义（系分 §7.1）。
 
-节点返回部分 dict 做局部更新（经 reducer 合并）。
+AgentState 是图中唯一的共享状态对象，
+通过 LangGraph 的 add_messages reducer 自动累积对话历史。
 """
 
 from typing import Annotated, Any
@@ -10,22 +11,31 @@ from typing_extensions import TypedDict
 
 
 class AgentState(TypedDict):
-    """主图共享状态。"""
+    """主图共享状态（系分 §7.1）。"""
 
     # 对话消息列表（LangGraph 内置 reducer，append 语义）
     messages: Annotated[list, add_messages]
 
-    # 当前识别的业务意图：triage(导诊) / registration(挂号) / consultation(问诊) / pharmacy(购药) / ...
+    # 会话唯一标识，首次对话时生成，随首个 done 事件返回前端
+    session_id: str | None
+
+    # 当前识别的业务意图：triage / registration / consultation / pharmacy / qa / chitchat
     intent: str | None
 
-    # 当前用户上下文（userId、role、sessionId 等）
-    user_context: dict[str, Any]
+    # 从 JWT 鉴权获得的用户 ID，MCP 调用时注入 Header X-User-Id
+    user_id: int | None
 
-    # 待确认的工具调用（L2 操作需要二次确认时暂存于此）
-    pending_tool: dict[str, Any] | None
+    # 当前服务端：c_end / b_end
+    scope: str
 
-    # 风险标记（如命中高危症状、药物过敏等）
+    # LLM 决定调用的工具列表，由 tool_caller 节点写入
+    tool_calls: list[dict] | None
+
+    # 工具执行结果列表（含成功和失败），由 tool_executor 写入
+    tool_results: list[dict] | None
+
+    # 待用户确认的 L2 操作信息，非空时 reply_node 推送 card 事件
+    pending_confirmation: dict | None
+
+    # 风险标记，由 safety_check 节点追加
     risk_flags: list[str]
-
-    # 当前服务的端：c_end / b_end
-    scope: str | None

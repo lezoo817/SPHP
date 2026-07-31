@@ -1,6 +1,7 @@
-"""Embedding 模型工厂。
+"""Embedding 模型工厂（系分 §5.7 / §4.4 引擎层 rag/）。
 
-当前从 engine.llm.factory 中拆分出来，支持多供应商切换。
+支持多供应商切换（智谱 / 硅基流动 / OpenAI），通过 .env 配置 EMBEDDING_PROVIDER。
+本地环境使用硅基流动 BAAI/bge-m3（维度 1024）。
 """
 
 from langchain_openai import OpenAIEmbeddings
@@ -8,25 +9,55 @@ from langchain_openai import OpenAIEmbeddings
 from app.infrastructure.config.settings import get_settings
 
 
-def build_embedding(provider: str | None = None) -> OpenAIEmbeddings:
+def build_embedding() -> OpenAIEmbeddings:
     """构造 Embedding 模型实例（OpenAI 兼容接口）。
 
-    Args:
-        provider: 当前仅支持 zhipu（默认），后续扩展其他供应商。
+    根据 settings.embedding_provider 选择供应商：
+    - siliconflow: 硅基流动 BAAI/bge-m3（维度 1024，本地环境默认）
+    - zhipu: 智谱 embedding-3（维度 1024）
+    - openai: OpenAI text-embedding-3-small
 
     Returns:
         OpenAIEmbeddings 实例。
+
+    Raises:
+        ValueError: 未配置对应供应商的 API key。
     """
     settings = get_settings()
+    provider = settings.embedding_provider
 
-    if not settings.zhipu_api_key:
-        raise ValueError(
-            "未配置智谱 API key，请在 .env 中填入 ZHIPU_API_KEY（embedding 模型依赖智谱）"
+    if provider == "siliconflow":
+        if not settings.siliconflow_api_key:
+            raise ValueError(
+                "未配置硅基流动 API key，请在 .env 中填入 SILICONFLOW_API_KEY"
+            )
+        return OpenAIEmbeddings(
+            model=settings.siliconflow_embedding_model,
+            api_key=settings.siliconflow_api_key,
+            base_url=settings.siliconflow_base_url,
         )
 
-    # TODO: 当其他供应商的 embedding 可用时，按 provider 参数分发
-    return OpenAIEmbeddings(
-        model=settings.zhipu_embedding_model,
-        api_key=settings.zhipu_api_key,
-        base_url=settings.zhipu_base_url,
-    )
+    elif provider == "zhipu":
+        if not settings.zhipu_api_key:
+            raise ValueError(
+                "未配置智谱 API key，请在 .env 中填入 ZHIPU_API_KEY"
+            )
+        return OpenAIEmbeddings(
+            model=settings.zhipu_embedding_model,
+            api_key=settings.zhipu_api_key,
+            base_url=settings.zhipu_base_url,
+        )
+
+    elif provider == "openai":
+        if not settings.embedding_api_key:
+            raise ValueError(
+                "未配置 Embedding API key，请在 .env 中填入 EMBEDDING_API_KEY"
+            )
+        return OpenAIEmbeddings(
+            model=settings.embedding_model or "text-embedding-3-small",
+            api_key=settings.embedding_api_key,
+            base_url=settings.embedding_base_url,
+        )
+
+    else:
+        raise ValueError(f"未知的 Embedding 供应商: {provider}")

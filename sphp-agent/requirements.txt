@@ -16,6 +16,9 @@ langgraph>=1.2
 # 知识库 RAG
 langchain-postgres>=0.0.14
 langchain-community>=0.3
+
+# MCP 协议
+mcp>=1.0
 langchain-text-splitters>=0.3
 psycopg[binary]>=3.2
 

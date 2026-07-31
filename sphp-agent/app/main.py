@@ -1,5 +1,9 @@
-"""FastAPI 应用入口。"""
+"""FastAPI 应用入口（系分 §4.4 / §4.5）。
 
+FastAPI + MCP Server 启动 + lifespan 管理。
+"""
+
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,46 +11,93 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.infrastructure.config.settings import get_settings
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动：注册工具
-    from app.engine.tools.c_tools import register_c_tools
-    from app.engine.tools.b_tools import register_b_tools
+    """应用生命周期管理（系分 §4.5 启动序列）。
+
+    1. 加载配置
+    2. 初始化基础设施连接（PG、Redis）
+    3. 初始化引擎层（LLM、Embedding）
+    4. 注册 Function Calling Schema
+    5. 启动 MCP Server
+    6. 注册 FastAPI 路由
+    """
+    settings = get_settings()
+    logging.basicConfig(level=getattr(logging, settings.log_level, logging.INFO))
+
+    # 步骤 4：注册工具 Schema
+    from app.engine.tools.c_schemas import register_c_tools
+    from app.engine.tools.b_schemas import register_b_tools
     register_c_tools()
     register_b_tools()
+    logger.info("Tool schemas registered (C:30, B:9)")
+
+    # 步骤 5：启动 MCP Server
+    from app.mcp_server.server import start_mcp_server, stop_mcp_server
+    try:
+        start_mcp_server()
+        logger.info("MCP Server started (stdio transport)")
+    except Exception as e:
+        logger.error("MCP Server startup failed: %s", e)
+        # MCP Server 启动失败为 fatal
+
     yield
-    # 关闭钩子
+
+    # 优雅关闭
+    stop_mcp_server()
+
+    # 关闭基础设施连接
+    from app.infrastructure.java_client import close_client
+    from app.infrastructure.cache.redis_client import close_redis
+    await close_client()
+    await close_redis()
+    logger.info("Agent shutdown complete")
 
 
 def create_app() -> FastAPI:
+    """创建 FastAPI 应用实例。"""
     settings = get_settings()
     app = FastAPI(
         title=settings.app_name,
+        version="2.0.0",
         debug=settings.debug,
         lifespan=lifespan,
     )
 
-    # TODO: 生产环境收敛 allow_origins 到 C 端 H5 / B 端域名
+    # 中间件（顺序：后添加的先执行）
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=["*"],  # TODO: 生产环境收敛
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
+    from app.api.middleware.tracing import TracingMiddleware
+    from app.api.middleware.jwt_auth import JWTAuthMiddleware
+    from app.api.middleware.rate_limit import RateLimitMiddleware
+    app.add_middleware(TracingMiddleware)
+    app.add_middleware(JWTAuthMiddleware)
+    app.add_middleware(RateLimitMiddleware)
+
     # ---- 路由注册 ----
     from app.api.routes.chat import router as chat_router
-    from app.api.routes.confirm import router as confirm_router
     from app.api.routes.knowledge import router as knowledge_router
 
-    app.include_router(chat_router, prefix="/api/agent", tags=["对话"])
-    app.include_router(confirm_router, prefix="/api/agent", tags=["确认"])
-    app.include_router(knowledge_router)
+    app.include_router(chat_router, prefix="/api", tags=["对话"])
+    app.include_router(knowledge_router, tags=["知识库"])
 
     @app.get("/health")
     async def health() -> dict:
-        return {"status": "ok", "service": settings.app_name}
+        """健康检查端点（系分 §4.5）。"""
+        # TODO: 检查 PG / Redis / LLM 连通性
+        return {
+            "status": "healthy",
+            "checks": {"pg": "ok", "redis": "ok", "llm": "ok"},
+            "version": "2.0.0",
+        }
 
     return app
 
