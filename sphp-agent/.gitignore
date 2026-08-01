@@ -22,6 +22,9 @@ Thumbs.db
 #test
 tests/
 
-#docs
-docs/
+# Claude Code 项目配置（本地文件，不提交）
+CLAUDE.md
+
+# 文档（只忽略全局文档，保留Agent模块文档）
+docs/全局/
 doc/
