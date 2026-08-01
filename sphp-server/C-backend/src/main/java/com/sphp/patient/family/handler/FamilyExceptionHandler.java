@@ -13,8 +13,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 
 /**
  * C端家庭成员控制器异常处理器。
@@ -61,6 +65,34 @@ public class FamilyExceptionHandler {
         log.warn("C端家庭成员请求体解析失败: {}", exception.getMessage());
         return ResponseEntity.badRequest()
                 .body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, "请求体缺失或格式错误"));
+    }
+
+    /**
+     * 处理状态变更接口缺少必填请求头的异常。
+     *
+     * @param exception 缺失请求头异常
+     * @return HTTP 400 统一错误响应
+     */
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<Result<Void>> handleMissingRequestHeaderException(MissingRequestHeaderException exception) {
+        log.warn("C端家庭成员请求头缺失: {}", exception.getHeaderName());
+        return ResponseEntity.badRequest()
+                .body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, "请求头" + exception.getHeaderName() + "不能为空"));
+    }
+
+    /**
+     * 处理路径参数或请求头参数的约束校验异常。
+     *
+     * @param exception 参数约束校验异常
+     * @return HTTP 400 统一错误响应
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<Result<Void>> handleConstraintViolationException(ConstraintViolationException exception) {
+        String message = exception.getConstraintViolations().stream()
+                .map(ConstraintViolation::getMessage)
+                .findFirst()
+                .orElse("参数校验失败");
+        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, message));
     }
 
     /**

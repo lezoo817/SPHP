@@ -112,6 +112,24 @@ class FamilyControllerTest {
     }
 
     /**
+     * 验证状态变更请求缺少幂等键时返回统一参数错误响应。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void createFamilyMemberRejectsMissingIdempotencyKey() throws Exception {
+        FamilyMemberCreateRequest request = new FamilyMemberCreateRequest();
+        request.setName("张小明");
+        request.setRelation("CHILD");
+
+        mockMvc.perform(post("/c/v1/family-members")
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("A0400"));
+    }
+
+    /**
      * 验证更新家庭成员接口返回更新后的脱敏资料。
      *
      * @throws Exception MockMvc 调用失败时抛出
