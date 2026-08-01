@@ -21,7 +21,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
     """
 
     # 不需要鉴权的路径
-    EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/api/chat/stream"}
+    EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 
     async def dispatch(self, request: Request, call_next):
         # 健康检查和文档路径跳过鉴权

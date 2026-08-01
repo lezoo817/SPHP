@@ -32,3 +32,6 @@ docs/**
 
 # 忽略doc目录
 doc/
+# Log files
+*.log
+

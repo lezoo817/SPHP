@@ -75,31 +75,20 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # 临时注释中间件进行调试
-    # from app.api.middleware.tracing import TracingMiddleware
-    # from app.api.middleware.jwt_auth import JWTAuthMiddleware
-    # from app.api.middleware.rate_limit import RateLimitMiddleware
-    # app.add_middleware(TracingMiddleware)
-    # app.add_middleware(JWTAuthMiddleware)
-    # app.add_middleware(RateLimitMiddleware)
+    # 中间件
+    from app.api.middleware.tracing import TracingMiddleware
+    from app.api.middleware.jwt_auth import JWTAuthMiddleware
+    from app.api.middleware.rate_limit import RateLimitMiddleware
+    app.add_middleware(TracingMiddleware)
+    app.add_middleware(JWTAuthMiddleware)
+    app.add_middleware(RateLimitMiddleware)
 
     # ---- 路由注册 ----
     from app.api.routes.chat import router as chat_router
     from app.api.routes.knowledge import router as knowledge_router
-    from app.api.routes.test_sse import router as test_sse_router
 
     app.include_router(chat_router, prefix="/api", tags=["对话"])
     app.include_router(knowledge_router, tags=["知识库"])
-    app.include_router(test_sse_router, prefix="/api", tags=["测试"])
-
-    # 测试：直接在app上注册路由
-    @app.post("/api/direct-test")
-    async def direct_test():
-        """直接测试"""
-        print("[DIRECT TEST] Handler called")
-        return {"message": "direct test works"}
-
-    print(f"[DEBUG] Registered {len(app.routes)} routes after include_router")
 
     @app.get("/health")
     async def health() -> dict:

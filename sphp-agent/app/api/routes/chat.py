@@ -36,14 +36,9 @@ async def chat_stream(req: ChatRequest, request: Request):
 
     前端发起对话 → JWT 鉴权 → LLM 推理 → SSE 流式返回。
     """
-    # DEBUG: 打印调试信息
-    print(f"[DEBUG] chat_stream called, content={req.content}")
-
     # 从中间件获取 JWT token 和 trace_id
     token = getattr(request.state, "jwt_token", None) if hasattr(request, "state") else None
     trace_id = getattr(request.state, "trace_id", "") if hasattr(request, "state") else ""
-
-    print(f"[DEBUG] token={token}, trace_id={trace_id}")
 
     # 构造初始状态（jwt_token 注入到状态中，供 auth_node 使用）
     initial_state: AgentState = {
@@ -60,22 +55,11 @@ async def chat_stream(req: ChatRequest, request: Request):
         "tool_results": None,
         "pending_confirmation": None,
         "risk_flags": [],
-        "jwt_token": token,  # 注入 JWT token，供 auth_node 调用 Java token/parse
+        "jwt_token": token,
     }
 
     async def sse_generator():
         """SSE 流式输出生成器（系分 §6.2.1）。"""
-        # DEBUG: 验证generator是否被调用
-        print("[DEBUG] sse_generator called, yielding test message")
-
-        # 先测试generator是否能工作
-        yield f"event: message\ndata: {json.dumps({'delta': '测试消息'}, ensure_ascii=False)}\n\n"
-        yield f"event: done\ndata: {json.dumps({'session_id': 'test'}, ensure_ascii=False)}\n\n"
-
-        print("[DEBUG] sse_generator finished")
-        return
-
-        # 下面的代码暂时不执行
         try:
             graph = _get_graph()
             from uuid import uuid4
@@ -86,13 +70,13 @@ async def chat_stream(req: ChatRequest, request: Request):
             # 添加用户消息
             initial_state["messages"] = [{"role": "user", "content": req.content}]
 
-            logger.info(f"[SSE] 开始流程执行, thread_id={thread_id}, content={req.content}")
+            logger.info(f"[SSE] 开始流程执行, thread_id={thread_id}")
 
             # 执行LangGraph流程
             final_state = None
             async for chunk in graph.astream(initial_state, config=config):
                 for node_name, output in chunk.items():
-                    logger.info(f"[SSE] 节点完成: {node_name}")
+                    logger.debug(f"[SSE] 节点完成: {node_name}")
 
                     # 推送节点执行事件
                     yield f"event: thought\ndata: {json.dumps({'node': node_name}, ensure_ascii=False)}\n\n"
