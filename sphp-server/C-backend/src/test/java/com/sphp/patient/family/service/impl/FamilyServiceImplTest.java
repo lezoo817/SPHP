@@ -4,7 +4,13 @@ import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
 import com.sphp.patient.family.mapper.FamilyMemberMapper;
 import com.sphp.patient.family.mapper.FamilyMemberRecord;
+import com.sphp.patient.family.mapper.PatientMapper;
+import com.sphp.patient.family.mapper.PatientUserRelationMapper;
+import com.sphp.patient.family.dto.FamilyMemberCreateRequest;
+import com.sphp.patient.family.entity.Patient;
+import com.sphp.patient.family.entity.PatientUserRelation;
 import com.sphp.patient.family.vo.FamilyMemberListVO;
+import com.sphp.patient.family.vo.FamilyMemberCreateVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -14,6 +20,10 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -36,7 +46,9 @@ class FamilyServiceImplTest {
     @Test
     void listFamilyMembersReturnsMaskedPhoneAndRelationName() {
         FamilyMemberMapper familyMemberMapper = mock(FamilyMemberMapper.class);
-        FamilyServiceImpl familyService = new FamilyServiceImpl(familyMemberMapper);
+        PatientMapper patientMapper = mock(PatientMapper.class);
+        PatientUserRelationMapper relationMapper = mock(PatientUserRelationMapper.class);
+        FamilyServiceImpl familyService = new FamilyServiceImpl(familyMemberMapper, patientMapper, relationMapper);
         CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
                 OffsetDateTime.now().plusHours(1), "session-hash"));
         when(familyMemberMapper.selectActiveMembers(10001L)).thenReturn(List.of(
@@ -51,6 +63,46 @@ class FamilyServiceImplTest {
         assertEquals("138****8000", result.getFirst().getPhone());
         assertEquals("子女", result.get(1).getRelationName());
         assertFalse(result.get(1).getIsDefault());
+    }
+
+    /**
+     * 验证新增成员锁定用户后创建患者和非默认关系。
+     */
+    @Test
+    void createFamilyMemberCreatesPatientAndNonDefaultRelation() {
+        FamilyMemberMapper familyMemberMapper = mock(FamilyMemberMapper.class);
+        PatientMapper patientMapper = mock(PatientMapper.class);
+        PatientUserRelationMapper relationMapper = mock(PatientUserRelationMapper.class);
+        FamilyServiceImpl familyService = new FamilyServiceImpl(familyMemberMapper, patientMapper, relationMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        FamilyMemberCreateRequest request = new FamilyMemberCreateRequest();
+        request.setName("张小明");
+        request.setRelation("CHILD");
+        request.setGender("MALE");
+        request.setBirthday(LocalDate.of(2018, 6, 1));
+        request.setPhone("13800138001");
+        request.setIdCardNo("11010519491231002X");
+        when(familyMemberMapper.lockUserForFamilyMutation(10001L)).thenReturn(10001L);
+        when(familyMemberMapper.countActiveNonSelfMembers(10001L)).thenReturn(2);
+        when(familyMemberMapper.existsActiveIdCard(10001L, "11010519491231002X", null)).thenReturn(false);
+        doAnswer(invocation -> {
+            Patient patient = invocation.getArgument(0);
+            patient.setId(20002L);
+            return 1;
+        }).when(patientMapper).insert(any(Patient.class));
+
+        FamilyMemberCreateVO result = familyService.createFamilyMember(request);
+
+        assertEquals(20002L, result.getPatientId());
+        assertEquals("张小明", result.getName());
+        assertEquals("CHILD", result.getRelation());
+        assertFalse(result.getIsDefault());
+        verify(relationMapper).insert(org.mockito.ArgumentMatchers.<PatientUserRelation>argThat(
+                relation -> relation.getUserId().equals(10001L)
+                        && relation.getPatientId().equals(20002L)
+                        && "CHILD".equals(relation.getRelationship())
+                        && Boolean.FALSE.equals(relation.getIsDefault())));
     }
 
     /**
