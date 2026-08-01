@@ -1,5 +1,7 @@
 package com.sphp.shared.exception;
 
+import com.sphp.shared.common.constant.CommonConstant;
+import com.sphp.shared.common.enums.ErrorCodeEnum;
 import com.sphp.shared.result.Result;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -31,20 +33,20 @@ public class GlobalExceptionHandler {
         FieldError fieldError = e.getBindingResult().getFieldError();
         String msg = fieldError == null ? "参数校验失败" : fieldError.getDefaultMessage();
         log.warn("参数校验失败: {}", msg);
-        return Result.error("A0400", msg);
+        return Result.error(ErrorCodeEnum.INVALID_PARAMETER, msg);
     }
 
     /** 请求体缺失或 JSON 格式错误 */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public Result<Void> handleNotReadableException(HttpMessageNotReadableException e) {
         log.warn("请求体解析失败: {}", e.getMessage());
-        return Result.error("A0400", "请求体缺失或格式错误");
+        return Result.error(ErrorCodeEnum.INVALID_PARAMETER, "请求体缺失或格式错误");
     }
 
     /** 其他未捕获异常：返回通用错误 */
     @ExceptionHandler(Exception.class)
     public Result<Void> handleException(Exception e) {
         log.error("系统异常: ", e);
-        return Result.error("B0001", "系统内部错误，请稍后重试");
+        return Result.error(ErrorCodeEnum.SYSTEM_ERROR, CommonConstant.DEFAULT_SYSTEM_ERROR_MESSAGE);
     }
 }

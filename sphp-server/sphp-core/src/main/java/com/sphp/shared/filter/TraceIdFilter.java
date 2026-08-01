@@ -1,5 +1,6 @@
 package com.sphp.shared.filter;
 
+import com.sphp.shared.common.constant.HeaderConstant;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,20 +24,17 @@ public class TraceIdFilter extends OncePerRequestFilter {
 
     /** MDC key，与 {@code com.sphp.shared.result.Result#traceId} 对应 */
     public static final String TRACE_ID_KEY = "traceId";
-    /** 请求/响应头名称 */
-    private static final String TRACE_ID_HEADER = "X-Trace-Id";
-
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         // 优先透传调用方传入的 traceId，否则生成一个
-        String traceId = request.getHeader(TRACE_ID_HEADER);
+        String traceId = request.getHeader(HeaderConstant.TRACE_ID);
         if (traceId == null || traceId.isBlank()) {
             traceId = UUID.randomUUID().toString().replace("-", "");
         }
         MDC.put(TRACE_ID_KEY, traceId);
-        response.setHeader(TRACE_ID_HEADER, traceId);
+        response.setHeader(HeaderConstant.TRACE_ID, traceId);
         try {
             filterChain.doFilter(request, response);
         } finally {
