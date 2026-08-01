@@ -2,6 +2,8 @@ package com.sphp.patient.auth.service;
 
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.auth.dto.RegisterRequest;
+import com.sphp.patient.auth.dto.LoginRequest;
+import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 
 /**
@@ -23,4 +25,12 @@ public interface LoginService {
      * @return 新建账号信息
      */
     RegisterVO register(RegisterRequest request);
+
+    /**
+     * 使用 C端账号密码登录并签发 Token 对。
+     *
+     * @param request 登录请求
+     * @return Token 对和用户摘要
+     */
+    LoginVO login(LoginRequest request);
 }

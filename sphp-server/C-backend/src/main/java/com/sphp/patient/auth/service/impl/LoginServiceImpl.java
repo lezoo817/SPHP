@@ -3,13 +3,21 @@ package com.sphp.patient.auth.service.impl;
 import cn.hutool.captcha.CaptchaUtil;
 import cn.hutool.captcha.LineCaptcha;
 import com.sphp.patient.auth.config.CAuthProperties;
+import com.sphp.patient.auth.config.CJwtProperties;
+import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.dto.RegisterRequest;
+import com.sphp.patient.auth.entity.CRefreshToken;
 import com.sphp.patient.auth.entity.CUser;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.mapper.CUserMapper;
+import com.sphp.patient.auth.mapper.CRefreshTokenMapper;
 import com.sphp.patient.auth.service.LoginService;
 import com.sphp.patient.auth.support.CAuthTokenGenerator;
+import com.sphp.patient.auth.support.CAuthDigestUtil;
+import com.sphp.patient.auth.support.jwt.CJwtService;
 import com.sphp.patient.auth.vo.CaptchaVO;
+import com.sphp.patient.auth.vo.LoginUserVO;
+import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.common.constant.CAuthConstant;
 import com.sphp.patient.common.enums.CUserStatusEnum;
@@ -30,6 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.Locale;
 
 /**
@@ -49,10 +58,13 @@ public class LoginServiceImpl implements LoginService {
     private static final int CAPTCHA_LINE_COUNT = 30;
 
     private final CAuthProperties authProperties;
+    private final CJwtProperties jwtProperties;
     private final StringRedisTemplate redisTemplate;
     private final CUserMapper cUserMapper;
     private final PatientMapper patientMapper;
     private final PatientUserRelationMapper relationMapper;
+    private final CRefreshTokenMapper refreshTokenMapper;
+    private final CJwtService jwtService;
 
     /**
      * 生成一次性图形验证码并保存 BCrypt 摘要。
@@ -129,6 +141,44 @@ public class LoginServiceImpl implements LoginService {
     }
 
     /**
+     * 使用 C端账号密码登录并签发 Token 对。
+     *
+     * @param request 登录请求
+     * @return Token 对和用户摘要
+     * @throws CAuthException 账号密码错误、账号停用或失败次数超限时抛出
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public LoginVO login(LoginRequest request) {
+        String account = normalizeAccount(request.getAccount());
+        String failureKey = loginFailureKey(account);
+        checkLoginLock(failureKey);
+
+        CUser user = cUserMapper.selectOne(Wrappers.<CUser>lambdaQuery()
+                .eq(CUser::getAccount, account)
+                .isNull(CUser::getDeletedAt));
+        // 账号不存在和密码错误使用同一响应，避免泄漏账号是否存在
+        if (user == null || !BCrypt.checkpw(request.getPassword(), user.getPasswordHash())) {
+            recordLoginFailure(failureKey);
+        }
+        if (!CUserStatusEnum.ENABLED.getValue().equals(user.getStatus())) {
+            throw new CAuthException(ErrorCodeEnum.ACCOUNT_DISABLED,
+                    HttpStatus.FORBIDDEN, "账号已被停用");
+        }
+
+        redisTemplate.delete(failureKey);
+        IssuedRefreshToken refreshToken = issueRefreshToken(user.getId());
+        String accessToken = jwtService.issueAccessToken(
+                user.getId(), user.getAccount(), refreshToken.tokenHash());
+        return LoginVO.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken.rawToken())
+                .expiresIn(jwtProperties.getExpiration())
+                .user(LoginUserVO.builder().id(user.getId()).account(user.getAccount()).build())
+                .build();
+    }
+
+    /**
      * 原子消费并校验图形验证码。
      *
      * @param challengeId 验证码挑战标识
@@ -159,5 +209,83 @@ public class LoginServiceImpl implements LoginService {
                     HttpStatus.BAD_REQUEST, "登录账号长度必须为4至32位");
         }
         return account;
+    }
+
+    /**
+     * 检查当前账号是否处于登录锁定窗口。
+     *
+     * @param failureKey 登录失败计数键
+     * @throws CAuthException 失败次数达到阈值时抛出
+     */
+    private void checkLoginLock(String failureKey) {
+        String failureCount = redisTemplate.opsForValue().get(failureKey);
+        if (StringUtils.hasText(failureCount)
+                && Long.parseLong(failureCount) >= authProperties.getLoginMaxFailures()) {
+            throw new CAuthException(ErrorCodeEnum.PASSWORD_RETRY_LIMIT_EXCEEDED,
+                    HttpStatus.TOO_MANY_REQUESTS, "登录失败次数过多，请稍后重试");
+        }
+    }
+
+    /**
+     * 原子增加登录失败次数并设置锁定窗口。
+     *
+     * @param failureKey 登录失败计数键
+     * @throws CAuthException 始终以登录失败或锁定异常结束当前请求
+     */
+    private void recordLoginFailure(String failureKey) {
+        Long failureCount = redisTemplate.opsForValue().increment(failureKey);
+        if (failureCount != null && failureCount == 1L) {
+            // 首次失败设置固定窗口，避免无 TTL 的失败计数长期残留
+            redisTemplate.expire(failureKey, Duration.ofSeconds(authProperties.getLoginLockSeconds()));
+        }
+        if (failureCount != null && failureCount >= authProperties.getLoginMaxFailures()) {
+            throw new CAuthException(ErrorCodeEnum.PASSWORD_RETRY_LIMIT_EXCEEDED,
+                    HttpStatus.TOO_MANY_REQUESTS, "登录失败次数过多，请稍后重试");
+        }
+        throw new CAuthException(ErrorCodeEnum.LOGIN_FAILED,
+                HttpStatus.UNAUTHORIZED, "账号或密码错误");
+    }
+
+    /**
+     * 创建刷新令牌数据库记录和 Redis 会话。
+     *
+     * @param userId C端用户 ID
+     * @return 刷新令牌原文与摘要
+     */
+    private IssuedRefreshToken issueRefreshToken(Long userId) {
+        String rawToken = CAuthTokenGenerator.generateRefreshToken();
+        String tokenHash = CAuthDigestUtil.sha256Hex(rawToken);
+        CRefreshToken entity = new CRefreshToken();
+        entity.setUserId(userId);
+        entity.setTokenHash(tokenHash);
+        entity.setExpiredAt(OffsetDateTime.now().plusSeconds(authProperties.getRefreshTokenExpiration()));
+        refreshTokenMapper.insert(entity);
+
+        // Redis 只保存用户和数据库令牌 ID，不保存刷新令牌原文
+        redisTemplate.opsForValue().set(
+                CAuthConstant.REFRESH_SESSION_KEY_PREFIX + tokenHash,
+                userId + ":" + entity.getId(),
+                Duration.ofSeconds(authProperties.getRefreshTokenExpiration())
+        );
+        return new IssuedRefreshToken(rawToken, tokenHash);
+    }
+
+    /**
+     * 使用账号摘要构造不含账号原文的登录失败键。
+     *
+     * @param account 规范化登录账号
+     * @return Redis 登录失败计数键
+     */
+    private String loginFailureKey(String account) {
+        return CAuthConstant.LOGIN_FAILURE_KEY_PREFIX + CAuthDigestUtil.sha256Hex(account);
+    }
+
+    /**
+     * 已签发刷新令牌的内部结果。
+     *
+     * @param rawToken 仅返回客户端的令牌原文
+     * @param tokenHash 持久化和会话校验使用的摘要
+     */
+    private record IssuedRefreshToken(String rawToken, String tokenHash) {
     }
 }

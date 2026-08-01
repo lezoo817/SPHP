@@ -2,9 +2,15 @@ package com.sphp.patient.auth.service.impl;
 
 import com.sphp.patient.auth.config.CAuthProperties;
 import com.sphp.patient.auth.dto.RegisterRequest;
+import com.sphp.patient.auth.dto.LoginRequest;
+import com.sphp.patient.auth.entity.CRefreshToken;
 import com.sphp.patient.auth.entity.CUser;
 import com.sphp.patient.auth.exception.CAuthException;
+import com.sphp.patient.auth.mapper.CRefreshTokenMapper;
 import com.sphp.patient.auth.mapper.CUserMapper;
+import com.sphp.patient.auth.support.jwt.CJwtService;
+import com.sphp.patient.auth.config.CJwtProperties;
+import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.family.entity.Patient;
@@ -48,6 +54,10 @@ class LoginServiceImplTest {
     private PatientMapper patientMapper;
     @Mock
     private PatientUserRelationMapper relationMapper;
+    @Mock
+    private CRefreshTokenMapper refreshTokenMapper;
+    @Mock
+    private CJwtService jwtService;
 
     private LoginServiceImpl loginService;
 
@@ -58,8 +68,14 @@ class LoginServiceImplTest {
     void setUp() {
         CAuthProperties properties = new CAuthProperties();
         properties.setCaptchaExpiration(120);
+        properties.setLoginMaxFailures(5);
+        properties.setLoginLockSeconds(900);
+        properties.setRefreshTokenExpiration(2592000);
+        CJwtProperties jwtProperties = new CJwtProperties();
+        jwtProperties.setExpiration(7200);
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        loginService = new LoginServiceImpl(properties, redisTemplate, cUserMapper, patientMapper, relationMapper);
+        loginService = new LoginServiceImpl(properties, jwtProperties, redisTemplate,
+                cUserMapper, patientMapper, relationMapper, refreshTokenMapper, jwtService);
     }
 
     /**
@@ -131,5 +147,59 @@ class LoginServiceImplTest {
         CAuthException exception = assertThrows(CAuthException.class, () -> loginService.register(request));
 
         assertEquals("A0400", exception.getCode());
+    }
+
+    /**
+     * 验证账号密码登录签发 Token 对并保存刷新会话。
+     */
+    @Test
+    void loginIssuesTokensAndStoresRefreshSession() {
+        LoginRequest request = new LoginRequest();
+        request.setAccount("patient_zhangsan");
+        request.setPassword("P@ssw0rd123");
+        CUser user = new CUser();
+        user.setId(10001L);
+        user.setAccount("patient_zhangsan");
+        user.setPasswordHash(org.mindrot.jbcrypt.BCrypt.hashpw("P@ssw0rd123",
+                org.mindrot.jbcrypt.BCrypt.gensalt()));
+        user.setStatus("ENABLED");
+        when(cUserMapper.selectOne(any())).thenReturn(user);
+        doAnswer(invocation -> {
+            CRefreshToken refreshToken = invocation.getArgument(0);
+            refreshToken.setId(30001L);
+            return 1;
+        }).when(refreshTokenMapper).insert(any(CRefreshToken.class));
+        when(jwtService.issueAccessToken(eq(10001L), eq("patient_zhangsan"), any()))
+                .thenReturn("access-token");
+
+        LoginVO result = loginService.login(request);
+
+        assertEquals("access-token", result.getAccessToken());
+        assertTrue(result.getRefreshToken().startsWith("rt_"));
+        assertEquals(7200, result.getExpiresIn());
+        assertEquals(10001L, result.getUser().getId());
+        verify(valueOperations).set(
+                argThat(key -> key.startsWith("cend:refresh:")),
+                eq("10001:30001"),
+                eq(Duration.ofSeconds(2592000))
+        );
+    }
+
+    /**
+     * 验证连续第五次登录失败后进入 15 分钟锁定状态。
+     */
+    @Test
+    void loginLocksAfterFiveFailures() {
+        LoginRequest request = new LoginRequest();
+        request.setAccount("missing_user");
+        request.setPassword("wrong-password");
+        when(cUserMapper.selectOne(any())).thenReturn(null);
+        when(valueOperations.increment(any())).thenReturn(1L, 2L, 3L, 4L, 5L);
+
+        assertEquals("A0210", assertThrows(CAuthException.class, () -> loginService.login(request)).getCode());
+        assertEquals("A0210", assertThrows(CAuthException.class, () -> loginService.login(request)).getCode());
+        assertEquals("A0210", assertThrows(CAuthException.class, () -> loginService.login(request)).getCode());
+        assertEquals("A0210", assertThrows(CAuthException.class, () -> loginService.login(request)).getCode());
+        assertEquals("A0211", assertThrows(CAuthException.class, () -> loginService.login(request)).getCode());
     }
 }

@@ -2,8 +2,10 @@ package com.sphp.patient.auth.controller;
 
 import com.sphp.patient.auth.service.LoginService;
 import com.sphp.patient.auth.dto.RegisterRequest;
+import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.auth.vo.RegisterVO;
+import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.shared.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -47,5 +49,17 @@ public class LoginController {
     @Operation(summary = "注册C端账号")
     public Result<RegisterVO> register(@Valid @RequestBody RegisterRequest request) {
         return Result.success("注册成功", loginService.register(request));
+    }
+
+    /**
+     * 使用账号密码登录 C端系统。
+     *
+     * @param request 登录请求
+     * @return Token 对和用户摘要
+     */
+    @PostMapping("/login")
+    @Operation(summary = "C端账号密码登录")
+    public Result<LoginVO> login(@Valid @RequestBody LoginRequest request) {
+        return Result.success("登录成功", loginService.login(request));
     }
 }

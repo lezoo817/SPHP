@@ -4,6 +4,9 @@ import com.sphp.patient.auth.handler.LoginExceptionHandler;
 import com.sphp.patient.auth.service.LoginService;
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.auth.dto.RegisterRequest;
+import com.sphp.patient.auth.dto.LoginRequest;
+import com.sphp.patient.auth.vo.LoginVO;
+import com.sphp.patient.auth.vo.LoginUserVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -98,5 +101,32 @@ class LoginControllerTest {
                                 + "\"challengeId\":\"cap_test\",\"captchaCode\":\"A7K9\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("A0400"));
+    }
+
+    /**
+     * 验证账号密码登录接口返回 Token 对和用户摘要。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void loginReturnsTokenPair() throws Exception {
+        LoginRequest request = new LoginRequest();
+        request.setAccount("patient_zhangsan");
+        request.setPassword("P@ssw0rd123");
+        when(loginService.login(any(LoginRequest.class))).thenReturn(LoginVO.builder()
+                .accessToken("access-token")
+                .refreshToken("rt_token")
+                .expiresIn(7200)
+                .user(LoginUserVO.builder().id(10001L).account("patient_zhangsan").build())
+                .build());
+
+        mockMvc.perform(post("/c/v1/auth/login")
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("登录成功"))
+                .andExpect(jsonPath("$.data.accessToken").value("access-token"))
+                .andExpect(jsonPath("$.data.refreshToken").value("rt_token"))
+                .andExpect(jsonPath("$.data.user.id").value(10001L));
     }
 }
