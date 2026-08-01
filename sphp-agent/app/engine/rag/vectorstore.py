@@ -1,7 +1,7 @@
 """pgvector 向量库管理。
 
 使用 langchain-postgres 的 PGVector 作为向量存储后端，
-与 Java 端共用同一个 PostgreSQL 实例（docker-compose 中的 sphp-postgres）。
+与 Java 端共用同一个 PostgreSQL 实例（连接参数由 .env 的 PG_* 提供）。
 """
 
 from functools import lru_cache
@@ -26,9 +26,9 @@ def _connection_string() -> str:
 def get_vectorstore() -> PGVector:
     """获取全局唯一的 PGVector 实例（单例，避免重复建连接池）。
 
-    首次调用时会自动建表（langchain_postgres 内部处理），
-    如果 pgvector 扩展未安装会报错——docker-compose 已通过
-    sql/01-init-pgvector.sql 自动执行 CREATE EXTENSION vector。
+    首次调用时会自动建表（langchain_postgres 内部处理）。
+    注意：连接库需已安装 pgvector 扩展（CREATE EXTENSION vector），
+    否则首次调用建表时会报错——请确保目标 PG 实例上扩展已就绪。
     """
     return PGVector(
         embeddings=build_embedding(),

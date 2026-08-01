@@ -28,6 +28,18 @@ class AgentState(TypedDict):
     # 当前服务端：c_end / b_end
     scope: str
 
+    # B 端用户角色（ADMIN / DEPT_HEAD / DOCTOR），由 auth_node 从 B 端 token/parse 写入
+    roles: list[str] | None
+
+    # B 端用户所属科室 ID，由 auth_node 写入
+    dept_id: int | None
+
+    # B 端用户关联的医生 ID（b_doctor.id），由 auth_node 写入
+    doctor_id: int | None
+
+    # B 端医院 ID / C 端 context.hospital_id
+    hospital_id: int | None
+
     # LLM 决定调用的工具列表，由 tool_caller 节点写入
     tool_calls: list[dict] | None
 
@@ -39,3 +51,6 @@ class AgentState(TypedDict):
 
     # 风险标记，由 safety_check 节点追加
     risk_flags: list[str]
+
+    # JWT Token（从请求 Header 提取，不含 "Bearer " 前缀），供 auth_node 调用 Java token/parse
+    jwt_token: str | None

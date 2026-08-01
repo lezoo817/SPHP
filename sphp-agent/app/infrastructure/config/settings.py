@@ -2,18 +2,25 @@
 
 所有密钥只从环境变量读取，不硬编码。
 通过 pydantic-settings 自动校验后加载为 Settings 单例。
+
+.env 路径基于本文件位置解析（相对路径在 CWD 不一致时会导致读不到），
+因此使用绝对路径：sphp-agent/.env，保证任意工作目录下都能读取。
 """
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# sphp-agent/.env（本文件位于 app/infrastructure/config/，向上 4 级）
+_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 
 
 class Settings(BaseSettings):
     """Agent 全局配置（系分 §9.5）。"""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -64,19 +71,31 @@ class Settings(BaseSettings):
     siliconflow_embedding_model: str = "BAAI/bge-m3"
 
     # ---- PostgreSQL + pgvector ----
+    # 默认值对齐本地开发库，生产环境由 .env 的 PG_* 覆盖。
     pg_host: str = "localhost"
-    pg_port: int = 5433  # 本地 docker 映射端口
-    pg_user: str = "admin"
+    pg_port: int = 5432
+    pg_user: str = "sphp"
     pg_password: str = "sphp123"
-    pg_database: str = "SPHP_pg"
+    pg_database: str = "sphp"
 
     # ---- Redis ----
+    # 从 .env 的 REDIS_HOST / REDIS_PORT / REDIS_PASSWORD 读取。
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_password: str | None = None
 
     # ---- RabbitMQ ----
-    rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
+    # 从 .env 的 RABBITMQ_HOST / RABBITMQ_PORT / RABBITMQ_USER / RABBITMQ_PASSWORD / RABBITMQ_VHOST 读取。
+    rabbitmq_host: str = "localhost"
+    rabbitmq_port: int = 5672
+    rabbitmq_user: str = "guest"
+    rabbitmq_password: str = "guest"
+    rabbitmq_vhost: str = "/"
+
+    @property
+    def rabbitmq_url(self) -> str:
+        """AMQP 连接串（由分项字段拼装，避免重复配置）。"""
+        return f"amqp://{self.rabbitmq_user}:{self.rabbitmq_password}@{self.rabbitmq_host}:{self.rabbitmq_port}{self.rabbitmq_vhost}"
 
     # ---- 知识库 ----
     kb_collection: str = "medical_knowledge"

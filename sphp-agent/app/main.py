@@ -75,6 +75,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # 中间件
     from app.api.middleware.tracing import TracingMiddleware
     from app.api.middleware.jwt_auth import JWTAuthMiddleware
     from app.api.middleware.rate_limit import RateLimitMiddleware
@@ -91,11 +92,52 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict:
-        """健康检查端点（系分 §4.5）。"""
-        # TODO: 检查 PG / Redis / LLM 连通性
+        """健康检查端点（系分 §4.5）。
+
+        检查 PG / Redis / LLM 连通性。
+        """
+        checks = {"pg": "ok", "redis": "ok", "llm": "ok"}
+
+        # 检查 PostgreSQL 连接
+        try:
+            from app.engine.rag.vectorstore import get_vectorstore
+
+            vs = await get_vectorstore()
+            if vs:
+                checks["pg"] = "ok"
+            else:
+                checks["pg"] = "error"
+        except Exception:
+            checks["pg"] = "error"
+
+        # 检查 Redis 连接
+        try:
+            from app.infrastructure.cache.redis_client import get_redis
+
+            redis = await get_redis()
+            await redis.ping()
+            checks["redis"] = "ok"
+        except Exception:
+            checks["redis"] = "error"
+
+        # 检查 LLM API（仅检查配置，不真实调用）
+        try:
+            from app.engine.llm.factory import build_llm
+
+            llm = build_llm()
+            if llm:
+                checks["llm"] = "ok"
+            else:
+                checks["llm"] = "error"
+        except Exception:
+            checks["llm"] = "error"
+
+        # 只要有一项失败，整体状态为 unhealthy
+        overall_status = "healthy" if all(v == "ok" for v in checks.values()) else "unhealthy"
+
         return {
-            "status": "healthy",
-            "checks": {"pg": "ok", "redis": "ok", "llm": "ok"},
+            "status": overall_status,
+            "checks": checks,
             "version": "2.0.0",
         }
 
@@ -103,3 +145,24 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+def run() -> None:
+    """从 .env 的 AGENT_HOST / AGENT_PORT 读取监听地址并启动。
+
+    python -m app.main
+    等价于 uvicorn app.main:app --host <AGENT_HOST> --port <AGENT_PORT>。
+    """
+    import uvicorn
+
+    settings = get_settings()
+    uvicorn.run(
+        "app.main:app",
+        host=settings.agent_host,
+        port=settings.agent_port,
+        reload=settings.debug,
+    )
+
+
+if __name__ == "__main__":
+    run()

@@ -24,23 +24,27 @@ class ConfirmRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    """对话响应（非 SSE 场景，如错误响应）。"""
-    success: bool = True
-    message: str | None = None
-    error: dict | None = None
+    """对话响应（非 SSE 场景，如错误响应）-- 统一信封。"""
+    code: str = "00000"
+    message: str = "success"
+    data: dict | None = None
+    traceId: str = ""
 
 
 class ConfirmResponse(BaseModel):
-    """L2 确认回调响应（系分 §6.2.2）。"""
-    success: bool
-    message: str | None = None
-    error: dict | None = None
+    """L2 确认回调响应（系分 §6.2.2）-- 统一信封。"""
+    code: str = "00000"
+    message: str = "success"
+    data: dict | None = None
+    traceId: str = ""
 
 
 class ErrorResponse(BaseModel):
-    """统一错误响应。"""
-    success: bool = False
-    error: dict
+    """统一错误响应 -- 统一信封（code 为字符串错误码）。"""
+    code: str
+    message: str
+    data: None = None
+    traceId: str = ""
 
 
 class HealthResponse(BaseModel):
