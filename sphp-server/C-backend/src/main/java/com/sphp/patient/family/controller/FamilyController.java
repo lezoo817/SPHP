@@ -3,8 +3,10 @@ package com.sphp.patient.family.controller;
 import com.sphp.patient.family.service.FamilyService;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.family.dto.FamilyMemberCreateRequest;
+import com.sphp.patient.family.dto.FamilyMemberUpdateRequest;
 import com.sphp.patient.family.vo.FamilyMemberCreateVO;
 import com.sphp.patient.family.vo.FamilyMemberListVO;
+import com.sphp.patient.family.vo.FamilyMemberUpdateVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.sphp.shared.common.constant.HeaderConstant;
@@ -14,12 +16,15 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
 import org.springframework.validation.annotation.Validated;
 
 import java.util.List;
@@ -68,6 +73,32 @@ public class FamilyController {
                 request,
                 FamilyMemberCreateVO.class,
                 () -> new IdempotencyPayload<>("家庭成员已添加", familyService.createFamilyMember(request))
+        );
+        return Result.success(payload.message(), payload.data());
+    }
+
+    /**
+     * 更新当前账号下的非本人家庭成员。
+     *
+     * @param patientId 就诊人 ID
+     * @param idempotencyKey 客户端幂等键
+     * @param request 更新家庭成员请求
+     * @return 更新后的家庭成员信息
+     */
+    @PutMapping("/{patientId}")
+    @Operation(summary = "更新家庭成员")
+    public Result<FamilyMemberUpdateVO> updateFamilyMember(
+            @PathVariable @Positive(message = "就诊人ID必须为正整数") Long patientId,
+            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @Valid @RequestBody FamilyMemberUpdateRequest request) {
+        Long userId = CUserContext.getRequired().userId();
+        IdempotencyPayload<FamilyMemberUpdateVO> payload = idempotencyService.execute(
+                userId,
+                "/c/v1/family-members/" + patientId,
+                idempotencyKey,
+                request,
+                FamilyMemberUpdateVO.class,
+                () -> new IdempotencyPayload<>("家庭成员资料已更新", familyService.updateFamilyMember(patientId, request))
         );
         return Result.success(payload.message(), payload.data());
     }

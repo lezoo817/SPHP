@@ -2,7 +2,9 @@ package com.sphp.patient.family.service;
 
 import com.sphp.patient.family.vo.FamilyMemberListVO;
 import com.sphp.patient.family.dto.FamilyMemberCreateRequest;
+import com.sphp.patient.family.dto.FamilyMemberUpdateRequest;
 import com.sphp.patient.family.vo.FamilyMemberCreateVO;
+import com.sphp.patient.family.vo.FamilyMemberUpdateVO;
 
 import java.util.List;
 
@@ -25,4 +27,13 @@ public interface FamilyService {
      * @return 新建家庭成员信息
      */
     FamilyMemberCreateVO createFamilyMember(FamilyMemberCreateRequest request);
+
+    /**
+     * 更新当前账号下的有效非本人家庭成员。
+     *
+     * @param patientId 就诊人 ID
+     * @param request 更新家庭成员请求
+     * @return 更新后的家庭成员信息
+     */
+    FamilyMemberUpdateVO updateFamilyMember(Long patientId, FamilyMemberUpdateRequest request);
 }

@@ -2,15 +2,18 @@ package com.sphp.patient.family.service.impl;
 
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
+import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.family.mapper.FamilyMemberMapper;
 import com.sphp.patient.family.mapper.FamilyMemberRecord;
 import com.sphp.patient.family.mapper.PatientMapper;
 import com.sphp.patient.family.mapper.PatientUserRelationMapper;
 import com.sphp.patient.family.dto.FamilyMemberCreateRequest;
+import com.sphp.patient.family.dto.FamilyMemberUpdateRequest;
 import com.sphp.patient.family.entity.Patient;
 import com.sphp.patient.family.entity.PatientUserRelation;
 import com.sphp.patient.family.vo.FamilyMemberListVO;
 import com.sphp.patient.family.vo.FamilyMemberCreateVO;
+import com.sphp.patient.family.vo.FamilyMemberUpdateVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +24,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
@@ -103,6 +107,103 @@ class FamilyServiceImplTest {
                         && relation.getPatientId().equals(20002L)
                         && "CHILD".equals(relation.getRelationship())
                         && Boolean.FALSE.equals(relation.getIsDefault())));
+    }
+
+    /**
+     * 验证更新成员时可选字段未传保留原值并更新关系。
+     */
+    @Test
+    void updateFamilyMemberPreservesMissingOptionalFields() {
+        FamilyMemberMapper familyMemberMapper = mock(FamilyMemberMapper.class);
+        PatientMapper patientMapper = mock(PatientMapper.class);
+        PatientUserRelationMapper relationMapper = mock(PatientUserRelationMapper.class);
+        FamilyServiceImpl familyService = new FamilyServiceImpl(familyMemberMapper, patientMapper, relationMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        FamilyMemberUpdateRequest request = new FamilyMemberUpdateRequest();
+        request.setName("张小明");
+        request.setRelation("CHILD");
+        request.setPhone("13800138002");
+        FamilyMemberRecord existing = record(20002L, "张小明旧名", "CHILD", false,
+                "13800138001", LocalDate.of(2018, 6, 1));
+        existing.setRelationId(50001L);
+        existing.setGender("MALE");
+        existing.setIdCardNo("11010519491231002X");
+        existing.setEmergencyContact("张三 13800138000");
+        when(familyMemberMapper.lockUserForFamilyMutation(10001L)).thenReturn(10001L);
+        when(familyMemberMapper.selectActiveMember(10001L, 20002L)).thenReturn(existing);
+        when(patientMapper.updateById(any(Patient.class))).thenReturn(1);
+        when(relationMapper.updateById(any(PatientUserRelation.class))).thenReturn(1);
+
+        FamilyMemberUpdateVO result = familyService.updateFamilyMember(20002L, request);
+
+        assertEquals(20002L, result.getPatientId());
+        assertEquals("138****8002", result.getPhone());
+        verify(patientMapper).updateById(org.mockito.ArgumentMatchers.<Patient>argThat(patient ->
+                "MALE".equals(patient.getGender())
+                        && LocalDate.of(2018, 6, 1).equals(patient.getDateOfBirth())
+                        && "11010519491231002X".equals(patient.getIdCardCiphertext())
+                        && "13800138002".equals(patient.getPhoneCiphertext())));
+    }
+
+    /**
+     * 验证账号本人不能通过家庭成员接口更新。
+     */
+    @Test
+    void updateFamilyMemberRejectsSelfMember() {
+        FamilyMemberMapper familyMemberMapper = mock(FamilyMemberMapper.class);
+        PatientMapper patientMapper = mock(PatientMapper.class);
+        PatientUserRelationMapper relationMapper = mock(PatientUserRelationMapper.class);
+        FamilyServiceImpl familyService = new FamilyServiceImpl(familyMemberMapper, patientMapper, relationMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        FamilyMemberUpdateRequest request = updateRequest();
+        FamilyMemberRecord selfRecord = record(20001L, "张三", "SELF", true,
+                "13800138000", LocalDate.of(1990, 5, 20));
+        when(familyMemberMapper.lockUserForFamilyMutation(10001L)).thenReturn(10001L);
+        when(familyMemberMapper.selectActiveMember(10001L, 20001L)).thenReturn(selfRecord);
+
+        CAuthException exception = assertThrows(CAuthException.class,
+                () -> familyService.updateFamilyMember(20001L, request));
+
+        assertEquals("A0443", exception.getCode());
+    }
+
+    /**
+     * 验证更新为当前账号下已绑定身份证号时会被拒绝。
+     */
+    @Test
+    void updateFamilyMemberRejectsDuplicateIdCard() {
+        FamilyMemberMapper familyMemberMapper = mock(FamilyMemberMapper.class);
+        PatientMapper patientMapper = mock(PatientMapper.class);
+        PatientUserRelationMapper relationMapper = mock(PatientUserRelationMapper.class);
+        FamilyServiceImpl familyService = new FamilyServiceImpl(familyMemberMapper, patientMapper, relationMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        FamilyMemberUpdateRequest request = updateRequest();
+        request.setIdCardNo("11010519491231002x");
+        FamilyMemberRecord existing = record(20002L, "张小明", "CHILD", false,
+                "13800138001", LocalDate.of(2018, 6, 1));
+        when(familyMemberMapper.lockUserForFamilyMutation(10001L)).thenReturn(10001L);
+        when(familyMemberMapper.selectActiveMember(10001L, 20002L)).thenReturn(existing);
+        when(familyMemberMapper.existsActiveIdCard(10001L, "11010519491231002X", 20002L)).thenReturn(true);
+
+        CAuthException exception = assertThrows(CAuthException.class,
+                () -> familyService.updateFamilyMember(20002L, request));
+
+        assertEquals("A0506", exception.getCode());
+    }
+
+    /**
+     * 创建满足更新必填字段要求的请求。
+     *
+     * @return 更新家庭成员请求
+     */
+    private FamilyMemberUpdateRequest updateRequest() {
+        FamilyMemberUpdateRequest request = new FamilyMemberUpdateRequest();
+        request.setName("张小明");
+        request.setRelation("CHILD");
+        return request;
     }
 
     /**

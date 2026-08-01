@@ -4,7 +4,9 @@ import com.sphp.patient.family.handler.FamilyExceptionHandler;
 import com.sphp.patient.family.service.FamilyService;
 import com.sphp.patient.family.vo.FamilyMemberListVO;
 import com.sphp.patient.family.dto.FamilyMemberCreateRequest;
+import com.sphp.patient.family.dto.FamilyMemberUpdateRequest;
 import com.sphp.patient.family.vo.FamilyMemberCreateVO;
+import com.sphp.patient.family.vo.FamilyMemberUpdateVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.sphp.patient.auth.support.context.CUserContext;
@@ -24,6 +26,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -104,5 +107,31 @@ class FamilyControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("家庭成员已添加"))
                 .andExpect(jsonPath("$.data.patientId").value(20002L));
+    }
+
+    /**
+     * 验证更新家庭成员接口返回更新后的脱敏资料。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void updateFamilyMemberReturnsUpdatedMember() throws Exception {
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        FamilyMemberUpdateRequest request = new FamilyMemberUpdateRequest();
+        request.setName("张小明");
+        request.setRelation("CHILD");
+        when(idempotencyService.execute(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new IdempotencyPayload<>("家庭成员资料已更新", FamilyMemberUpdateVO.builder()
+                        .patientId(20002L).name("张小明").relation("CHILD")
+                        .phone("138****8002").updatedAt(OffsetDateTime.now()).build()));
+
+        mockMvc.perform(put("/c/v1/family-members/20002")
+                        .header("X-Idempotency-Key", "key-002")
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("家庭成员资料已更新"))
+                .andExpect(jsonPath("$.data.phone").value("138****8002"));
     }
 }

@@ -5,6 +5,7 @@ import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.common.enums.PatientRelationshipEnum;
 import com.sphp.patient.common.enums.GenderEnum;
 import com.sphp.patient.family.dto.FamilyMemberCreateRequest;
+import com.sphp.patient.family.dto.FamilyMemberUpdateRequest;
 import com.sphp.patient.family.entity.Patient;
 import com.sphp.patient.family.entity.PatientUserRelation;
 import com.sphp.patient.family.mapper.FamilyMemberMapper;
@@ -14,6 +15,7 @@ import com.sphp.patient.family.mapper.PatientUserRelationMapper;
 import com.sphp.patient.family.service.FamilyService;
 import com.sphp.patient.family.vo.FamilyMemberCreateVO;
 import com.sphp.patient.family.vo.FamilyMemberListVO;
+import com.sphp.patient.family.vo.FamilyMemberUpdateVO;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -108,6 +110,63 @@ public class FamilyServiceImpl implements FamilyService {
     }
 
     /**
+     * 更新当前账号下的有效非本人家庭成员。
+     *
+     * @param patientId 就诊人 ID
+     * @param request 更新家庭成员请求
+     * @return 更新后的家庭成员信息
+     * @throws CAuthException 账号失效、成员不存在、本人不可更新、身份证重复或并发状态变更时抛出
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FamilyMemberUpdateVO updateFamilyMember(Long patientId, FamilyMemberUpdateRequest request) {
+        Long userId = CUserContext.getRequired().userId();
+        validateUpdateRequest(request);
+        // 锁定 C端用户行，使归属校验、身份证去重和资料更新在同一临界区内完成
+        if (familyMemberMapper.lockUserForFamilyMutation(userId) == null) {
+            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "当前登录状态无效");
+        }
+        FamilyMemberRecord existing = familyMemberMapper.selectActiveMember(userId, patientId);
+        if (existing == null) {
+            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "家庭成员不存在或已解绑");
+        }
+        if (PatientRelationshipEnum.SELF.getValue().equals(existing.getRelationship())) {
+            throw new CAuthException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID,
+                    HttpStatus.CONFLICT, "本人信息不能通过家庭成员接口更新");
+        }
+
+        String idCardNo = request.getIdCardNo() == null
+                ? existing.getIdCardNo() : normalizeIdCardNo(request.getIdCardNo());
+        if (StringUtils.hasText(idCardNo)
+                && familyMemberMapper.existsActiveIdCard(userId, idCardNo, patientId)) {
+            throw duplicateMember("身份证号已绑定有效家庭成员");
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        Patient patient = buildUpdatedPatient(patientId, request, existing, idCardNo, now);
+        if (patientMapper.updateById(patient) != 1) {
+            throw stateConflict("家庭成员资料已发生变化，请刷新后重试");
+        }
+
+        PatientUserRelation relation = buildUpdatedRelation(userId, patientId, request, existing, now);
+        if (relationMapper.updateById(relation) != 1) {
+            throw stateConflict("家庭成员关系已发生变化，请刷新后重试");
+        }
+
+        return FamilyMemberUpdateVO.builder()
+                .patientId(patientId)
+                .name(patient.getName())
+                .relation(relation.getRelationship())
+                .relationName(relationName(relation.getRelationship()))
+                .gender(patient.getGender())
+                .birthday(patient.getDateOfBirth())
+                .phone(maskPhone(patient.getPhoneCiphertext()))
+                .isDefault(relation.getIsDefault())
+                .updatedAt(now)
+                .build();
+    }
+
+    /**
      * 将家庭成员查询记录转换为面向 H5 的脱敏列表项。
      *
      * @param record 家庭成员联表查询记录
@@ -178,6 +237,75 @@ public class FamilyServiceImpl implements FamilyService {
     }
 
     /**
+     * 校验更新家庭成员的业务约束。
+     *
+     * @param request 更新家庭成员请求
+     * @throws CAuthException 关系、性别或出生日期不合法时抛出
+     */
+    private void validateUpdateRequest(FamilyMemberUpdateRequest request) {
+        if (!isNonSelfRelation(request.getRelation())) {
+            throw new CAuthException(ErrorCodeEnum.INVALID_PARAMETER,
+                    HttpStatus.BAD_REQUEST, "家庭关系不合法或不能为本人");
+        }
+        if (request.getGender() != null && !isGender(request.getGender())) {
+            throw new CAuthException(ErrorCodeEnum.INVALID_PARAMETER,
+                    HttpStatus.BAD_REQUEST, "性别编码不合法");
+        }
+        if (request.getBirthday() != null && request.getBirthday().isAfter(LocalDate.now())) {
+            throw new CAuthException(ErrorCodeEnum.INVALID_PARAMETER,
+                    HttpStatus.BAD_REQUEST, "出生日期不能晚于当天");
+        }
+    }
+
+    /**
+     * 组装保留未传字段后的就诊人更新实体。
+     *
+     * @param patientId 就诊人 ID
+     * @param request 更新家庭成员请求
+     * @param existing 当前有效成员记录
+     * @param idCardNo 规范化后的身份证号
+     * @param updatedAt 更新时间
+     * @return 待更新就诊人实体
+     */
+    private Patient buildUpdatedPatient(Long patientId, FamilyMemberUpdateRequest request,
+                                        FamilyMemberRecord existing, String idCardNo, OffsetDateTime updatedAt) {
+        Patient patient = new Patient();
+        patient.setId(patientId);
+        patient.setName(request.getName().trim());
+        patient.setGender(request.getGender() == null ? existing.getGender() : request.getGender());
+        patient.setDateOfBirth(request.getBirthday() == null ? existing.getBirthday() : request.getBirthday());
+        patient.setPhoneCiphertext(request.getPhone() == null ? existing.getPhone() : request.getPhone());
+        patient.setIdCardCiphertext(idCardNo);
+        patient.setEmergencyContact(request.getEmergencyContact() == null
+                ? existing.getEmergencyContact() : request.getEmergencyContact());
+        patient.setUpdatedAt(updatedAt);
+        return patient;
+    }
+
+    /**
+     * 组装家庭关系更新实体，保留原有默认就诊人标记。
+     *
+     * @param userId 当前 C端用户 ID
+     * @param patientId 就诊人 ID
+     * @param request 更新家庭成员请求
+     * @param existing 当前有效成员记录
+     * @param updatedAt 更新时间
+     * @return 待更新关系实体
+     */
+    private PatientUserRelation buildUpdatedRelation(Long userId, Long patientId,
+                                                     FamilyMemberUpdateRequest request,
+                                                     FamilyMemberRecord existing, OffsetDateTime updatedAt) {
+        PatientUserRelation relation = new PatientUserRelation();
+        relation.setId(existing.getRelationId());
+        relation.setUserId(userId);
+        relation.setPatientId(patientId);
+        relation.setRelationship(request.getRelation());
+        relation.setIsDefault(existing.getIsDefault());
+        relation.setUpdatedAt(updatedAt);
+        return relation;
+    }
+
+    /**
      * 判断关系编码是否为允许创建的非本人关系。
      *
      * @param relation 关系编码
@@ -218,5 +346,15 @@ public class FamilyServiceImpl implements FamilyService {
      */
     private CAuthException duplicateMember(String message) {
         return new CAuthException(ErrorCodeEnum.DUPLICATE_REQUEST, HttpStatus.CONFLICT, message);
+    }
+
+    /**
+     * 创建关系状态已变化时的并发冲突异常。
+     *
+     * @param message 用户可读提示
+     * @return HTTP 409 业务异常
+     */
+    private CAuthException stateConflict(String message) {
+        return new CAuthException(ErrorCodeEnum.BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT, message);
     }
 }
