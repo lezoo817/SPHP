@@ -31,6 +31,24 @@ public class Doctor {
     /** 姓名 */
     private String name;
 
+    /** 职称：主任医师 / 副主任医师 / 主治医师 / 住院医师 */
+    private String title;
+
+    /** 擅长领域 */
+    private String specialty;
+
+    /** 简介 */
+    private String introduction;
+
+    /** 执业证号 */
+    private String licenseNo;
+
+    /** 联系电话 */
+    private String phone;
+
+    /** 挂号费（分），默认 0 */
+    private Integer registrationFeeCent;
+
     /** 状态：ENABLED / DISABLED / SUSPENDED */
     private String status;
 
