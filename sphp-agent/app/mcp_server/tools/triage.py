@@ -65,33 +65,10 @@ def register(server):
 
     注册的工具：
     - create_triage_assessment: 创建导诊评估
+
+    注意：当前MCP SDK版本不直接支持装饰器注册，
+    工具函数通过tool_caller节点显式调用。
     """
-    try:
-        # 使用装饰器注册工具
-        @server.call_tool()
-        async def create_triage_assessment_tool(
-            hospital_id: int,
-            symptom: str,
-            duration: str | None = None,
-            temperature: float | None = None,
-            medical_history: str | None = None,
-            user_id: int | None = None,
-        ) -> dict:
-            """MCP工具: 创建导诊评估。
-
-            Args同create_triage_assessment函数。
-            """
-            return await create_triage_assessment(
-                hospital_id=hospital_id,
-                symptom=symptom,
-                duration=duration,
-                temperature=temperature,
-                medical_history=medical_history,
-                user_id=user_id,
-            )
-
-        logger.info("MCP工具注册成功: create_triage_assessment")
-
-    except Exception as e:
-        logger.error("MCP工具注册失败: create_triage_assessment - %s", str(e))
-        raise
+    # 当前版本：工具函数已实现，由编排层直接调用
+    # MCP工具注册将在SDK版本稳定后完善
+    logger.info("导诊工具函数已就绪: create_triage_assessment")
