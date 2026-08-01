@@ -18,6 +18,12 @@
             <artifactId>sphp-core</artifactId>
         </dependency>
 
+        <!-- MyBatis-Plus 分页插件（jsqlparser 解析器） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+        </dependency>
+
         <!-- Sa-Token（认证框架，B端独立签发 JWT） -->
         <dependency>
             <groupId>cn.dev33</groupId>
