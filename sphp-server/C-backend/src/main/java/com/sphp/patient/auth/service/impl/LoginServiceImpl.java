@@ -15,9 +15,12 @@ import com.sphp.patient.auth.service.LoginService;
 import com.sphp.patient.auth.support.CAuthTokenGenerator;
 import com.sphp.patient.auth.support.CAuthDigestUtil;
 import com.sphp.patient.auth.support.jwt.CJwtService;
+import com.sphp.patient.auth.support.context.CUserContext;
+import com.sphp.patient.auth.support.context.CUserPrincipal;
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.auth.vo.LoginUserVO;
 import com.sphp.patient.auth.vo.LoginVO;
+import com.sphp.patient.auth.vo.TokenParseVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.common.constant.CAuthConstant;
 import com.sphp.patient.common.enums.CUserStatusEnum;
@@ -175,6 +178,22 @@ public class LoginServiceImpl implements LoginService {
                 .refreshToken(refreshToken.rawToken())
                 .expiresIn(jwtProperties.getExpiration())
                 .user(LoginUserVO.builder().id(user.getId()).account(user.getAccount()).build())
+                .build();
+    }
+
+    /**
+     * 读取拦截器建立的当前 C端用户最小令牌上下文。
+     *
+     * @return Token 最小身份信息
+     * @throws CAuthException 当前请求未建立有效身份时抛出
+     */
+    @Override
+    public TokenParseVO parseToken() {
+        CUserPrincipal principal = CUserContext.getRequired();
+        return TokenParseVO.builder()
+                .userId(principal.userId())
+                .account(principal.account())
+                .tokenExpiresAt(principal.tokenExpiresAt())
                 .build();
     }
 

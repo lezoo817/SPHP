@@ -6,6 +6,7 @@ import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.auth.vo.LoginVO;
+import com.sphp.patient.auth.vo.TokenParseVO;
 import com.sphp.shared.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -61,5 +62,16 @@ public class LoginController {
     @Operation(summary = "C端账号密码登录")
     public Result<LoginVO> login(@Valid @RequestBody LoginRequest request) {
         return Result.success("登录成功", loginService.login(request));
+    }
+
+    /**
+     * 解析当前已校验的 C端 Access Token。
+     *
+     * @return 当前用户最小身份上下文
+     */
+    @GetMapping("/token/parse")
+    @Operation(summary = "解析当前C端Token")
+    public Result<TokenParseVO> parseToken() {
+        return Result.success("令牌解析成功", loginService.parseToken());
     }
 }

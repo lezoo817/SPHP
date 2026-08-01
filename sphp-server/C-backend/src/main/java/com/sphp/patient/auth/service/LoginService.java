@@ -4,6 +4,7 @@ import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.vo.LoginVO;
+import com.sphp.patient.auth.vo.TokenParseVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 
 /**
@@ -33,4 +34,11 @@ public interface LoginService {
      * @return Token 对和用户摘要
      */
     LoginVO login(LoginRequest request);
+
+    /**
+     * 读取当前已验证 C端用户的最小令牌上下文。
+     *
+     * @return Token 最小身份信息
+     */
+    TokenParseVO parseToken();
 }

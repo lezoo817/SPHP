@@ -8,11 +8,14 @@ import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.LoginUserVO;
 import com.sphp.patient.auth.vo.RegisterVO;
+import com.sphp.patient.auth.vo.TokenParseVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.time.OffsetDateTime;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -128,5 +131,25 @@ class LoginControllerTest {
                 .andExpect(jsonPath("$.data.accessToken").value("access-token"))
                 .andExpect(jsonPath("$.data.refreshToken").value("rt_token"))
                 .andExpect(jsonPath("$.data.user.id").value(10001L));
+    }
+
+    /**
+     * 验证 C端 JWT 解析接口返回最小身份信息。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void parseTokenReturnsMinimalIdentity() throws Exception {
+        when(loginService.parseToken()).thenReturn(TokenParseVO.builder()
+                .userId(10001L)
+                .account("patient_zhangsan")
+                .tokenExpiresAt(OffsetDateTime.parse("2026-08-03T10:00:00+08:00"))
+                .build());
+
+        mockMvc.perform(get("/c/v1/auth/token/parse"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("令牌解析成功"))
+                .andExpect(jsonPath("$.data.userId").value(10001L))
+                .andExpect(jsonPath("$.data.account").value("patient_zhangsan"));
     }
 }

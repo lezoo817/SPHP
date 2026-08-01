@@ -9,14 +9,18 @@ import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.mapper.CRefreshTokenMapper;
 import com.sphp.patient.auth.mapper.CUserMapper;
 import com.sphp.patient.auth.support.jwt.CJwtService;
+import com.sphp.patient.auth.support.context.CUserContext;
+import com.sphp.patient.auth.support.context.CUserPrincipal;
 import com.sphp.patient.auth.config.CJwtProperties;
 import com.sphp.patient.auth.vo.LoginVO;
+import com.sphp.patient.auth.vo.TokenParseVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.family.entity.Patient;
 import com.sphp.patient.family.entity.PatientUserRelation;
 import com.sphp.patient.family.mapper.PatientMapper;
 import com.sphp.patient.family.mapper.PatientUserRelationMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,6 +30,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
 import java.time.Duration;
+import java.time.OffsetDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -76,6 +81,14 @@ class LoginServiceImplTest {
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         loginService = new LoginServiceImpl(properties, jwtProperties, redisTemplate,
                 cUserMapper, patientMapper, relationMapper, refreshTokenMapper, jwtService);
+    }
+
+    /**
+     * 每个测试结束后清理当前用户上下文。
+     */
+    @AfterEach
+    void clearUserContext() {
+        CUserContext.clear();
     }
 
     /**
@@ -201,5 +214,20 @@ class LoginServiceImplTest {
         assertEquals("A0210", assertThrows(CAuthException.class, () -> loginService.login(request)).getCode());
         assertEquals("A0210", assertThrows(CAuthException.class, () -> loginService.login(request)).getCode());
         assertEquals("A0211", assertThrows(CAuthException.class, () -> loginService.login(request)).getCode());
+    }
+
+    /**
+     * 验证 Token 解析只返回拦截器建立的最小身份上下文。
+     */
+    @Test
+    void parseTokenReturnsCurrentUserContext() {
+        OffsetDateTime expiresAt = OffsetDateTime.parse("2026-08-03T10:00:00+08:00");
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan", expiresAt, "session-hash"));
+
+        TokenParseVO result = loginService.parseToken();
+
+        assertEquals(10001L, result.getUserId());
+        assertEquals("patient_zhangsan", result.getAccount());
+        assertEquals(expiresAt, result.getTokenExpiresAt());
     }
 }
