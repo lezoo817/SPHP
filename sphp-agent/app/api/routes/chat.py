@@ -50,6 +50,10 @@ async def chat_stream(req: ChatRequest, request: Request):
         "intent": None,
         "user_id": user_id,
         "scope": req.scope,
+        "roles": None,
+        "dept_id": None,
+        "doctor_id": None,
+        "hospital_id": (req.context or {}).get("hospital_id"),
         "tool_calls": None,
         "tool_results": None,
         "pending_confirmation": None,
@@ -89,8 +93,8 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     # from app.infrastructure.cache.redis_client import get_and_delete_confirm_token
     # token_data = await get_and_delete_confirm_token(...)
     # if token_data is None:
-    #     return ConfirmResponse(success=False, error={"code": "CONFIRM_EXPIRED", ...})
+    #     return ConfirmResponse(code="CONFIRM_EXPIRED", message="确认已超时，请重新发起操作", data=None, traceId=trace_id)
 
     # TODO: 校验通过后继续执行 MCP 工具，通过 SSE 推送结果
 
-    return ConfirmResponse(success=True, message="确认成功，正在处理")
+    return ConfirmResponse(code="00000", message="确认成功，正在处理", data=None, traceId=trace_id)
