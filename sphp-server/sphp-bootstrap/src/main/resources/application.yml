@@ -6,6 +6,8 @@ server:
 spring:
   application:
     name: sphp-bootstrap
+  profiles:
+    active: dev
 
   # ---- PostgreSQL ----
   datasource:
@@ -65,6 +67,18 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: "null"
 
+# ---- Sa-Token（B端认证：签发 JWT，Bearer 头鉴权） ----
+sa-token:
+  token-name: Authorization        # 与前端 Authorization 头一致
+  token-prefix: "Bearer"           # 自动剥离 Bearer 前缀
+  timeout: 7200                    # accessToken 有效期（秒），即登录接口 expiresIn
+  is-concurrent: true              # 允许多端并发登录
+  is-share: false                  # 每次登录签发新 token
+  is-read-cookie: false
+  is-read-header: true             # 从请求头读取 token
+  is-write-header: true            # 登录后写回响应头
+  jwt-secret-key: sphp-b-admin-jwt-secret-change-in-production   # B端独立 JWT 签名密钥
+  is-log: false
 
 sphp:
   cors:
