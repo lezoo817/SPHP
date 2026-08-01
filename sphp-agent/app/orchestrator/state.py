@@ -51,3 +51,6 @@ class AgentState(TypedDict):
 
     # 风险标记，由 safety_check 节点追加
     risk_flags: list[str]
+
+    # JWT Token（从请求 Header 提取，不含 "Bearer " 前缀），供 auth_node 调用 Java token/parse
+    jwt_token: str | None

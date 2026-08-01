@@ -36,19 +36,16 @@ async def chat_stream(req: ChatRequest, request: Request):
 
     前端发起对话 → JWT 鉴权 → LLM 推理 → SSE 流式返回。
     """
-    # 从中间件获取 JWT token
+    # 从中间件获取 JWT token 和 trace_id
     token = getattr(request.state, "jwt_token", None)
     trace_id = getattr(request.state, "trace_id", "")
 
-    # TODO: 调 Java token/parse 换取 userId
-    user_id = None  # 占位
-
-    # 构造初始状态
+    # 构造初始状态（jwt_token 注入到状态中，供 auth_node 使用）
     initial_state: AgentState = {
         "messages": [],
         "session_id": req.session_id,
         "intent": None,
-        "user_id": user_id,
+        "user_id": None,
         "scope": req.scope,
         "roles": None,
         "dept_id": None,
@@ -58,6 +55,7 @@ async def chat_stream(req: ChatRequest, request: Request):
         "tool_results": None,
         "pending_confirmation": None,
         "risk_flags": [],
+        "jwt_token": token,  # 注入 JWT token，供 auth_node 调用 Java token/parse
     }
 
     async def sse_generator():
