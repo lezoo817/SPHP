@@ -141,6 +141,7 @@ CLAUDE.md
 # ==================== 文件 ====================
 docs/
 /AGENTS.md
+/sphp-server/C-backend/AGENTS.md
 /CodeMap.md
 /sphp-server/sphp-bootstrap/src/main/resources/application-dev.yml
 /sql/B端测试数据/
