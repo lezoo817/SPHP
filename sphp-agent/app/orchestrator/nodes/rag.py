@@ -8,14 +8,15 @@ from app.engine.rag.search import search_knowledge, format_context
 
 
 async def rag_node(state: AgentState) -> dict:
-    """从医疗知识库检索相关内容，返回相关知识片段列表。"""
-    user_message = ""
-    if state.get("messages"):
-        last_msg = state["messages"][-1]
-        user_message = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+    """从医疗知识库检索相关内容（系分 §5.7）。
 
-    results = search_knowledge(query=user_message)
-    context = format_context(results)
+    当前版本：暂不启用RAG检索（等待embedding API配置）。
+    """
+    # TODO: 启用RAG检索（需配置 SILICONFLOW_API_KEY）
+    # user_message = state["messages"][-1].content if state.get("messages") else ""
+    # results = search_knowledge(query=user_message)
+    # context = format_context(results)
+    # return {"tool_results": [{"rag_context": context}]}
 
-    # TODO: 将 context 注入 messages 作为系统上下文
-    return {"tool_results": [{"rag_context": context}]}
+    # 当前：跳过RAG，返回空结果
+    return {"messages": []}

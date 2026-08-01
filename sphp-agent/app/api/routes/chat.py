@@ -61,7 +61,7 @@ async def chat_stream(req: ChatRequest, request: Request):
     async def sse_generator():
         """SSE 流式输出生成器（系分 §6.2.1）。
 
-        接入 LangGraph astream_events，映射为 7 类 SSE 事件。
+        接入 LangGraph astream，映射为 SSE 事件。
         """
         try:
             graph = _get_graph()
@@ -77,49 +77,34 @@ async def chat_stream(req: ChatRequest, request: Request):
                 }
             }
 
-            # LangGraph astream_events 流式输出
-            async for event in graph.astream_events(
-                initial_state,
-                config=config,
-                version="v2",
-            ):
-                # 映射 SSE 事件
-                event_kind = event.get("event")
+            # 添加用户消息到初始状态
+            initial_state["messages"] = [{"role": "user", "content": req.content}]
 
-                if event_kind == "on_chain_start":
-                    # 节点开始执行
-                    node_name = event.get("name")
-                    logger.debug("节点开始: %s", node_name)
-
-                elif event_kind == "on_chain_end":
-                    # 节点执行完成
-                    node_name = event.get("name")
-                    output = event.get("data", {}).get("output", {})
+            # 使用 astream 而不是 astream_events（更稳定）
+            async for chunk in graph.astream(initial_state, config=config):
+                # chunk 格式: {node_name: output_dict}
+                for node_name, output in chunk.items():
                     logger.debug("节点完成: %s, 输出: %s", node_name, output)
 
-                elif event_kind == "on_chat_model_stream":
-                    # LLM 流式 token
-                    chunk = event.get("data", {}).get("chunk")
-                    if chunk and hasattr(chunk, "content"):
-                        delta = chunk.content
-                        yield f"event: message\ndata: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n"
+                    # 推送 thought 事件（节点执行）
+                    yield f"event: thought\ndata: {json.dumps({'node': node_name, 'output': str(output)[:100]}, ensure_ascii=False)}\n\n"
 
-                elif event_kind == "on_tool_start":
-                    # 工具调用开始
-                    tool_name = event.get("name")
-                    yield f"event: action\ndata: {json.dumps({'tool': tool_name}, ensure_ascii=False)}\n\n"
-
-                elif event_kind == "on_tool_end":
-                    # 工具调用完成
-                    tool_output = event.get("data", {}).get("output", {})
-                    yield f"event: observation\ndata: {json.dumps({'result': tool_output}, ensure_ascii=False)}\n\n"
+                    # 如果是 reply_node，推送 message 事件
+                    if node_name == "reply_node" and "messages" in output:
+                        messages = output.get("messages", [])
+                        if messages:
+                            last_msg = messages[-1]
+                            if isinstance(last_msg, dict) and "content" in last_msg:
+                                yield f"event: message\ndata: {json.dumps({'delta': last_msg['content']}, ensure_ascii=False)}\n\n"
 
             # 推送 done 事件
-            yield f"event: done\ndata: {json.dumps({'session_id': req.session_id or '', 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
+            yield f"event: done\ndata: {json.dumps({'session_id': req.session_id or thread_id, 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
 
         except Exception as e:
-            logger.exception("SSE stream error: %s", str(e))
-            yield f"event: error\ndata: {json.dumps({'code': 'SERVER_ERROR', 'message': '服务异常，请稍后重试', 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
+            import traceback
+            error_detail = traceback.format_exc()
+            logger.error("SSE stream error: %s\n%s", str(e), error_detail)
+            yield f"event: error\ndata: {json.dumps({'code': 'SERVER_ERROR', 'message': f'服务异常: {str(e)}', 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
             yield f"event: done\ndata: {json.dumps({}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(

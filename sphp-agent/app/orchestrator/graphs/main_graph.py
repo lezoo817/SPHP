@@ -48,6 +48,9 @@ def build_main_graph():
     # 入口
     builder.set_entry_point("auth_node")
 
+    # auth_node → intent_node
+    builder.add_edge("auth_node", "intent_node")
+
     # 条件边：意图路由
     builder.add_conditional_edges(
         "intent_node",
