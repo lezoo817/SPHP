@@ -1,0 +1,101 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: sphp-bootstrap
+  profiles:
+    # 启用开发环境配置，使下方占位符能够读取 dev 命名空间中的实际值。
+    active: dev
+
+  # ---- PostgreSQL ----
+  datasource:
+    driver-class-name: ${dev.spring.datasource.driver-class-name}
+    type: ${dev.spring.datasource.type}
+    username: ${dev.spring.datasource.username}
+    password: ${dev.spring.datasource.password}
+    url: ${dev.spring.datasource.url}
+    hikari:
+      connection-timeout: ${dev.spring.datasource.hikari.connection-timeout}
+      idle-timeout: ${dev.spring.datasource.hikari.idle-timeout}
+      max-lifetime: ${dev.spring.datasource.hikari.max-lifetime}
+      maximum-pool-size: ${dev.spring.datasource.hikari.maximum-pool-size}
+      minimum-idle: ${dev.spring.datasource.hikari.minimum-idle}
+      pool-name: ${dev.spring.datasource.hikari.pool-name}
+
+  # ---- Redis ----
+  data:
+    redis:
+      host: ${dev.spring.data.redis.host}
+      port: ${dev.spring.data.redis.port}
+      password: ${dev.spring.data.redis.password}
+      database: ${dev.spring.data.redis.database}
+      timeout: ${dev.spring.data.redis.timeout}
+      lettuce:
+        pool:
+          max-active: ${dev.spring.data.redis.lettuce.pool.max-active}
+          max-idle: ${dev.spring.data.redis.lettuce.pool.max-idle}
+          min-idle: ${dev.spring.data.redis.lettuce.pool.min-idle}
+
+  # ---- RabbitMQ ----
+  rabbitmq:
+    host: ${dev.spring.rabbitmq.host}
+    port: ${dev.spring.rabbitmq.port}
+    username: ${dev.spring.rabbitmq.username}
+    password: ${dev.spring.rabbitmq.password}
+    virtual-host: ${dev.spring.rabbitmq.virtual-host}
+    connection-timeout: ${dev.spring.rabbitmq.connection-timeout}
+    dynamic: ${dev.spring.rabbitmq.dynamic}
+    listener:
+      simple:
+        auto-startup: ${dev.spring.rabbitmq.listener.simple.auto-startup}
+        acknowledge-mode: ${dev.spring.rabbitmq.listener.simple.acknowledge-mode}
+        concurrency: ${dev.spring.rabbitmq.listener.simple.concurrency}
+        max-concurrency: ${dev.spring.rabbitmq.listener.simple.max-concurrency}
+      direct:
+        auto-startup: ${dev.spring.rabbitmq.listener.direct.auto-startup}
+
+# ---- MyBatis-Plus ----
+  mybatis-plus:
+    configuration:
+      map-underscore-to-camel-case: true
+      log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    global-config:
+      db-config:
+        logic-delete-field: deleted
+        logic-delete-value: 1
+        logic-not-delete-value: "null"
+
+# ---- Sa-Token（B端认证：签发 JWT，Bearer 头鉴权） ----
+  sa-token:
+    token-name: Authorization
+    token-prefix: "Bearer"
+    timeout: 7200
+    is-concurrent: true
+    is-share: false
+    is-read-cookie: false
+    is-read-header: true
+    is-write-header: true
+    jwt-secret-key: sphp-b-admin-jwt-secret-change-in-production
+    is-log: false
+
+  sphp:
+    cors:
+      # 允许访问统一后端的本地前端来源。
+      allowed-origins:
+        - http://localhost:8000
+        - http://localhost:8001
+    jwt:
+      # C 端患者 Token 签名密钥。
+      patient:
+        secret: sphp-patient-jwt-secret-change-in-production
+        expiration: 7200
+      # B 端医生和管理员 Token 签名密钥。
+      admin:
+        secret: sphp-admin-jwt-secret-change-in-production
+        expiration: 7200
+    # 号源预扣超时，单位为秒。
+    registration:
+      payment-timeout: 300
