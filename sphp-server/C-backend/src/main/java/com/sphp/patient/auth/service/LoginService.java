@@ -4,9 +4,11 @@ import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.dto.RefreshTokenRequest;
+import com.sphp.patient.auth.dto.LogoutRequest;
 import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
 import com.sphp.patient.auth.vo.RefreshTokenVO;
+import com.sphp.patient.auth.vo.LogoutVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 
 /**
@@ -51,4 +53,12 @@ public interface LoginService {
      * @return 新 Token 对
      */
     RefreshTokenVO refresh(RefreshTokenRequest request);
+
+    /**
+     * 撤销当前 Access Token 绑定的刷新会话。
+     *
+     * @param request 退出登录请求
+     * @return 退出结果
+     */
+    LogoutVO logout(LogoutRequest request);
 }

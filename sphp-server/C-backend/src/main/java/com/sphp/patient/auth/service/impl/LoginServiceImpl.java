@@ -7,6 +7,7 @@ import com.sphp.patient.auth.config.CJwtProperties;
 import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.RefreshTokenRequest;
+import com.sphp.patient.auth.dto.LogoutRequest;
 import com.sphp.patient.auth.entity.CRefreshToken;
 import com.sphp.patient.auth.entity.CUser;
 import com.sphp.patient.auth.exception.CAuthException;
@@ -23,6 +24,7 @@ import com.sphp.patient.auth.vo.LoginUserVO;
 import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
 import com.sphp.patient.auth.vo.RefreshTokenVO;
+import com.sphp.patient.auth.vo.LogoutVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.common.constant.CAuthConstant;
 import com.sphp.patient.common.enums.CUserStatusEnum;
@@ -257,6 +259,50 @@ public class LoginServiceImpl implements LoginService {
                 .refreshToken(newRefreshToken.rawToken())
                 .expiresIn(jwtProperties.getExpiration())
                 .build();
+    }
+
+    /**
+     * 撤销当前 Access Token 绑定的刷新会话。
+     *
+     * @param request 退出登录请求
+     * @return 退出结果
+     * @throws CAuthException Access Token 与 Refresh Token 不属于同一会话时抛出
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public LogoutVO logout(LogoutRequest request) {
+        CUserPrincipal principal = CUserContext.getRequired();
+        String tokenHash = CAuthDigestUtil.sha256Hex(request.getRefreshToken());
+        if (!tokenHash.equals(principal.sessionHash())) {
+            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED,
+                    HttpStatus.UNAUTHORIZED, "当前会话无效");
+        }
+
+        CRefreshToken currentToken = refreshTokenMapper.selectOne(Wrappers.<CRefreshToken>lambdaQuery()
+                .eq(CRefreshToken::getTokenHash, tokenHash)
+                .eq(CRefreshToken::getUserId, principal.userId()));
+        if (currentToken == null || currentToken.getRevokedAt() != null
+                || !currentToken.getExpiredAt().isAfter(OffsetDateTime.now())) {
+            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED,
+                    HttpStatus.UNAUTHORIZED, "当前会话无效");
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        CRefreshToken revokedToken = new CRefreshToken();
+        revokedToken.setRevokedAt(now);
+        int updated = refreshTokenMapper.update(revokedToken, Wrappers.<CRefreshToken>lambdaUpdate()
+                .eq(CRefreshToken::getId, currentToken.getId())
+                .eq(CRefreshToken::getUserId, principal.userId())
+                .isNull(CRefreshToken::getRevokedAt)
+                .gt(CRefreshToken::getExpiredAt, now));
+        if (updated != 1) {
+            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED,
+                    HttpStatus.UNAUTHORIZED, "当前会话无效");
+        }
+
+        // 删除 Redis 会话后，与其绑定的 Access Token 立即失效
+        redisTemplate.delete(CAuthConstant.REFRESH_SESSION_KEY_PREFIX + tokenHash);
+        return LogoutVO.builder().loggedOut(true).build();
     }
 
     /**

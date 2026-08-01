@@ -4,6 +4,7 @@ import com.sphp.patient.auth.config.CAuthProperties;
 import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.dto.RefreshTokenRequest;
+import com.sphp.patient.auth.dto.LogoutRequest;
 import com.sphp.patient.auth.entity.CRefreshToken;
 import com.sphp.patient.auth.entity.CUser;
 import com.sphp.patient.auth.exception.CAuthException;
@@ -16,6 +17,7 @@ import com.sphp.patient.auth.config.CJwtProperties;
 import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
 import com.sphp.patient.auth.vo.RefreshTokenVO;
+import com.sphp.patient.auth.vo.LogoutVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.family.entity.Patient;
@@ -282,5 +284,30 @@ class LoginServiceImplTest {
         CAuthException exception = assertThrows(CAuthException.class, () -> loginService.refresh(request));
 
         assertEquals("A0230", exception.getCode());
+    }
+
+    /**
+     * 验证退出登录仅撤销当前 Access Token 绑定的刷新会话。
+     */
+    @Test
+    void logoutRevokesCurrentSession() {
+        String rawToken = "rt_current_token";
+        String tokenHash = com.sphp.patient.auth.support.CAuthDigestUtil.sha256Hex(rawToken);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), tokenHash));
+        LogoutRequest request = new LogoutRequest();
+        request.setRefreshToken(rawToken);
+        CRefreshToken currentToken = new CRefreshToken();
+        currentToken.setId(30001L);
+        currentToken.setUserId(10001L);
+        currentToken.setTokenHash(tokenHash);
+        currentToken.setExpiredAt(OffsetDateTime.now().plusDays(1));
+        when(refreshTokenMapper.selectOne(any())).thenReturn(currentToken);
+        when(refreshTokenMapper.update(any(CRefreshToken.class), any())).thenReturn(1);
+
+        LogoutVO result = loginService.logout(request);
+
+        assertTrue(result.isLoggedOut());
+        verify(redisTemplate).delete("cend:refresh:" + tokenHash);
     }
 }

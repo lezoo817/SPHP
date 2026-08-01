@@ -4,11 +4,13 @@ import com.sphp.patient.auth.service.LoginService;
 import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.dto.RefreshTokenRequest;
+import com.sphp.patient.auth.dto.LogoutRequest;
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
 import com.sphp.patient.auth.vo.RefreshTokenVO;
+import com.sphp.patient.auth.vo.LogoutVO;
 import com.sphp.shared.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -87,5 +89,17 @@ public class LoginController {
     @Operation(summary = "刷新C端访问令牌")
     public Result<RefreshTokenVO> refresh(@Valid @RequestBody RefreshTokenRequest request) {
         return Result.success("令牌刷新成功", loginService.refresh(request));
+    }
+
+    /**
+     * 撤销当前 C端登录会话。
+     *
+     * @param request 退出登录请求
+     * @return 退出结果
+     */
+    @PostMapping("/logout")
+    @Operation(summary = "退出C端登录")
+    public Result<LogoutVO> logout(@Valid @RequestBody LogoutRequest request) {
+        return Result.success("退出登录成功", loginService.logout(request));
     }
 }

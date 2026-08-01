@@ -6,11 +6,13 @@ import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.dto.RefreshTokenRequest;
+import com.sphp.patient.auth.dto.LogoutRequest;
 import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.LoginUserVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
 import com.sphp.patient.auth.vo.RefreshTokenVO;
+import com.sphp.patient.auth.vo.LogoutVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -177,5 +179,25 @@ class LoginControllerTest {
                 .andExpect(jsonPath("$.message").value("令牌刷新成功"))
                 .andExpect(jsonPath("$.data.accessToken").value("new-access-token"))
                 .andExpect(jsonPath("$.data.refreshToken").value("rt_new_token"));
+    }
+
+    /**
+     * 验证退出登录接口返回当前会话已退出。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void logoutReturnsLoggedOutFlag() throws Exception {
+        LogoutRequest request = new LogoutRequest();
+        request.setRefreshToken("rt_current_token");
+        when(loginService.logout(any(LogoutRequest.class))).thenReturn(LogoutVO.builder()
+                .loggedOut(true).build());
+
+        mockMvc.perform(post("/c/v1/auth/logout")
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("退出登录成功"))
+                .andExpect(jsonPath("$.data.loggedOut").value(true));
     }
 }
