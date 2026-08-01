@@ -82,6 +82,12 @@
             <version>5.8.40</version>
         </dependency>
 
+        <!-- C端密码 BCrypt 哈希与校验 -->
+        <dependency>
+            <groupId>org.mindrot</groupId>
+            <artifactId>jbcrypt</artifactId>
+        </dependency>
+
         <!-- Spring Boot 测试 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
