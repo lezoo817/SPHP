@@ -6,6 +6,7 @@ import com.sphp.patient.auth.config.CAuthProperties;
 import com.sphp.patient.auth.config.CJwtProperties;
 import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.dto.RegisterRequest;
+import com.sphp.patient.auth.dto.RefreshTokenRequest;
 import com.sphp.patient.auth.entity.CRefreshToken;
 import com.sphp.patient.auth.entity.CUser;
 import com.sphp.patient.auth.exception.CAuthException;
@@ -21,6 +22,7 @@ import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.auth.vo.LoginUserVO;
 import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
+import com.sphp.patient.auth.vo.RefreshTokenVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.common.constant.CAuthConstant;
 import com.sphp.patient.common.enums.CUserStatusEnum;
@@ -198,6 +200,66 @@ public class LoginServiceImpl implements LoginService {
     }
 
     /**
+     * 校验并轮换 C端刷新令牌。
+     *
+     * @param request 刷新令牌请求
+     * @return 新 Token 对
+     * @throws CAuthException 刷新令牌过期、撤销、伪造或重复消费时抛出
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public RefreshTokenVO refresh(RefreshTokenRequest request) {
+        String oldTokenHash = CAuthDigestUtil.sha256Hex(request.getRefreshToken());
+        CRefreshToken oldToken = refreshTokenMapper.selectOne(Wrappers.<CRefreshToken>lambdaQuery()
+                .eq(CRefreshToken::getTokenHash, oldTokenHash));
+        if (oldToken == null || oldToken.getRevokedAt() != null) {
+            throw invalidRefreshToken();
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        if (!oldToken.getExpiredAt().isAfter(now)) {
+            throw new CAuthException(ErrorCodeEnum.LOGIN_EXPIRED,
+                    HttpStatus.UNAUTHORIZED, "刷新令牌已过期");
+        }
+
+        String oldSessionKey = CAuthConstant.REFRESH_SESSION_KEY_PREFIX + oldTokenHash;
+        String sessionValue = redisTemplate.opsForValue().get(oldSessionKey);
+        if (!StringUtils.hasText(sessionValue)
+                || !sessionValue.equals(oldToken.getUserId() + ":" + oldToken.getId())) {
+            throw invalidRefreshToken();
+        }
+
+        CUser user = cUserMapper.selectById(oldToken.getUserId());
+        if (user == null || user.getDeletedAt() != null) {
+            throw invalidRefreshToken();
+        }
+        if (!CUserStatusEnum.ENABLED.getValue().equals(user.getStatus())) {
+            throw new CAuthException(ErrorCodeEnum.ACCOUNT_DISABLED,
+                    HttpStatus.FORBIDDEN, "账号已被停用");
+        }
+
+        // 状态条件更新确保并发刷新时仅一个请求取得旧令牌消费权
+        CRefreshToken revokedToken = new CRefreshToken();
+        revokedToken.setRevokedAt(now);
+        int updated = refreshTokenMapper.update(revokedToken, Wrappers.<CRefreshToken>lambdaUpdate()
+                .eq(CRefreshToken::getId, oldToken.getId())
+                .isNull(CRefreshToken::getRevokedAt)
+                .gt(CRefreshToken::getExpiredAt, now));
+        if (updated != 1) {
+            throw invalidRefreshToken();
+        }
+
+        redisTemplate.delete(oldSessionKey);
+        IssuedRefreshToken newRefreshToken = issueRefreshToken(user.getId());
+        String newAccessToken = jwtService.issueAccessToken(
+                user.getId(), user.getAccount(), newRefreshToken.tokenHash());
+        return RefreshTokenVO.builder()
+                .accessToken(newAccessToken)
+                .refreshToken(newRefreshToken.rawToken())
+                .expiresIn(jwtProperties.getExpiration())
+                .build();
+    }
+
+    /**
      * 原子消费并校验图形验证码。
      *
      * @param challengeId 验证码挑战标识
@@ -306,5 +368,15 @@ public class LoginServiceImpl implements LoginService {
      * @param tokenHash 持久化和会话校验使用的摘要
      */
     private record IssuedRefreshToken(String rawToken, String tokenHash) {
+    }
+
+    /**
+     * 创建刷新令牌无效异常。
+     *
+     * @return HTTP 401 刷新令牌无效异常
+     */
+    private CAuthException invalidRefreshToken() {
+        return new CAuthException(ErrorCodeEnum.UNAUTHORIZED,
+                HttpStatus.UNAUTHORIZED, "刷新令牌无效或已撤销");
     }
 }

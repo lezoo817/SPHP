@@ -3,8 +3,10 @@ package com.sphp.patient.auth.service;
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.LoginRequest;
+import com.sphp.patient.auth.dto.RefreshTokenRequest;
 import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
+import com.sphp.patient.auth.vo.RefreshTokenVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 
 /**
@@ -41,4 +43,12 @@ public interface LoginService {
      * @return Token 最小身份信息
      */
     TokenParseVO parseToken();
+
+    /**
+     * 校验并轮换 C端刷新令牌。
+     *
+     * @param request 刷新令牌请求
+     * @return 新 Token 对
+     */
+    RefreshTokenVO refresh(RefreshTokenRequest request);
 }

@@ -5,10 +5,12 @@ import com.sphp.patient.auth.service.LoginService;
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.LoginRequest;
+import com.sphp.patient.auth.dto.RefreshTokenRequest;
 import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.LoginUserVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
+import com.sphp.patient.auth.vo.RefreshTokenVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -151,5 +153,29 @@ class LoginControllerTest {
                 .andExpect(jsonPath("$.message").value("令牌解析成功"))
                 .andExpect(jsonPath("$.data.userId").value(10001L))
                 .andExpect(jsonPath("$.data.account").value("patient_zhangsan"));
+    }
+
+    /**
+     * 验证刷新令牌接口返回轮换后的 Token 对。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void refreshReturnsRotatedTokenPair() throws Exception {
+        RefreshTokenRequest request = new RefreshTokenRequest();
+        request.setRefreshToken("rt_old_token");
+        when(loginService.refresh(any(RefreshTokenRequest.class))).thenReturn(RefreshTokenVO.builder()
+                .accessToken("new-access-token")
+                .refreshToken("rt_new_token")
+                .expiresIn(7200)
+                .build());
+
+        mockMvc.perform(post("/c/v1/auth/token/refresh")
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("令牌刷新成功"))
+                .andExpect(jsonPath("$.data.accessToken").value("new-access-token"))
+                .andExpect(jsonPath("$.data.refreshToken").value("rt_new_token"));
     }
 }

@@ -3,10 +3,12 @@ package com.sphp.patient.auth.controller;
 import com.sphp.patient.auth.service.LoginService;
 import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.LoginRequest;
+import com.sphp.patient.auth.dto.RefreshTokenRequest;
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
+import com.sphp.patient.auth.vo.RefreshTokenVO;
 import com.sphp.shared.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -73,5 +75,17 @@ public class LoginController {
     @Operation(summary = "解析当前C端Token")
     public Result<TokenParseVO> parseToken() {
         return Result.success("令牌解析成功", loginService.parseToken());
+    }
+
+    /**
+     * 使用 Refresh Token 轮换新的 Token 对。
+     *
+     * @param request 刷新令牌请求
+     * @return 新 Token 对
+     */
+    @PostMapping("/token/refresh")
+    @Operation(summary = "刷新C端访问令牌")
+    public Result<RefreshTokenVO> refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        return Result.success("令牌刷新成功", loginService.refresh(request));
     }
 }

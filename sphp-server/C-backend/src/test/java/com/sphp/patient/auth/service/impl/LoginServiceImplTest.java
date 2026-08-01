@@ -3,6 +3,7 @@ package com.sphp.patient.auth.service.impl;
 import com.sphp.patient.auth.config.CAuthProperties;
 import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.LoginRequest;
+import com.sphp.patient.auth.dto.RefreshTokenRequest;
 import com.sphp.patient.auth.entity.CRefreshToken;
 import com.sphp.patient.auth.entity.CUser;
 import com.sphp.patient.auth.exception.CAuthException;
@@ -14,6 +15,7 @@ import com.sphp.patient.auth.support.context.CUserPrincipal;
 import com.sphp.patient.auth.config.CJwtProperties;
 import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
+import com.sphp.patient.auth.vo.RefreshTokenVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.family.entity.Patient;
@@ -229,5 +231,56 @@ class LoginServiceImplTest {
         assertEquals(10001L, result.getUserId());
         assertEquals("patient_zhangsan", result.getAccount());
         assertEquals(expiresAt, result.getTokenExpiresAt());
+    }
+
+    /**
+     * 验证刷新令牌被条件吊销并轮换为新的 Token 对。
+     */
+    @Test
+    void refreshRotatesTokenPair() {
+        RefreshTokenRequest request = new RefreshTokenRequest();
+        request.setRefreshToken("rt_old_token");
+        CRefreshToken oldToken = new CRefreshToken();
+        oldToken.setId(30001L);
+        oldToken.setUserId(10001L);
+        oldToken.setTokenHash(com.sphp.patient.auth.support.CAuthDigestUtil.sha256Hex("rt_old_token"));
+        oldToken.setExpiredAt(OffsetDateTime.now().plusDays(1));
+        CUser user = new CUser();
+        user.setId(10001L);
+        user.setAccount("patient_zhangsan");
+        user.setStatus("ENABLED");
+        when(refreshTokenMapper.selectOne(any())).thenReturn(oldToken);
+        when(valueOperations.get("cend:refresh:" + oldToken.getTokenHash())).thenReturn("10001:30001");
+        when(refreshTokenMapper.update(any(CRefreshToken.class), any())).thenReturn(1);
+        when(cUserMapper.selectById(10001L)).thenReturn(user);
+        doAnswer(invocation -> {
+            CRefreshToken refreshToken = invocation.getArgument(0);
+            refreshToken.setId(30002L);
+            return 1;
+        }).when(refreshTokenMapper).insert(any(CRefreshToken.class));
+        when(jwtService.issueAccessToken(eq(10001L), eq("patient_zhangsan"), any()))
+                .thenReturn("new-access-token");
+
+        RefreshTokenVO result = loginService.refresh(request);
+
+        assertEquals("new-access-token", result.getAccessToken());
+        assertTrue(result.getRefreshToken().startsWith("rt_"));
+        verify(redisTemplate).delete("cend:refresh:" + oldToken.getTokenHash());
+    }
+
+    /**
+     * 验证已过期刷新令牌返回登录过期业务码。
+     */
+    @Test
+    void refreshRejectsExpiredToken() {
+        RefreshTokenRequest request = new RefreshTokenRequest();
+        request.setRefreshToken("rt_expired_token");
+        CRefreshToken expiredToken = new CRefreshToken();
+        expiredToken.setExpiredAt(OffsetDateTime.now().minusSeconds(1));
+        when(refreshTokenMapper.selectOne(any())).thenReturn(expiredToken);
+
+        CAuthException exception = assertThrows(CAuthException.class, () -> loginService.refresh(request));
+
+        assertEquals("A0230", exception.getCode());
     }
 }
