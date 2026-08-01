@@ -1,16 +1,14 @@
 server:
-  port: 8080
+  port: ${dev.server.port}
   servlet:
-    context-path: /api
+    context-path: ${dev.server.servlet.context-path}
 
 spring:
   application:
-    name: sphp-bootstrap
+    name: ${dev.spring.application.name}
   profiles:
-    # 启用开发环境配置，使下方占位符能够读取 dev 命名空间中的实际值。
+    # 启用开发环境配置，使占位符能够读取 dev 命名空间中的实际值。
     active: dev
-
-  # ---- PostgreSQL ----
   datasource:
     driver-class-name: ${dev.spring.datasource.driver-class-name}
     type: ${dev.spring.datasource.type}
@@ -24,8 +22,6 @@ spring:
       maximum-pool-size: ${dev.spring.datasource.hikari.maximum-pool-size}
       minimum-idle: ${dev.spring.datasource.hikari.minimum-idle}
       pool-name: ${dev.spring.datasource.hikari.pool-name}
-
-  # ---- Redis ----
   data:
     redis:
       host: ${dev.spring.data.redis.host}
@@ -38,8 +34,6 @@ spring:
           max-active: ${dev.spring.data.redis.lettuce.pool.max-active}
           max-idle: ${dev.spring.data.redis.lettuce.pool.max-idle}
           min-idle: ${dev.spring.data.redis.lettuce.pool.min-idle}
-
-  # ---- RabbitMQ ----
   rabbitmq:
     host: ${dev.spring.rabbitmq.host}
     port: ${dev.spring.rabbitmq.port}
@@ -57,45 +51,47 @@ spring:
       direct:
         auto-startup: ${dev.spring.rabbitmq.listener.direct.auto-startup}
 
-# ---- MyBatis-Plus ----
-  mybatis-plus:
-    configuration:
-      map-underscore-to-camel-case: true
-      log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
-    global-config:
-      db-config:
-        logic-delete-field: deleted
-        logic-delete-value: 1
-        logic-not-delete-value: "null"
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: ${dev.mybatis-plus.configuration.map-underscore-to-camel-case}
+    log-impl: ${dev.mybatis-plus.configuration.log-impl}
+  global-config:
+    db-config:
+      logic-delete-field: ${dev.mybatis-plus.global-config.db-config.logic-delete-field}
+      logic-delete-value: ${dev.mybatis-plus.global-config.db-config.logic-delete-value}
+      logic-not-delete-value: ${dev.mybatis-plus.global-config.db-config.logic-not-delete-value}
 
-# ---- Sa-Token（B端认证：签发 JWT，Bearer 头鉴权） ----
-  sa-token:
-    token-name: Authorization
-    token-prefix: "Bearer"
-    timeout: 7200
-    is-concurrent: true
-    is-share: false
-    is-read-cookie: false
-    is-read-header: true
-    is-write-header: true
-    jwt-secret-key: sphp-b-admin-jwt-secret-change-in-production
-    is-log: false
+sa-token:
+  token-name: ${dev.sa-token.token-name}
+  token-prefix: ${dev.sa-token.token-prefix}
+  timeout: ${dev.sa-token.timeout}
+  is-concurrent: ${dev.sa-token.is-concurrent}
+  is-share: ${dev.sa-token.is-share}
+  is-read-cookie: ${dev.sa-token.is-read-cookie}
+  is-read-header: ${dev.sa-token.is-read-header}
+  is-write-header: ${dev.sa-token.is-write-header}
+  jwt-secret-key: ${dev.sa-token.jwt-secret-key}
+  is-log: ${dev.sa-token.is-log}
 
-  sphp:
-    cors:
-      # 允许访问统一后端的本地前端来源。
-      allowed-origins:
-        - http://localhost:8000
-        - http://localhost:8001
-    jwt:
-      # C 端患者 Token 签名密钥。
-      patient:
-        secret: sphp-patient-jwt-secret-change-in-production
-        expiration: 7200
-      # B 端医生和管理员 Token 签名密钥。
-      admin:
-        secret: sphp-admin-jwt-secret-change-in-production
-        expiration: 7200
-    # 号源预扣超时，单位为秒。
-    registration:
-      payment-timeout: 300
+sphp:
+  cors:
+    allowed-origins:
+      - ${dev.sphp.cors.allowed-origins[0]}
+      - ${dev.sphp.cors.allowed-origins[1]}
+  jwt:
+    patient:
+      secret: ${dev.sphp.jwt.patient.secret}
+      expiration: ${dev.sphp.jwt.patient.expiration}
+    admin:
+      secret: ${dev.sphp.jwt.admin.secret}
+      expiration: ${dev.sphp.jwt.admin.expiration}
+  registration:
+    payment-timeout: ${dev.sphp.registration.payment-timeout}
+  auth:
+    captcha-expiration: ${dev.sphp.auth.captcha-expiration}
+    login-max-failures: ${dev.sphp.auth.login-max-failures}
+    login-lock-seconds: ${dev.sphp.auth.login-lock-seconds}
+    refresh-token-expiration: ${dev.sphp.auth.refresh-token-expiration}
+  idempotency:
+    success-ttl-seconds: ${dev.sphp.idempotency.success-ttl-seconds}
+    processing-ttl-seconds: ${dev.sphp.idempotency.processing-ttl-seconds}

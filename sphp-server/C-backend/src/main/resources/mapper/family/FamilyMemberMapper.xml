@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sphp.patient.family.mapper.FamilyMemberMapper">
+
+    <resultMap id="FamilyMemberRecordMap" type="com.sphp.patient.family.mapper.FamilyMemberRecord">
+        <id property="relationId" column="relation_id"/>
+        <result property="patientId" column="patient_id"/>
+        <result property="name" column="name"/>
+        <result property="relationship" column="relationship"/>
+        <result property="isDefault" column="is_default"/>
+        <result property="gender" column="gender"/>
+        <result property="birthday" column="birthday"/>
+        <result property="phone" column="phone"/>
+        <result property="idCardNo" column="id_card_no"/>
+        <result property="emergencyContact" column="emergency_contact"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="ActiveMemberColumns">
+        pur.id AS relation_id,
+        p.id AS patient_id,
+        p.name,
+        pur.relationship,
+        pur.is_default,
+        p.gender,
+        p.date_of_birth AS birthday,
+        p.phone_ciphertext AS phone,
+        p.id_card_ciphertext AS id_card_no,
+        p.emergency_contact,
+        pur.created_at,
+        pur.updated_at
+    </sql>
+
+    <select id="selectActiveMembers" resultMap="FamilyMemberRecordMap">
+        SELECT <include refid="ActiveMemberColumns"/>
+        FROM patient_user_relation pur
+        INNER JOIN patient p ON p.id = pur.patient_id AND p.deleted_at IS NULL
+        WHERE pur.user_id = #{userId}
+          AND pur.deleted_at IS NULL
+        ORDER BY CASE WHEN pur.relationship = 'SELF' THEN 0 ELSE 1 END,
+                 pur.created_at ASC,
+                 pur.id ASC
+    </select>
+
+    <select id="selectActiveMember" resultMap="FamilyMemberRecordMap">
+        SELECT <include refid="ActiveMemberColumns"/>
+        FROM patient_user_relation pur
+        INNER JOIN patient p ON p.id = pur.patient_id AND p.deleted_at IS NULL
+        WHERE pur.user_id = #{userId}
+          AND pur.patient_id = #{patientId}
+          AND pur.deleted_at IS NULL
+    </select>
+
+    <select id="lockUserForFamilyMutation" resultType="java.lang.Long">
+        SELECT id
+        FROM c_user
+        WHERE id = #{userId}
+          AND deleted_at IS NULL
+        FOR UPDATE
+    </select>
+
+    <select id="countActiveNonSelfMembers" resultType="int">
+        SELECT COUNT(1)
+        FROM patient_user_relation
+        WHERE user_id = #{userId}
+          AND relationship &lt;&gt; 'SELF'
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="existsActiveIdCard" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM patient_user_relation pur
+            INNER JOIN patient p ON p.id = pur.patient_id AND p.deleted_at IS NULL
+            WHERE pur.user_id = #{userId}
+              AND pur.deleted_at IS NULL
+              AND p.id_card_ciphertext = #{idCardNo}
+              <if test="excludePatientId != null">
+                  AND p.id &lt;&gt; #{excludePatientId}
+              </if>
+        )
+    </select>
+
+    <update id="softDeleteActiveRelation">
+        UPDATE patient_user_relation
+        SET deleted_at = #{deletedAt},
+            updated_at = #{deletedAt}
+        WHERE id = #{relationId}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+    </update>
+</mapper>
