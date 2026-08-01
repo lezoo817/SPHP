@@ -70,14 +70,44 @@ def stop_mcp_server():
 
 
 def _register_tool_handlers(server):
-    """注册所有 MCP 工具处理器。
+    """注册所有 MCP 工具处理器（系分 §4.5）。
 
     每个工具封装在 mcp_server/tools/ 下的对应文件中，
     这里统一导入并注册到 MCP Server。
+
+    注册顺序：
+    1. C端工具（30个）
+    2. B端工具（9个）
     """
-    # TODO: 导入各工具模块，调用其 register 函数
-    # from app.mcp_server.tools import triage, appointment, consultation, ...
-    # triage.register(server)
-    # appointment.register(server)
-    # ...
-    pass
+    try:
+        # C端工具
+        from app.mcp_server.tools import (
+            triage,
+            appointment,
+            consultation,
+            prescription,
+            pharmacy,
+            health,
+            notification,
+        )
+
+        triage.register(server)
+        appointment.register(server)
+        consultation.register(server)
+        prescription.register(server)
+        pharmacy.register(server)
+        health.register(server)
+        notification.register(server)
+
+        # B端工具
+        from app.mcp_server.tools import b_doctor
+
+        b_doctor.register(server)
+
+        logger.info("MCP工具注册完成: C端7类 + B端1类")
+
+    except ImportError as e:
+        logger.warning("部分MCP工具导入失败: %s", str(e))
+    except Exception as e:
+        logger.error("MCP工具注册失败: %s", str(e))
+        raise
