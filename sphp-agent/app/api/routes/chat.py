@@ -36,9 +36,14 @@ async def chat_stream(req: ChatRequest, request: Request):
 
     前端发起对话 → JWT 鉴权 → LLM 推理 → SSE 流式返回。
     """
+    # DEBUG: 打印调试信息
+    print(f"[DEBUG] chat_stream called, content={req.content}")
+
     # 从中间件获取 JWT token 和 trace_id
-    token = getattr(request.state, "jwt_token", None)
-    trace_id = getattr(request.state, "trace_id", "")
+    token = getattr(request.state, "jwt_token", None) if hasattr(request, "state") else None
+    trace_id = getattr(request.state, "trace_id", "") if hasattr(request, "state") else ""
+
+    print(f"[DEBUG] token={token}, trace_id={trace_id}")
 
     # 构造初始状态（jwt_token 注入到状态中，供 auth_node 使用）
     initial_state: AgentState = {
@@ -59,51 +64,60 @@ async def chat_stream(req: ChatRequest, request: Request):
     }
 
     async def sse_generator():
-        """SSE 流式输出生成器（系分 §6.2.1）。
+        """SSE 流式输出生成器（系分 §6.2.1）。"""
+        # DEBUG: 验证generator是否被调用
+        print("[DEBUG] sse_generator called, yielding test message")
 
-        接入 LangGraph astream，映射为 SSE 事件。
-        """
+        # 先测试generator是否能工作
+        yield f"event: message\ndata: {json.dumps({'delta': '测试消息'}, ensure_ascii=False)}\n\n"
+        yield f"event: done\ndata: {json.dumps({'session_id': 'test'}, ensure_ascii=False)}\n\n"
+
+        print("[DEBUG] sse_generator finished")
+        return
+
+        # 下面的代码暂时不执行
         try:
             graph = _get_graph()
-
-            # LangGraph 需要thread_id来管理会话状态
             from uuid import uuid4
+
             thread_id = req.session_id or str(uuid4())
+            config = {"configurable": {"thread_id": thread_id}}
 
-            # 配置会话
-            config = {
-                "configurable": {
-                    "thread_id": thread_id
-                }
-            }
-
-            # 添加用户消息到初始状态
+            # 添加用户消息
             initial_state["messages"] = [{"role": "user", "content": req.content}]
 
-            # 使用 astream 而不是 astream_events（更稳定）
+            logger.info(f"[SSE] 开始流程执行, thread_id={thread_id}, content={req.content}")
+
+            # 执行LangGraph流程
+            final_state = None
             async for chunk in graph.astream(initial_state, config=config):
-                # chunk 格式: {node_name: output_dict}
                 for node_name, output in chunk.items():
-                    logger.debug("节点完成: %s, 输出: %s", node_name, output)
+                    logger.info(f"[SSE] 节点完成: {node_name}")
 
-                    # 推送 thought 事件（节点执行）
-                    yield f"event: thought\ndata: {json.dumps({'node': node_name, 'output': str(output)[:100]}, ensure_ascii=False)}\n\n"
+                    # 推送节点执行事件
+                    yield f"event: thought\ndata: {json.dumps({'node': node_name}, ensure_ascii=False)}\n\n"
 
-                    # 如果是 reply_node，推送 message 事件
-                    if node_name == "reply_node" and "messages" in output:
-                        messages = output.get("messages", [])
-                        if messages:
-                            last_msg = messages[-1]
-                            if isinstance(last_msg, dict) and "content" in last_msg:
-                                yield f"event: message\ndata: {json.dumps({'delta': last_msg['content']}, ensure_ascii=False)}\n\n"
+                    # 保存最终状态
+                    final_state = output
 
-            # 推送 done 事件
-            yield f"event: done\ndata: {json.dumps({'session_id': req.session_id or thread_id, 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
+            # 推送最终消息
+            if final_state and "messages" in final_state:
+                messages = final_state.get("messages", [])
+                if messages:
+                    last_msg = messages[-1]
+                    if isinstance(last_msg, dict) and "content" in last_msg:
+                        content = last_msg["content"]
+                        logger.info(f"[SSE] 推送回复, 长度={len(content)}")
+                        yield f"event: message\ndata: {json.dumps({'delta': content}, ensure_ascii=False)}\n\n"
+
+            # 完成
+            logger.info(f"[SSE] 流程完成, session_id={thread_id}")
+            yield f"event: done\ndata: {json.dumps({'session_id': thread_id, 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
 
         except Exception as e:
             import traceback
             error_detail = traceback.format_exc()
-            logger.error("SSE stream error: %s\n%s", str(e), error_detail)
+            logger.error(f"[SSE] 异常: {str(e)}\n{error_detail}")
             yield f"event: error\ndata: {json.dumps({'code': 'SERVER_ERROR', 'message': f'服务异常: {str(e)}', 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
             yield f"event: done\ndata: {json.dumps({}, ensure_ascii=False)}\n\n"
 

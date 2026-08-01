@@ -10,13 +10,28 @@ from app.engine.rag.search import search_knowledge, format_context
 async def rag_node(state: AgentState) -> dict:
     """从医疗知识库检索相关内容（系分 §5.7）。
 
-    当前版本：暂不启用RAG检索（等待embedding API配置）。
+    从知识库检索相关文档，注入到 LLM context。
     """
-    # TODO: 启用RAG检索（需配置 SILICONFLOW_API_KEY）
-    # user_message = state["messages"][-1].content if state.get("messages") else ""
-    # results = search_knowledge(query=user_message)
-    # context = format_context(results)
-    # return {"tool_results": [{"rag_context": context}]}
+    try:
+        from app.engine.rag.search import search_knowledge, format_context
 
-    # 当前：跳过RAG，返回空结果
-    return {"messages": []}
+        user_message = ""
+        if state.get("messages"):
+            last_msg = state["messages"][-1]
+            user_message = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+
+        # 调用RAG检索
+        results = search_knowledge(query=user_message)
+        context = format_context(results)
+
+        # 将context注入messages作为系统上下文
+        if context:
+            return {"messages": [{"role": "system", "content": f"相关医学知识：\n{context}"}]}
+
+        return {"messages": []}
+
+    except Exception as e:
+        # RAG失败时不阻塞流程
+        import logging
+        logging.getLogger(__name__).warning(f"RAG检索失败: {e}")
+        return {"messages": []}
