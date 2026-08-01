@@ -147,3 +147,4 @@ docs/
 /sql/B端测试数据/
 
 /技术文档/
+/sphp-server/sphp-bootstrap/src/main/resources/application.yml
