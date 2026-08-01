@@ -59,15 +59,55 @@ async def chat_stream(req: ChatRequest, request: Request):
     }
 
     async def sse_generator():
-        """SSE 流式输出生成器。"""
+        """SSE 流式输出生成器（系分 §6.2.1）。
+
+        接入 LangGraph astream_events，映射为 7 类 SSE 事件。
+        """
         try:
             graph = _get_graph()
-            # TODO: 接入 LangGraph astream_events
-            # 当前占位
-            yield f"event: message\ndata: {json.dumps({'content': '（Agent 服务搭建中，当前为占位回复）'}, ensure_ascii=False)}\n\n"
+
+            # LangGraph astream_events 流式输出
+            async for event in graph.astream_events(
+                initial_state,
+                version="v2",
+                include_names=["auth_node", "intent_node", "reply_node"],
+            ):
+                # 映射 SSE 事件
+                event_kind = event.get("event")
+
+                if event_kind == "on_chain_start":
+                    # 节点开始执行
+                    node_name = event.get("name")
+                    logger.debug("节点开始: %s", node_name)
+
+                elif event_kind == "on_chain_end":
+                    # 节点执行完成
+                    node_name = event.get("name")
+                    output = event.get("data", {}).get("output", {})
+                    logger.debug("节点完成: %s, 输出: %s", node_name, output)
+
+                elif event_kind == "on_chat_model_stream":
+                    # LLM 流式 token
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk and hasattr(chunk, "content"):
+                        delta = chunk.content
+                        yield f"event: message\ndata: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n"
+
+                elif event_kind == "on_tool_start":
+                    # 工具调用开始
+                    tool_name = event.get("name")
+                    yield f"event: action\ndata: {json.dumps({'tool': tool_name}, ensure_ascii=False)}\n\n"
+
+                elif event_kind == "on_tool_end":
+                    # 工具调用完成
+                    tool_output = event.get("data", {}).get("output", {})
+                    yield f"event: observation\ndata: {json.dumps({'result': tool_output}, ensure_ascii=False)}\n\n"
+
+            # 推送 done 事件
             yield f"event: done\ndata: {json.dumps({'session_id': req.session_id or '', 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
+
         except Exception as e:
-            logger.exception("SSE stream error")
+            logger.exception("SSE stream error: %s", str(e))
             yield f"event: error\ndata: {json.dumps({'code': 'SERVER_ERROR', 'message': '服务异常，请稍后重试', 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
             yield f"event: done\ndata: {json.dumps({}, ensure_ascii=False)}\n\n"
 
