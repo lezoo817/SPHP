@@ -5,10 +5,12 @@ import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.dto.RefreshTokenRequest;
 import com.sphp.patient.auth.dto.LogoutRequest;
+import com.sphp.patient.auth.dto.ChangePasswordRequest;
 import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
 import com.sphp.patient.auth.vo.RefreshTokenVO;
 import com.sphp.patient.auth.vo.LogoutVO;
+import com.sphp.patient.auth.vo.ChangePasswordVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 
 /**
@@ -61,4 +63,12 @@ public interface LoginService {
      * @return 退出结果
      */
     LogoutVO logout(LogoutRequest request);
+
+    /**
+     * 修改当前 C端用户登录密码并撤销其他刷新会话。
+     *
+     * @param request 修改密码请求
+     * @return 密码修改结果
+     */
+    ChangePasswordVO changePassword(ChangePasswordRequest request);
 }

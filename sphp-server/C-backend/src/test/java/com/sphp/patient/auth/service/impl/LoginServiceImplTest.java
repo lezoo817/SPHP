@@ -5,6 +5,7 @@ import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.dto.RefreshTokenRequest;
 import com.sphp.patient.auth.dto.LogoutRequest;
+import com.sphp.patient.auth.dto.ChangePasswordRequest;
 import com.sphp.patient.auth.entity.CRefreshToken;
 import com.sphp.patient.auth.entity.CUser;
 import com.sphp.patient.auth.exception.CAuthException;
@@ -18,6 +19,7 @@ import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
 import com.sphp.patient.auth.vo.RefreshTokenVO;
 import com.sphp.patient.auth.vo.LogoutVO;
+import com.sphp.patient.auth.vo.ChangePasswordVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.family.entity.Patient;
@@ -35,6 +37,7 @@ import org.springframework.data.redis.core.ValueOperations;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -309,5 +312,34 @@ class LoginServiceImplTest {
 
         assertTrue(result.isLoggedOut());
         verify(redisTemplate).delete("cend:refresh:" + tokenHash);
+    }
+
+    /**
+     * 验证修改密码保留当前会话并撤销其他刷新会话。
+     */
+    @Test
+    void changePasswordRevokesOtherSessions() {
+        String currentHash = "current-session-hash";
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), currentHash));
+        ChangePasswordRequest request = new ChangePasswordRequest();
+        request.setOldPassword("OldPass123");
+        request.setNewPassword("NewPass456");
+        CUser user = new CUser();
+        user.setId(10001L);
+        user.setStatus("ENABLED");
+        user.setPasswordHash(org.mindrot.jbcrypt.BCrypt.hashpw("OldPass123",
+                org.mindrot.jbcrypt.BCrypt.gensalt()));
+        CRefreshToken otherToken = new CRefreshToken();
+        otherToken.setTokenHash("other-session-hash");
+        when(cUserMapper.selectById(10001L)).thenReturn(user);
+        when(cUserMapper.update(any(CUser.class), any())).thenReturn(1);
+        when(refreshTokenMapper.selectList(any())).thenReturn(List.of(otherToken));
+        when(refreshTokenMapper.update(any(CRefreshToken.class), any())).thenReturn(1);
+
+        ChangePasswordVO result = loginService.changePassword(request);
+
+        assertTrue(result.isPasswordChanged());
+        verify(redisTemplate).delete(List.of("cend:refresh:other-session-hash"));
     }
 }

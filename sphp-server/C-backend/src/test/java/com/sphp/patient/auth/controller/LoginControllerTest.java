@@ -7,12 +7,14 @@ import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.dto.RefreshTokenRequest;
 import com.sphp.patient.auth.dto.LogoutRequest;
+import com.sphp.patient.auth.dto.ChangePasswordRequest;
 import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.LoginUserVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
 import com.sphp.patient.auth.vo.RefreshTokenVO;
 import com.sphp.patient.auth.vo.LogoutVO;
+import com.sphp.patient.auth.vo.ChangePasswordVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +27,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -199,5 +202,26 @@ class LoginControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("退出登录成功"))
                 .andExpect(jsonPath("$.data.loggedOut").value(true));
+    }
+
+    /**
+     * 验证修改登录密码接口返回修改成功标识。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void changePasswordReturnsChangedFlag() throws Exception {
+        ChangePasswordRequest request = new ChangePasswordRequest();
+        request.setOldPassword("OldPass123");
+        request.setNewPassword("NewPass456");
+        when(loginService.changePassword(any(ChangePasswordRequest.class)))
+                .thenReturn(ChangePasswordVO.builder().passwordChanged(true).build());
+
+        mockMvc.perform(put("/c/v1/auth/password")
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("密码修改成功"))
+                .andExpect(jsonPath("$.data.passwordChanged").value(true));
     }
 }

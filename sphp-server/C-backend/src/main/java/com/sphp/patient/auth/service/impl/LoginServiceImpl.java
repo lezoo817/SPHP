@@ -8,6 +8,7 @@ import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.RefreshTokenRequest;
 import com.sphp.patient.auth.dto.LogoutRequest;
+import com.sphp.patient.auth.dto.ChangePasswordRequest;
 import com.sphp.patient.auth.entity.CRefreshToken;
 import com.sphp.patient.auth.entity.CUser;
 import com.sphp.patient.auth.exception.CAuthException;
@@ -25,6 +26,7 @@ import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
 import com.sphp.patient.auth.vo.RefreshTokenVO;
 import com.sphp.patient.auth.vo.LogoutVO;
+import com.sphp.patient.auth.vo.ChangePasswordVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.common.constant.CAuthConstant;
 import com.sphp.patient.common.enums.CUserStatusEnum;
@@ -47,6 +49,7 @@ import org.springframework.util.StringUtils;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Locale;
+import java.util.List;
 
 /**
  * C端登录注册服务实现。
@@ -303,6 +306,70 @@ public class LoginServiceImpl implements LoginService {
         // 删除 Redis 会话后，与其绑定的 Access Token 立即失效
         redisTemplate.delete(CAuthConstant.REFRESH_SESSION_KEY_PREFIX + tokenHash);
         return LogoutVO.builder().loggedOut(true).build();
+    }
+
+    /**
+     * 修改当前 C端用户登录密码并撤销其他刷新会话。
+     *
+     * @param request 修改密码请求
+     * @return 密码修改结果
+     * @throws CAuthException 当前密码错误、账号失效或并发修改冲突时抛出
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ChangePasswordVO changePassword(ChangePasswordRequest request) {
+        CUserPrincipal principal = CUserContext.getRequired();
+        CUser user = cUserMapper.selectById(principal.userId());
+        if (user == null || user.getDeletedAt() != null
+                || !CUserStatusEnum.ENABLED.getValue().equals(user.getStatus())) {
+            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED,
+                    HttpStatus.UNAUTHORIZED, "当前登录状态无效");
+        }
+        if (!BCrypt.checkpw(request.getOldPassword(), user.getPasswordHash())) {
+            throw new CAuthException(ErrorCodeEnum.PASSWORD_VALIDATION_FAILED,
+                    HttpStatus.BAD_REQUEST, "当前密码不正确");
+        }
+        if (BCrypt.checkpw(request.getNewPassword(), user.getPasswordHash())) {
+            throw new CAuthException(ErrorCodeEnum.PASSWORD_VALIDATION_FAILED,
+                    HttpStatus.BAD_REQUEST, "新密码不能与当前密码相同");
+        }
+
+        String oldPasswordHash = user.getPasswordHash();
+        CUser passwordUpdate = new CUser();
+        passwordUpdate.setPasswordHash(BCrypt.hashpw(request.getNewPassword(), BCrypt.gensalt()));
+        int userUpdated = cUserMapper.update(passwordUpdate, Wrappers.<CUser>lambdaUpdate()
+                .eq(CUser::getId, principal.userId())
+                .eq(CUser::getPasswordHash, oldPasswordHash)
+                .isNull(CUser::getDeletedAt));
+        if (userUpdated != 1) {
+            throw new CAuthException(ErrorCodeEnum.BUSINESS_STATUS_CONFLICT,
+                    HttpStatus.CONFLICT, "密码状态已变化，请重新登录后重试");
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        List<CRefreshToken> otherSessions = refreshTokenMapper.selectList(
+                Wrappers.<CRefreshToken>lambdaQuery()
+                        .eq(CRefreshToken::getUserId, principal.userId())
+                        .ne(CRefreshToken::getTokenHash, principal.sessionHash())
+                        .isNull(CRefreshToken::getRevokedAt)
+                        .gt(CRefreshToken::getExpiredAt, now));
+        if (!otherSessions.isEmpty()) {
+            CRefreshToken revokedToken = new CRefreshToken();
+            revokedToken.setRevokedAt(now);
+            refreshTokenMapper.update(revokedToken, Wrappers.<CRefreshToken>lambdaUpdate()
+                    .eq(CRefreshToken::getUserId, principal.userId())
+                    .ne(CRefreshToken::getTokenHash, principal.sessionHash())
+                    .isNull(CRefreshToken::getRevokedAt)
+                    .gt(CRefreshToken::getExpiredAt, now));
+
+            // 密码修改后立即使其他设备的 Access Token 和刷新令牌失效
+            List<String> redisKeys = otherSessions.stream()
+                    .map(CRefreshToken::getTokenHash)
+                    .map(hash -> CAuthConstant.REFRESH_SESSION_KEY_PREFIX + hash)
+                    .toList();
+            redisTemplate.delete(redisKeys);
+        }
+        return ChangePasswordVO.builder().passwordChanged(true).build();
     }
 
     /**

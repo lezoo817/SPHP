@@ -5,18 +5,21 @@ import com.sphp.patient.auth.dto.RegisterRequest;
 import com.sphp.patient.auth.dto.LoginRequest;
 import com.sphp.patient.auth.dto.RefreshTokenRequest;
 import com.sphp.patient.auth.dto.LogoutRequest;
+import com.sphp.patient.auth.dto.ChangePasswordRequest;
 import com.sphp.patient.auth.vo.CaptchaVO;
 import com.sphp.patient.auth.vo.RegisterVO;
 import com.sphp.patient.auth.vo.LoginVO;
 import com.sphp.patient.auth.vo.TokenParseVO;
 import com.sphp.patient.auth.vo.RefreshTokenVO;
 import com.sphp.patient.auth.vo.LogoutVO;
+import com.sphp.patient.auth.vo.ChangePasswordVO;
 import com.sphp.shared.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -101,5 +104,17 @@ public class LoginController {
     @Operation(summary = "退出C端登录")
     public Result<LogoutVO> logout(@Valid @RequestBody LogoutRequest request) {
         return Result.success("退出登录成功", loginService.logout(request));
+    }
+
+    /**
+     * 修改当前 C端用户登录密码。
+     *
+     * @param request 修改密码请求
+     * @return 密码修改结果
+     */
+    @PutMapping("/password")
+    @Operation(summary = "修改C端登录密码")
+    public Result<ChangePasswordVO> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        return Result.success("密码修改成功", loginService.changePassword(request));
     }
 }
