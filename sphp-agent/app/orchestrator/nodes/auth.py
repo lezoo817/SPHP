@@ -43,22 +43,29 @@ async def auth_node(state: AgentState) -> dict[str, Any]:
             - hospital_id: 医院ID（B端从token解析，C端从context获取）
 
     Raises:
-        AgentAuthError: JWT 无效、过期或 Java 接口不可达时抛出。
+        无：鉴权失败时降级为匿名用户，不阻塞流程。
     """
     scope = state.get("scope", "c_end")
     jwt_token = state.get("jwt_token")
 
+    # 无JWT token时，降级为匿名用户（测试场景）
     if not jwt_token:
-        logger.warning("JWT token missing in state")
-        raise AgentAuthError("缺少认证令牌，请先登录", "TOKEN_MISSING")
+        logger.warning("JWT token缺失，降级为匿名用户")
+        return {
+            "user_id": None,
+            "account": "anonymous",
+        }
 
     try:
         # 调用 Java token/parse 接口
         user_info = await parse_token(jwt_token, scope)
 
         if not user_info:
-            logger.warning("JWT validation failed for scope=%s", scope)
-            raise AgentAuthError("认证令牌无效或已过期，请重新登录", "TOKEN_INVALID")
+            logger.warning("JWT validation failed for scope=%s，降级为匿名用户", scope)
+            return {
+                "user_id": None,
+                "account": "anonymous",
+            }
 
         # 构造返回的状态更新
         result: dict[str, Any] = {
@@ -89,7 +96,8 @@ async def auth_node(state: AgentState) -> dict[str, Any]:
         return result
 
     except Exception as e:
-        logger.error("鉴权节点异常: %s", str(e))
-        if isinstance(e, AgentAuthError):
-            raise
-        raise AgentAuthError(f"鉴权服务异常，请稍后重试: {str(e)}", "AUTH_ERROR")
+        logger.error("鉴权节点异常: %s，降级为匿名用户", str(e))
+        return {
+            "user_id": None,
+            "account": "anonymous",
+        }

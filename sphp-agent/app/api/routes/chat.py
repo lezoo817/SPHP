@@ -66,11 +66,22 @@ async def chat_stream(req: ChatRequest, request: Request):
         try:
             graph = _get_graph()
 
+            # LangGraph 需要thread_id来管理会话状态
+            from uuid import uuid4
+            thread_id = req.session_id or str(uuid4())
+
+            # 配置会话
+            config = {
+                "configurable": {
+                    "thread_id": thread_id
+                }
+            }
+
             # LangGraph astream_events 流式输出
             async for event in graph.astream_events(
                 initial_state,
+                config=config,
                 version="v2",
-                include_names=["auth_node", "intent_node", "reply_node"],
             ):
                 # 映射 SSE 事件
                 event_kind = event.get("event")

@@ -17,13 +17,14 @@ from app.orchestrator.nodes.reply import reply_node
 def route_by_intent(state: AgentState) -> str:
     """读 state.intent → 返回目标节点名。"""
     intent = state.get("intent", "qa")
+    # 当前阶段：只实现了qa和chitchat，其他意图暂时路由到qa
     routing = {
-        "triage": "triage_graph",
-        "registration": "registration_graph",
-        "consultation": "consultation_graph",
-        "pharmacy": "pharmacy_graph",
+        "triage": "qa_node",  # 暂时路由到qa
+        "registration": "qa_node",  # 暂时路由到qa
+        "consultation": "qa_node",  # 暂时路由到qa
+        "pharmacy": "qa_node",  # 暂时路由到qa
         "qa": "qa_node",
-        "chitchat": "chitchat_node",
+        "chitchat": "qa_node",  # 暂时路由到qa（待实现chitchat_node）
     }
     return routing.get(intent, "qa_node")
 
@@ -52,12 +53,7 @@ def build_main_graph():
         "intent_node",
         route_by_intent,
         {
-            "triage": "triage_graph",
-            "registration": "registration_graph",
-            "consultation": "consultation_graph",
-            "pharmacy": "pharmacy_graph",
-            "qa": "qa_node",
-            "chitchat": "chitchat_node",
+            "qa_node": "qa_node",
         },
     )
 
