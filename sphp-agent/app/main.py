@@ -103,3 +103,24 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+def run() -> None:
+    """从 .env 的 AGENT_HOST / AGENT_PORT 读取监听地址并启动。
+
+    python -m app.main
+    等价于 uvicorn app.main:app --host <AGENT_HOST> --port <AGENT_PORT>。
+    """
+    import uvicorn
+
+    settings = get_settings()
+    uvicorn.run(
+        "app.main:app",
+        host=settings.agent_host,
+        port=settings.agent_port,
+        reload=settings.debug,
+    )
+
+
+if __name__ == "__main__":
+    run()
