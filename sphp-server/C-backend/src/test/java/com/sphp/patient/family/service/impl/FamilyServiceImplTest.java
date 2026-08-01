@@ -14,6 +14,7 @@ import com.sphp.patient.family.entity.PatientUserRelation;
 import com.sphp.patient.family.vo.FamilyMemberListVO;
 import com.sphp.patient.family.vo.FamilyMemberCreateVO;
 import com.sphp.patient.family.vo.FamilyMemberUpdateVO;
+import com.sphp.patient.family.vo.FamilyMemberUnbindVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -28,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -192,6 +194,56 @@ class FamilyServiceImplTest {
                 () -> familyService.updateFamilyMember(20002L, request));
 
         assertEquals("A0506", exception.getCode());
+    }
+
+    /**
+     * 验证解绑仅软删除当前用户与非本人成员之间的关系记录。
+     */
+    @Test
+    void unbindFamilyMemberSoftDeletesOnlyRelation() {
+        FamilyMemberMapper familyMemberMapper = mock(FamilyMemberMapper.class);
+        PatientMapper patientMapper = mock(PatientMapper.class);
+        PatientUserRelationMapper relationMapper = mock(PatientUserRelationMapper.class);
+        FamilyServiceImpl familyService = new FamilyServiceImpl(familyMemberMapper, patientMapper, relationMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        FamilyMemberRecord existing = record(20002L, "张小明", "CHILD", false,
+                "13800138001", LocalDate.of(2018, 6, 1));
+        existing.setRelationId(50001L);
+        when(familyMemberMapper.lockUserForFamilyMutation(10001L)).thenReturn(10001L);
+        when(familyMemberMapper.selectActiveMember(10001L, 20002L)).thenReturn(existing);
+        when(familyMemberMapper.softDeleteActiveRelation(org.mockito.ArgumentMatchers.eq(50001L),
+                org.mockito.ArgumentMatchers.eq(10001L), any(OffsetDateTime.class))).thenReturn(1);
+
+        FamilyMemberUnbindVO result = familyService.unbindFamilyMember(20002L);
+
+        assertEquals(20002L, result.getPatientId());
+        assertTrue(result.getUnbound());
+        verify(familyMemberMapper).softDeleteActiveRelation(org.mockito.ArgumentMatchers.eq(50001L),
+                org.mockito.ArgumentMatchers.eq(10001L), any(OffsetDateTime.class));
+    }
+
+    /**
+     * 验证账号本人不能通过家庭成员接口解绑。
+     */
+    @Test
+    void unbindFamilyMemberRejectsSelfMember() {
+        FamilyMemberMapper familyMemberMapper = mock(FamilyMemberMapper.class);
+        PatientMapper patientMapper = mock(PatientMapper.class);
+        PatientUserRelationMapper relationMapper = mock(PatientUserRelationMapper.class);
+        FamilyServiceImpl familyService = new FamilyServiceImpl(familyMemberMapper, patientMapper, relationMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        FamilyMemberRecord selfRecord = record(20001L, "张三", "SELF", true,
+                "13800138000", LocalDate.of(1990, 5, 20));
+        when(familyMemberMapper.lockUserForFamilyMutation(10001L)).thenReturn(10001L);
+        when(familyMemberMapper.selectActiveMember(10001L, 20001L)).thenReturn(selfRecord);
+
+        CAuthException exception = assertThrows(CAuthException.class,
+                () -> familyService.unbindFamilyMember(20001L));
+
+        assertEquals("A0443", exception.getCode());
+        verifyNoInteractions(patientMapper, relationMapper);
     }
 
     /**

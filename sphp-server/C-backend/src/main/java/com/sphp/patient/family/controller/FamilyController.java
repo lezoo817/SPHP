@@ -7,6 +7,7 @@ import com.sphp.patient.family.dto.FamilyMemberUpdateRequest;
 import com.sphp.patient.family.vo.FamilyMemberCreateVO;
 import com.sphp.patient.family.vo.FamilyMemberListVO;
 import com.sphp.patient.family.vo.FamilyMemberUpdateVO;
+import com.sphp.patient.family.vo.FamilyMemberUnbindVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.sphp.shared.common.constant.HeaderConstant;
@@ -15,6 +16,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -99,6 +101,30 @@ public class FamilyController {
                 request,
                 FamilyMemberUpdateVO.class,
                 () -> new IdempotencyPayload<>("家庭成员资料已更新", familyService.updateFamilyMember(patientId, request))
+        );
+        return Result.success(payload.message(), payload.data());
+    }
+
+    /**
+     * 停用解绑当前账号下的非本人家庭成员。
+     *
+     * @param patientId 就诊人 ID
+     * @param idempotencyKey 客户端幂等键
+     * @return 解绑结果
+     */
+    @DeleteMapping("/{patientId}")
+    @Operation(summary = "停用解绑家庭成员")
+    public Result<FamilyMemberUnbindVO> unbindFamilyMember(
+            @PathVariable @Positive(message = "就诊人ID必须为正整数") Long patientId,
+            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
+        Long userId = CUserContext.getRequired().userId();
+        IdempotencyPayload<FamilyMemberUnbindVO> payload = idempotencyService.execute(
+                userId,
+                "/c/v1/family-members/" + patientId,
+                idempotencyKey,
+                patientId,
+                FamilyMemberUnbindVO.class,
+                () -> new IdempotencyPayload<>("家庭成员已解绑", familyService.unbindFamilyMember(patientId))
         );
         return Result.success(payload.message(), payload.data());
     }

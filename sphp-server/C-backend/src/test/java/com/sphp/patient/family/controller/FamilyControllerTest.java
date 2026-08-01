@@ -7,6 +7,7 @@ import com.sphp.patient.family.dto.FamilyMemberCreateRequest;
 import com.sphp.patient.family.dto.FamilyMemberUpdateRequest;
 import com.sphp.patient.family.vo.FamilyMemberCreateVO;
 import com.sphp.patient.family.vo.FamilyMemberUpdateVO;
+import com.sphp.patient.family.vo.FamilyMemberUnbindVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.sphp.patient.auth.support.context.CUserContext;
@@ -27,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -133,5 +135,26 @@ class FamilyControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("家庭成员资料已更新"))
                 .andExpect(jsonPath("$.data.phone").value("138****8002"));
+    }
+
+    /**
+     * 验证停用解绑接口返回当前关系的解绑结果。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void unbindFamilyMemberReturnsUnboundResult() throws Exception {
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        when(idempotencyService.execute(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new IdempotencyPayload<>("家庭成员已解绑", FamilyMemberUnbindVO.builder()
+                        .patientId(20002L).unbound(true).unboundAt(OffsetDateTime.now()).build()));
+
+        mockMvc.perform(delete("/c/v1/family-members/20002")
+                        .header("X-Idempotency-Key", "key-003"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("家庭成员已解绑"))
+                .andExpect(jsonPath("$.data.patientId").value(20002L))
+                .andExpect(jsonPath("$.data.unbound").value(true));
     }
 }

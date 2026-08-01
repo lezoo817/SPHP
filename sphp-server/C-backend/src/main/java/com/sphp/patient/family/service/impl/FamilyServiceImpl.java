@@ -16,6 +16,7 @@ import com.sphp.patient.family.service.FamilyService;
 import com.sphp.patient.family.vo.FamilyMemberCreateVO;
 import com.sphp.patient.family.vo.FamilyMemberListVO;
 import com.sphp.patient.family.vo.FamilyMemberUpdateVO;
+import com.sphp.patient.family.vo.FamilyMemberUnbindVO;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -163,6 +164,42 @@ public class FamilyServiceImpl implements FamilyService {
                 .phone(maskPhone(patient.getPhoneCiphertext()))
                 .isDefault(relation.getIsDefault())
                 .updatedAt(now)
+                .build();
+    }
+
+    /**
+     * 停用当前账号下的有效非本人家庭成员关系。
+     *
+     * @param patientId 就诊人 ID
+     * @return 解绑结果
+     * @throws CAuthException 账号失效、成员不存在、本人不可解绑或关系状态已变化时抛出
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FamilyMemberUnbindVO unbindFamilyMember(Long patientId) {
+        Long userId = CUserContext.getRequired().userId();
+        // 锁定 C端用户行，确保解绑与同账号的新增、更新操作串行执行
+        if (familyMemberMapper.lockUserForFamilyMutation(userId) == null) {
+            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "当前登录状态无效");
+        }
+        FamilyMemberRecord existing = familyMemberMapper.selectActiveMember(userId, patientId);
+        if (existing == null) {
+            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "家庭成员不存在或已解绑");
+        }
+        if (PatientRelationshipEnum.SELF.getValue().equals(existing.getRelationship())) {
+            throw new CAuthException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID,
+                    HttpStatus.CONFLICT, "本人信息不能通过家庭成员接口解绑");
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        // 仅停用关系记录，患者实体和历史医疗数据保持不变
+        if (familyMemberMapper.softDeleteActiveRelation(existing.getRelationId(), userId, now) != 1) {
+            throw stateConflict("家庭成员关系已发生变化，请刷新后重试");
+        }
+        return FamilyMemberUnbindVO.builder()
+                .patientId(patientId)
+                .unbound(true)
+                .unboundAt(now)
                 .build();
     }
 

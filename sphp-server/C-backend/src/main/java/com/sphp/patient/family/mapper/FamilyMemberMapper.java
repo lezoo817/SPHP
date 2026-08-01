@@ -4,6 +4,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
+import java.time.OffsetDateTime;
 
 /**
  * 家庭成员跨表查询与并发控制数据访问接口。
@@ -54,4 +55,15 @@ public interface FamilyMemberMapper {
      */
     boolean existsActiveIdCard(@Param("userId") Long userId, @Param("idCardNo") String idCardNo,
                                @Param("excludePatientId") Long excludePatientId);
+
+    /**
+     * 条件软删除当前账号与就诊人之间的有效关系，不删除患者及其历史医疗数据。
+     *
+     * @param relationId 用户与就诊人关系 ID
+     * @param userId 当前 C端用户 ID
+     * @param deletedAt 解绑时间
+     * @return 成功软删除的关系记录数
+     */
+    int softDeleteActiveRelation(@Param("relationId") Long relationId, @Param("userId") Long userId,
+                                 @Param("deletedAt") OffsetDateTime deletedAt);
 }

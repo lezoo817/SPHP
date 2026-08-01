@@ -81,4 +81,13 @@
               </if>
         )
     </select>
+
+    <update id="softDeleteActiveRelation">
+        UPDATE patient_user_relation
+        SET deleted_at = #{deletedAt},
+            updated_at = #{deletedAt}
+        WHERE id = #{relationId}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+    </update>
 </mapper>
