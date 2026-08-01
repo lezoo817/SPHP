@@ -100,3 +100,6 @@ sphp:
     login-max-failures: ${dev.sphp.auth.login-max-failures}
     login-lock-seconds: ${dev.sphp.auth.login-lock-seconds}
     refresh-token-expiration: ${dev.sphp.auth.refresh-token-expiration}
+  idempotency:
+    success-ttl-seconds: ${dev.sphp.idempotency.success-ttl-seconds}
+    processing-ttl-seconds: ${dev.sphp.idempotency.processing-ttl-seconds}
