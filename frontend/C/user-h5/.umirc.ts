@@ -9,5 +9,4 @@ export default defineConfig({
     { path: '/mine/health-record', component: 'mine/health-record' },
   ],
   npmClient: 'pnpm',
-  utoopack: {},
 });
