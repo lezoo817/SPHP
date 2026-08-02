@@ -153,19 +153,39 @@ async def get_and_delete_confirm_token_by_token(
 
 
 async def check_rate_limit(user_id: str, limit: int, window: int = 60) -> bool:
-    """滑动窗口限流检查。"""
-    import time
+    """滑动窗口限流检查（Lua 脚本原子执行，拒绝请求不计数）。
+
+    Bug 5 修复：使用 Lua 脚本单次往返完成"清旧 + 计数 + 条件写入"，
+    被拒绝的请求不会写入 ZADD（不会延长锁定时间）。
+
+    Args:
+        user_id: 用户标识，构造 key rate_limit:{user_id}。
+        limit: 窗口内允许的最大请求数。
+        window: 窗口大小（秒），默认 60。
+
+    Returns:
+        True = 放行（在窗口内），False = 拒绝（超限）。
+    """
+    lua_script = """
+    local key = KEYS[1]
+    local limit = tonumber(ARGV[1])
+    local window = tonumber(ARGV[2])
+    local now = tonumber(ARGV[3])
+
+    redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
+    local count = redis.call('ZCARD', key)
+    if count < limit then
+        redis.call('ZADD', key, now, now)
+        redis.call('EXPIRE', key, window)
+        return 1
+    end
+    return 0
+    """
 
     client = get_redis()
     key = f"rate_limit:{user_id}"
+    import time
+
     now = time.time()
-
-    pipe = client.pipeline()
-    pipe.zremrangebyscore(key, 0, now - window)
-    pipe.zcard(key)
-    pipe.zadd(key, {str(now): now})
-    pipe.expire(key, window)
-    results = await pipe.execute()
-
-    count = results[1]
-    return count < limit
+    result = await client.eval(lua_script, 1, key, str(limit), str(window), str(now))
+    return result == 1
