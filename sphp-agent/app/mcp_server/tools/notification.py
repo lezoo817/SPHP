@@ -21,5 +21,3 @@ async def manage_notifications(
             user_id=user_id,
         )
     return await call_java_api(api_name="manage_notifications:list", user_id=user_id)
-
-

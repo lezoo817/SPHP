@@ -131,5 +131,3 @@ async def check_duplicate_medication(
         user_id=user_id,
     )
     return {"current_medications": medications}
-
-

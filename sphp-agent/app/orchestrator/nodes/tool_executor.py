@@ -131,7 +131,9 @@ async def tool_executor(state: AgentState) -> dict:
         # 未注册工具：直接生成失败结果，不抛异常
         if ToolRegistry.get_tool(tool_name) is None:
             tasks.append(
-                _async_failure(state, tool_name, arguments, "UNKNOWN_TOOL", f"未注册的工具: {tool_name}")
+                _async_failure(
+                    state, tool_name, arguments, "UNKNOWN_TOOL", f"未注册的工具: {tool_name}"
+                )
             )
             continue
 

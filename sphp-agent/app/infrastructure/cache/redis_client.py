@@ -77,7 +77,7 @@ async def set_confirm_token(
     )
 
     client = get_redis()
-    await client.setex(key, ttl, value)
+    await client.set(key, value, ex=ttl)
 
 
 async def get_and_delete_confirm_token_by_token(

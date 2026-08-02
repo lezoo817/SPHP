@@ -74,5 +74,3 @@ async def confirm_drug_receipt(drug_order_id: int, user_id: int | None = None) -
         path_params={"drug_order_id": drug_order_id},
         user_id=user_id,
     )
-
-

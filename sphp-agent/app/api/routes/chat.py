@@ -15,13 +15,11 @@ from fastapi.responses import StreamingResponse
 from app.api.schemas.chat import ChatRequest, ConfirmRequest, ConfirmResponse
 from app.infrastructure.cache.redis_client import get_and_delete_confirm_token_by_token
 from app.orchestrator.graphs.main_graph import build_main_graph
+from app.orchestrator.nodes.reply import MEDICAL_DISCLAIMER
 from app.orchestrator.nodes.tool_executor import _execute_mcp
 from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
-
-# 医疗安全声明（流式回复末尾补推，确保前端必见）
-MEDICAL_DISCLAIMER = "\n\n---\n⚠️ **AI 建议仅供参考，不作为诊断依据。如有疑问请咨询专业医生。**"
 
 router = APIRouter()
 
@@ -119,7 +117,10 @@ async def _sse_generator(
                     if ctype == "tool_action":
                         yield _sse(
                             "action",
-                            {"tool": chunk.get("tool", ""), "arguments": chunk.get("arguments", {})},
+                            {
+                                "tool": chunk.get("tool", ""),
+                                "arguments": chunk.get("arguments", {}),
+                            },
                         )
                     elif ctype == "tool_observation":
                         result = chunk.get("result", {})
@@ -137,7 +138,10 @@ async def _sse_generator(
                     node = (meta or {}).get("langgraph_node", "")
                     # 仅 reply_node 的 assistant token 推送给前端
                     # （intent_node / tool_caller 的 LLM 输出不推送）
-                    if node == "reply_node" and getattr(msg, "type", "") in ("ai", "AIMessageChunk"):
+                    if node == "reply_node" and getattr(msg, "type", "") in (
+                        "ai",
+                        "AIMessageChunk",
+                    ):
                         delta = getattr(msg, "content", "") or ""
                         if delta:
                             streamed_reply = True

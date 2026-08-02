@@ -43,5 +43,3 @@ async def send_consultation_message(
         body=body,
         user_id=user_id,
     )
-
-

@@ -130,5 +130,3 @@ async def confirm_follow_up(
         body=body,
         user_id=user_id,
     )
-
-

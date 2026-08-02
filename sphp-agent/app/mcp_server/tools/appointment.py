@@ -95,5 +95,3 @@ async def query_payment_status(payment_id: int, user_id: int | None = None) -> d
         path_params={"payment_id": payment_id},
         user_id=user_id,
     )
-
-

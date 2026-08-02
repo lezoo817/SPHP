@@ -28,5 +28,3 @@ async def interpret_prescription(prescription_id: int, user_id: int | None = Non
         path_params={"prescription_id": prescription_id},
         user_id=user_id,
     )
-
-
