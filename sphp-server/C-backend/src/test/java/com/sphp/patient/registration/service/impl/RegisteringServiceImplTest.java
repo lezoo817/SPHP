@@ -6,8 +6,10 @@ import com.sphp.patient.registration.dto.RegisteringAppointmentCreateRequest;
 import com.sphp.patient.registration.mapper.RegisteringDataMapper;
 import com.sphp.patient.registration.mapper.RegisteringAppointmentMapper;
 import com.sphp.patient.registration.mapper.RegisteringPaymentOrderMapper;
+import com.sphp.patient.registration.mapper.RegisteringWaitlistMapper;
 import com.sphp.patient.registration.support.RegisteringSlotLockService;
 import com.sphp.patient.registration.config.RegistrationProperties;
+import org.springframework.context.ApplicationEventPublisher;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
 import org.junit.jupiter.api.Test;
 
@@ -34,11 +36,12 @@ class RegisteringServiceImplTest {
         RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
         RegisteringAppointmentMapper appointmentMapper = mock(RegisteringAppointmentMapper.class);
         RegisteringPaymentOrderMapper paymentMapper = mock(RegisteringPaymentOrderMapper.class);
+        RegisteringWaitlistMapper waitlistMapper = mock(RegisteringWaitlistMapper.class);
         RegisteringSlotLockService slotLockService = mock(RegisteringSlotLockService.class);
         RegistrationProperties properties = new RegistrationProperties();
         properties.setPaymentTimeout(900);
         RegisteringServiceImpl service = new RegisteringServiceImpl(dataMapper, appointmentMapper, paymentMapper,
-                slotLockService, properties);
+                slotLockService, waitlistMapper, properties, mock(ApplicationEventPublisher.class));
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
         when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
         when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);

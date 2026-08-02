@@ -4,6 +4,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 /**
  * C端挂号订单跨表数据访问接口。
@@ -64,4 +65,31 @@ public interface RegisteringDataMapper {
      */
     Long registeringLockOneSnapshot(@Param("slotId") Long slotId, @Param("patientId") Long patientId,
                                     @Param("lockedAt") OffsetDateTime lockedAt);
+
+    /** 分页查询就诊人的挂号订单。 */
+    List<RegisteringAppointmentRecord> selectRegisteringAppointments(@Param("patientId") Long patientId, @Param("status") String status, @Param("limit") int limit, @Param("offset") long offset);
+    /** 统计就诊人的挂号订单数。 */
+    long countRegisteringAppointments(@Param("patientId") Long patientId, @Param("status") String status);
+    /** 查询挂号订单详情记录。 */
+    RegisteringAppointmentRecord selectRegisteringAppointment(@Param("appointmentId") Long appointmentId);
+    /** 查询挂号支付单及所属订单。 */
+    RegisteringPaymentRecord selectRegisteringPayment(@Param("paymentId") Long paymentId);
+    /** 条件取消未支付挂号订单。 */
+    int registeringCancelUnpaidAppointment(@Param("appointmentId") Long appointmentId, @Param("now") OffsetDateTime now);
+    /** 条件关闭待支付挂号支付单。 */
+    int registeringClosePendingPayment(@Param("appointmentId") Long appointmentId, @Param("now") OffsetDateTime now);
+    /** 条件释放已锁定号源快照。 */
+    int registeringReleaseLockedSnapshot(@Param("snapshotId") Long snapshotId, @Param("now") OffsetDateTime now);
+    /** 为候补登记锁定有效已发布时段。 */
+    RegisteringSlotLockRecord lockRegisteringWaitlistSlot(@Param("slotId") Long slotId);
+    /** 判断当前就诊人是否已有活跃候补。 */
+    boolean existsRegisteringActiveWaitlist(@Param("patientId") Long patientId, @Param("slotId") Long slotId);
+    /** 查询时段的下一个候补排队号。 */
+    int selectRegisteringNextQueueNo(@Param("slotId") Long slotId);
+    /** 条件完成挂号支付。 */
+    int registeringMarkPaymentSuccess(@Param("paymentId") Long paymentId, @Param("now") OffsetDateTime now);
+    /** 条件确认挂号订单已支付。 */
+    int registeringMarkAppointmentPaid(@Param("appointmentId") Long appointmentId, @Param("now") OffsetDateTime now);
+    /** 条件确认号源快照已售出。 */
+    int registeringMarkSnapshotSold(@Param("snapshotId") Long snapshotId, @Param("now") OffsetDateTime now);
 }
