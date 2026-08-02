@@ -4,6 +4,7 @@
 替代原 backend/client.py，扁平化到 infrastructure 层根目录。
 """
 
+import json
 import logging
 import uuid
 from typing import Any
@@ -68,11 +69,8 @@ async def call_java_api(
         scope: c_end / b_end（决定 API 前缀）
 
     Returns:
-        Java 后端响应的 JSON dict
-
-    Raises:
-        httpx.HTTPError: 连接超时或 Java 不可达
-        JavaAPIError: Java 返回非 2xx 业务错误
+        正常返回 Java 响应 dict；失败（超时 / 非 2xx / 非 JSON）返回含
+        ``error`` 字段的 dict，不抛异常。
     """
     settings = get_settings()
     client = await get_client()
@@ -80,8 +78,7 @@ async def call_java_api(
     # 如果传了 tool_name 但没传 method/path，从参数推导
     # 当前实现：MCP Server 工具文件直接传 method+path
     if not method and tool_name:
-        logger.warning("tool_name-based dispatch not yet implemented, use method+path")
-        return {"error": "not_implemented"}
+        raise NotImplementedError(f"tool_name 分发未实现，请显式传入 method + path: {tool_name}")
 
     url = f"{settings.java_base_url}{path}"
 
@@ -119,7 +116,18 @@ async def call_java_api(
                 },
             }
 
-        return resp.json()
+        try:
+            return resp.json()
+        except json.JSONDecodeError:
+            logger.error("Java API 响应非 JSON: %s %s", method, path)
+            return {
+                "success": False,
+                "error": {
+                    "code": "JAVA_PARSE_ERROR",
+                    "message": "服务响应格式异常，请稍后重试",
+                    "http_status": resp.status_code,
+                },
+            }
 
     except httpx.ConnectTimeout:
         logger.error("Java API connect timeout: %s %s", method, path)
