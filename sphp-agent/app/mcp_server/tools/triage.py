@@ -48,13 +48,7 @@ async def create_triage_assessment(
 
     logger.info("导诊评估请求: hospital_id=%s, symptom_len=%d", hospital_id, len(symptom))
 
-    return await call_java_api(
-        method="POST",
-        path="/api/c/v1/triage/assessments",
-        body=body,
-        user_id=user_id,
-        scope="c_end",
-    )
+    return await call_java_api(tool_name="create_triage_assessment", body=body, user_id=user_id)
 
 
 def register(server):
