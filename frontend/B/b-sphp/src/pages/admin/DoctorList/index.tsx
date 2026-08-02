@@ -445,7 +445,10 @@ export default function DoctorList() {
           <ProFormText
             name="licenseNo"
             label="执业证号"
-            rules={[{ max: 50, message: '最多 50 个字符' }]}
+            rules={[
+              { required: true, message: '请输入执业证号' },
+              { max: 50, message: '最多 50 个字符' },
+            ]}
           />
           <ProFormText
             name="phone"
