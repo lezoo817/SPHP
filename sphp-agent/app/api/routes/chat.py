@@ -46,7 +46,7 @@ async def chat_stream(req: ChatRequest, request: Request):
         "session_id": req.session_id,
         "intent": None,
         "user_id": None,
-        "scope": req.scope,
+        "scope": getattr(request.state, "scope", req.scope),
         "roles": None,
         "dept_id": None,
         "doctor_id": None,
