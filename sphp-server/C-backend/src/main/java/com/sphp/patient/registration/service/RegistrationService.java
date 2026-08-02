@@ -1,6 +1,7 @@
 package com.sphp.patient.registration.service;
 
 import com.sphp.patient.registration.vo.DepartmentListVO;
+import com.sphp.patient.registration.vo.AppointmentSlotVO;
 import com.sphp.patient.registration.vo.DoctorPageVO;
 import com.sphp.patient.registration.vo.HospitalListVO;
 
@@ -41,4 +42,15 @@ public interface RegistrationService {
      * @throws com.sphp.patient.auth.exception.CAuthException 资源不可用或医院链路不匹配时抛出
      */
     DoctorPageVO listDoctors(Long hospitalId, Long departmentId, LocalDate date, Integer pageNo, Integer pageSize);
+
+    /**
+     * 查询指定医院医生在指定日期已发布排班下的全部可预约时段。
+     *
+     * @param hospitalId 医院 ID
+     * @param doctorId 医生 ID
+     * @param date 排班日期
+     * @return 可预约时段列表，包含零余量时段
+     * @throws com.sphp.patient.auth.exception.CAuthException 日期超范围、资源不可用或医院链路不匹配时抛出
+     */
+    List<AppointmentSlotVO> listDoctorSlots(Long hospitalId, Long doctorId, LocalDate date);
 }

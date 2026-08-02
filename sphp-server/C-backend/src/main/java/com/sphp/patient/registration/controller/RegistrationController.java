@@ -4,6 +4,7 @@ import com.sphp.patient.common.constant.RegistrationConstant;
 import com.sphp.patient.registration.service.RegistrationService;
 import com.sphp.patient.registration.vo.DepartmentListVO;
 import com.sphp.patient.registration.vo.DoctorPageVO;
+import com.sphp.patient.registration.vo.AppointmentSlotVO;
 import com.sphp.patient.registration.vo.HospitalListVO;
 import com.sphp.shared.result.Result;
 import jakarta.validation.constraints.Max;
@@ -14,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -83,5 +85,22 @@ public class RegistrationController {
         int resolvedPageSize = pageSize == null ? RegistrationConstant.DEFAULT_PAGE_SIZE : pageSize;
         return Result.success("查询成功",
                 registrationService.listDoctors(hospitalId, departmentId, date, resolvedPageNo, resolvedPageSize));
+    }
+
+    /**
+     * 查询医生在指定医院和日期下已发布排班的全部可预约时段。
+     *
+     * @param doctorId 医生 ID
+     * @param hospitalId 医院 ID
+     * @param date 排班日期
+     * @return 可预约时段列表
+     */
+    @GetMapping("/doctors/{doctorId}/slots")
+    @Operation(summary = "查询医生可预约时段")
+    public Result<List<AppointmentSlotVO>> listDoctorSlots(
+            @PathVariable @Positive(message = "doctorId 必须为正数") Long doctorId,
+            @RequestParam @Positive(message = "hospitalId 必须为正数") Long hospitalId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return Result.success("查询成功", registrationService.listDoctorSlots(hospitalId, doctorId, date));
     }
 }

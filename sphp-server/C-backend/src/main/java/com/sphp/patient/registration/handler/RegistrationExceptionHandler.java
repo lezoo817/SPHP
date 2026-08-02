@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -77,6 +78,18 @@ public class RegistrationExceptionHandler {
     public ResponseEntity<Result<Void>> handleMissingParameterException(MissingServletRequestParameterException exception) {
         return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER,
                 "请求参数" + exception.getParameterName() + "不能为空"));
+    }
+
+    /**
+     * 处理查询参数类型无法转换的异常，例如日期格式错误。
+     *
+     * @param exception 参数类型转换异常
+     * @return HTTP 400 统一错误响应
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Result<Void>> handleTypeMismatchException(MethodArgumentTypeMismatchException exception) {
+        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER,
+                "请求参数" + exception.getName() + "格式错误"));
     }
 
     /**

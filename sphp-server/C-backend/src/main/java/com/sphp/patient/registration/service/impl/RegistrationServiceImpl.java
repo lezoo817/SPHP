@@ -5,9 +5,13 @@ import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.registration.mapper.DepartmentLinkRecord;
 import com.sphp.patient.registration.mapper.DepartmentRecord;
 import com.sphp.patient.registration.mapper.DoctorRecord;
+import com.sphp.patient.registration.mapper.DoctorLinkRecord;
 import com.sphp.patient.registration.mapper.HospitalRecord;
 import com.sphp.patient.registration.mapper.RegistrationResourceMapper;
+import com.sphp.patient.registration.mapper.SlotRecord;
 import com.sphp.patient.registration.service.RegistrationService;
+import com.sphp.patient.registration.config.RegistrationProperties;
+import com.sphp.patient.registration.vo.AppointmentSlotVO;
 import com.sphp.patient.registration.vo.DepartmentListVO;
 import com.sphp.patient.registration.vo.DoctorListItemVO;
 import com.sphp.patient.registration.vo.DoctorPageVO;
@@ -15,9 +19,11 @@ import com.sphp.patient.registration.vo.HospitalListVO;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -28,6 +34,8 @@ import java.util.List;
 public class RegistrationServiceImpl implements RegistrationService {
 
     private final RegistrationResourceMapper resourceMapper;
+    private final StringRedisTemplate redisTemplate;
+    private final RegistrationProperties registrationProperties;
 
     /**
      * 查询全部可供 C端选择的医院。
@@ -98,6 +106,28 @@ public class RegistrationServiceImpl implements RegistrationService {
     }
 
     /**
+     * 查询指定医院医生在指定日期已发布排班下的全部可预约时段。
+     *
+     * @param hospitalId 医院 ID
+     * @param doctorId 医生 ID
+     * @param date 排班日期
+     * @return 可预约时段列表，包含零余量时段
+     * @throws CAuthException 日期超范围、资源不可用或医院链路不匹配时抛出
+     */
+    @Override
+    public List<AppointmentSlotVO> listDoctorSlots(Long hospitalId, Long doctorId, LocalDate date) {
+        validateSlotDate(date);
+        validateDoctorHospitalLink(hospitalId, doctorId);
+        // 没有发布排班时不返回草稿或取消排班的时段，避免误导预约入口。
+        if (!resourceMapper.hasPublishedSchedule(doctorId, date)) {
+            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "医生当日暂无可预约排班");
+        }
+        return resourceMapper.selectPublishedSlots(doctorId, date).stream()
+                .map(slot -> toAppointmentSlotVO(slot, date))
+                .toList();
+    }
+
+    /**
      * 转换医院查询记录，避免向 C端泄漏后台管理字段。
      *
      * @param record 医院查询记录
@@ -149,6 +179,40 @@ public class RegistrationServiceImpl implements RegistrationService {
     }
 
     /**
+     * 校验查询日期在当天至可放号天数范围内，防止读取未发布或历史排班。
+     *
+     * @param date 排班日期
+     * @throws CAuthException 日期为空或超出放号窗口时抛出
+     */
+    private void validateSlotDate(LocalDate date) {
+        LocalDate today = LocalDate.now(RegistrationConstant.BUSINESS_ZONE_ID);
+        int releaseDays = registrationProperties.getSlotReleaseDays();
+        LocalDate latestDate = today.plusDays(Math.max(releaseDays, 1) - 1L);
+        if (date == null || date.isBefore(today) || date.isAfter(latestDate)) {
+            throw new CAuthException(ErrorCodeEnum.PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST,
+                    "预约日期仅支持当天至未来" + Math.max(releaseDays, 1) + "天");
+        }
+    }
+
+    /**
+     * 校验医生可用状态及所属医院，避免跨医院查看排班时段。
+     *
+     * @param hospitalId 医院 ID
+     * @param doctorId 医生 ID
+     * @throws CAuthException 医生不可用或医院链路不匹配时抛出
+     */
+    private void validateDoctorHospitalLink(Long hospitalId, Long doctorId) {
+        DoctorLinkRecord doctor = resourceMapper.selectAvailableDoctorLink(doctorId);
+        if (doctor == null) {
+            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "医生不存在或已停用");
+        }
+        // 医生 ID 有效也必须匹配当前医院，防止跨院获取排班详情。
+        if (!hospitalId.equals(doctor.hospitalId())) {
+            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, "医生不属于当前医院");
+        }
+    }
+
+    /**
      * 转换医生查询记录，只返回 C 端挂号选择所需的资料和余量。
      *
      * @param record 医生查询记录
@@ -163,5 +227,56 @@ public class RegistrationServiceImpl implements RegistrationService {
                 .registrationFeeCent(record.registrationFeeCent())
                 .availableCount(record.availableCount())
                 .build();
+    }
+
+    /**
+     * 转换已发布时段并解析实时余量，Redis 不可用时回退 PostgreSQL 快照。
+     *
+     * @param record 时段查询记录
+     * @param date 排班日期
+     * @return 可预约时段响应对象
+     */
+    private AppointmentSlotVO toAppointmentSlotVO(SlotRecord record, LocalDate date) {
+        return AppointmentSlotVO.builder()
+                .slotId(record.slotId())
+                .startTime(toBusinessOffsetDateTime(date, record.startTime()))
+                .endTime(toBusinessOffsetDateTime(date, record.endTime()))
+                .feeCent(record.feeCent())
+                .availableCount(resolveAvailableCount(record))
+                .scheduleStatus(record.scheduleStatus())
+                .build();
+    }
+
+    /**
+     * 读取 Redis 中的实时号源余量，异常或非法缓存值时使用数据库快照兜底。
+     *
+     * @param record 时段查询记录
+     * @return 实时余量或 PostgreSQL 快照余量
+     */
+    private long resolveAvailableCount(SlotRecord record) {
+        long snapshotCount = record.availableCount() == null ? 0L : record.availableCount();
+        try {
+            String value = redisTemplate.opsForValue().get(RegistrationConstant.SLOT_REMAIN_KEY_PREFIX + record.slotId());
+            if (value == null) {
+                return snapshotCount;
+            }
+            long remainingCount = Long.parseLong(value);
+            // 负数属于损坏缓存，不向客户端输出异常余量。
+            return remainingCount >= 0 ? remainingCount : snapshotCount;
+        } catch (RuntimeException exception) {
+            // Redis 仅保存实时余量缓存，读取失败时 PostgreSQL 快照仍是可用事实来源。
+            return snapshotCount;
+        }
+    }
+
+    /**
+     * 按业务时区组合日期和时段时间，避免服务部署时区影响前端展示。
+     *
+     * @param date 排班日期
+     * @param time 时段时间
+     * @return 东八区偏移时间
+     */
+    private OffsetDateTime toBusinessOffsetDateTime(LocalDate date, java.time.LocalTime time) {
+        return date.atTime(time).atZone(RegistrationConstant.BUSINESS_ZONE_ID).toOffsetDateTime();
     }
 }
