@@ -8,6 +8,7 @@ import com.sphp.patient.consultation.service.ConsultationService;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
+import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import org.junit.jupiter.api.AfterEach;
@@ -138,6 +139,33 @@ class ConsultationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.doctor.name").value("王医生"))
                 .andExpect(jsonPath("$.data.messages[0].senderType").value("DOCTOR"));
+    }
+
+    /**
+     * 验证发送文字消息路由通过幂等服务返回消息结果。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void sendConsultationMessageReturnsIdempotentResult() throws Exception {
+        ConsultationService consultationService = mock(ConsultationService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        ConsultationMessageSendVO result = ConsultationMessageSendVO.builder().messageId(12001L)
+                .consultationId(11001L).senderType("PATIENT").content("最高体温38.5度")
+                .createdAt(OffsetDateTime.now()).build();
+        when(idempotencyService.execute(any(), anyString(), anyString(), any(), any(), any()))
+                .thenReturn(new IdempotencyPayload<>("消息已发送", result));
+
+        newMockMvc(consultationService, idempotencyService)
+                .perform(post("/c/v1/consultations/11001/messages")
+                        .header("X-Idempotency-Key", "consultation-message-001")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"最高体温38.5度\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("消息已发送"))
+                .andExpect(jsonPath("$.data.messageId").value(12001))
+                .andExpect(jsonPath("$.data.senderType").value("PATIENT"));
     }
 
     /**

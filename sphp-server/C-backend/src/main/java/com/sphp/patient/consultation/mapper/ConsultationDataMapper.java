@@ -104,6 +104,14 @@ public interface ConsultationDataMapper {
     ConsultationDetailRecord selectConsultationDetail(@Param("consultationId") Long consultationId);
 
     /**
+     * 锁定问诊详情，用于发送患者文字消息前的状态校验。
+     *
+     * @param consultationId 问诊记录 ID
+     * @return 已锁定问诊详情，不存在时返回 null
+     */
+    ConsultationDetailRecord lockConsultationDetail(@Param("consultationId") Long consultationId);
+
+    /**
      * 查询问诊的未删除文字消息。
      *
      * @param consultationId 问诊记录 ID

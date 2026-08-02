@@ -2,10 +2,12 @@ package com.sphp.patient.consultation.controller;
 
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.consultation.dto.PreConsultationSaveRequest;
+import com.sphp.patient.consultation.dto.ConsultationMessageSendRequest;
 import com.sphp.patient.consultation.service.ConsultationService;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
+import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.sphp.shared.common.constant.HeaderConstant;
@@ -93,5 +95,32 @@ public class ConsultationController {
     public Result<ConsultationDetailVO> getConsultationDetail(
             @PathVariable @jakarta.validation.constraints.Positive(message = "consultationId 必须为正数") Long consultationId) {
         return Result.success("查询成功", consultationService.getConsultationDetail(consultationId));
+    }
+
+    /**
+     * 向当前账号可访问的进行中问诊发送患者文字消息。
+     *
+     * @param consultationId 问诊记录 ID
+     * @param idempotencyKey 客户端幂等键
+     * @param request 文字消息请求参数
+     * @return 已发送消息信息
+     */
+    @PostMapping("/consultations/{consultationId}/messages")
+    @Operation(summary = "发送文字问诊消息")
+    public Result<ConsultationMessageSendVO> sendConsultationMessage(
+            @PathVariable @jakarta.validation.constraints.Positive(message = "consultationId 必须为正数") Long consultationId,
+            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @Valid @RequestBody ConsultationMessageSendRequest request) {
+        Long userId = CUserContext.getRequired().userId();
+        // 路径中包含问诊 ID，保证不同问诊的同名幂等键互不影响。
+        IdempotencyPayload<ConsultationMessageSendVO> payload = idempotencyService.execute(
+                userId,
+                "/c/v1/consultations/" + consultationId + "/messages",
+                idempotencyKey,
+                request,
+                ConsultationMessageSendVO.class,
+                () -> new IdempotencyPayload<>("消息已发送",
+                        consultationService.sendConsultationMessage(consultationId, request)));
+        return Result.success(payload.message(), payload.data());
     }
 }

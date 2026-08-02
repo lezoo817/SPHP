@@ -5,23 +5,30 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.support.context.CUserContext;
-import com.sphp.patient.common.enums.ConsultationStatusEnum;
 import com.sphp.patient.common.constant.ConsultationConstant;
+import com.sphp.patient.common.enums.ConsultationMessageSenderTypeEnum;
+import com.sphp.patient.common.enums.ConsultationStatusEnum;
 import com.sphp.patient.common.enums.RegisteringAppointmentStatusEnum;
+import com.sphp.patient.consultation.dto.ConsultationMessageSendRequest;
 import com.sphp.patient.consultation.dto.PreConsultationSaveRequest;
+import com.sphp.patient.consultation.entity.ConsultationMessage;
 import com.sphp.patient.consultation.entity.ConsultationRecord;
+import com.sphp.patient.consultation.event.ConsultationMessageSentEvent;
 import com.sphp.patient.consultation.mapper.ConsultationAppointmentRecord;
 import com.sphp.patient.consultation.mapper.ConsultationDataMapper;
 import com.sphp.patient.consultation.mapper.ConsultationListRecord;
 import com.sphp.patient.consultation.mapper.ConsultationDetailRecord;
 import com.sphp.patient.consultation.mapper.ConsultationMessageRecord;
+import com.sphp.patient.consultation.mapper.ConsultationMessageMapper;
 import com.sphp.patient.consultation.service.ConsultationService;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.ConsultationAttachmentVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
+import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,7 +44,9 @@ import java.util.List;
 public class ConsultationServiceImpl implements ConsultationService {
 
     private final ConsultationDataMapper consultationDataMapper;
+    private final ConsultationMessageMapper consultationMessageMapper;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 创建、保存或提交当前账号可访问就诊人的预问诊。
@@ -168,6 +177,50 @@ public class ConsultationServiceImpl implements ConsultationService {
     }
 
     /**
+     * 向进行中的问诊发送患者文字消息。
+     *
+     * @param consultationId 问诊记录 ID
+     * @param request 文字消息请求参数
+     * @return 已发送消息信息
+     * @throws CAuthException 问诊不存在、患者越权或问诊状态不允许发送时抛出
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ConsultationMessageSendVO sendConsultationMessage(Long consultationId,
+                                                              ConsultationMessageSendRequest request) {
+        Long userId = CUserContext.getRequired().userId();
+        // 锁定问诊记录，防止医生结束问诊与患者发消息同时通过状态校验。
+        ConsultationDetailRecord consultation = consultationDataMapper.lockConsultationDetail(consultationId);
+        if (consultation == null) {
+            throw notFound("问诊记录不存在");
+        }
+        resolveAccessiblePatient(userId, consultation.patientId());
+        if (!ConsultationStatusEnum.IN_PROGRESS.name().equals(consultation.status())) {
+            throw messageStatusConflict(consultation.status());
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        ConsultationMessage message = new ConsultationMessage();
+        message.setConsultationId(consultationId);
+        message.setSenderType(ConsultationMessageSenderTypeEnum.PATIENT.name());
+        message.setContent(request.getContent());
+        message.setCreatedAt(now);
+        if (consultationMessageMapper.insert(message) != 1) {
+            throw systemError("问诊消息发送失败");
+        }
+        // 事务提交后再将不含文本内容的业务事件转发给医生端订阅方。
+        eventPublisher.publishEvent(ConsultationMessageSentEvent.of(
+                consultationId, consultation.doctorId(), consultation.patientId(), userId));
+        return ConsultationMessageSendVO.builder()
+                .messageId(message.getId())
+                .consultationId(consultationId)
+                .senderType(message.getSenderType())
+                .content(message.getContent())
+                .createdAt(now)
+                .build();
+    }
+
+    /**
      * 解析当前账号可访问的就诊人，未传时固定使用本人。
      *
      * @param userId 当前 C端用户 ID
@@ -234,6 +287,20 @@ public class ConsultationServiceImpl implements ConsultationService {
                 .content(record.content())
                 .createdAt(record.createdAt())
                 .build();
+    }
+
+    /**
+     * 根据当前问诊状态创建消息发送冲突异常。
+     *
+     * @param status 当前问诊状态
+     * @return HTTP 409 业务异常
+     */
+    private CAuthException messageStatusConflict(String status) {
+        if (ConsultationStatusEnum.PENDING.name().equals(status)) {
+            return new CAuthException(ErrorCodeEnum.ILLEGAL_INPUT_CONTENT, HttpStatus.CONFLICT,
+                    "医生尚未开始问诊，暂不能发送消息");
+        }
+        return statusConflict("当前问诊状态不允许发送消息");
     }
 
     /**

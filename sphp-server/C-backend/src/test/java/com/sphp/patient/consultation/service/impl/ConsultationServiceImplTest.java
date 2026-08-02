@@ -11,9 +11,13 @@ import com.sphp.patient.consultation.mapper.ConsultationDataMapper;
 import com.sphp.patient.consultation.mapper.ConsultationListRecord;
 import com.sphp.patient.consultation.mapper.ConsultationDetailRecord;
 import com.sphp.patient.consultation.mapper.ConsultationMessageRecord;
+import com.sphp.patient.consultation.mapper.ConsultationMessageMapper;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
+import com.sphp.patient.consultation.dto.ConsultationMessageSendRequest;
+import com.sphp.patient.consultation.entity.ConsultationMessage;
+import com.sphp.patient.consultation.event.ConsultationMessageSentEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -48,7 +52,7 @@ class ConsultationServiceImplTest {
     @Test
     void savePreConsultationCreatesDraftForPaidAppointment() {
         ConsultationDataMapper dataMapper = mock(ConsultationDataMapper.class);
-        ConsultationServiceImpl service = new ConsultationServiceImpl(dataMapper, new ObjectMapper());
+        ConsultationServiceImpl service = newService(dataMapper);
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
         PreConsultationSaveRequest request = request(false);
         when(dataMapper.selectConsultationSelfPatientId(10001L)).thenReturn(20001L);
@@ -77,7 +81,7 @@ class ConsultationServiceImplTest {
     @Test
     void savePreConsultationRejectsUnpaidAppointment() {
         ConsultationDataMapper dataMapper = mock(ConsultationDataMapper.class);
-        ConsultationServiceImpl service = new ConsultationServiceImpl(dataMapper, new ObjectMapper());
+        ConsultationServiceImpl service = newService(dataMapper);
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
         when(dataMapper.selectConsultationSelfPatientId(10001L)).thenReturn(20001L);
         when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
@@ -97,7 +101,7 @@ class ConsultationServiceImplTest {
     @Test
     void listConsultationsUsesAccessiblePatientAndDefaultPagination() {
         ConsultationDataMapper dataMapper = mock(ConsultationDataMapper.class);
-        ConsultationServiceImpl service = new ConsultationServiceImpl(dataMapper, new ObjectMapper());
+        ConsultationServiceImpl service = newService(dataMapper);
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
         when(dataMapper.selectConsultationSelfPatientId(10001L)).thenReturn(20001L);
         when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
@@ -119,7 +123,7 @@ class ConsultationServiceImplTest {
     @Test
     void getConsultationDetailChecksPatientOwnershipAndReturnsMessages() {
         ConsultationDataMapper dataMapper = mock(ConsultationDataMapper.class);
-        ConsultationServiceImpl service = new ConsultationServiceImpl(dataMapper, new ObjectMapper());
+        ConsultationServiceImpl service = newService(dataMapper);
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
         when(dataMapper.selectConsultationDetail(11001L)).thenReturn(new ConsultationDetailRecord(
                 11001L, 20001L, "IN_PROGRESS", 30001L, "王医生", "主治医师", "咳嗽",
@@ -136,6 +140,54 @@ class ConsultationServiceImplTest {
         assertEquals("王医生", result.getDoctor().getName());
         assertEquals("DOCTOR", result.getMessages().getFirst().getSenderType());
         assertEquals(13001L, result.getPrescriptionIds().getFirst());
+    }
+
+    /**
+     * 验证进行中的问诊可发送患者消息，并发布不含内容的业务事件。
+     */
+    @Test
+    void sendConsultationMessagePersistsMessageAndPublishesSafeEvent() {
+        ConsultationDataMapper dataMapper = mock(ConsultationDataMapper.class);
+        ConsultationMessageMapper messageMapper = mock(ConsultationMessageMapper.class);
+        org.springframework.context.ApplicationEventPublisher eventPublisher = mock(org.springframework.context.ApplicationEventPublisher.class);
+        ConsultationServiceImpl service = new ConsultationServiceImpl(dataMapper, messageMapper, new ObjectMapper(), eventPublisher);
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        when(dataMapper.lockConsultationDetail(11001L)).thenReturn(new ConsultationDetailRecord(
+                11001L, 20001L, "IN_PROGRESS", 30001L, "王医生", "主治医师", "咳嗽",
+                null, "[]", OffsetDateTime.now(), OffsetDateTime.now()));
+        when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasConsultationActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        doAnswer(invocation -> {
+            ConsultationMessage message = invocation.getArgument(0);
+            message.setId(12001L);
+            return 1;
+        }).when(messageMapper).insert(any(ConsultationMessage.class));
+        ConsultationMessageSendRequest request = new ConsultationMessageSendRequest();
+        request.setContent("最高体温38.5度");
+
+        com.sphp.patient.consultation.vo.ConsultationMessageSendVO result = service.sendConsultationMessage(11001L, request);
+
+        assertEquals(12001L, result.getMessageId());
+        assertEquals("PATIENT", result.getSenderType());
+        verify(eventPublisher).publishEvent(org.mockito.ArgumentMatchers.<Object>argThat(event -> {
+            if (!(event instanceof ConsultationMessageSentEvent sentEvent)) {
+                return false;
+            }
+            return sentEvent.consultationId().equals(11001L)
+                    && sentEvent.patientId().equals(20001L)
+                    && sentEvent.userId().equals(10001L);
+        }));
+    }
+
+    /**
+     * 创建不关心消息写入行为的问诊服务。
+     *
+     * @param dataMapper 问诊数据访问模拟对象
+     * @return 问诊服务实现
+     */
+    private ConsultationServiceImpl newService(ConsultationDataMapper dataMapper) {
+        return new ConsultationServiceImpl(dataMapper, mock(ConsultationMessageMapper.class), new ObjectMapper(),
+                mock(org.springframework.context.ApplicationEventPublisher.class));
     }
 
     /**

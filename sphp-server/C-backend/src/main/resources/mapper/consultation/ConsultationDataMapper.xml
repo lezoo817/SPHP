@@ -106,6 +106,18 @@
           AND cr.deleted_at IS NULL
     </select>
 
+    <select id="lockConsultationDetail" resultType="com.sphp.patient.consultation.mapper.ConsultationDetailRecord">
+        SELECT cr.id, cr.patient_id, cr.status, d.id AS doctor_id, d.name AS doctor_name,
+               d.title AS doctor_title, cr.chief_complaint, cr.history_of_present_illness,
+               cr.attachments::text AS attachments_json, cr.updated_at AS saved_at,
+               cr.pre_consultation_submitted_at AS submitted_at
+        FROM consult_record cr
+        LEFT JOIN doctor d ON d.id = cr.doctor_id
+        WHERE cr.id = #{consultationId}
+          AND cr.deleted_at IS NULL
+        FOR UPDATE
+    </select>
+
     <select id="selectConsultationMessages" resultType="com.sphp.patient.consultation.mapper.ConsultationMessageRecord">
         SELECT id, sender_type, content, created_at
         FROM consultation_message
