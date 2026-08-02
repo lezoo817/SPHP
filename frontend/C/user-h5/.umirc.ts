@@ -1,10 +1,12 @@
 import { defineConfig } from "umi";
 
 export default defineConfig({
-  port: 8001,
   routes: [
-    { path: "/", component: "index" },
-    { path: "/docs", component: "docs" },
+    { path: '/', redirect: '/login' },
+    { path: '/login', component: 'login/index' },
+    { path: '/mine', component: 'mine/index' },
+    { path: '/mine/family-members', component: 'mine/family-members' },
+    { path: '/mine/health-record', component: 'mine/health-record' },
   ],
   npmClient: 'pnpm',
   utoopack: {},
