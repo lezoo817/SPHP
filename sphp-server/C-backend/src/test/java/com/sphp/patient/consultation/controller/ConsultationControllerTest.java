@@ -6,6 +6,7 @@ import com.sphp.patient.consultation.dto.PreConsultationSaveRequest;
 import com.sphp.patient.consultation.handler.ConsultationExceptionHandler;
 import com.sphp.patient.consultation.service.ConsultationService;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
+import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import org.junit.jupiter.api.AfterEach;
@@ -21,6 +22,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -85,6 +87,31 @@ class ConsultationControllerTest {
                         .content("{\"appointmentId\":7001,\"chiefComplaint\":\"咳嗽\",\"submit\":false}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("A0400"));
+    }
+
+    /**
+     * 验证问诊列表路由返回分页响应。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void listConsultationsReturnsPageResult() throws Exception {
+        ConsultationService consultationService = mock(ConsultationService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        when(consultationService.listConsultations(20001L, "PENDING", 1, 20))
+                .thenReturn(ConsultationPageVO.builder().pageNo(1).pageSize(20).total(1)
+                        .records(java.util.List.of(ConsultationPageVO.Item.builder().id(11001L)
+                                .appointmentId(7001L).doctorName("王医生").status("PENDING")
+                                .updatedAt(OffsetDateTime.parse("2026-08-02T10:00:00+08:00")).build()))
+                        .build());
+
+        newMockMvc(consultationService, idempotencyService)
+                .perform(get("/c/v1/consultations").param("patientId", "20001")
+                        .param("status", "PENDING").param("pageNo", "1").param("pageSize", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.records[0].id").value(11001))
+                .andExpect(jsonPath("$.data.records[0].status").value("PENDING"));
     }
 
     /**

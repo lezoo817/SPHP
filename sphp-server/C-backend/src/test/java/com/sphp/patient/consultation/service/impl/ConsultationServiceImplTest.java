@@ -8,11 +8,14 @@ import com.sphp.patient.consultation.dto.PreConsultationSaveRequest;
 import com.sphp.patient.consultation.entity.ConsultationRecord;
 import com.sphp.patient.consultation.mapper.ConsultationAppointmentRecord;
 import com.sphp.patient.consultation.mapper.ConsultationDataMapper;
+import com.sphp.patient.consultation.mapper.ConsultationListRecord;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
+import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -83,6 +86,28 @@ class ConsultationServiceImplTest {
                 () -> service.savePreConsultation(request(true)));
 
         assertEquals("A0443", exception.getCode());
+    }
+
+    /**
+     * 验证问诊列表按已授权就诊人查询并应用默认分页。
+     */
+    @Test
+    void listConsultationsUsesAccessiblePatientAndDefaultPagination() {
+        ConsultationDataMapper dataMapper = mock(ConsultationDataMapper.class);
+        ConsultationServiceImpl service = new ConsultationServiceImpl(dataMapper, new ObjectMapper());
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        when(dataMapper.selectConsultationSelfPatientId(10001L)).thenReturn(20001L);
+        when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasConsultationActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectConsultationList(20001L, "PENDING", 20, 0))
+                .thenReturn(List.of(new ConsultationListRecord(11001L, 7001L, "王医生", "PENDING", OffsetDateTime.now())));
+        when(dataMapper.countConsultationList(20001L, "PENDING")).thenReturn(1L);
+
+        ConsultationPageVO result = service.listConsultations(null, "PENDING", null, null);
+
+        assertEquals(1L, result.getTotal());
+        assertEquals(20, result.getPageSize());
+        assertEquals(11001L, result.getRecords().getFirst().getId());
     }
 
     /**

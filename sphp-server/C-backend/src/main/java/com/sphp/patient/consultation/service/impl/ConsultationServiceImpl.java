@@ -5,13 +5,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.common.enums.ConsultationStatusEnum;
+import com.sphp.patient.common.constant.ConsultationConstant;
 import com.sphp.patient.common.enums.RegisteringAppointmentStatusEnum;
 import com.sphp.patient.consultation.dto.PreConsultationSaveRequest;
 import com.sphp.patient.consultation.entity.ConsultationRecord;
 import com.sphp.patient.consultation.mapper.ConsultationAppointmentRecord;
 import com.sphp.patient.consultation.mapper.ConsultationDataMapper;
+import com.sphp.patient.consultation.mapper.ConsultationListRecord;
 import com.sphp.patient.consultation.service.ConsultationService;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
+import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -87,6 +90,40 @@ public class ConsultationServiceImpl implements ConsultationService {
     }
 
     /**
+     * 分页查询当前账号指定就诊人的问诊记录。
+     *
+     * @param patientId 可选就诊人 ID，未传时查询本人
+     * @param status 可选问诊状态
+     * @param pageNo 可选页码
+     * @param pageSize 可选页大小
+     * @return 问诊记录分页响应
+     * @throws CAuthException 患者归属、状态或分页参数不满足要求时抛出
+     */
+    @Override
+    public ConsultationPageVO listConsultations(Long patientId, String status, Integer pageNo, Integer pageSize) {
+        Long targetPatientId = resolveAccessiblePatient(CUserContext.getRequired().userId(), patientId);
+        validateConsultationStatus(status);
+        int resolvedPageNo = pageNo == null ? ConsultationConstant.DEFAULT_PAGE_NO : pageNo;
+        int resolvedPageSize = pageSize == null ? ConsultationConstant.DEFAULT_PAGE_SIZE : pageSize;
+        if (resolvedPageSize > ConsultationConstant.MAX_PAGE_SIZE) {
+            throw parameterOutOfRange("pageSize 不能超过" + ConsultationConstant.MAX_PAGE_SIZE);
+        }
+        long offset = (long) (resolvedPageNo - 1) * resolvedPageSize;
+        // 列表始终使用已通过归属校验的患者 ID，避免查询其他账号的问诊记录。
+        List<ConsultationPageVO.Item> records = consultationDataMapper
+                .selectConsultationList(targetPatientId, status, resolvedPageSize, offset)
+                .stream()
+                .map(this::toConsultationListItem)
+                .toList();
+        return ConsultationPageVO.builder()
+                .pageNo(resolvedPageNo)
+                .pageSize(resolvedPageSize)
+                .total(consultationDataMapper.countConsultationList(targetPatientId, status))
+                .records(records)
+                .build();
+    }
+
+    /**
      * 解析当前账号可访问的就诊人，未传时固定使用本人。
      *
      * @param userId 当前 C端用户 ID
@@ -105,6 +142,39 @@ public class ConsultationServiceImpl implements ConsultationService {
             throw forbidden("无权访问该就诊人");
         }
         return patientId;
+    }
+
+    /**
+     * 校验问诊状态筛选值。
+     *
+     * @param status 可选问诊状态
+     * @throws CAuthException 状态不在允许范围时抛出
+     */
+    private void validateConsultationStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return;
+        }
+        boolean allowed = java.util.Arrays.stream(ConsultationStatusEnum.values())
+                .anyMatch(item -> item.name().equals(status));
+        if (!allowed) {
+            throw parameterOutOfRange("问诊状态不在允许范围内");
+        }
+    }
+
+    /**
+     * 将问诊列表数据库投影转换为响应项。
+     *
+     * @param record 问诊列表投影
+     * @return 问诊列表响应项
+     */
+    private ConsultationPageVO.Item toConsultationListItem(ConsultationListRecord record) {
+        return ConsultationPageVO.Item.builder()
+                .id(record.id())
+                .appointmentId(record.appointmentId())
+                .doctorName(record.doctorName())
+                .status(record.status())
+                .updatedAt(record.updatedAt())
+                .build();
     }
 
     /**
@@ -193,6 +263,16 @@ public class ConsultationServiceImpl implements ConsultationService {
      */
     private CAuthException statusConflict(String message) {
         return new CAuthException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, message);
+    }
+
+    /**
+     * 创建参数超出允许范围异常。
+     *
+     * @param message 面向客户端的提示
+     * @return HTTP 400 业务异常
+     */
+    private CAuthException parameterOutOfRange(String message) {
+        return new CAuthException(ErrorCodeEnum.PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST, message);
     }
 
     /**
