@@ -4,8 +4,9 @@ LLM 决策选择哪个 Function Calling 工具及参数，返回 ``tool_calls`` 
 safety_check / tool_executor 消费。
 
 安全策略（双层防护）：
-    1. 只绑定 L1 工具给 LLM（L2 归 M3 确认链路，L3/L4 不注册）
-    2. 即便 LLM 返回 L2/L3/L4 工具名，也过滤掉，只放行 L1
+    1. 绑定 L1/L2 工具给 LLM（L3/L4 不注册）
+    2. 即便 LLM 返回 L3/L4 工具名，也过滤掉，只放行 L1/L2
+L2 工具由 safety_check 拦截生成确认卡片；L3/L4 被双层过滤。
 LLM 未选工具或解析失败时降级为 ``tool_calls=[]``，由回复节点兜底，不阻塞流程。
 """
 
@@ -55,14 +56,15 @@ def _build_tools_prompt(tools: list[dict]) -> str:
 async def tool_caller(state: AgentState) -> dict[str, Any]:
     """LLM 决定调用工具，返回 ``{"tool_calls": [...]}``。
 
-    从 ``ToolRegistry`` 取当前 scope 的 L1 工具 Schema，绑定到 LLM，
-    解析返回的 ``tool_calls`` 写入状态。安全校验在此完成：L2/L3/L4 工具被过滤。
+    从 ``ToolRegistry`` 取当前 scope 的 L1/L2 工具 Schema，绑定到 LLM，
+    解析返回的 ``tool_calls`` 写入状态。安全校验在此完成：L3/L4 工具被过滤
+    （L2 由 safety_check 拦截生成确认）。
 
     Args:
         state: 当前图状态，包含 scope / messages 字段。
 
     Returns:
-        dict: 部分状态更新，包含 tool_calls（LLM 选择的 L1 工具列表，
+        dict: 部分状态更新，包含 tool_calls（LLM 选择的 L1/L2 工具列表，
             格式为 ``[{"name": ..., "arguments": {...}}, ...]``）。
 
     Raises:
@@ -75,14 +77,14 @@ async def tool_caller(state: AgentState) -> dict[str, Any]:
         logger.warning("未知 scope=%s，默认使用 c_end 工具集", scope)
         tool_scope = ToolScope.C_END
 
-    # 只取 L1 工具（L2 归 M3，L3/L4 不注册），转 OpenAI schema
+    # 取 L1+L2 工具（L3/L4 不注册；L2 由 safety_check 拦截生成确认），转 OpenAI schema
     tools = [
         t.to_openai_schema()
         for t in ToolRegistry.get_tools_by_scope(tool_scope)
-        if t.security_level == SecurityLevel.L1
+        if t.security_level in (SecurityLevel.L1, SecurityLevel.L2)
     ]
     if not tools:
-        logger.warning("scope=%s 无可用 L1 工具", scope)
+        logger.warning("scope=%s 无可用 L1/L2 工具", scope)
         return {"tool_calls": []}
 
     llm = build_llm()
@@ -105,14 +107,14 @@ async def tool_caller(state: AgentState) -> dict[str, Any]:
 
 
 def _extract_tool_calls(response: Any, tool_scope: ToolScope) -> list[dict]:
-    """从 LLM 响应中提取并过滤 tool_calls（只放行 L1）。
+    """从 LLM 响应中提取并过滤 tool_calls（只放行 L1/L2）。
 
     Args:
         response: LLM ainvoke 返回值（含 tool_calls 属性）。
         tool_scope: 当前服务端，用于校验工具是否存在。
 
     Returns:
-        list[dict]: 过滤后的 L1 工具调用列表。
+        list[dict]: 过滤后的 L1/L2 工具调用列表（L3/L4 拦截）。
     """
     calls = getattr(response, "tool_calls", None) or []
     result: list[dict] = []
@@ -120,10 +122,14 @@ def _extract_tool_calls(response: Any, tool_scope: ToolScope) -> list[dict]:
         name = getattr(call, "name", "")
         args = getattr(call, "args", {}) or {}
         tool = ToolRegistry.get_tool(name)
-        # 双重过滤：工具必须存在且为 L1（即便 LLM 返回 L2/L3 也拦截）
-        is_l1 = tool.security_level == SecurityLevel.L1
-        if tool is not None and tool.scope == tool_scope and is_l1:
+        # 双重过滤：工具必须存在且为 L1/L2（即便 LLM 返回 L3/L4 也拦截）
+        is_allowed = (
+            tool is not None
+            and tool.scope == tool_scope
+            and tool.security_level in (SecurityLevel.L1, SecurityLevel.L2)
+        )
+        if is_allowed:
             result.append({"name": name, "arguments": args})
         else:
-            logger.warning("过滤非 L1 工具调用: %s", name)
+            logger.warning("过滤非 L1/L2 工具调用: %s", name)
     return result
