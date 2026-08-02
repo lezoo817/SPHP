@@ -1,5 +1,6 @@
 package com.sphp.patient.registration.service;
 
+import com.sphp.patient.registration.vo.DepartmentListVO;
 import com.sphp.patient.registration.vo.HospitalListVO;
 
 import java.util.List;
@@ -15,4 +16,14 @@ public interface RegistrationService {
      * @return 启用医院列表
      */
     List<HospitalListVO> listHospitals();
+
+    /**
+     * 查询指定可用医院下的启用科室。
+     *
+     * @param hospitalId 医院 ID
+     * @param keyword 可选科室名称关键字
+     * @return 可选科室列表
+     * @throws com.sphp.patient.auth.exception.CAuthException 医院不存在或已停用时抛出
+     */
+    List<DepartmentListVO> listDepartments(Long hospitalId, String keyword);
 }
