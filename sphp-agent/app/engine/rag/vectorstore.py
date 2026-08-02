@@ -35,4 +35,5 @@ def get_vectorstore() -> PGVector:
         collection_name=get_settings().kb_collection,
         connection=_connection_string(),
         use_jsonb=True,
+        async_mode=True,
     )

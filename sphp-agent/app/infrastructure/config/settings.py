@@ -106,6 +106,8 @@ class Settings(BaseSettings):
     kb_chunk_size: int = 500
     kb_chunk_overlap: int = 50
     kb_top_k: int = 5
+    # 检索结果相关度阈值：低于该值的结果不返回（cosine score 0~1，越高越相关）
+    kb_min_score: float = 0.3
     kb_ingest_root: str = ""  # 入库允许的根目录绝对路径，空则拒绝目录入库（防路径遍历）
 
     # ---- Agent 行为参数 ----
