@@ -77,4 +77,20 @@ class CJwtInterceptorTest {
         assertEquals(401, response.getStatus());
         assertNull(CUserContext.get());
     }
+
+    /**
+     * 验证浏览器跨域预检请求不需要 C端 Token。
+     *
+     * @throws Exception 拦截器处理失败时抛出
+     */
+    @Test
+    void optionsPreflightRequestBypassesTokenValidation() throws Exception {
+        CJwtInterceptor interceptor = new CJwtInterceptor(
+                mock(CJwtService.class), mock(StringRedisTemplate.class), new ObjectMapper());
+        MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/c/v1/family-members");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertTrue(interceptor.preHandle(request, response, new Object()));
+        assertNull(CUserContext.get());
+    }
 }
