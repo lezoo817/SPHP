@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sphp.patient.consultation.mapper.ConsultationDataMapper">
+
+    <select id="selectConsultationSelfPatientId" resultType="java.lang.Long">
+        SELECT pur.patient_id
+        FROM patient_user_relation pur
+        INNER JOIN patient p ON p.id = pur.patient_id AND p.deleted_at IS NULL
+        WHERE pur.user_id = #{userId}
+          AND pur.relationship = 'SELF'
+          AND pur.deleted_at IS NULL
+        ORDER BY pur.created_at ASC, pur.id ASC
+        LIMIT 1
+    </select>
+
+    <select id="existsConsultationActivePatient" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1 FROM patient WHERE id = #{patientId} AND deleted_at IS NULL
+        )
+    </select>
+
+    <select id="hasConsultationActivePatientRelation" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1 FROM patient_user_relation
+            WHERE user_id = #{userId}
+              AND patient_id = #{patientId}
+              AND deleted_at IS NULL
+        )
+    </select>
+
+    <select id="lockConsultationAppointment" resultType="com.sphp.patient.consultation.mapper.ConsultationAppointmentRecord">
+        SELECT id, patient_id, doctor_id, status
+        FROM appointment
+        WHERE id = #{appointmentId}
+          AND deleted_at IS NULL
+        FOR UPDATE
+    </select>
+
+    <select id="selectConsultationByAppointmentForUpdate" resultType="com.sphp.patient.consultation.entity.ConsultationRecord">
+        SELECT id, appointment_id, doctor_id, patient_id, status, chief_complaint,
+               history_of_present_illness, attachments AS attachments_json,
+               pre_consultation_submitted_at, created_at, updated_at, deleted_at
+        FROM consult_record
+        WHERE appointment_id = #{appointmentId}
+          AND deleted_at IS NULL
+        FOR UPDATE
+    </select>
+
+    <insert id="insertConsultationRecord" useGeneratedKeys="true" keyProperty="record.id">
+        INSERT INTO consult_record (
+            appointment_id, doctor_id, patient_id, status, chief_complaint,
+            history_of_present_illness, attachments, pre_consultation_submitted_at,
+            created_at, updated_at
+        ) VALUES (
+            #{record.appointmentId}, #{record.doctorId}, #{record.patientId}, #{record.status},
+            #{record.chiefComplaint}, #{record.historyOfPresentIllness},
+            CAST(#{record.attachmentsJson, jdbcType=VARCHAR} AS jsonb),
+            #{record.preConsultationSubmittedAt}, #{record.createdAt}, #{record.updatedAt}
+        )
+    </insert>
+
+    <update id="updateConsultationDraft">
+        UPDATE consult_record
+        SET status = #{record.status},
+            chief_complaint = #{record.chiefComplaint},
+            history_of_present_illness = #{record.historyOfPresentIllness},
+            attachments = CAST(#{record.attachmentsJson, jdbcType=VARCHAR} AS jsonb),
+            pre_consultation_submitted_at = #{record.preConsultationSubmittedAt},
+            updated_at = #{record.updatedAt}
+        WHERE id = #{record.id}
+          AND status = #{expectedStatus}
+          AND deleted_at IS NULL
+    </update>
+
+    <select id="selectConsultationList" resultType="com.sphp.patient.consultation.mapper.ConsultationListRecord">
+        SELECT cr.id, cr.appointment_id, d.name AS doctor_name, cr.status, cr.updated_at
+        FROM consult_record cr
+        LEFT JOIN doctor d ON d.id = cr.doctor_id
+        WHERE cr.patient_id = #{patientId}
+          AND cr.deleted_at IS NULL
+        <if test="status != null and status != ''">
+            AND cr.status = #{status}
+        </if>
+        ORDER BY cr.updated_at DESC, cr.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countConsultationList" resultType="long">
+        SELECT COUNT(1)
+        FROM consult_record
+        WHERE patient_id = #{patientId}
+          AND deleted_at IS NULL
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+    </select>
+
+    <select id="selectConsultationDetail" resultType="com.sphp.patient.consultation.mapper.ConsultationDetailRecord">
+        SELECT cr.id, cr.patient_id, cr.status, d.id AS doctor_id, d.name AS doctor_name,
+               d.title AS doctor_title, cr.chief_complaint, cr.history_of_present_illness,
+               cr.attachments::text AS attachments_json, cr.updated_at AS saved_at,
+               cr.pre_consultation_submitted_at AS submitted_at
+        FROM consult_record cr
+        LEFT JOIN doctor d ON d.id = cr.doctor_id
+        WHERE cr.id = #{consultationId}
+          AND cr.deleted_at IS NULL
+    </select>
+
+    <select id="selectConsultationMessages" resultType="com.sphp.patient.consultation.mapper.ConsultationMessageRecord">
+        SELECT id, sender_type, content, created_at
+        FROM consultation_message
+        WHERE consult_id = #{consultationId}
+          AND deleted_at IS NULL
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <select id="selectConsultationApprovedPrescriptionIds" resultType="java.lang.Long">
+        SELECT id
+        FROM prescription
+        WHERE consult_id = #{consultationId}
+          AND status = 'APPROVED'
+          AND deleted_at IS NULL
+        ORDER BY issued_at ASC NULLS LAST, id ASC
+    </select>
+
+    <select id="selectApprovedPrescriptionList" resultType="com.sphp.patient.consultation.mapper.ConsultationPrescriptionRecord">
+        SELECT p.id, p.consult_id AS consultation_id, d.name AS doctor_name, p.issued_at
+        FROM prescription p
+        LEFT JOIN doctor d ON d.id = p.doctor_id
+        WHERE p.patient_id = #{patientId}
+          AND p.status = 'APPROVED'
+          AND p.deleted_at IS NULL
+        ORDER BY p.issued_at DESC NULLS LAST, p.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countApprovedPrescriptionList" resultType="long">
+        SELECT COUNT(1)
+        FROM prescription
+        WHERE patient_id = #{patientId}
+          AND status = 'APPROVED'
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="selectConsultationPrescriptionResource" resultType="com.sphp.patient.consultation.mapper.ConsultationPrescriptionResourceRecord">
+        SELECT id, patient_id, status
+        FROM prescription
+        WHERE id = #{prescriptionId}
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="selectApprovedPrescriptionDetail" resultType="com.sphp.patient.consultation.mapper.ConsultationPrescriptionDetailRecord">
+        SELECT p.id, d.id AS doctor_id, d.name AS doctor_name, d.title AS doctor_title
+        FROM prescription p
+        LEFT JOIN doctor d ON d.id = p.doctor_id
+        WHERE p.id = #{prescriptionId}
+          AND p.status = 'APPROVED'
+          AND p.deleted_at IS NULL
+    </select>
+
+    <select id="selectConsultationPrescriptionItems" resultType="com.sphp.patient.consultation.mapper.ConsultationPrescriptionItemRecord">
+        SELECT pi.drug_id, d.name AS drug_name, d.specification, pi.dosage, pi.frequency,
+               pi.usage_method AS usage, pi.days AS duration_days
+        FROM prescription_item pi
+        INNER JOIN drug d ON d.id = pi.drug_id
+        WHERE pi.prescription_id = #{prescriptionId}
+        ORDER BY pi.id ASC
+    </select>
+</mapper>
