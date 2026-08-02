@@ -13,6 +13,9 @@ from app.infrastructure.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+# 应用版本号（统一引用，避免多处硬编码）
+APP_VERSION = "2.0.0"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,7 +37,7 @@ async def lifespan(app: FastAPI):
 
     register_c_tools()
     register_b_tools()
-    logger.info("Tool schemas registered (C:30, B:9)")
+    logger.info("Tool schemas registered")
 
     # 步骤 5：启动 MCP Server
     from app.mcp_server.server import start_mcp_server, stop_mcp_server
@@ -61,12 +64,54 @@ async def lifespan(app: FastAPI):
     logger.info("Agent shutdown complete")
 
 
+async def health() -> dict:
+    """健康检查端点（系分 §4.5）。检查 PG / Redis / LLM 连通性。"""
+    checks = {
+        "pg": await _check_pg(),
+        "redis": await _check_redis(),
+        "llm": _check_llm(),
+    }
+    overall = "healthy" if all(v == "ok" for v in checks.values()) else "unhealthy"
+    return {"status": overall, "checks": checks, "version": APP_VERSION}
+
+
+async def _check_pg() -> str:
+    """检查 PostgreSQL（pgvector）连通性。"""
+    try:
+        from app.engine.rag.vectorstore import get_vectorstore
+
+        return "ok" if get_vectorstore() else "error"
+    except Exception:
+        return "error"
+
+
+async def _check_redis() -> str:
+    """检查 Redis 连通性。"""
+    try:
+        from app.infrastructure.cache.redis_client import get_redis
+
+        await get_redis().ping()
+        return "ok"
+    except Exception:
+        return "error"
+
+
+def _check_llm() -> str:
+    """检查 LLM 配置有效性。"""
+    try:
+        from app.engine.llm.factory import build_llm
+
+        return "ok" if build_llm() else "error"
+    except Exception:
+        return "error"
+
+
 def create_app() -> FastAPI:
     """创建 FastAPI 应用实例。"""
     settings = get_settings()
     app = FastAPI(
         title=settings.app_name,
-        version="2.0.0",
+        version=APP_VERSION,
         debug=settings.debug,
         lifespan=lifespan,
     )
@@ -94,58 +139,7 @@ def create_app() -> FastAPI:
 
     app.include_router(chat_router, prefix="/api", tags=["对话"])
     app.include_router(knowledge_router, tags=["知识库"])
-
-    @app.get("/health")
-    async def health() -> dict:
-        """健康检查端点（系分 §4.5）。
-
-        检查 PG / Redis / LLM 连通性。
-        """
-        # 初始化为 checking，检查后更新为 ok/error（避免检查前误报 ok）
-        checks = {"pg": "checking", "redis": "checking", "llm": "checking"}
-
-        # 检查 PostgreSQL 连接
-        try:
-            from app.engine.rag.vectorstore import get_vectorstore
-
-            vs = get_vectorstore()
-            if vs:
-                checks["pg"] = "ok"
-            else:
-                checks["pg"] = "error"
-        except Exception:
-            checks["pg"] = "error"
-
-        # 检查 Redis 连接
-        try:
-            from app.infrastructure.cache.redis_client import get_redis
-
-            redis = get_redis()
-            await redis.ping()
-            checks["redis"] = "ok"
-        except Exception:
-            checks["redis"] = "error"
-
-        # 检查 LLM API（仅检查配置，不真实调用）
-        try:
-            from app.engine.llm.factory import build_llm
-
-            llm = build_llm()
-            if llm:
-                checks["llm"] = "ok"
-            else:
-                checks["llm"] = "error"
-        except Exception:
-            checks["llm"] = "error"
-
-        # 只要有一项失败，整体状态为 unhealthy
-        overall_status = "healthy" if all(v == "ok" for v in checks.values()) else "unhealthy"
-
-        return {
-            "status": overall_status,
-            "checks": checks,
-            "version": "2.0.0",
-        }
+    app.add_api_route("/health", health, methods=["GET"])
 
     return app
 
