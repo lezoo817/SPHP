@@ -119,6 +119,7 @@ public class HealthExceptionHandler {
             case "A0301" -> HttpStatus.FORBIDDEN;
             case "A0443", "A0506", "B0202" -> HttpStatus.CONFLICT;
             case "A0203" -> HttpStatus.FORBIDDEN;
+            case "B0001" -> HttpStatus.INTERNAL_SERVER_ERROR;
             default -> HttpStatus.BAD_REQUEST;
         };
     }

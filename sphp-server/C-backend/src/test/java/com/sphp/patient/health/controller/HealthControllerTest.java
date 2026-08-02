@@ -14,6 +14,7 @@ import com.sphp.patient.health.vo.HealthProfileVO;
 import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
+import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,6 +24,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.http.HttpStatus;
+import com.sphp.shared.common.enums.ErrorCodeEnum;
 
 import java.util.List;
 import java.time.LocalDate;
@@ -193,6 +196,59 @@ class HealthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("既往史已更新"))
                 .andExpect(jsonPath("$.data.content").value("高血压病史6年"));
+    }
+
+    /**
+     * 验证缺少幂等键时返回统一参数错误响应。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void createAllergyRejectsMissingIdempotencyKey() throws Exception {
+        HealthService healthService = mock(HealthService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        AllergyCreateRequest request = new AllergyCreateRequest();
+        request.setAllergen("青霉素");
+
+        newMockMvc(healthService, idempotencyService).perform(post("/c/v1/health-record/allergies")
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("A0400"));
+    }
+
+    /**
+     * 验证无权访问患者健康档案时返回 HTTP 403。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void getHealthRecordReturnsForbiddenForUnauthorizedPatient() throws Exception {
+        HealthService healthService = mock(HealthService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        when(healthService.getHealthRecord(20002L)).thenThrow(
+                new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, "无权访问该就诊人健康档案"));
+
+        newMockMvc(healthService, idempotencyService).perform(get("/c/v1/health-record").param("patientId", "20002"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A0301"));
+    }
+
+    /**
+     * 验证健康档案系统异常返回 HTTP 500。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void getHealthRecordReturnsInternalServerErrorForSystemFailure() throws Exception {
+        HealthService healthService = mock(HealthService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        when(healthService.getHealthRecord(20001L)).thenThrow(
+                new CAuthException(ErrorCodeEnum.SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, "健康档案查询失败"));
+
+        newMockMvc(healthService, idempotencyService).perform(get("/c/v1/health-record").param("patientId", "20001"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("B0001"));
     }
 
     /**

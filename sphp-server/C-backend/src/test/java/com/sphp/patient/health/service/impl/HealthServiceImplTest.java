@@ -2,6 +2,7 @@ package com.sphp.patient.health.service.impl;
 
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
+import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.health.dto.AllergyCreateRequest;
 import com.sphp.patient.health.dto.AllergyUpdateRequest;
 import com.sphp.patient.health.dto.MedicalHistoryCreateRequest;
@@ -27,6 +28,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doAnswer;
@@ -197,6 +199,52 @@ class HealthServiceImplTest {
                 history.getPatientId().equals(20001L)
                         && "高血压病史6年".equals(history.getContent())
                         && LocalDate.of(2021, 1, 1).equals(history.getOccurredAt())), any());
+    }
+
+    /**
+     * 验证显式指定不属于当前账号的就诊人时返回访问未授权业务码。
+     */
+    @Test
+    void getHealthRecordRejectsInaccessiblePatient() {
+        HealthPatientMapper healthPatientMapper = mock(HealthPatientMapper.class);
+        PatientAllergyMapper allergyMapper = mock(PatientAllergyMapper.class);
+        PatientMedicalHistoryMapper historyMapper = mock(PatientMedicalHistoryMapper.class);
+        HealthServiceImpl healthService = new HealthServiceImpl(healthPatientMapper, allergyMapper, historyMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        when(healthPatientMapper.existsActivePatient(20002L)).thenReturn(true);
+        when(healthPatientMapper.hasActivePatientRelation(10001L, 20002L)).thenReturn(false);
+
+        CAuthException exception = assertThrows(CAuthException.class,
+                () -> healthService.getHealthRecord(20002L));
+
+        assertEquals("A0301", exception.getCode());
+    }
+
+    /**
+     * 验证条件更新未命中时返回资源不存在业务码。
+     */
+    @Test
+    void updateMedicalHistoryRejectsMissingConditionalRecord() {
+        HealthPatientMapper healthPatientMapper = mock(HealthPatientMapper.class);
+        PatientAllergyMapper allergyMapper = mock(PatientAllergyMapper.class);
+        PatientMedicalHistoryMapper historyMapper = mock(PatientMedicalHistoryMapper.class);
+        HealthServiceImpl healthService = new HealthServiceImpl(healthPatientMapper, allergyMapper, historyMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        MedicalHistoryUpdateRequest request = new MedicalHistoryUpdateRequest();
+        request.setContent("高血压病史6年");
+        PatientMedicalHistory existing = history(17001L, "高血压病史5年", LocalDate.of(2021, 1, 1));
+        existing.setPatientId(20001L);
+        when(historyMapper.selectOne(any())).thenReturn(existing);
+        when(healthPatientMapper.existsActivePatient(20001L)).thenReturn(true);
+        when(healthPatientMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(historyMapper.update(any(PatientMedicalHistory.class), any())).thenReturn(0);
+
+        CAuthException exception = assertThrows(CAuthException.class,
+                () -> healthService.updateMedicalHistory(17001L, request));
+
+        assertEquals("A0402", exception.getCode());
     }
 
     /**
