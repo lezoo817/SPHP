@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sphp.patient.health.mapper.HealthPatientMapper">
+
+    <select id="selectSelfPatientId" resultType="java.lang.Long">
+        SELECT pur.patient_id
+        FROM patient_user_relation pur
+        INNER JOIN patient p ON p.id = pur.patient_id AND p.deleted_at IS NULL
+        WHERE pur.user_id = #{userId}
+          AND pur.relationship = 'SELF'
+          AND pur.deleted_at IS NULL
+        ORDER BY pur.created_at ASC, pur.id ASC
+        LIMIT 1
+    </select>
+
+    <select id="existsActivePatient" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM patient
+            WHERE id = #{patientId}
+              AND deleted_at IS NULL
+        )
+    </select>
+
+    <select id="hasActivePatientRelation" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM patient_user_relation
+            WHERE user_id = #{userId}
+              AND patient_id = #{patientId}
+              AND deleted_at IS NULL
+        )
+    </select>
+
+    <select id="selectActiveProfile" resultType="com.sphp.patient.health.mapper.HealthPatientProfileRecord">
+        SELECT id, name, gender
+        FROM patient
+        WHERE id = #{patientId}
+          AND deleted_at IS NULL
+    </select>
+</mapper>
