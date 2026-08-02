@@ -484,14 +484,13 @@ export default function DoctorList() {
             ]}
             placeholder="4-32位，字母、数字或下划线"
           />
-          <ProFormText
+          <ProFormText.Password
             name="password"
             label="登录密码"
             rules={[
               { required: true, message: '请输入密码' },
               { min: 6, max: 64, message: '密码长度为 6-64 位' },
             ]}
-            fieldProps={{ type: 'password' }}
             placeholder="6-64位"
           />
           <ProFormSelect
@@ -617,14 +616,13 @@ export default function DoctorList() {
             submitButtonProps: { loading: submitting },
           }}
         >
-          <ProFormText
+          <ProFormText.Password
             name="password"
             label="新密码"
             rules={[
               { required: true, message: '请输入新密码' },
               { min: 6, max: 64, message: '密码长度为 6-64 位' },
             ]}
-            fieldProps={{ type: 'password' }}
             placeholder="6-64位"
           />
         </ProForm>
