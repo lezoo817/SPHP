@@ -5,6 +5,8 @@ export default defineConfig({
     { path: '/', redirect: '/login' },
     { path: '/login', component: 'login/index' },
     { path: '/home', component: 'home/index' },
+    { path: '/home/hospitals', component: 'home/hospitals' },
+    { path: '/home/search', component: 'home/search' },
     { path: '/assistant', component: 'assistant/index' },
     { path: '/assistant/book', component: 'assistant/book' },
     { path: '/assistant/pay/:paymentId', component: 'assistant/pay' },

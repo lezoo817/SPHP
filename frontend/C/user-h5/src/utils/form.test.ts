@@ -7,7 +7,7 @@ import {
   validateFamilyMember,
   validatePassword,
 } from './form';
-import { formatAmount, sortHospitals } from './medical';
+import { filterHospitals, formatAmount, sortHospitals } from './medical';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -35,5 +35,9 @@ describe('挂号资源展示规则', () => {
 
   it('将分金额格式化为元', () => {
     expect(formatAmount(1250)).toBe('12.50 元');
+  });
+
+  it('按关键词筛选医院名称', () => {
+    expect(filterHospitals([{ name: '省人民医院' }, { name: '市中医院' }], '人民')).toEqual([{ name: '省人民医院' }]);
   });
 });

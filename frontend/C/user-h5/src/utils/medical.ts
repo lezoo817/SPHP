@@ -8,6 +8,12 @@ export function sortHospitals<T extends { name: string }>(hospitals: T[]): T[] {
   return [...hospitals].sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'));
 }
 
+/** 按不区分空白的关键词筛选医院名称。 */
+export function filterHospitals<T extends { name: string }>(hospitals: T[], keyword: string): T[] {
+  const normalizedKeyword = keyword.trim();
+  return normalizedKeyword ? hospitals.filter((hospital) => hospital.name.includes(normalizedKeyword)) : hospitals;
+}
+
 /** 将 ISO-8601 时间转换为面向患者的简明时间。 */
 export function formatMedicalTime(value?: string): string {
   if (!value) return '时间待确认';
