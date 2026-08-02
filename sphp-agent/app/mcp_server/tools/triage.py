@@ -38,7 +38,7 @@ async def create_triage_assessment(
     Raises:
         httpx.HTTPError: Java API调用失败
     """
-    body = {"symptom": symptom}
+    body = {"hospital_id": hospital_id, "symptom": symptom}
     if duration:
         body["duration"] = duration
     if temperature is not None:
@@ -46,7 +46,7 @@ async def create_triage_assessment(
     if medical_history:
         body["medical_history"] = medical_history
 
-    logger.info("导诊评估请求: hospital_id=%s, symptom=%s", hospital_id, symptom)
+    logger.info("导诊评估请求: hospital_id=%s, symptom_len=%d", hospital_id, len(symptom))
 
     return await call_java_api(
         method="POST",
