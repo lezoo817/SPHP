@@ -20,6 +20,9 @@ from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
 
+# 医疗安全声明（流式回复末尾补推，确保前端必见）
+MEDICAL_DISCLAIMER = "\n\n---\n⚠️ **AI 建议仅供参考，不作为诊断依据。如有疑问请咨询专业医生。**"
+
 router = APIRouter()
 
 # 全局主图实例（编译后的 CompiledGraph）
@@ -102,90 +105,100 @@ async def _sse_generator(
     streamed_reply = False
 
     try:
-        async for mode, chunk in graph.astream(
-            initial_state,
-            config=config,
-            stream_mode=["custom", "messages", "updates"],
-        ):
-            if mode == "custom":
-                if not isinstance(chunk, dict):
-                    continue
-                ctype = chunk.get("type", "")
-                if ctype == "tool_action":
-                    yield _sse(
-                        "action",
-                        {"tool": chunk.get("tool", ""), "arguments": chunk.get("arguments", {})},
-                    )
-                elif ctype == "tool_observation":
-                    result = chunk.get("result", {})
-                    yield _sse(
-                        "observation",
-                        {
+        try:
+            async for mode, chunk in graph.astream(
+                initial_state,
+                config=config,
+                stream_mode=["custom", "messages", "updates"],
+            ):
+                if mode == "custom":
+                    if not isinstance(chunk, dict):
+                        continue
+                    ctype = chunk.get("type", "")
+                    if ctype == "tool_action":
+                        yield _sse(
+                            "action",
+                            {"tool": chunk.get("tool", ""), "arguments": chunk.get("arguments", {})},
+                        )
+                    elif ctype == "tool_observation":
+                        result = chunk.get("result", {})
+                        obs = {
                             "tool": result.get("tool_name", ""),
                             "success": result.get("success", False),
-                        },
-                    )
+                        }
+                        if not result.get("success"):
+                            error = result.get("error", {})
+                            obs["error"] = error.get("message", "执行失败")
+                        yield _sse("observation", obs)
 
-            elif mode == "messages":
-                msg, meta = chunk
-                node = (meta or {}).get("langgraph_node", "")
-                # 仅 reply_node 的 assistant token 推送给前端
-                # （intent_node / tool_caller 的 LLM 输出不推送）
-                if node == "reply_node" and getattr(msg, "type", "") == "ai":
-                    delta = getattr(msg, "content", "") or ""
-                    if delta:
-                        streamed_reply = True
-                        yield _sse("message", {"delta": delta})
+                elif mode == "messages":
+                    msg, meta = chunk
+                    node = (meta or {}).get("langgraph_node", "")
+                    # 仅 reply_node 的 assistant token 推送给前端
+                    # （intent_node / tool_caller 的 LLM 输出不推送）
+                    if node == "reply_node" and getattr(msg, "type", "") in ("ai", "AIMessageChunk"):
+                        delta = getattr(msg, "content", "") or ""
+                        if delta:
+                            streamed_reply = True
+                            yield _sse("message", {"delta": delta})
 
-            elif mode == "updates":
-                # 子图更新里含 tool_calls / tool_results，重建 action / observation
-                for node_name, node_update in chunk.items():
-                    if not isinstance(node_update, dict):
-                        continue
-                    tool_calls = node_update.get("tool_calls") or []
-                    if tool_calls:
-                        for tc in tool_calls:
-                            yield _sse(
-                                "action",
-                                {
-                                    "tool": tc.get("name", ""),
-                                    "arguments": tc.get("arguments", {}),
-                                },
-                            )
-                    tool_results = node_update.get("tool_results") or []
-                    if tool_results:
-                        for tr in tool_results:
-                            yield _sse(
-                                "observation",
-                                {
+                elif mode == "updates":
+                    # 子图更新里含 tool_calls / tool_results，重建 action / observation
+                    for node_name, node_update in chunk.items():
+                        if not isinstance(node_update, dict):
+                            continue
+                        tool_calls = node_update.get("tool_calls") or []
+                        if tool_calls:
+                            for tc in tool_calls:
+                                yield _sse(
+                                    "action",
+                                    {
+                                        "tool": tc.get("name", ""),
+                                        "arguments": tc.get("arguments", {}),
+                                    },
+                                )
+                        tool_results = node_update.get("tool_results") or []
+                        if tool_results:
+                            for tr in tool_results:
+                                obs = {
                                     "tool": tr.get("tool_name", ""),
                                     "success": tr.get("success", False),
-                                },
-                            )
+                                }
+                                if not tr.get("success"):
+                                    error = tr.get("error", {})
+                                    obs["error"] = error.get("message", "执行失败")
+                                yield _sse("observation", obs)
 
-                    # L2 操作需用户确认：推送 card 事件（系分 §6.2.2）
-                    pending_list = node_update.get("pending_confirmations") or []
-                    for p in pending_list:
-                        yield _sse("card", _build_card(p))
+                        # L2 操作需用户确认：推送 card 事件（系分 §6.2.2）
+                        pending_list = node_update.get("pending_confirmations") or []
+                        for p in pending_list:
+                            yield _sse("card", _build_card(p))
 
-                # reply_node 完成但未流式时，兜底推送完整回复
-                if "reply_node" in chunk and not streamed_reply:
-                    output = chunk.get("reply_node", {})
-                    content = _extract_last_content(output)
-                    if content:
-                        yield _sse("message", {"delta": content})
+                    # reply_node 完成但未流式时，兜底推送完整回复
+                    if "reply_node" in chunk and not streamed_reply:
+                        output = chunk.get("reply_node", {})
+                        content = _extract_last_content(output)
+                        if content:
+                            yield _sse("message", {"delta": content})
 
-        logger.info("[SSE] 流程完成, session_id=%s", thread_id)
+            logger.info("[SSE] 流程完成, session_id=%s", thread_id)
+            # 流式回复后补推医疗安全声明（不在 LLM 流中，确保前端必见）
+            if streamed_reply:
+                yield _sse("message", {"delta": MEDICAL_DISCLAIMER})
+
+        except GeneratorExit:
+            logger.warning("[SSE] 客户端断开连接, session_id=%s", thread_id)
+            raise
+        except Exception as e:
+            logger.error("[SSE] 异常: %s\n%s", e, traceback.format_exc())
+            yield _sse(
+                "error",
+                {"code": "SERVER_ERROR", "message": "服务异常，请稍后重试", "trace_id": trace_id},
+            )
+
+    finally:
+        # 确保 done 事件始终推送（即使异常/取消）
         yield _sse("done", {"session_id": thread_id, "trace_id": trace_id})
-
-    except Exception as e:
-        logger.error("[SSE] 异常: %s\n%s", e, traceback.format_exc())
-        # 不向客户端泄露内部异常细节
-        yield _sse(
-            "error",
-            {"code": "SERVER_ERROR", "message": "服务异常，请稍后重试", "trace_id": trace_id},
-        )
-        yield _sse("done", {})
 
 
 def _sse(event: str, payload: dict) -> str:
