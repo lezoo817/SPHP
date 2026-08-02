@@ -52,13 +52,15 @@ async def safety_check(state: AgentState) -> dict:
                 risk_flags.append(f"redis_unavailable_{tool_name}")
                 continue
 
-            pending_confirmations.append({
-                "tool_name": tool_name,
-                "tool_arguments": tc.get("arguments", {}),
-                "confirm_token": token,
-                "card_type": _map_card_type(tool_name),
-                "session_id": session_id,
-            })
+            pending_confirmations.append(
+                {
+                    "tool_name": tool_name,
+                    "tool_arguments": tc.get("arguments", {}),
+                    "confirm_token": token,
+                    "card_type": _map_card_type(tool_name),
+                    "session_id": session_id,
+                }
+            )
         elif tool.security_level in (SecurityLevel.L3, SecurityLevel.L4):
             risk_flags.append(f"blocked_{tool_name}")
 
@@ -78,6 +80,8 @@ def _map_card_type(tool_name: str) -> str:
         "send_consultation_message": "confirm_send_message",
         "create_drug_order": "confirm_drug_order",
         "cancel_drug_order": "confirm_cancel_drug_order",
+        "confirm_drug_receipt": "confirm_drug_receipt",
+        "join_waitlist": "confirm_waitlist",
         "manage_allergy": "confirm_allergy",
         "manage_medical_history": "confirm_medical_history",
         "create_report": "confirm_report",
