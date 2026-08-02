@@ -1,0 +1,140 @@
+package com.sphp.patient.health.service.impl;
+
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.sphp.patient.auth.exception.CAuthException;
+import com.sphp.patient.auth.support.context.CUserContext;
+import com.sphp.patient.health.entity.PatientAllergy;
+import com.sphp.patient.health.entity.PatientMedicalHistory;
+import com.sphp.patient.health.mapper.HealthPatientMapper;
+import com.sphp.patient.health.mapper.HealthPatientProfileRecord;
+import com.sphp.patient.health.mapper.PatientAllergyMapper;
+import com.sphp.patient.health.mapper.PatientMedicalHistoryMapper;
+import com.sphp.patient.health.service.HealthService;
+import com.sphp.patient.health.vo.AllergyItemVO;
+import com.sphp.patient.health.vo.HealthProfileVO;
+import com.sphp.patient.health.vo.HealthRecordVO;
+import com.sphp.patient.health.vo.MedicalHistoryItemVO;
+import com.sphp.shared.common.enums.ErrorCodeEnum;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+/**
+ * C端健康档案服务实现。
+ */
+@Service
+@RequiredArgsConstructor
+public class HealthServiceImpl implements HealthService {
+
+    private final HealthPatientMapper healthPatientMapper;
+    private final PatientAllergyMapper allergyMapper;
+    private final PatientMedicalHistoryMapper historyMapper;
+
+    /**
+     * 查询当前账号可访问就诊人的健康档案。
+     *
+     * @param patientId 可选就诊人 ID，未传时查询本人
+     * @return 健康档案资料、过敏史、既往史和摘要
+     * @throws CAuthException 就诊人不存在或不属于当前账号时抛出
+     */
+    @Override
+    public HealthRecordVO getHealthRecord(Long patientId) {
+        Long targetPatientId = resolveAccessiblePatientId(patientId);
+        HealthPatientProfileRecord profile = healthPatientMapper.selectActiveProfile(targetPatientId);
+        if (profile == null) {
+            throw notFound("就诊人不存在或已停用");
+        }
+        List<AllergyItemVO> allergies = allergyMapper.selectList(Wrappers.<PatientAllergy>lambdaQuery()
+                        .eq(PatientAllergy::getPatientId, targetPatientId)
+                        .isNull(PatientAllergy::getDeletedAt)
+                        .orderByAsc(PatientAllergy::getCreatedAt)
+                        .orderByAsc(PatientAllergy::getId))
+                .stream()
+                .map(this::toAllergyItemVO)
+                .toList();
+        List<MedicalHistoryItemVO> medicalHistories = historyMapper.selectList(
+                        Wrappers.<PatientMedicalHistory>lambdaQuery()
+                                .eq(PatientMedicalHistory::getPatientId, targetPatientId)
+                                .isNull(PatientMedicalHistory::getDeletedAt)
+                                .orderByAsc(PatientMedicalHistory::getCreatedAt)
+                                .orderByAsc(PatientMedicalHistory::getId))
+                .stream()
+                .map(this::toMedicalHistoryItemVO)
+                .toList();
+        return HealthRecordVO.builder()
+                .profile(HealthProfileVO.builder()
+                        .id(profile.id())
+                        .name(profile.name())
+                        .gender(profile.gender())
+                        .build())
+                .allergies(allergies)
+                .medicalHistories(medicalHistories)
+                .summary("已记录" + allergies.size() + "项过敏史和" + medicalHistories.size() + "项既往史")
+                .build();
+    }
+
+    /**
+     * 解析并校验当前账号可访问的目标就诊人。
+     *
+     * @param patientId 请求指定的就诊人 ID，可为 null
+     * @return 通过归属校验的就诊人 ID
+     * @throws CAuthException 本人关系缺失、就诊人不存在或无访问权限时抛出
+     */
+    private Long resolveAccessiblePatientId(Long patientId) {
+        Long userId = CUserContext.getRequired().userId();
+        if (patientId == null) {
+            Long selfPatientId = healthPatientMapper.selectSelfPatientId(userId);
+            if (selfPatientId == null) {
+                throw notFound("当前账号未找到有效本人就诊人");
+            }
+            return selfPatientId;
+        }
+        if (!healthPatientMapper.existsActivePatient(patientId)) {
+            throw notFound("就诊人不存在或已停用");
+        }
+        if (!healthPatientMapper.hasActivePatientRelation(userId, patientId)) {
+            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, "无权访问该就诊人健康档案");
+        }
+        return patientId;
+    }
+
+    /**
+     * 转换过敏史列表项，避免输出实体中的服务端字段。
+     *
+     * @param allergy 过敏史实体
+     * @return 过敏史列表项
+     */
+    private AllergyItemVO toAllergyItemVO(PatientAllergy allergy) {
+        return AllergyItemVO.builder()
+                .id(allergy.getId())
+                .allergen(allergy.getAllergen())
+                .reaction(allergy.getReaction())
+                .build();
+    }
+
+    /**
+     * 转换既往史列表项，避免输出实体中的服务端字段。
+     *
+     * @param history 既往史实体
+     * @return 既往史列表项
+     */
+    private MedicalHistoryItemVO toMedicalHistoryItemVO(PatientMedicalHistory history) {
+        return MedicalHistoryItemVO.builder()
+                .id(history.getId())
+                .content(history.getContent())
+                .occurredAt(history.getOccurredAt())
+                .build();
+    }
+
+    /**
+     * 创建资源不存在异常。
+     *
+     * @param message 面向调用方的提示
+     * @return HTTP 404 业务异常
+     */
+    private CAuthException notFound(String message) {
+        return new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
+    }
+}

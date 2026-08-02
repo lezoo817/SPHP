@@ -1,0 +1,98 @@
+package com.sphp.patient.health.service.impl;
+
+import com.sphp.patient.auth.support.context.CUserContext;
+import com.sphp.patient.auth.support.context.CUserPrincipal;
+import com.sphp.patient.health.entity.PatientAllergy;
+import com.sphp.patient.health.entity.PatientMedicalHistory;
+import com.sphp.patient.health.mapper.HealthPatientMapper;
+import com.sphp.patient.health.mapper.HealthPatientProfileRecord;
+import com.sphp.patient.health.mapper.PatientAllergyMapper;
+import com.sphp.patient.health.mapper.PatientMedicalHistoryMapper;
+import com.sphp.patient.health.vo.HealthRecordVO;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.Arrays;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+/**
+ * 健康档案服务单元测试。
+ */
+class HealthServiceImplTest {
+
+    /**
+     * 每个测试结束后清理当前 C端用户上下文。
+     */
+    @AfterEach
+    void clearContext() {
+        CUserContext.clear();
+    }
+
+    /**
+     * 验证未传就诊人时查询本人档案，并且返回资料不包含敏感联系方式。
+     */
+    @Test
+    void getHealthRecordReturnsDefaultPatientProfileHistoriesAndSummary() {
+        HealthPatientMapper healthPatientMapper = mock(HealthPatientMapper.class);
+        PatientAllergyMapper allergyMapper = mock(PatientAllergyMapper.class);
+        PatientMedicalHistoryMapper historyMapper = mock(PatientMedicalHistoryMapper.class);
+        HealthServiceImpl healthService = new HealthServiceImpl(healthPatientMapper, allergyMapper, historyMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        when(healthPatientMapper.selectSelfPatientId(10001L)).thenReturn(20001L);
+        when(healthPatientMapper.selectActiveProfile(20001L))
+                .thenReturn(new HealthPatientProfileRecord(20001L, "张三", "MALE"));
+        when(allergyMapper.selectList(any())).thenReturn(List.of(allergy(16001L, "青霉素", "皮疹")));
+        when(historyMapper.selectList(any())).thenReturn(List.of(history(17001L, "高血压病史5年", LocalDate.of(2021, 1, 1))));
+
+        HealthRecordVO result = healthService.getHealthRecord(null);
+
+        assertEquals(20001L, result.getProfile().getId());
+        assertEquals("张三", result.getProfile().getName());
+        assertEquals("青霉素", result.getAllergies().getFirst().getAllergen());
+        assertEquals(LocalDate.of(2021, 1, 1), result.getMedicalHistories().getFirst().getOccurredAt());
+        assertEquals("已记录1项过敏史和1项既往史", result.getSummary());
+        assertTrue(Arrays.stream(result.getProfile().getClass().getDeclaredFields())
+                .noneMatch(field -> List.of("phone", "idCardNo", "emergencyContact").contains(field.getName())));
+    }
+
+    /**
+     * 创建过敏史实体测试数据。
+     *
+     * @param id 过敏史 ID
+     * @param allergen 过敏原名称
+     * @param reaction 过敏反应
+     * @return 过敏史实体
+     */
+    private PatientAllergy allergy(Long id, String allergen, String reaction) {
+        PatientAllergy allergy = new PatientAllergy();
+        allergy.setId(id);
+        allergy.setAllergen(allergen);
+        allergy.setReaction(reaction);
+        return allergy;
+    }
+
+    /**
+     * 创建既往史实体测试数据。
+     *
+     * @param id 既往史 ID
+     * @param content 既往史内容
+     * @param occurredAt 发生日期
+     * @return 既往史实体
+     */
+    private PatientMedicalHistory history(Long id, String content, LocalDate occurredAt) {
+        PatientMedicalHistory history = new PatientMedicalHistory();
+        history.setId(id);
+        history.setContent(content);
+        history.setOccurredAt(occurredAt);
+        return history;
+    }
+}
