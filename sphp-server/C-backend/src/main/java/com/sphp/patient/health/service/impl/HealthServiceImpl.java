@@ -5,12 +5,14 @@ import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.health.entity.PatientAllergy;
 import com.sphp.patient.health.entity.PatientMedicalHistory;
+import com.sphp.patient.health.dto.AllergyCreateRequest;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
 import com.sphp.patient.health.mapper.HealthPatientProfileRecord;
 import com.sphp.patient.health.mapper.PatientAllergyMapper;
 import com.sphp.patient.health.mapper.PatientMedicalHistoryMapper;
 import com.sphp.patient.health.service.HealthService;
 import com.sphp.patient.health.vo.AllergyItemVO;
+import com.sphp.patient.health.vo.AllergyCreateVO;
 import com.sphp.patient.health.vo.HealthProfileVO;
 import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.health.vo.MedicalHistoryItemVO;
@@ -72,6 +74,31 @@ public class HealthServiceImpl implements HealthService {
                 .allergies(allergies)
                 .medicalHistories(medicalHistories)
                 .summary("已记录" + allergies.size() + "项过敏史和" + medicalHistories.size() + "项既往史")
+                .build();
+    }
+
+    /**
+     * 为当前账号可访问就诊人新增过敏史。
+     *
+     * @param request 新增过敏史请求
+     * @return 新建过敏史信息
+     * @throws CAuthException 就诊人不存在、无权访问或写入失败时抛出
+     */
+    @Override
+    public AllergyCreateVO createAllergy(AllergyCreateRequest request) {
+        Long targetPatientId = resolveAccessiblePatientId(request.getPatientId());
+        PatientAllergy allergy = new PatientAllergy();
+        allergy.setPatientId(targetPatientId);
+        allergy.setAllergen(request.getAllergen());
+        allergy.setReaction(request.getReaction());
+        // 插入结果必须为一条，避免数据库异常被包装为伪成功响应
+        if (allergyMapper.insert(allergy) != 1) {
+            throw new CAuthException(ErrorCodeEnum.SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, "过敏史保存失败");
+        }
+        return AllergyCreateVO.builder()
+                .id(allergy.getId())
+                .allergen(allergy.getAllergen())
+                .reaction(allergy.getReaction())
                 .build();
     }
 

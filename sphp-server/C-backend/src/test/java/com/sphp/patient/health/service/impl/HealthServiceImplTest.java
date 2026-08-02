@@ -2,6 +2,7 @@ package com.sphp.patient.health.service.impl;
 
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
+import com.sphp.patient.health.dto.AllergyCreateRequest;
 import com.sphp.patient.health.entity.PatientAllergy;
 import com.sphp.patient.health.entity.PatientMedicalHistory;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
@@ -9,6 +10,7 @@ import com.sphp.patient.health.mapper.HealthPatientProfileRecord;
 import com.sphp.patient.health.mapper.PatientAllergyMapper;
 import com.sphp.patient.health.mapper.PatientMedicalHistoryMapper;
 import com.sphp.patient.health.vo.HealthRecordVO;
+import com.sphp.patient.health.vo.AllergyCreateVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -62,6 +66,37 @@ class HealthServiceImplTest {
         assertEquals("已记录1项过敏史和1项既往史", result.getSummary());
         assertTrue(Arrays.stream(result.getProfile().getClass().getDeclaredFields())
                 .noneMatch(field -> List.of("phone", "idCardNo", "emergencyContact").contains(field.getName())));
+    }
+
+    /**
+     * 验证新增过敏史时将未传患者解析为本人并返回新记录。
+     */
+    @Test
+    void createAllergyUsesSelfPatientWhenPatientIdIsMissing() {
+        HealthPatientMapper healthPatientMapper = mock(HealthPatientMapper.class);
+        PatientAllergyMapper allergyMapper = mock(PatientAllergyMapper.class);
+        PatientMedicalHistoryMapper historyMapper = mock(PatientMedicalHistoryMapper.class);
+        HealthServiceImpl healthService = new HealthServiceImpl(healthPatientMapper, allergyMapper, historyMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        AllergyCreateRequest request = new AllergyCreateRequest();
+        request.setAllergen("青霉素");
+        request.setReaction("皮疹");
+        when(healthPatientMapper.selectSelfPatientId(10001L)).thenReturn(20001L);
+        doAnswer(invocation -> {
+            PatientAllergy allergy = invocation.getArgument(0);
+            allergy.setId(16001L);
+            return 1;
+        }).when(allergyMapper).insert(any(PatientAllergy.class));
+
+        AllergyCreateVO result = healthService.createAllergy(request);
+
+        assertEquals(16001L, result.getId());
+        assertEquals("青霉素", result.getAllergen());
+        verify(allergyMapper).insert(org.mockito.ArgumentMatchers.<PatientAllergy>argThat(allergy ->
+                allergy.getPatientId().equals(20001L)
+                        && "青霉素".equals(allergy.getAllergen())
+                        && "皮疹".equals(allergy.getReaction())));
     }
 
     /**
