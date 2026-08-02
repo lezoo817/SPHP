@@ -15,12 +15,13 @@ public interface DepartmentService {
     /**
      * 分页查询科室列表（按当前管理员所属医院过滤）。
      *
-     * @param name   科室名称模糊检索（可空）
-     * @param status 状态过滤 ENABLED/DISABLED（可空）
-     * @param page   页码（从 1 开始）
-     * @param size   每页大小
+     * @param name           科室名称模糊检索（可空）
+     * @param headDoctorName 科室主任姓名模糊检索（可空）
+     * @param status         状态过滤 ENABLED/DISABLED（可空）
+     * @param page           页码（从 1 开始）
+     * @param size           每页大小
      */
-    PageResult<DepartmentListVO> page(String name, String status, int page, int size);
+    PageResult<DepartmentListVO> page(String name, String headDoctorName, String status, int page, int size);
 
     /**
      * 查询科室详情（含医生数量、负责人姓名）。

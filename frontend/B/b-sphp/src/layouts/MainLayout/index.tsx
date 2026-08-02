@@ -17,7 +17,7 @@ import {
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { request } from '@umijs/max';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -110,9 +110,26 @@ export default function MainLayout() {
   const location = useLocation();
   const { initialState, setInitialState } = useModel('@@initialState');
   const [collapsed, setCollapsed] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   const currentUser = initialState?.currentUser;
   const roles = currentUser?.roles ?? [];
+
+  // 未登录跳转登录页
+  useEffect(() => {
+    if (!authChecked) {
+      setAuthChecked(true);
+      if (!currentUser) {
+        navigate('/login', { replace: true });
+        return;
+      }
+    }
+  }, [currentUser, authChecked, navigate]);
+
+  if (!currentUser) {
+    return null; // 跳转前不渲染任何内容，避免闪烁
+  }
+
   const menuItems = buildMenuItems(roles);
 
   /** 菜单点击跳转 */
@@ -131,6 +148,7 @@ export default function MainLayout() {
     } catch {
       // 即使接口失败也清理本地状态
     }
+    localStorage.removeItem('b_access_token');
     setInitialState({ currentUser: undefined });
     history.push('/login');
   };
@@ -138,7 +156,7 @@ export default function MainLayout() {
   const userMenuItems: MenuProps['items'] = [
     {
       key: 'profile',
-      label: `${currentUser?.realName ?? currentUser?.username ?? '未知用户'}`,
+      label: `${currentUser?.name ?? '未知用户'}`,
       disabled: true,
     },
     { type: 'divider' },
@@ -201,7 +219,7 @@ export default function MainLayout() {
           <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
             <Space style={{ cursor: 'pointer' }}>
               <Avatar icon={<UserOutlined />} />
-              <Text>{currentUser?.realName ?? currentUser?.username ?? '用户'}</Text>
+              <Text>{currentUser?.name ?? '用户'}</Text>
             </Space>
           </Dropdown>
         </Header>

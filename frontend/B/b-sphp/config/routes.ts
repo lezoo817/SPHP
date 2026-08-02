@@ -2,8 +2,7 @@ const routes = [
   { path: '/login', component: 'login', layout: false },
   {
     path: '/',
-    component: 'layouts/MainLayout',
-    access: 'isAuthenticated',
+    component: '@/layouts/MainLayout',
     routes: [
       // 管理员专用
       {
