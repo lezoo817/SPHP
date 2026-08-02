@@ -4,13 +4,11 @@ import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.registration.dto.RegisteringAppointmentCreateRequest;
 import com.sphp.patient.registration.service.RegisteringService;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
-import com.sphp.patient.registration.dto.RegisteringPaymentSimulateRequest;
 import com.sphp.patient.registration.dto.RegisteringWaitlistCreateRequest;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCancelVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentDetailVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentListVO;
 import com.sphp.patient.registration.vo.RegisteringPaymentStatusVO;
-import com.sphp.patient.registration.vo.RegisteringPaymentSuccessVO;
 import com.sphp.patient.registration.vo.RegisteringWaitlistCreateVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
@@ -108,19 +106,6 @@ public class RegisteringController {
         IdempotencyPayload<RegisteringWaitlistCreateVO> payload = idempotencyService.execute(userId, "/c/v1/waitlists",
                 idempotencyKey, request, RegisteringWaitlistCreateVO.class, () -> new IdempotencyPayload<>("候补登记成功",
                         registeringService.registeringCreateWaitlist(request)));
-        return Result.success(payload.message(), payload.data());
-    }
-
-    /** 模拟支付当前账号的挂号支付单。 */
-    @PostMapping("/payments/{paymentId}/simulate-pay") @Operation(summary = "模拟支付挂号订单")
-    public Result<RegisteringPaymentSuccessVO> registeringSimulatePayment(@PathVariable @Positive Long paymentId,
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
-            @Valid @RequestBody RegisteringPaymentSimulateRequest request) {
-        Long userId = CUserContext.getRequired().userId();
-        IdempotencyPayload<RegisteringPaymentSuccessVO> payload = idempotencyService.execute(userId,
-                "/c/v1/payments/" + paymentId + "/simulate-pay", idempotencyKey, request,
-                RegisteringPaymentSuccessVO.class, () -> new IdempotencyPayload<>("支付成功",
-                        registeringService.registeringSimulatePayment(paymentId, request)));
         return Result.success(payload.message(), payload.data());
     }
 
