@@ -133,12 +133,17 @@ async def parse_token(token: str, scope: str) -> dict[str, Any] | None:
                 return None
 
             data = resp.json()
-            # 统一字符串比较（Java 可能返回 "00000" 或 200）
+            # Java 可能返回 "00000" 或 200；响应须为 dict，否则按无效处理
+            if not isinstance(data, dict):
+                logger.warning("token/parse 响应非对象: %s", type(data).__name__)
+                return None
             code = str(data.get("code", ""))
             if code not in ("00000", "200"):
                 return None
 
-            return data.get("data")
+            user_info = data.get("data")
+            # data 字段须为 dict（含 userId 等），防御非对象响应
+            return user_info if isinstance(user_info, dict) else None
 
     except (httpx.HTTPError, ValueError) as e:
         # ValueError: resp.json() 解析失败（Java 返回非 JSON）
