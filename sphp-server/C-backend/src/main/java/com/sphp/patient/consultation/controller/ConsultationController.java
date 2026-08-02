@@ -9,6 +9,7 @@ import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
 import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionDetailVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.sphp.shared.common.constant.HeaderConstant;
@@ -140,5 +141,18 @@ public class ConsultationController {
             @RequestParam(required = false) @jakarta.validation.constraints.Positive(message = "pageNo 必须为正数") Integer pageNo,
             @RequestParam(required = false) @jakarta.validation.constraints.Positive(message = "pageSize 必须为正数") Integer pageSize) {
         return Result.success("查询成功", consultationService.listPrescriptions(patientId, pageNo, pageSize));
+    }
+
+    /**
+     * 查询当前账号可访问的已批准处方详情和药品明细。
+     *
+     * @param prescriptionId 处方 ID
+     * @return 已批准处方详情
+     */
+    @GetMapping("/prescriptions/{prescriptionId}")
+    @Operation(summary = "查询处方详情")
+    public Result<ConsultationPrescriptionDetailVO> getPrescriptionDetail(
+            @PathVariable @jakarta.validation.constraints.Positive(message = "prescriptionId 必须为正数") Long prescriptionId) {
+        return Result.success("查询成功", consultationService.getPrescriptionDetail(prescriptionId));
     }
 }

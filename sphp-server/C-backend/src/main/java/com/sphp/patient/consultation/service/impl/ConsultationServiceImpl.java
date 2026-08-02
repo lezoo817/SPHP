@@ -22,6 +22,9 @@ import com.sphp.patient.consultation.mapper.ConsultationDetailRecord;
 import com.sphp.patient.consultation.mapper.ConsultationMessageRecord;
 import com.sphp.patient.consultation.mapper.ConsultationMessageMapper;
 import com.sphp.patient.consultation.mapper.ConsultationPrescriptionRecord;
+import com.sphp.patient.consultation.mapper.ConsultationPrescriptionDetailRecord;
+import com.sphp.patient.consultation.mapper.ConsultationPrescriptionItemRecord;
+import com.sphp.patient.consultation.mapper.ConsultationPrescriptionResourceRecord;
 import com.sphp.patient.consultation.service.ConsultationService;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
@@ -29,6 +32,7 @@ import com.sphp.patient.consultation.vo.ConsultationAttachmentVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
 import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionDetailVO;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -256,6 +260,48 @@ public class ConsultationServiceImpl implements ConsultationService {
     }
 
     /**
+     * 查询当前账号可访问的已批准处方详情与药品明细。
+     *
+     * @param prescriptionId 处方 ID
+     * @return 已批准处方详情
+     * @throws CAuthException 处方不存在、未批准或当前账号无权访问时抛出
+     */
+    @Override
+    public ConsultationPrescriptionDetailVO getPrescriptionDetail(Long prescriptionId) {
+        ConsultationPrescriptionResourceRecord resource = consultationDataMapper
+                .selectConsultationPrescriptionResource(prescriptionId);
+        if (resource == null) {
+            throw notFound("处方不存在");
+        }
+        // 先按处方资源反查患者，避免仅凭处方 ID 读取其他账号信息。
+        resolveAccessiblePatient(CUserContext.getRequired().userId(), resource.patientId());
+        if (!ConsultationPrescriptionStatusEnum.APPROVED.name().equals(resource.status())) {
+            // 未批准处方对患者端不可见，统一作为不存在处理，避免泄漏审核状态。
+            throw notFound("处方不存在");
+        }
+        ConsultationPrescriptionDetailRecord detail = consultationDataMapper.selectApprovedPrescriptionDetail(prescriptionId);
+        if (detail == null) {
+            throw notFound("处方不存在");
+        }
+        List<ConsultationPrescriptionDetailVO.Item> items = consultationDataMapper
+                .selectConsultationPrescriptionItems(prescriptionId)
+                .stream()
+                .map(this::toPrescriptionDetailItem)
+                .toList();
+        return ConsultationPrescriptionDetailVO.builder()
+                .id(detail.id())
+                .status(ConsultationPrescriptionStatusEnum.APPROVED.name())
+                .doctorName(detail.doctorName())
+                .doctor(ConsultationPrescriptionDetailVO.Doctor.builder()
+                        .id(detail.doctorId())
+                        .name(detail.doctorName())
+                        .title(detail.doctorTitle())
+                        .build())
+                .items(items)
+                .build();
+    }
+
+    /**
      * 解析当前账号可访问的就诊人，未传时固定使用本人。
      *
      * @param userId 当前 C端用户 ID
@@ -337,6 +383,24 @@ public class ConsultationServiceImpl implements ConsultationService {
                 .doctorName(record.doctorName())
                 .status(ConsultationPrescriptionStatusEnum.APPROVED.name())
                 .issuedAt(record.issuedAt())
+                .build();
+    }
+
+    /**
+     * 将处方药品查询投影转换为详情响应项。
+     *
+     * @param record 处方药品明细投影
+     * @return 处方药品详情项
+     */
+    private ConsultationPrescriptionDetailVO.Item toPrescriptionDetailItem(ConsultationPrescriptionItemRecord record) {
+        return ConsultationPrescriptionDetailVO.Item.builder()
+                .drugId(record.drugId())
+                .drugName(record.drugName())
+                .specification(record.specification())
+                .dosage(record.dosage())
+                .frequency(record.frequency())
+                .usage(record.usage())
+                .durationDays(record.durationDays())
                 .build();
     }
 

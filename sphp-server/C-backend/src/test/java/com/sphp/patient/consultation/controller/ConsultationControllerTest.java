@@ -10,6 +10,7 @@ import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
 import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionDetailVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import org.junit.jupiter.api.AfterEach;
@@ -190,6 +191,30 @@ class ConsultationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.records[0].status").value("APPROVED"))
                 .andExpect(jsonPath("$.data.records[0].consultationId").value(11001));
+    }
+
+    /**
+     * 验证处方详情路由返回药品明细。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void getPrescriptionDetailReturnsItems() throws Exception {
+        ConsultationService consultationService = mock(ConsultationService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        when(consultationService.getPrescriptionDetail(13001L)).thenReturn(ConsultationPrescriptionDetailVO.builder()
+                .id(13001L).status("APPROVED").doctorName("王医生")
+                .doctor(ConsultationPrescriptionDetailVO.Doctor.builder().id(30001L).name("王医生").build())
+                .items(java.util.List.of(ConsultationPrescriptionDetailVO.Item.builder().drugId(14001L)
+                        .drugName("阿莫西林胶囊").specification("0.25g*24粒").dosage("0.5g")
+                        .frequency("每日3次").usage("口服").durationDays((short) 5).build()))
+                .build());
+
+        newMockMvc(consultationService, idempotencyService)
+                .perform(get("/c/v1/prescriptions/13001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED"))
+                .andExpect(jsonPath("$.data.items[0].drugName").value("阿莫西林胶囊"));
     }
 
     /**

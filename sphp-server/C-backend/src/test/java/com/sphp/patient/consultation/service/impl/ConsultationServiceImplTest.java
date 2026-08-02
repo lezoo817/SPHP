@@ -13,6 +13,9 @@ import com.sphp.patient.consultation.mapper.ConsultationDetailRecord;
 import com.sphp.patient.consultation.mapper.ConsultationMessageRecord;
 import com.sphp.patient.consultation.mapper.ConsultationMessageMapper;
 import com.sphp.patient.consultation.mapper.ConsultationPrescriptionRecord;
+import com.sphp.patient.consultation.mapper.ConsultationPrescriptionResourceRecord;
+import com.sphp.patient.consultation.mapper.ConsultationPrescriptionDetailRecord;
+import com.sphp.patient.consultation.mapper.ConsultationPrescriptionItemRecord;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
@@ -20,6 +23,7 @@ import com.sphp.patient.consultation.dto.ConsultationMessageSendRequest;
 import com.sphp.patient.consultation.entity.ConsultationMessage;
 import com.sphp.patient.consultation.event.ConsultationMessageSentEvent;
 import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionDetailVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -201,6 +205,31 @@ class ConsultationServiceImplTest {
         assertEquals(1L, result.getTotal());
         assertEquals("APPROVED", result.getRecords().getFirst().getStatus());
         assertEquals(13001L, result.getRecords().getFirst().getId());
+    }
+
+    /**
+     * 验证处方详情先校验患者归属，再返回已批准处方药品明细。
+     */
+    @Test
+    void getPrescriptionDetailReturnsApprovedItemsAfterOwnershipCheck() {
+        ConsultationDataMapper dataMapper = mock(ConsultationDataMapper.class);
+        ConsultationServiceImpl service = newService(dataMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        when(dataMapper.selectConsultationPrescriptionResource(13001L))
+                .thenReturn(new ConsultationPrescriptionResourceRecord(13001L, 20001L, "APPROVED"));
+        when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasConsultationActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectApprovedPrescriptionDetail(13001L))
+                .thenReturn(new ConsultationPrescriptionDetailRecord(13001L, 30001L, "王医生", "主治医师"));
+        when(dataMapper.selectConsultationPrescriptionItems(13001L)).thenReturn(List.of(
+                new ConsultationPrescriptionItemRecord(14001L, "阿莫西林胶囊", "0.25g*24粒", "0.5g",
+                        "每日3次", "口服", (short) 5)));
+
+        ConsultationPrescriptionDetailVO result = service.getPrescriptionDetail(13001L);
+
+        assertEquals("APPROVED", result.getStatus());
+        assertEquals("王医生", result.getDoctorName());
+        assertEquals("阿莫西林胶囊", result.getItems().getFirst().getDrugName());
     }
 
     /**

@@ -7,6 +7,7 @@ import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
 import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionDetailVO;
 
 /**
  * C端问诊与处方查询服务。
@@ -58,4 +59,12 @@ public interface ConsultationService {
      * @return 已批准处方分页响应
      */
     ConsultationPrescriptionPageVO listPrescriptions(Long patientId, Integer pageNo, Integer pageSize);
+
+    /**
+     * 查询当前账号可访问的已批准处方详情与药品明细。
+     *
+     * @param prescriptionId 处方 ID
+     * @return 已批准处方详情
+     */
+    ConsultationPrescriptionDetailVO getPrescriptionDetail(Long prescriptionId);
 }
