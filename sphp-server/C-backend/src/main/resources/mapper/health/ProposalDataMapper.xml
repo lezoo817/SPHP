@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sphp.patient.health.mapper.ProposalDataMapper">
+
+    <select id="proposalSelectReports" resultType="com.sphp.patient.health.mapper.ReportListRecord">
+        SELECT r.id,
+               r.report_name,
+               r.report_date,
+               COUNT(i.id) AS indicator_count
+        FROM patient_report r
+                 LEFT JOIN patient_report_indicator i ON i.report_id = r.id
+        WHERE r.patient_id = #{patientId}
+          AND r.deleted_at IS NULL
+        GROUP BY r.id, r.report_name, r.report_date
+        ORDER BY r.report_date DESC, r.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="proposalCountReports" resultType="long">
+        SELECT COUNT(1)
+        FROM patient_report
+        WHERE patient_id = #{patientId}
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="proposalSelectReport" resultType="com.sphp.patient.health.mapper.ReportRecord">
+        SELECT id,
+               patient_id,
+               report_name,
+               report_date,
+               interpretation_status,
+               interpretation::text AS interpretation
+        FROM patient_report
+        WHERE id = #{reportId}
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="proposalSelectIndicators" resultType="com.sphp.patient.health.mapper.IndicatorRecord">
+        SELECT name, value, unit, reference_range
+        FROM patient_report_indicator
+        WHERE report_id = #{reportId}
+        ORDER BY id ASC
+    </select>
+
+    <select id="proposalSelectMedications" resultType="com.sphp.patient.health.mapper.MedicationRecord">
+        SELECT id,
+               patient_id,
+               drug_name_snapshot AS drug_name,
+               dosage,
+               frequency,
+               next_remind_at,
+               status
+        FROM medication_plan
+        WHERE patient_id = #{patientId}
+          AND deleted_at IS NULL
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY next_remind_at ASC NULLS LAST, id ASC
+    </select>
+
+    <select id="proposalSelectMedication" resultType="com.sphp.patient.health.mapper.MedicationRecord">
+        SELECT id,
+               patient_id,
+               drug_name_snapshot AS drug_name,
+               dosage,
+               frequency,
+               next_remind_at,
+               status
+        FROM medication_plan
+        WHERE id = #{planId}
+          AND deleted_at IS NULL
+    </select>
+
+    <update id="proposalUpdateMedication">
+        UPDATE medication_plan
+        SET status         = #{status},
+            next_remind_at = #{nextRemindAt},
+            end_at         = #{endAt},
+            updated_at     = #{now}
+        WHERE id = #{planId}
+          AND patient_id = #{patientId}
+          <!-- 原状态是并发保护条件，禁止覆盖已发生的状态变更。 -->
+          AND status = #{expectedStatus}
+          AND deleted_at IS NULL
+    </update>
+
+    <select id="proposalSelectFollowUps" resultType="com.sphp.patient.health.mapper.FollowUpRecord">
+        SELECT id,
+               patient_id,
+               follow_up_type AS type,
+               due_at,
+               content,
+               status,
+               remind_at
+        FROM follow_up_plan
+        WHERE patient_id = #{patientId}
+          AND deleted_at IS NULL
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY due_at ASC, id ASC
+    </select>
+
+    <select id="proposalSelectFollowUp" resultType="com.sphp.patient.health.mapper.FollowUpRecord">
+        SELECT id,
+               patient_id,
+               follow_up_type AS type,
+               due_at,
+               content,
+               status,
+               remind_at
+        FROM follow_up_plan
+        WHERE id = #{followUpId}
+          AND deleted_at IS NULL
+    </select>
+
+    <update id="proposalConfirmFollowUp">
+        UPDATE follow_up_plan
+        SET status     = 'CONFIRMED',
+            remind_at  = #{remindAt},
+            updated_at = #{now}
+        <!-- 仅待确认计划可原子确认，避免重复确认覆盖提醒时间。 -->
+        WHERE id = #{followUpId}
+          AND patient_id = #{patientId}
+          AND status = 'PENDING_CONFIRM'
+          AND deleted_at IS NULL
+    </update>
+</mapper>

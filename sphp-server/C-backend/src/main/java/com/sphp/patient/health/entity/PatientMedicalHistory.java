@@ -21,9 +21,11 @@ public class PatientMedicalHistory extends BaseDeleteDO {
     /** 就诊人 ID */
     @TableField("patient_id")
     private Long patientId;
+
     /** 既往史内容 */
     @TableField("content")
     private String content;
+
     /** 病史发生或记录日期 */
     @TableField("occurred_at")
     private LocalDate occurredAt;

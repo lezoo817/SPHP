@@ -236,7 +236,6 @@ public class ConsultationServiceImpl implements ConsultationService {
      * @return 已批准处方分页响应
      * @throws CAuthException 患者归属或分页参数不满足要求时抛出
      */
-    @Override
     public ConsultationPrescriptionPageVO listPrescriptions(Long patientId, Integer pageNo, Integer pageSize) {
         Long targetPatientId = resolveAccessiblePatient(CUserContext.getRequired().userId(), patientId);
         int resolvedPageNo = pageNo == null ? ConsultationConstant.DEFAULT_PAGE_NO : pageNo;
@@ -266,7 +265,6 @@ public class ConsultationServiceImpl implements ConsultationService {
      * @return 已批准处方详情
      * @throws CAuthException 处方不存在、未批准或当前账号无权访问时抛出
      */
-    @Override
     public ConsultationPrescriptionDetailVO getPrescriptionDetail(Long prescriptionId) {
         ConsultationPrescriptionResourceRecord resource = consultationDataMapper
                 .selectConsultationPrescriptionResource(prescriptionId);

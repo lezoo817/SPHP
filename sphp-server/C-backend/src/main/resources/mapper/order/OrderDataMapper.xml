@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sphp.patient.order.mapper.OrderDataMapper">
+    <select id="selectOrderSelfPatientId" resultType="java.lang.Long">
+        SELECT pur.patient_id FROM patient_user_relation pur INNER JOIN patient p ON p.id=pur.patient_id AND p.deleted_at IS NULL
+        WHERE pur.user_id=#{userId} AND pur.relationship='SELF' AND pur.deleted_at IS NULL ORDER BY pur.created_at ASC LIMIT 1
+    </select>
+    <select id="existsOrderActivePatient" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM patient WHERE id=#{patientId} AND deleted_at IS NULL)
+    </select>
+    <select id="hasOrderActivePatientRelation" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM patient_user_relation WHERE user_id=#{userId} AND patient_id=#{patientId} AND deleted_at IS NULL)
+    </select>
+    <select id="selectOrderPrescription" resultType="com.sphp.patient.order.mapper.OrderPrescriptionRecord">
+        SELECT p.id, p.patient_id, d.hospital_id, p.status
+        FROM prescription p INNER JOIN consult_record cr ON cr.id=p.consult_id AND cr.deleted_at IS NULL
+        INNER JOIN doctor d ON d.id=p.doctor_id AND d.deleted_at IS NULL
+        WHERE p.id=#{prescriptionId} AND p.deleted_at IS NULL
+    </select>
+    <select id="selectOrderPrescriptionItems" resultType="com.sphp.patient.order.mapper.OrderPrescriptionItemRecord">
+        SELECT pi.drug_id, d.name AS drug_name, pi.quantity, pi.dosage, pi.frequency, pi.usage_method, pi.days
+        FROM prescription_item pi INNER JOIN drug d ON d.id=pi.drug_id AND d.deleted_at IS NULL AND d.status='ENABLED'
+        WHERE pi.prescription_id=#{prescriptionId} ORDER BY pi.id ASC
+    </select>
+    <select id="selectOrderPharmacyInventory" resultType="com.sphp.patient.order.mapper.OrderPharmacyStockRecord">
+        WITH required AS (SELECT drug_id, quantity FROM prescription_item WHERE prescription_id=#{prescriptionId}),
+        qualified AS (
+            SELECT ph.id FROM pharmacy ph INNER JOIN pharmacy_drug_stock pds ON pds.pharmacy_id=ph.id
+            INNER JOIN required r ON r.drug_id=pds.drug_id
+            WHERE ph.hospital_id=#{hospitalId} AND ph.status='ENABLED' AND ph.deleted_at IS NULL
+              AND pds.available_count >= r.quantity
+            GROUP BY ph.id HAVING COUNT(DISTINCT pds.drug_id)=(SELECT COUNT(1) FROM required)
+        )
+        SELECT ph.id AS pharmacy_id, ph.name AS pharmacy_name, ph.hospital_id, ph.is_default, pds.drug_id,
+               pds.available_count, pds.unit_price_cent
+        FROM pharmacy ph INNER JOIN qualified q ON q.id=ph.id
+        INNER JOIN pharmacy_drug_stock pds ON pds.pharmacy_id=ph.id
+        INNER JOIN required r ON r.drug_id=pds.drug_id
+        ORDER BY ph.is_default DESC, ph.id ASC, pds.drug_id ASC
+    </select>
+    <select id="selectOrderStocks" resultType="com.sphp.patient.order.mapper.OrderStockRecord">
+        SELECT ph.id AS pharmacy_id, ph.name AS pharmacy_name, pds.drug_id, d.name AS drug_name, pi.quantity,
+               pds.available_count, pds.unit_price_cent, pi.dosage, pi.frequency, pi.usage_method, pi.days
+        FROM prescription_item pi INNER JOIN drug d ON d.id=pi.drug_id AND d.deleted_at IS NULL AND d.status='ENABLED'
+        INNER JOIN pharmacy_drug_stock pds ON pds.drug_id=pi.drug_id
+        INNER JOIN pharmacy ph ON ph.id=pds.pharmacy_id AND ph.status='ENABLED' AND ph.deleted_at IS NULL
+        WHERE pi.prescription_id=#{prescriptionId} AND ph.id=#{pharmacyId}
+        ORDER BY pds.drug_id ASC
+    </select>
+    <update id="lockOrderStock">
+        UPDATE pharmacy_drug_stock SET available_count=available_count-#{quantity}, locked_count=locked_count+#{quantity}, updated_at=#{now}
+        WHERE pharmacy_id=#{pharmacyId} AND drug_id=#{drugId} AND available_count >= #{quantity}
+    </update>
+    <update id="releaseOrderStock">
+        UPDATE pharmacy_drug_stock SET available_count=available_count+#{quantity}, locked_count=locked_count-#{quantity}, updated_at=#{now}
+        WHERE pharmacy_id=#{pharmacyId} AND drug_id=#{drugId} AND locked_count >= #{quantity}
+    </update>
+    <update id="consumeOrderLockedStock">
+        UPDATE pharmacy_drug_stock SET locked_count=locked_count-#{quantity}, updated_at=#{now}
+        WHERE pharmacy_id=#{pharmacyId} AND drug_id=#{drugId} AND locked_count >= #{quantity}
+    </update>
+    <select id="selectOrderList" resultType="com.sphp.patient.order.mapper.OrderListRecord">
+        SELECT o.id, COALESCE(o.pharmacy_name_snapshot, ph.name) AS pharmacy_name, o.status, o.logistics_status,
+               (SELECT t.node FROM drug_order_logistics_trace t WHERE t.drug_order_id=o.id ORDER BY t.occurred_at DESC, t.id DESC LIMIT 1) AS latest_logistics_node,
+               o.amount_cent, o.expire_at
+        FROM drug_order o LEFT JOIN pharmacy ph ON ph.id=o.pharmacy_id
+        WHERE o.patient_id=#{patientId} AND o.deleted_at IS NULL
+        <if test="status != null and status != ''">AND o.status=#{status}</if>
+        <if test="logisticsStatus != null and logisticsStatus != ''">AND o.logistics_status=#{logisticsStatus}</if>
+        ORDER BY o.created_at DESC, o.id DESC LIMIT #{limit} OFFSET #{offset}
+    </select>
+    <select id="countOrderList" resultType="long">
+        SELECT COUNT(1) FROM drug_order o WHERE o.patient_id=#{patientId} AND o.deleted_at IS NULL
+        <if test="status != null and status != ''">AND o.status=#{status}</if>
+        <if test="logisticsStatus != null and logisticsStatus != ''">AND o.logistics_status=#{logisticsStatus}</if>
+    </select>
+    <select id="selectOrderDetail" resultType="com.sphp.patient.order.mapper.OrderDetailRecord">
+        SELECT o.id, o.patient_id, o.pharmacy_id, COALESCE(o.pharmacy_name_snapshot, ph.name) AS pharmacy_name, o.status,
+               o.delivery_method, o.delivery_address, o.logistics_company, o.tracking_no, o.logistics_status, o.amount_cent, o.expire_at,
+               po.id AS payment_id, po.status AS payment_status
+        FROM drug_order o LEFT JOIN pharmacy ph ON ph.id=o.pharmacy_id LEFT JOIN payment_order po ON po.drug_order_id=o.id
+        WHERE o.id=#{drugOrderId} AND o.deleted_at IS NULL
+    </select>
+    <select id="selectOrderItems" resultType="com.sphp.patient.order.mapper.OrderItemRecord">
+        SELECT drug_id, drug_name_snapshot AS drug_name, quantity, unit_price_cent FROM drug_order_item WHERE drug_order_id=#{drugOrderId} ORDER BY id ASC
+    </select>
+    <select id="selectOrderTraces" resultType="com.sphp.patient.order.mapper.OrderTraceRecord">
+        SELECT node, occurred_at FROM drug_order_logistics_trace WHERE drug_order_id=#{drugOrderId} ORDER BY occurred_at DESC, id DESC
+    </select>
+    <update id="cancelPendingDrugOrder">UPDATE drug_order SET status='CANCELLED', updated_at=#{now} WHERE id=#{drugOrderId} AND status='PENDING_PAYMENT' AND deleted_at IS NULL</update>
+    <update id="expirePendingDrugOrder">UPDATE drug_order SET status='EXPIRED', updated_at=#{now} WHERE id=#{drugOrderId} AND status='PENDING_PAYMENT' AND deleted_at IS NULL</update>
+    <update id="closePendingDrugOrderPayment">UPDATE payment_order SET status='CLOSED', updated_at=#{now} WHERE drug_order_id=#{drugOrderId} AND status='PENDING'</update>
+    <update id="confirmOrderReceipt">UPDATE drug_order SET logistics_status='RECEIVED', received_at=#{now}, updated_at=#{now} WHERE id=#{drugOrderId} AND status='PAID' AND logistics_status='TO_RECEIVE' AND deleted_at IS NULL</update>
+    <select id="selectPaymentBusiness" resultType="com.sphp.patient.order.mapper.PaymentBusinessRecord">
+        SELECT id, appointment_id, drug_order_id FROM payment_order WHERE id=#{paymentId}
+    </select>
+    <select id="selectDrugOrderPayment" resultType="com.sphp.patient.order.mapper.DrugOrderPaymentRecord">
+        SELECT po.id, po.drug_order_id, o.patient_id, po.payer_user_id, o.pharmacy_id, po.status AS payment_status,
+               o.status AS order_status, po.expire_at, u.password_hash
+        FROM payment_order po INNER JOIN drug_order o ON o.id=po.drug_order_id AND o.deleted_at IS NULL
+        INNER JOIN c_user u ON u.id=po.payer_user_id AND u.deleted_at IS NULL
+        WHERE po.id=#{paymentId} AND po.drug_order_id IS NOT NULL
+    </select>
+    <update id="markDrugOrderPaymentSuccess">UPDATE payment_order SET status='SUCCESS', paid_at=#{now}, updated_at=#{now} WHERE id=#{paymentId} AND status='PENDING'</update>
+    <update id="markDrugOrderPaid">UPDATE drug_order SET status='PAID', updated_at=#{now} WHERE id=#{drugOrderId} AND status='PENDING_PAYMENT' AND deleted_at IS NULL</update>
+    <insert id="createMedicationPlans">
+        INSERT INTO medication_plan (patient_id, prescription_item_id, drug_name_snapshot, frequency, usage_method, dosage, duration_days, status, created_at, updated_at)
+        SELECT o.patient_id, pi.id, LEFT(doi.drug_name_snapshot, 128), COALESCE(pi.frequency, '按医嘱'), pi.usage_method,
+               pi.dosage, pi.days, 'ACTIVE', #{now}, #{now}
+        FROM drug_order o INNER JOIN drug_order_item doi ON doi.drug_order_id=o.id
+        INNER JOIN prescription_item pi ON pi.prescription_id=o.prescription_id AND pi.drug_id=doi.drug_id
+        WHERE o.id=#{drugOrderId}
+    </insert>
+    <select id="selectDrugOrderTimeout" resultType="com.sphp.patient.order.mapper.DrugOrderTimeoutRecord">
+        SELECT o.id AS drug_order_id, o.patient_id, po.payer_user_id, o.pharmacy_id FROM drug_order o
+        INNER JOIN payment_order po ON po.drug_order_id=o.id WHERE o.id=#{drugOrderId} AND o.deleted_at IS NULL
+    </select>
+</mapper>

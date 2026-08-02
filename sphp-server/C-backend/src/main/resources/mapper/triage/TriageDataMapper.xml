@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sphp.patient.triage.mapper.TriageDataMapper">
+
+    <select id="triageSelectSelfPatientId" resultType="java.lang.Long">
+        SELECT pur.patient_id
+        FROM patient_user_relation pur
+                 INNER JOIN patient p ON p.id = pur.patient_id AND p.deleted_at IS NULL
+        WHERE pur.user_id = #{userId}
+          AND pur.relationship = 'SELF'
+          AND pur.deleted_at IS NULL
+        ORDER BY pur.created_at ASC, pur.id ASC
+        LIMIT 1
+    </select>
+
+    <select id="triageExistsActivePatient" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM patient
+            WHERE id = #{patientId}
+              AND deleted_at IS NULL
+        )
+    </select>
+
+    <select id="triageHasActivePatientRelation" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM patient_user_relation
+            WHERE user_id = #{userId}
+              AND patient_id = #{patientId}
+              AND deleted_at IS NULL
+        )
+    </select>
+
+    <select id="triageExistsEnabledHospital" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM hospital
+            WHERE id = #{hospitalId}
+              AND status = 'ENABLED'
+              AND deleted_at IS NULL
+        )
+    </select>
+
+    <select id="triageSelectMatchedRules" resultType="com.sphp.patient.triage.mapper.TriageDepartmentRuleRecord">
+        SELECT tr.department_id,
+               d.name AS department_name,
+               tr.reason,
+               tr.urgency
+        FROM triage_rule tr
+                 INNER JOIN department d ON d.id = tr.department_id
+        WHERE tr.hospital_id = #{hospitalId}
+          AND tr.status = 'ENABLED'
+          AND tr.deleted_at IS NULL
+          AND d.hospital_id = #{hospitalId}
+          AND d.status = 'ENABLED'
+          AND d.deleted_at IS NULL
+          <!-- keyword 来自可信规则配置，症状始终作为参数绑定，避免拼接查询。 -->
+          AND #{symptom} ILIKE '%' || tr.keyword || '%'
+        ORDER BY CASE tr.urgency
+                     WHEN 'HIGH' THEN 3
+                     WHEN 'MEDIUM' THEN 2
+                     ELSE 1
+                 END DESC,
+                 tr.priority ASC,
+                 tr.id ASC
+    </select>
+
+    <insert id="triageInsertAssessment" useGeneratedKeys="true" keyProperty="assessment.id">
+        INSERT INTO triage_assessment (
+            patient_id,
+            hospital_id,
+            symptom_input,
+            urgency,
+            recommended_departments
+        ) VALUES (
+            #{assessment.patientId},
+            #{assessment.hospitalId},
+            CAST(#{assessment.symptomInput, jdbcType=VARCHAR} AS jsonb),
+            #{assessment.urgency},
+            CAST(#{assessment.recommendedDepartments, jdbcType=VARCHAR} AS jsonb)
+        )
+    </insert>
+</mapper>

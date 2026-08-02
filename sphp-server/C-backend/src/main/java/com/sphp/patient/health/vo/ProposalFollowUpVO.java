@@ -1,0 +1,1 @@
+package com.sphp.patient.health.vo; import lombok.*; import java.time.OffsetDateTime; /** 随访计划响应。 */ @Getter @Builder public class ProposalFollowUpVO { private final Long id; private final String type; private final OffsetDateTime dueAt; private final String content; private final String status; private final OffsetDateTime remindAt; }

@@ -1,0 +1,1 @@
+package com.sphp.patient.health.mapper; import java.time.OffsetDateTime; /** 随访计划投影。 */ public record FollowUpRecord(Long id,Long patientId,String type,OffsetDateTime dueAt,String content,String status,OffsetDateTime remindAt){}

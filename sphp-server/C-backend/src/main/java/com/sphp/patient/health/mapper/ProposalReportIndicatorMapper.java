@@ -1,0 +1,1 @@
+package com.sphp.patient.health.mapper; import com.baomidou.mybatisplus.core.mapper.BaseMapper; import com.sphp.patient.health.entity.ProposalReportIndicator; import org.apache.ibatis.annotations.Mapper; /** 报告指标基础 Mapper。 */ @Mapper public interface ProposalReportIndicatorMapper extends BaseMapper<ProposalReportIndicator>{}
