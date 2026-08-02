@@ -49,7 +49,7 @@ class ToolSchema:
     security_level: SecurityLevel = SecurityLevel.L1
     executor: str = "mcp"
 
-    def to_openai_schema(self) -> dict:
+    def to_openai_schema(self) -> dict[str, Any]:
         """转换为 OpenAI Function Calling 格式，供 LLM 识别。"""
         return {
             "type": "function",
@@ -94,7 +94,7 @@ class ToolRegistry:
         ]
 
     @classmethod
-    def get_openai_schemas(cls, scope: ToolScope) -> list[dict]:
+    def get_openai_schemas(cls, scope: ToolScope) -> list[dict[str, Any]]:
         """获取某端工具的 OpenAI schema 列表，传给 LLM。"""
         return [t.to_openai_schema() for t in cls.get_tools_by_scope(scope)]
 

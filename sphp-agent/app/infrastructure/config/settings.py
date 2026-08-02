@@ -42,11 +42,7 @@ class Settings(BaseSettings):
 
     # ---- LLM 供应商 ----
     llm_provider: str = "zhipu"
-    llm_api_key: str = ""
-    llm_base_url: str | None = None
-    llm_model: str | None = None
     llm_temperature: float = 0.3
-    llm_max_tokens: int = 2048
 
     # ---- DeepSeek ----
     deepseek_api_key: str = ""
@@ -57,6 +53,7 @@ class Settings(BaseSettings):
     zhipu_api_key: str = ""
     zhipu_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
     zhipu_model: str = "glm-4"
+    zhipu_embedding_model: str = "embedding-3"
 
     # ---- 通义千问 ----
     dashscope_api_key: str = ""
@@ -92,19 +89,6 @@ class Settings(BaseSettings):
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_password: str | None = None
-
-    # ---- RabbitMQ ----
-    # 从 .env 的 RABBITMQ_* 读取。
-    rabbitmq_host: str = "localhost"
-    rabbitmq_port: int = 5672
-    rabbitmq_user: str = "guest"
-    rabbitmq_password: str = ""  # 由 .env 的 RABBITMQ_PASSWORD 提供
-    rabbitmq_vhost: str = "/"
-
-    @property
-    def rabbitmq_url(self) -> str:
-        """AMQP 连接串（由分项字段拼装，避免重复配置）。"""
-        return f"amqp://{self.rabbitmq_user}:{self.rabbitmq_password}@{self.rabbitmq_host}:{self.rabbitmq_port}{self.rabbitmq_vhost}"
 
     # ---- 知识库 ----
     kb_collection: str = "medical_knowledge"
