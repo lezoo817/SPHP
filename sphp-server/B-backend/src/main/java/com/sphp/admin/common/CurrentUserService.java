@@ -4,7 +4,9 @@ import cn.dev33.satoken.exception.NotLoginException;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.sphp.admin.auth.entity.BUser;
+import com.sphp.admin.auth.entity.Doctor;
 import com.sphp.admin.auth.mapper.BUserMapper;
+import com.sphp.admin.auth.mapper.DoctorMapper;
 import com.sphp.shared.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -23,6 +25,7 @@ public class CurrentUserService {
     public static final String ROLE_ADMIN = "ADMIN";
 
     private final BUserMapper bUserMapper;
+    private final DoctorMapper doctorMapper;
 
     /**
      * 获取当前登录用户（未登录 / Token 无效 / 用户不存在或已软删均抛 A0301）。
@@ -66,5 +69,23 @@ public class CurrentUserService {
                 .eq(BUser::getAccount, account)
                 .ne(excludeUserId != null, BUser::getId, excludeUserId)
                 .isNull(BUser::getDeletedAt)) > 0;
+    }
+
+    /**
+     * 获取当前登录用户的数据权限范围（系分 §7.2，三角色通用）。
+     *
+     * <p>排班管理等非纯管理员接口使用本方法：ADMIN 仅按 hospital_id 过滤；
+     * DEPT_HEAD 经 doctor.dept_id 取管辖科室；DOCTOR 仅本人（doctor_id）。
+     *
+     * @return 数据权限范围；doctor_id 为 null（如 ADMIN）时 deptId 为 null
+     */
+    public DataScope getCurrentDataScope() {
+        BUser user = getCurrentUser();
+        Long deptId = null;
+        if (user.getDoctorId() != null) {
+            Doctor doctor = doctorMapper.selectById(user.getDoctorId());
+            deptId = (doctor != null && doctor.getDeletedAt() == null) ? doctor.getDeptId() : null;
+        }
+        return new DataScope(user.getRole(), user.getHospitalId(), deptId, user.getDoctorId());
     }
 }
