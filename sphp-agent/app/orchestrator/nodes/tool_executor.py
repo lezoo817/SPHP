@@ -22,6 +22,90 @@ from app.infrastructure.audit.logger import log_tool_call
 from app.orchestrator.state import AgentState
 
 
+async def _wrap(module: Any, func_name: str, arguments: dict, user_id: int | None) -> dict:
+    """按参数名绑定调用 MCP 工具封装函数（忽略未知参数）。"""
+    func = getattr(module, func_name)
+    import inspect
+
+    sig = inspect.signature(func)
+    kwargs = {k: v for k, v in arguments.items() if k in sig.parameters}
+    if "user_id" in sig.parameters:
+        kwargs["user_id"] = user_id
+    return await func(**kwargs)
+
+
+# 工具名 -> (模块, 函数名) 映射（过渡实现：直接调封装函数 → Java REST）
+# 对应 mcp_server/tools/*.py 中已实现的封装函数，签名与 ToolSchema 参数一致。
+_MCP_TOOL_MODULES = {
+    "triage": "app.mcp_server.tools.triage",
+    "appointment": "app.mcp_server.tools.appointment",
+    "consultation": "app.mcp_server.tools.consultation",
+    "health": "app.mcp_server.tools.health",
+    "notification": "app.mcp_server.tools.notification",
+    "pharmacy": "app.mcp_server.tools.pharmacy",
+    "prescription": "app.mcp_server.tools.prescription",
+    "b_doctor": "app.mcp_server.tools.b_doctor",
+}
+
+# 工具名 -> (模块 key, 函数名)
+_MCP_TOOL_FUNCS: dict[str, tuple[str, str]] = {
+    # 导诊
+    "create_triage_assessment": ("triage", "create_triage_assessment"),
+    # 挂号查询
+    "query_departments": ("appointment", "query_departments"),
+    "query_doctors": ("appointment", "query_doctors"),
+    "query_schedule_slots": ("appointment", "query_schedule_slots"),
+    # 挂号订单
+    "create_appointment": ("appointment", "create_appointment"),
+    "query_appointments": ("appointment", "query_appointments"),
+    "cancel_appointment": ("appointment", "cancel_appointment"),
+    "join_waitlist": ("appointment", "join_waitlist"),
+    "query_payment_status": ("appointment", "query_payment_status"),
+    # 问诊
+    "save_pre_consultation": ("consultation", "save_pre_consultation"),
+    "query_consultations": ("consultation", "query_consultations"),
+    "send_consultation_message": ("consultation", "send_consultation_message"),
+    # 处方
+    "query_prescriptions": ("prescription", "query_prescriptions"),
+    "interpret_prescription": ("prescription", "interpret_prescription"),
+    # 购药
+    "query_pharmacy_stock": ("pharmacy", "query_pharmacy_stock"),
+    "create_drug_order": ("pharmacy", "create_drug_order"),
+    "query_drug_orders": ("pharmacy", "query_drug_orders"),
+    "cancel_drug_order": ("pharmacy", "cancel_drug_order"),
+    "confirm_drug_receipt": ("pharmacy", "confirm_drug_receipt"),
+    # 健康管理
+    "query_health_record": ("health", "query_health_record"),
+    "manage_allergy": ("health", "manage_allergy"),
+    "manage_medical_history": ("health", "manage_medical_history"),
+    "query_reports": ("health", "query_reports"),
+    "create_report": ("health", "create_report"),
+    "query_medication_plans": ("health", "query_medication_plans"),
+    "update_medication_plan": ("health", "update_medication_plan"),
+    "query_follow_ups": ("health", "query_follow_ups"),
+    "confirm_follow_up": ("health", "confirm_follow_up"),
+    "manage_notifications": ("notification", "manage_notifications"),
+    # B 端
+    "query_patient_history": ("b_doctor", "query_patient_history"),
+    "query_drug_guide": ("b_doctor", "query_drug_guide"),
+    "check_drug_interaction": ("b_doctor", "check_drug_interaction"),
+    "generate_draft_note": ("b_doctor", "generate_draft_note"),
+    "recommend_care": ("b_doctor", "recommend_care"),
+    "check_contraindication": ("b_doctor", "check_contraindication"),
+    "check_allergy_risk": ("b_doctor", "check_allergy_risk"),
+    "check_duplicate_medication": ("b_doctor", "check_duplicate_medication"),
+}
+
+
+async def _call_mcp_func(tool_name: str, arguments: dict, user_id: int | None) -> dict:
+    """按 _MCP_TOOL_FUNCS 映射调用封装函数（返回 Java 响应 dict）。"""
+    module_key, func_name = _MCP_TOOL_FUNCS[tool_name]
+    import importlib
+
+    module = importlib.import_module(_MCP_TOOL_MODULES[module_key])
+    return await _wrap(module, func_name, arguments, user_id)
+
+
 async def tool_executor(state: AgentState) -> dict:
     """执行已通过安全校验的工具调用。
 
@@ -70,21 +154,25 @@ async def tool_executor(state: AgentState) -> dict:
 
 
 async def _execute_mcp(tool_name: str, arguments: dict, state: AgentState) -> dict:
-    """通过 MCP Client 调用 MCP Server 执行工具。"""
+    """执行 MCP 工具（过渡实现：直接调 MCP 工具封装函数 → Java REST）。
+
+    工具名 -> 封装函数的映射见 ``_MCP_TOOL_FUNCS``。
+    未来接入 MCP Client 后，改为通过 ``tools/call`` 调用，本函数保留分发骨架。
+    """
     start = time.time()
     user_id = state.get("user_id")
 
-    # TODO: 接入 MCP Client → tools/call
-    # 当前占位：直接调 Java REST API（过渡实现）
-    from app.infrastructure.java_client import call_java_api
+    if tool_name not in _MCP_TOOL_FUNCS:
+        duration_ms = (time.time() - start) * 1000
+        _log_audit(state, tool_name, arguments, "failed", duration_ms)
+        return {
+            "tool_name": tool_name,
+            "success": False,
+            "error": {"code": "UNKNOWN_TOOL", "message": f"未知的 MCP 工具: {tool_name}"},
+        }
 
     try:
-        result = await call_java_api(
-            tool_name=tool_name,
-            arguments=arguments,
-            user_id=user_id,
-            scope=state.get("scope", "c_end"),
-        )
+        result = await _call_mcp_func(tool_name, arguments, user_id)
         duration_ms = (time.time() - start) * 1000
         _log_audit(state, tool_name, arguments, "success", duration_ms)
         return {"tool_name": tool_name, "success": True, "data": result}

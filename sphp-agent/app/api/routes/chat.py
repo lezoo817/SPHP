@@ -74,14 +74,18 @@ async def _sse_generator(
 ) -> AsyncIterator[str]:
     """SSE 流式输出生成器（系分 §6.2.1，基于 astream 混合 stream_mode）。
 
-    节点内 ``get_stream_writer()`` 推送的自定义事件在 ``custom`` 模式接收，
-    节点内 LLM 的 token 输出在 ``messages`` 模式接收（msg.content 逐 token）。
+    ⚠️ 子图 custom 事件不传播：langgraph 1.2.9 中子图内 ``get_stream_writer()``
+    推的自定义事件到不了主图 ``custom`` stream。而 tool_executor 运行在
+    4 个业务子图内，因此 action/observation 事件从 ``updates`` 里的
+    ``tool_calls``/``tool_results`` **重建**（子图最终 state 更新包含完整数据）。
     事件映射：
-    - custom 且 type=tool_action     -> ``event: action``（工具开始）
-    - custom 且 type=tool_observation -> ``event: observation``（工具结果）
+    - updates 含 tool_calls 字段      -> ``event: action``（工具开始，重建）
+    - updates 含 tool_results 字段    -> ``event: observation``（工具结果，重建）
+    - custom 且 type=tool_action      -> ``event: action``（预留顶层节点通道）
+    - custom 且 type=tool_observation -> ``event: observation``（预留）
     - messages 且 msg 是 AIMessage    -> ``event: message``（回复 token）
-    - updates 含 reply_node 输出     -> 未流式时兜底推送完整回复
-    - 结束                           -> ``event: done``
+    - updates 含 reply_node 输出      -> 未流式时兜底推送完整回复
+    - 结束                            -> ``event: done``
     """
     graph = _get_graph()
     thread_id = session_id or str(uuid4())
@@ -127,6 +131,31 @@ async def _sse_generator(
                         yield _sse("message", {"delta": delta})
 
             elif mode == "updates":
+                # 子图更新里含 tool_calls / tool_results，重建 action / observation
+                for node_name, node_update in chunk.items():
+                    if not isinstance(node_update, dict):
+                        continue
+                    tool_calls = node_update.get("tool_calls") or []
+                    if tool_calls:
+                        for tc in tool_calls:
+                            yield _sse(
+                                "action",
+                                {
+                                    "tool": tc.get("name", ""),
+                                    "arguments": tc.get("arguments", {}),
+                                },
+                            )
+                    tool_results = node_update.get("tool_results") or []
+                    if tool_results:
+                        for tr in tool_results:
+                            yield _sse(
+                                "observation",
+                                {
+                                    "tool": tr.get("tool_name", ""),
+                                    "success": tr.get("success", False),
+                                },
+                            )
+
                 # reply_node 完成但未流式时，兜底推送完整回复
                 if "reply_node" in chunk and not streamed_reply:
                     output = chunk.get("reply_node", {})
