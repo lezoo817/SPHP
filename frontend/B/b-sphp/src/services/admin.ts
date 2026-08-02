@@ -122,3 +122,58 @@ export async function updateDoctorStatus(
     data: { status },
   });
 }
+
+// ===================== 排班与号源管理 =====================
+
+/** 查询排班列表（分页） */
+export async function getSchedules(
+  params: API.ScheduleListParams,
+): Promise<API.PageResult<API.Schedule>> {
+  const res = await request('/api/b/admin/schedules', { params });
+  return (res as API.Result<API.PageResult<API.Schedule>>).data;
+}
+
+/** 创建排班（仅 ADMIN） */
+export async function createSchedule(data: API.CreateScheduleReq): Promise<void> {
+  await request('/api/b/admin/schedules', { method: 'POST', data });
+}
+
+/** 查询排班号源时段配置 */
+export async function getScheduleSlots(id: number): Promise<API.SlotConfig[]> {
+  const res = await request(`/api/b/admin/schedules/${id}/slots`);
+  return (res as API.Result<API.SlotConfig[]>).data;
+}
+
+/** 配置号源时段（仅 ADMIN，仅 DRAFT） */
+export async function configureScheduleSlots(
+  id: number,
+  slotConfigs: API.SlotConfigItem[],
+): Promise<void> {
+  await request(`/api/b/admin/schedules/${id}/slots`, {
+    method: 'PUT',
+    data: { slotConfigs },
+  });
+}
+
+/** 发布排班（仅 ADMIN） */
+export async function publishSchedule(id: number): Promise<void> {
+  await request(`/api/b/admin/schedules/${id}/publish`, { method: 'PUT' });
+}
+
+/** 取消发布（PUBLISHED）或作废（DRAFT）排班（仅 ADMIN） */
+export async function unpublishSchedule(id: number): Promise<void> {
+  await request(`/api/b/admin/schedules/${id}/unpublish`, { method: 'PUT' });
+}
+
+/** 查询锁定号源看板（分页，date 必填） */
+export async function getLockedSlots(
+  params: API.LockedSlotsParams,
+): Promise<API.PageResult<API.LockedSlot>> {
+  const res = await request('/api/b/admin/slots/locked', { params });
+  return (res as API.Result<API.PageResult<API.LockedSlot>>).data;
+}
+
+/** 手动释放锁定号源（仅 ADMIN） */
+export async function forceReleaseSlot(slotId: number): Promise<void> {
+  await request(`/api/b/admin/slots/${slotId}/force-release`, { method: 'POST' });
+}

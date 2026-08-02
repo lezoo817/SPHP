@@ -97,7 +97,8 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
 
         LambdaQueryWrapper<Schedule> wrapper = Wrappers.<Schedule>lambdaQuery()
-                .eq(Schedule::getScheduleDate, date != null ? date : LocalDate.now())
+                // 不传日期时默认加载全部排班（不再兜底为今天）
+                .eq(date != null, Schedule::getScheduleDate, date)
                 .isNull(Schedule::getDeletedAt)
                 // schedule 表无 hospital_id，医院范围经 doctor.hospital_id 关联过滤
                 .apply("doctor_id IN (SELECT id FROM doctor WHERE hospital_id = {0} AND deleted_at IS NULL)",
@@ -111,8 +112,8 @@ public class ScheduleServiceImpl implements ScheduleService {
             wrapper.eq(Schedule::getDoctorId, scope.doctorId());
         }
         wrapper.eq(StringUtils.hasText(status), Schedule::getStatus, status)
-                .orderByDesc(Schedule::getScheduleDate)
-                .orderByDesc(Schedule::getId);
+                .orderByAsc(Schedule::getScheduleDate)
+                .orderByAsc(Schedule::getId);
 
         Page<Schedule> result = scheduleMapper.selectPage(new Page<>(page, size), wrapper);
         return PageResult.of(result.getTotal(), buildListVO(result.getRecords()), page, size);
@@ -238,6 +239,12 @@ public class ScheduleServiceImpl implements ScheduleService {
         List<Slot> slots = listSlots(schedule.getId());
         if (slots.isEmpty()) {
             throw new BusinessException("A0443", "请先配置号源时段再发布");
+        }
+        // 时段号源数之和须等于排班总号源数方可发布（§5.4.4）
+        int slotCountSum = slots.stream().mapToInt(Slot::getTotalCount).sum();
+        if (slotCountSum != schedule.getTotalSlots()) {
+            throw new BusinessException("A0443",
+                    "时段号源数之和(" + slotCountSum + ")须等于排班总号源数(" + schedule.getTotalSlots() + ")，方可发布");
         }
 
         schedule.setStatus(STATUS_PUBLISHED);
