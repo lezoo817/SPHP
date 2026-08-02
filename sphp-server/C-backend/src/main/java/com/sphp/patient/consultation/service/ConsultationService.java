@@ -6,6 +6,7 @@ import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
 
 /**
  * C端问诊与处方查询服务。
@@ -47,4 +48,14 @@ public interface ConsultationService {
      * @return 已发送消息信息
      */
     ConsultationMessageSendVO sendConsultationMessage(Long consultationId, ConsultationMessageSendRequest request);
+
+    /**
+     * 分页查询当前账号指定就诊人的已批准处方。
+     *
+     * @param patientId 可选就诊人 ID，未传时查询本人
+     * @param pageNo 可选页码
+     * @param pageSize 可选页大小
+     * @return 已批准处方分页响应
+     */
+    ConsultationPrescriptionPageVO listPrescriptions(Long patientId, Integer pageNo, Integer pageSize);
 }

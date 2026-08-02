@@ -12,12 +12,14 @@ import com.sphp.patient.consultation.mapper.ConsultationListRecord;
 import com.sphp.patient.consultation.mapper.ConsultationDetailRecord;
 import com.sphp.patient.consultation.mapper.ConsultationMessageRecord;
 import com.sphp.patient.consultation.mapper.ConsultationMessageMapper;
+import com.sphp.patient.consultation.mapper.ConsultationPrescriptionRecord;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.consultation.dto.ConsultationMessageSendRequest;
 import com.sphp.patient.consultation.entity.ConsultationMessage;
 import com.sphp.patient.consultation.event.ConsultationMessageSentEvent;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -177,6 +179,28 @@ class ConsultationServiceImplTest {
                     && sentEvent.patientId().equals(20001L)
                     && sentEvent.userId().equals(10001L);
         }));
+    }
+
+    /**
+     * 验证处方列表只查询已批准处方并使用患者归属范围。
+     */
+    @Test
+    void listPrescriptionsUsesAccessiblePatientAndApprovedMapper() {
+        ConsultationDataMapper dataMapper = mock(ConsultationDataMapper.class);
+        ConsultationServiceImpl service = newService(dataMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        when(dataMapper.selectConsultationSelfPatientId(10001L)).thenReturn(20001L);
+        when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasConsultationActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectApprovedPrescriptionList(20001L, 20, 0)).thenReturn(List.of(
+                new ConsultationPrescriptionRecord(13001L, 11001L, "王医生", OffsetDateTime.now())));
+        when(dataMapper.countApprovedPrescriptionList(20001L)).thenReturn(1L);
+
+        ConsultationPrescriptionPageVO result = service.listPrescriptions(null, null, null);
+
+        assertEquals(1L, result.getTotal());
+        assertEquals("APPROVED", result.getRecords().getFirst().getStatus());
+        assertEquals(13001L, result.getRecords().getFirst().getId());
     }
 
     /**

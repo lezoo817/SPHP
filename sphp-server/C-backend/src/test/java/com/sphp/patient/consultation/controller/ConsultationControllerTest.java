@@ -9,6 +9,7 @@ import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import org.junit.jupiter.api.AfterEach;
@@ -166,6 +167,29 @@ class ConsultationControllerTest {
                 .andExpect(jsonPath("$.message").value("消息已发送"))
                 .andExpect(jsonPath("$.data.messageId").value(12001))
                 .andExpect(jsonPath("$.data.senderType").value("PATIENT"));
+    }
+
+    /**
+     * 验证处方列表路由返回已批准处方分页结构。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void listPrescriptionsReturnsApprovedPrescriptionPage() throws Exception {
+        ConsultationService consultationService = mock(ConsultationService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        when(consultationService.listPrescriptions(20001L, 1, 20))
+                .thenReturn(ConsultationPrescriptionPageVO.builder().pageNo(1).pageSize(20).total(1)
+                        .records(java.util.List.of(ConsultationPrescriptionPageVO.Item.builder().id(13001L)
+                                .consultationId(11001L).doctorName("王医生").status("APPROVED")
+                                .issuedAt(OffsetDateTime.now()).build())).build());
+
+        newMockMvc(consultationService, idempotencyService)
+                .perform(get("/c/v1/prescriptions").param("patientId", "20001")
+                        .param("pageNo", "1").param("pageSize", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records[0].status").value("APPROVED"))
+                .andExpect(jsonPath("$.data.records[0].consultationId").value(11001));
     }
 
     /**

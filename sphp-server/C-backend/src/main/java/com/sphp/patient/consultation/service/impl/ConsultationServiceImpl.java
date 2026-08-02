@@ -7,6 +7,7 @@ import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.common.constant.ConsultationConstant;
 import com.sphp.patient.common.enums.ConsultationMessageSenderTypeEnum;
+import com.sphp.patient.common.enums.ConsultationPrescriptionStatusEnum;
 import com.sphp.patient.common.enums.ConsultationStatusEnum;
 import com.sphp.patient.common.enums.RegisteringAppointmentStatusEnum;
 import com.sphp.patient.consultation.dto.ConsultationMessageSendRequest;
@@ -20,12 +21,14 @@ import com.sphp.patient.consultation.mapper.ConsultationListRecord;
 import com.sphp.patient.consultation.mapper.ConsultationDetailRecord;
 import com.sphp.patient.consultation.mapper.ConsultationMessageRecord;
 import com.sphp.patient.consultation.mapper.ConsultationMessageMapper;
+import com.sphp.patient.consultation.mapper.ConsultationPrescriptionRecord;
 import com.sphp.patient.consultation.service.ConsultationService;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.ConsultationAttachmentVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -221,6 +224,38 @@ public class ConsultationServiceImpl implements ConsultationService {
     }
 
     /**
+     * 分页查询当前账号指定就诊人的已批准处方。
+     *
+     * @param patientId 可选就诊人 ID，未传时查询本人
+     * @param pageNo 可选页码
+     * @param pageSize 可选页大小
+     * @return 已批准处方分页响应
+     * @throws CAuthException 患者归属或分页参数不满足要求时抛出
+     */
+    @Override
+    public ConsultationPrescriptionPageVO listPrescriptions(Long patientId, Integer pageNo, Integer pageSize) {
+        Long targetPatientId = resolveAccessiblePatient(CUserContext.getRequired().userId(), patientId);
+        int resolvedPageNo = pageNo == null ? ConsultationConstant.DEFAULT_PAGE_NO : pageNo;
+        int resolvedPageSize = pageSize == null ? ConsultationConstant.DEFAULT_PAGE_SIZE : pageSize;
+        if (resolvedPageSize > ConsultationConstant.MAX_PAGE_SIZE) {
+            throw parameterOutOfRange("pageSize 不能超过" + ConsultationConstant.MAX_PAGE_SIZE);
+        }
+        long offset = (long) (resolvedPageNo - 1) * resolvedPageSize;
+        // Mapper 固定过滤 APPROVED，草稿和审核中的处方不会进入患者接口。
+        List<ConsultationPrescriptionPageVO.Item> records = consultationDataMapper
+                .selectApprovedPrescriptionList(targetPatientId, resolvedPageSize, offset)
+                .stream()
+                .map(this::toPrescriptionListItem)
+                .toList();
+        return ConsultationPrescriptionPageVO.builder()
+                .pageNo(resolvedPageNo)
+                .pageSize(resolvedPageSize)
+                .total(consultationDataMapper.countApprovedPrescriptionList(targetPatientId))
+                .records(records)
+                .build();
+    }
+
+    /**
      * 解析当前账号可访问的就诊人，未传时固定使用本人。
      *
      * @param userId 当前 C端用户 ID
@@ -286,6 +321,22 @@ public class ConsultationServiceImpl implements ConsultationService {
                 .senderType(record.senderType())
                 .content(record.content())
                 .createdAt(record.createdAt())
+                .build();
+    }
+
+    /**
+     * 将已批准处方查询投影转换为列表展示项。
+     *
+     * @param record 处方列表投影
+     * @return 处方列表响应项
+     */
+    private ConsultationPrescriptionPageVO.Item toPrescriptionListItem(ConsultationPrescriptionRecord record) {
+        return ConsultationPrescriptionPageVO.Item.builder()
+                .id(record.id())
+                .consultationId(record.consultationId())
+                .doctorName(record.doctorName())
+                .status(ConsultationPrescriptionStatusEnum.APPROVED.name())
+                .issuedAt(record.issuedAt())
                 .build();
     }
 
