@@ -17,8 +17,7 @@ def _connection_string() -> str:
     """拼装 SQLAlchemy 连接串（psycopg3 驱动）。"""
     s = get_settings()
     return (
-        f"postgresql+psycopg://{s.pg_user}:{s.pg_password}"
-        f"@{s.pg_host}:{s.pg_port}/{s.pg_database}"
+        f"postgresql+psycopg://{s.pg_user}:{s.pg_password}@{s.pg_host}:{s.pg_port}/{s.pg_database}"
     )
 
 

@@ -98,8 +98,12 @@ async def tool_caller(state: AgentState) -> dict[str, Any]:
     try:
         response = await llm_with_tools.ainvoke([{"role": "user", "content": prompt}])
         tool_calls = _extract_tool_calls(response, tool_scope)
-        logger.info("工具决策: scope=%s, 选择 %d 个工具: %s", scope, len(tool_calls),
-                    [tc["name"] for tc in tool_calls])
+        logger.info(
+            "工具决策: scope=%s, 选择 %d 个工具: %s",
+            scope,
+            len(tool_calls),
+            [tc["name"] for tc in tool_calls],
+        )
         return {"tool_calls": tool_calls}
     except Exception as e:
         logger.error("工具决策失败: %s", e)

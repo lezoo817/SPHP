@@ -20,5 +20,5 @@ def truncate_messages(messages: list, max_turns: int = 10) -> list:
     # 保留系统消息（摘要等），再取最近 max_turns * 2 条非系统消息
     system_msgs = [m for m in messages if isinstance(m, SystemMessage)]
     non_system = [m for m in messages if not isinstance(m, SystemMessage)]
-    truncated = non_system[-(max_turns * 2):]
+    truncated = non_system[-(max_turns * 2) :]
     return system_msgs + truncated
