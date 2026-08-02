@@ -99,13 +99,13 @@ async def tool_caller(state: AgentState) -> dict[str, Any]:
     system_prompt = TOOL_CALLER_SYSTEM_PROMPT.format(tools_desc=_build_tools_prompt(tools))
     messages = [{"role": "system", "content": system_prompt}] + history
 
-    # 注入上一次工具执行结果（子图循环时 LLM 可见）
+    # 注入已执行工具的结果（子图循环累积了前面所有轮次，LLM 分步决策可见）
     tool_results = state.get("tool_results")
     if tool_results:
         from app.orchestrator.nodes.reply import _format_tool_results
 
         summary = _format_tool_results(tool_results)
-        messages.append({"role": "system", "content": f"上一轮工具执行结果：\n{summary}"})
+        messages.append({"role": "system", "content": f"已执行的工具结果：\n{summary}"})
 
     try:
         response = await llm_with_tools.ainvoke(messages)

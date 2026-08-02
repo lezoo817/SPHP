@@ -166,7 +166,14 @@ async def tool_executor(state: AgentState) -> dict:
         # 推送 observation 事件（工具返回结果）
         writer({"type": "tool_observation", "result": formatted[-1]})
 
-    return {"tool_results": formatted}
+    # 自累积：保留子图循环前面轮次的执行结果（tool_results 无 reducer，
+    # 默认 last-write-wins 会覆盖多轮 L1 结果）。
+    # 不用 Annotated[list, operator.add] reducer：checkpointer 按 session 持久化，
+    # reducer 语义下新一轮对话传入 tool_results=None 会被追加到旧结果而非重置；
+    # 自累积只发生在单次对话的子图循环内部，跨轮对话由 _build_initial_state
+    # 传 None（last-write-wins）正常清场，历史结果不会污染下一轮。
+    previous = state.get("tool_results") or []
+    return {"tool_results": previous + formatted}
 
 
 async def _execute_mcp(tool_name: str, arguments: dict, state: AgentState) -> dict:
