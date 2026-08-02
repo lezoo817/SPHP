@@ -2,18 +2,22 @@
 
 检查 tool_calls 中的工具安全等级：
 - L1：直接放行
-- L2：生成 confirm_token，挂起等待用户确认
+- L2：生成 confirm_token 存入 Redis，挂起等待用户确认
 - L3/L4：直接拒绝（不应出现，因为不注册）
 """
 
+import logging
 import uuid
 
 from app.engine.tools.schema_registry import SecurityLevel, ToolRegistry
+from app.infrastructure.cache.redis_client import set_confirm_token
 from app.orchestrator.state import AgentState
+
+logger = logging.getLogger(__name__)
 
 
 async def safety_check(state: AgentState) -> dict:
-    """检查 tool_calls 中的工具等级，L1 直接放行，L2 生成 confirm_token。"""
+    """检查 tool_calls 中的工具等级，L1 直接放行，L2 生成 confirm_token 存 Redis。"""
     tool_calls = state.get("tool_calls") or []
     if not tool_calls:
         return {}
@@ -28,13 +32,32 @@ async def safety_check(state: AgentState) -> dict:
             continue
 
         if tool.security_level == SecurityLevel.L2:
-            # 生成 confirm_token，暂存待确认
+            # 生成 confirm_token，写入 Redis（5min TTL），暂存待确认
             token = str(uuid.uuid4())
+            session_id = state.get("session_id") or ""
+            user_id = str(state.get("user_id") or "")
+
+            try:
+                await set_confirm_token(
+                    token_id=token,
+                    session_id=session_id,
+                    user_id=user_id,
+                    tool_name=tool_name,
+                    tool_arguments=tc.get("arguments", {}),
+                    card_type=_map_card_type(tool_name),
+                )
+            except Exception as e:
+                # Redis 不可用：拒绝 L2 操作（系分 §5.5）
+                logger.error("L2 工具 %s 生成 confirm_token 失败，拒绝执行: %s", tool_name, e)
+                risk_flags.append(f"redis_unavailable_{tool_name}")
+                continue
+
             pending_confirmations.append({
                 "tool_name": tool_name,
                 "tool_arguments": tc.get("arguments", {}),
                 "confirm_token": token,
                 "card_type": _map_card_type(tool_name),
+                "session_id": session_id,
             })
         elif tool.security_level in (SecurityLevel.L3, SecurityLevel.L4):
             risk_flags.append(f"blocked_{tool_name}")
