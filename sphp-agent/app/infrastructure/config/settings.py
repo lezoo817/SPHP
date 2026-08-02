@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
     siliconflow_embedding_model: str = "BAAI/bge-m3"
 
+    # ---- 阿里云百炼 DashScope（Embedding 向量化，text-embedding-v4）----
+    dashscope_embedding_api_key: str = ""
+    dashscope_embedding_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    dashscope_embedding_model: str = "text-embedding-v4"
+
     # ---- PostgreSQL + pgvector ----
     # 本地开发库密码请在 .env 的 PG_PASSWORD 配置，不硬编码到源码。
     pg_host: str = "localhost"
