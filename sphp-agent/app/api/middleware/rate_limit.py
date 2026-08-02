@@ -9,8 +9,8 @@ Redis 不可用时降级为不限制（避免误伤正常用户）。
 import logging
 
 from fastapi import Request
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import JSONResponse, Response
 
 from app.infrastructure.cache.redis_client import check_rate_limit
 from app.infrastructure.config.settings import get_settings
@@ -23,7 +23,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in self.EXEMPT_PATHS:
             return await call_next(request)
 
