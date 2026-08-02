@@ -4,7 +4,7 @@
 保留最近 N 轮对话（一轮 = 用户消息 + AI 回复）。
 """
 
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
+from langchain_core.messages import SystemMessage
 
 
 def truncate_messages(messages: list, max_turns: int = 10) -> list:

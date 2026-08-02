@@ -4,7 +4,7 @@ AgentState 是图中唯一的共享状态对象，
 通过 LangGraph 的 add_messages reducer 自动累积对话历史。
 """
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from langgraph.graph import add_messages
 from typing_extensions import TypedDict
