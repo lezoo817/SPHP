@@ -76,6 +76,7 @@ def _build_initial_state(
         "risk_flags": [],
         "jwt_token": token,
         "rag_context": None,
+        "tool_iteration": None,
     }
 
 

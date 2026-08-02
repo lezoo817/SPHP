@@ -29,11 +29,11 @@ TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的工具调用助手。
 {tools_desc}
 
 规则：
-1. 只有当确实需要查询业务数据时才调用工具，否则不调用
-2. 一次性调用所有需要的工具（可并行）
+1. 当用户请求涉及业务操作（创建/修改/取消/查询）时，必须调用对应的工具完成，不要仅凭知识回复
+2. 一次性调用所有需要的工具（可并行），例如挂号流程：查科室+查医生+查排班+创建挂号可一次完成
 3. 参数严格按工具定义填写，缺失的信息先询问用户
 4. 不要编造工具名或参数
-"""
+5. 工具调用结果会自动返回，不需要让用户等待重试"""
 
 
 def _build_tools_prompt(tools: list[dict]) -> str:
@@ -93,6 +93,14 @@ async def tool_caller(state: AgentState) -> dict[str, Any]:
     system_prompt = TOOL_CALLER_SYSTEM_PROMPT.format(tools_desc=_build_tools_prompt(tools))
     messages = [{"role": "system", "content": system_prompt}] + history
 
+    # 注入上一次工具执行结果（子图循环时 LLM 可见）
+    tool_results = state.get("tool_results")
+    if tool_results:
+        from app.orchestrator.nodes.reply import _format_tool_results
+
+        summary = _format_tool_results(tool_results)
+        messages.append({"role": "system", "content": f"上一轮工具执行结果：\n{summary}"})
+
     try:
         response = await llm_with_tools.ainvoke(messages)
         tool_calls = _extract_tool_calls(response, tool_scope)
@@ -102,7 +110,8 @@ async def tool_caller(state: AgentState) -> dict[str, Any]:
             len(tool_calls),
             [tc["name"] for tc in tool_calls],
         )
-        return {"tool_calls": tool_calls}
+        iteration = state.get("tool_iteration") or 0
+        return {"tool_calls": tool_calls, "tool_iteration": iteration + 1}
     except Exception as e:
         logger.error("工具决策失败: %s", e)
         return {"tool_calls": []}

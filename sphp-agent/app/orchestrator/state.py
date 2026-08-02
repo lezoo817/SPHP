@@ -57,3 +57,6 @@ class AgentState(TypedDict):
 
     # JWT Token（从请求 Header 提取，不含 "Bearer " 前缀），供 auth_node 调用 Java token/parse
     jwt_token: str | None
+
+    # 工具调用迭代计数，子图循环用，防止无限循环
+    tool_iteration: int | None
