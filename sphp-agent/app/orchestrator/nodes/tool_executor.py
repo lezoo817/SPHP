@@ -117,7 +117,9 @@ async def tool_executor(state: AgentState) -> dict:
     """
     tool_calls = state.get("tool_calls") or []
     if not tool_calls:
-        return {"tool_results": []}
+        # 无工具调用时不更新 tool_results（返回空 dict），避免覆盖
+        # 子图循环上一轮已获取的查询结果，保证 reply 能基于真实数据生成
+        return {}
 
     writer = get_stream_writer()
 
