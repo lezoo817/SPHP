@@ -304,3 +304,38 @@ def resolve_api(api_name: str, path_params: dict | None = None) -> tuple[str, st
                 raise KeyError(f"接口 {api_name} 的路径中不存在占位符 {placeholder}")
 
     return method, path, scope
+
+
+def validate_contract() -> None:
+    """启动期校验接口契约表（系分 §6.4，fail-fast）。
+
+    在 lifespan 启动时调用，发现契约错误立即报错而非运行期静默降级：
+    - 接口名不重复
+    - method/path/scope 字段齐全
+    - path 中 ``{param}`` 占位符闭合配对
+    - scope 取值合法（c_end / b_end）
+
+    Raises:
+        ValueError: 契约表存在上述任一错误。
+    """
+    seen: set[str] = set()
+    valid_scopes = {"c_end", "b_end"}
+    valid_methods = {"GET", "POST", "PUT", "PATCH", "DELETE"}
+
+    for name, cfg in JAVA_API_MAP.items():
+        if name in seen:
+            raise ValueError(f"接口契约重复: {name}")
+        seen.add(name)
+
+        method = cfg.get("method")
+        path = cfg.get("path")
+        scope = cfg.get("scope")
+        for field, value in (("method", method), ("path", path), ("scope", scope)):
+            if not value:
+                raise ValueError(f"接口 {name} 缺少字段: {field}")
+        if method not in valid_methods:
+            raise ValueError(f"接口 {name} 非法 method: {method}")
+        if scope not in valid_scopes:
+            raise ValueError(f"接口 {name} 非法 scope: {scope}")
+        if path.count("{") != path.count("}"):
+            raise ValueError(f"接口 {name} 的 path 占位符未配对: {path}")
