@@ -138,11 +138,17 @@ public class DepartmentServiceImpl implements DepartmentService {
         Long hospitalId = currentUserService.getCurrentHospitalId();
         Department dept = getDepartment(id, hospitalId);
         String status = request.getStatus();
-        // 停用前置校验：无启用医生 / 已发布排班 / 进行中问诊
+        // 停用前置校验：已发布排班 / 进行中问诊
         if ("DISABLED".equals(status)) {
-            assertNoEnabledDoctor(dept.getId());
             assertNoPublishedSchedule(dept.getId());
             assertNoInProgressConsult(dept.getId());
+            // 同步停用该科室下所有医生（状态改为 DISABLED）
+            doctorMapper.update(null,
+                    Wrappers.<Doctor>lambdaUpdate()
+                            .set(Doctor::getStatus, "DISABLED")
+                            .set(Doctor::getUpdatedAt, OffsetDateTime.now())
+                            .eq(Doctor::getDeptId, dept.getId())
+                            .isNull(Doctor::getDeletedAt));
         }
         dept.setStatus(status);
         dept.setUpdatedAt(OffsetDateTime.now());
@@ -166,18 +172,7 @@ public class DepartmentServiceImpl implements DepartmentService {
         }
     }
 
-    /** 停用前置校验 1：科室下无 ENABLED 医生（否则 4001） */
-    private void assertNoEnabledDoctor(Long deptId) {
-        long enabled = doctorMapper.selectCount(Wrappers.<Doctor>lambdaQuery()
-                .eq(Doctor::getDeptId, deptId)
-                .eq(Doctor::getStatus, "ENABLED")
-                .isNull(Doctor::getDeletedAt));
-        if (enabled > 0) {
-            throw new BusinessException("4001", "科室下存在启用医生，无法停用");
-        }
-    }
-
-    /** 停用前置校验 2：科室下无 PUBLISHED 排班（否则 4002） */
+    /** 停用前置校验 1：科室下无 PUBLISHED 排班（否则 4002） */
     private void assertNoPublishedSchedule(Long deptId) {
         if (departmentMapper.countPublishedScheduleByDept(deptId) > 0) {
             throw new BusinessException("4002", "科室下存在已发布排班，无法停用");
