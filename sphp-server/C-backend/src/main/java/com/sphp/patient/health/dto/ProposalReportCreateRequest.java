@@ -1,0 +1,3 @@
+package com.sphp.patient.health.dto;
+import jakarta.validation.Valid; import jakarta.validation.constraints.*; import lombok.*; import java.time.LocalDate; import java.util.List;
+/** 录入检查报告请求。 */ @Getter @Setter public class ProposalReportCreateRequest { @Positive private Long patientId; @NotBlank @Size(max=256) private String reportName; @NotNull private LocalDate reportDate; @NotEmpty @Valid private List<Indicator> indicators; /** 报告指标请求项。 */ @Getter @Setter public static class Indicator { @NotBlank @Size(max=128) private String name; @NotBlank @Size(max=128) private String value; @Size(max=64) private String unit; @Size(max=128) private String referenceRange; } }

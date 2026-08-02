@@ -1,0 +1,1 @@
+package com.sphp.patient.health.mapper; import java.time.LocalDate; /** 报告资源投影。 */ public record ReportRecord(Long id,Long patientId,String reportName,LocalDate reportDate,String interpretationStatus,String interpretation){}

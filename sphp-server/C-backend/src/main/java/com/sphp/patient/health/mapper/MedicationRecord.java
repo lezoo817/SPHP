@@ -1,0 +1,1 @@
+package com.sphp.patient.health.mapper; import java.time.OffsetDateTime; /** 用药计划投影。 */ public record MedicationRecord(Long id,Long patientId,String drugName,String dosage,String frequency,OffsetDateTime nextReminderAt,String status){}

@@ -1,0 +1,3 @@
+package com.sphp.patient.health.entity;
+import com.baomidou.mybatisplus.annotation.*; import com.sphp.shared.entity.BaseDeleteDO; import lombok.*; import java.time.LocalDate;
+/** 患者检查报告实体。 */ @Getter @Setter @NoArgsConstructor @TableName("patient_report") public class ProposalPatientReport extends BaseDeleteDO { @TableField("patient_id") private Long patientId; @TableField("report_name") private String reportName; @TableField("report_date") private LocalDate reportDate; @TableField("interpretation_status") private String interpretationStatus; @TableField("interpretation") private String interpretation; }
