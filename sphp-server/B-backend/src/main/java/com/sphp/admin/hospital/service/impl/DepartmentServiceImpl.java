@@ -42,13 +42,16 @@ public class DepartmentServiceImpl implements DepartmentService {
     private final CurrentUserService currentUserService;
 
     @Override
-    public PageResult<DepartmentListVO> page(String name, String status, int page, int size) {
+    public PageResult<DepartmentListVO> page(String name, String headDoctorName, String status, int page, int size) {
         Long hospitalId = currentUserService.getCurrentHospitalId();
         Page<Department> result = departmentMapper.selectPage(new Page<>(page, size),
                 Wrappers.<Department>lambdaQuery()
                         .eq(Department::getHospitalId, hospitalId)
                         .like(StringUtils.hasText(name), Department::getName, name)
                         .eq(StringUtils.hasText(status), Department::getStatus, status)
+                        .apply(StringUtils.hasText(headDoctorName),
+                                "head_doctor_id IN (SELECT id FROM doctor WHERE name LIKE CONCAT('%', {0}::text, '%') AND deleted_at IS NULL)",
+                                headDoctorName)
                         .isNull(Department::getDeletedAt)
                         .orderByDesc(Department::getId));
 

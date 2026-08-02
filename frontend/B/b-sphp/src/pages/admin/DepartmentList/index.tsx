@@ -3,12 +3,12 @@
  * - ProTable 列表，支持名称模糊搜索、状态筛选
  * - ADMIN 角色可新增/编辑/启用停用
  */
-import { Tag, Button, Modal, message, Switch } from 'antd';
+import { Tag, Button, Modal, message, Switch, Select } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { ProTable, ProForm, ProFormText, ProFormSelect } from '@ant-design/pro-components';
 import { useModel } from '@umijs/max';
 import { useRef, useState } from 'react';
-import type { ActionType, ProColumns } from '@ant-design/pro-components';
+import type { ActionType, ProColumns, ProFormInstance } from '@ant-design/pro-components';
 import {
   getDepartments,
   createDepartment,
@@ -21,6 +21,8 @@ export default function DepartmentList() {
   const { initialState } = useModel('@@initialState');
   const isAdmin = initialState?.currentUser?.roles?.includes('ADMIN') ?? false;
   const actionRef = useRef<ActionType>();
+  const formRef = useRef<ProFormInstance>();
+  const searchParamsRef = useRef<Record<string, any>>({});
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingDept, setEditingDept] = useState<API.Department | null>(null);
@@ -122,6 +124,16 @@ export default function DepartmentList() {
         ENABLED: { text: '启用', status: 'Success' },
         DISABLED: { text: '停用', status: 'Error' },
       },
+      renderFormItem: () => (
+        <Select
+          allowClear
+          placeholder="全部"
+          options={[
+            { label: '启用', value: 'ENABLED' },
+            { label: '停用', value: 'DISABLED' },
+          ]}
+        />
+      ),
       render: (_, record) => (
         <Tag color={record.status === 'ENABLED' ? 'green' : 'red'}>
           {record.status === 'ENABLED' ? '启用' : '停用'}
@@ -162,25 +174,53 @@ export default function DepartmentList() {
     <>
       <ProTable<API.Department, API.DepartmentListParams>
         actionRef={actionRef}
+        formRef={formRef}
         rowKey="id"
         columns={columns}
         request={async (params) => {
-          const { current, pageSize, ...rest } = params;
-          const res = await getDepartments({
-            page: current,
-            size: pageSize,
-            name: rest.name,
-            status: rest.status,
-          });
-          return {
-            data: res.list,
-            total: res.total,
-            success: true,
-          };
+          const { current, pageSize } = params;
+          const sp = searchParamsRef.current;
+          try {
+            const res = await getDepartments({
+              page: current,
+              size: pageSize,
+              name: sp.name,
+              headDoctorName: sp.headDoctorName,
+              status: sp.status || undefined,
+            });
+            return {
+              data: res.list,
+              total: res.total,
+              success: true,
+            };
+          } catch (err: any) {
+            // 查询失败时清空列表，避免残留上一次成功数据；success 置 true 以显示空表格
+            message.error(err?.message || '查询失败，请重试');
+            return { data: [], total: 0, success: true };
+          }
         }}
         search={{
           labelWidth: 'auto',
           defaultCollapsed: true,
+          onReset: () => {
+            searchParamsRef.current = {};
+          },
+        }}
+        beforeSearchSubmit={(values) => {
+          // 在 request 之前保存查询参数，供分页时使用
+          const used: Record<string, any> = {};
+          if (values.name) used.name = values.name;
+          if (values.headDoctorName) used.headDoctorName = values.headDoctorName;
+          if (values.status) used.status = values.status;
+          searchParamsRef.current = used;
+
+          // 清空未使用的查询字段
+          const cleared: Record<string, undefined> = {};
+          if (!values.name) cleared.name = undefined;
+          if (!values.headDoctorName) cleared.headDoctorName = undefined;
+          if (!values.status) cleared.status = undefined;
+          formRef.current?.setFieldsValue(cleared);
+          return values;
         }}
         toolBarRender={() =>
           isAdmin

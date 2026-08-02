@@ -78,6 +78,7 @@ declare namespace API {
   /** 科室列表查询参数 */
   interface DepartmentListParams extends PageParams {
     name?: string;
+    headDoctorName?: string;
     status?: string;
   }
 

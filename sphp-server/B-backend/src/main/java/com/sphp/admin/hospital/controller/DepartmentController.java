@@ -47,10 +47,11 @@ public class DepartmentController {
     @Operation(summary = "查询科室列表", description = "分页查询科室（按当前管理员所属医院过滤）")
     public Result<PageResult<DepartmentListVO>> page(
             @Parameter(description = "科室名称模糊检索") @RequestParam(required = false) String name,
+            @Parameter(description = "科室主任姓名模糊检索") @RequestParam(required = false) String headDoctorName,
             @Parameter(description = "状态过滤：ENABLED / DISABLED") @RequestParam(required = false) String status,
             @Parameter(description = "页码，默认1") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页大小，默认10") @RequestParam(defaultValue = "10") int size) {
-        return Result.success("查询成功", departmentService.page(name, status, page, clampSize(size)));
+        return Result.success("查询成功", departmentService.page(name, headDoctorName, status, page, clampSize(size)));
     }
 
     @GetMapping("/{id}")
