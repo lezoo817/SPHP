@@ -32,9 +32,14 @@ async def lifespan(app: FastAPI):
     logging.basicConfig(level=getattr(logging, settings.log_level, logging.INFO))
 
     # 步骤 3.5：校验 Java 接口契约表（fail-fast，防止运行期静默降级）
-    from app.infrastructure.java_api_map import JAVA_API_MAP, validate_contract
+    from app.infrastructure.java_api_map import (
+        JAVA_API_MAP,
+        validate_contract,
+        validate_tool_references,
+    )
 
     validate_contract()
+    validate_tool_references()
     logger.info("Java API contract validated (%d 条)", len(JAVA_API_MAP))
 
     # 步骤 4：注册工具 Schema

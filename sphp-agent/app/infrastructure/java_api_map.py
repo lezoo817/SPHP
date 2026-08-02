@@ -339,3 +339,35 @@ def validate_contract() -> None:
             raise ValueError(f"接口 {name} 非法 scope: {scope}")
         if path.count("{") != path.count("}"):
             raise ValueError(f"接口 {name} 的 path 占位符未配对: {path}")
+
+
+def validate_tool_references() -> None:
+    """交叉校验：工具文件引用的接口名必须在契约表中（fail-fast）。
+
+    扫描 ``app/mcp_server/tools/*.py`` 里 ``tool_name=`` / ``api_name=`` 引用的
+    接口名，反向检查每个引用名都存在于 ``JAVA_API_MAP``。这样工具文件里接口名
+    拼错会在启动时暴露，而不是运行期返回 ``API_CONTRACT_ERROR`` 静默降级。
+
+    Raises:
+        ValueError: 工具文件引用了契约表中不存在的接口名。
+    """
+    import re
+    from pathlib import Path
+
+    tools_dir = Path(__file__).resolve().parent.parent / "mcp_server" / "tools"
+    if not tools_dir.is_dir():
+        raise FileNotFoundError(f"工具目录不存在: {tools_dir}")
+
+    # 匹配 tool_name="X" 或 api_name="Y"
+    pattern = re.compile(r'(?:tool_name|api_name)\s*=\s*"([^"]+)"')
+    errors: list[str] = []
+
+    for py_file in sorted(tools_dir.glob("*.py")):
+        text = py_file.read_text(encoding="utf-8")
+        for match in pattern.finditer(text):
+            api_name = match.group(1)
+            if api_name not in JAVA_API_MAP:
+                errors.append(f"{py_file.name}: 引用了未定义的接口 {api_name}")
+
+    if errors:
+        raise ValueError("工具文件引用了契约表中不存在的接口:\n  " + "\n  ".join(errors))
