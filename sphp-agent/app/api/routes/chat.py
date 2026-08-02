@@ -13,7 +13,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas.chat import ChatRequest, ConfirmRequest, ConfirmResponse
+from app.infrastructure.cache.redis_client import get_and_delete_confirm_token_by_token
 from app.orchestrator.graphs.main_graph import build_main_graph
+from app.orchestrator.nodes.tool_executor import _execute_mcp
 from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -243,11 +245,104 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     """L2 确认回调（系分 §6.2.2）。
 
     前端用户点击确认卡片后回调此端点。
-    Agent 校验 confirm_token，通过后继续执行对应的 MCP 工具。
+    Agent 原子消费 confirm_token（Redis 一次性 GET+DEL），校验 session/user，
+    通过后同步执行对应的 MCP 工具，返回业务执行结果。
 
-    ⚠️ 未实现：confirm_token 校验与 L2 工具执行（待后续完善）。
+    Args:
+        req: ConfirmRequest，含 confirm_token + session_id。
+        request: FastAPI 请求，含 user_id（中间件注入）。
+
+    Returns:
+        ConfirmResponse: 统一信封，成功 data 含 action_result + message。
     """
     trace_id = getattr(request.state, "trace_id", "")
-    # TODO: 从 Redis 获取并删除 confirm_token（一次性消费）
-    # TODO: 校验通过后继续执行 MCP 工具，通过 SSE 推送结果
-    return ConfirmResponse(code="00000", message="确认成功，正在处理", data=None, traceId=trace_id)
+    user_id = str(getattr(request.state, "user_id", "") or "")
+
+    # 校验参数非空
+    if not req.confirm_token or not req.session_id:
+        return ConfirmResponse(
+            code="CONFIRM_INVALID", message="令牌格式无效", data=None, traceId=trace_id
+        )
+
+    # 原子消费 confirm_token（一次性 GET+DEL + user_id 校验）
+    try:
+        record = await get_and_delete_confirm_token_by_token(
+            session_id=req.session_id,
+            token_id=req.confirm_token,
+            expected_user_id=user_id,
+        )
+    except Exception:
+        # Redis 不可用
+        logger.error("confirm_token 消费异常: Redis 不可用")
+        return ConfirmResponse(
+            code="CONFIRM_INVALID",
+            message="操作暂时不可用，请稍后重试",
+            data=None,
+            traceId=trace_id,
+        )
+
+    if record is None:
+        # token 不存在 / 已消费 / 已过期 / 用户不匹配
+        return ConfirmResponse(
+            code="CONFIRM_EXPIRED",
+            message="操作已超时或无效，请重新发起",
+            data=None,
+            traceId=trace_id,
+        )
+
+    # session 校验（record 里的 session 应与请求一致）
+    if record.get("session_id") != req.session_id:
+        return ConfirmResponse(
+            code="SESSION_MISMATCH", message="会话不匹配，请刷新重试", data=None, traceId=trace_id
+        )
+
+    # 执行对应的 L2 工具
+    tool_name = record.get("tool_name", "")
+    arguments = record.get("tool_arguments", {})
+    state: AgentState = {
+        "user_id": request.state.user_id,
+        "scope": getattr(request.state, "scope", "c_end"),
+        "session_id": req.session_id,
+    }
+    result = await _execute_mcp(tool_name, arguments, state)
+
+    if not result.get("success"):
+        error = result.get("error", {})
+        return ConfirmResponse(
+            code="TOOL_FAILED",
+            message=error.get("message", "操作执行失败"),
+            data=None,
+            traceId=trace_id,
+        )
+
+    # 成功：返回 action_result + message
+    return ConfirmResponse(
+        code="00000",
+        message="操作成功",
+        data={
+            "action_result": result.get("data"),
+            "message": _success_message(tool_name),
+        },
+        traceId=trace_id,
+    )
+
+
+def _success_message(tool_name: str) -> str:
+    """L2 工具执行成功的面向用户提示（系分 §6.2.2 data.message）。"""
+    messages = {
+        "create_appointment": "挂号成功，请及时完成支付",
+        "cancel_appointment": "挂号已取消",
+        "save_pre_consultation": "预问诊已提交",
+        "send_consultation_message": "消息已发送",
+        "create_drug_order": "购药订单已创建",
+        "cancel_drug_order": "购药订单已取消",
+        "confirm_drug_receipt": "已确认收货",
+        "manage_allergy": "过敏史已更新",
+        "manage_medical_history": "既往史已更新",
+        "create_report": "检查报告已录入",
+        "update_medication_plan": "用药计划已更新",
+        "confirm_follow_up": "随访提醒已确认",
+        "join_waitlist": "已登记候补",
+        "generate_draft_note": "病历草稿已保存",
+    }
+    return messages.get(tool_name, "操作成功")
