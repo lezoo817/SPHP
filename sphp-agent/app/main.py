@@ -44,7 +44,8 @@ async def lifespan(app: FastAPI):
         logger.info("MCP Server started (stdio transport)")
     except Exception as e:
         logger.error("MCP Server startup failed: %s", e)
-        # MCP Server 启动失败为 fatal
+        # MCP Server 启动失败为 fatal，始终终止进程
+        raise
 
     yield
 
@@ -81,9 +82,10 @@ def create_app() -> FastAPI:
     app.add_middleware(TracingMiddleware)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # TODO: 生产环境收敛
-        allow_methods=["*"],
+        allow_origins=settings.cors_origins,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["*"],
+        allow_credentials=True,
     )
 
     # ---- 路由注册 ----
