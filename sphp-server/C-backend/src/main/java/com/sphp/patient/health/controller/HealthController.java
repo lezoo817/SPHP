@@ -5,9 +5,11 @@ import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.health.dto.AllergyCreateRequest;
 import com.sphp.patient.health.dto.AllergyUpdateRequest;
 import com.sphp.patient.health.dto.MedicalHistoryCreateRequest;
+import com.sphp.patient.health.dto.MedicalHistoryUpdateRequest;
 import com.sphp.patient.health.vo.AllergyCreateVO;
 import com.sphp.patient.health.vo.AllergyUpdateVO;
 import com.sphp.patient.health.vo.MedicalHistoryCreateVO;
+import com.sphp.patient.health.vo.MedicalHistoryUpdateVO;
 import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
@@ -126,6 +128,32 @@ public class HealthController {
                 request,
                 MedicalHistoryCreateVO.class,
                 () -> new IdempotencyPayload<>("既往史已保存", healthService.createMedicalHistory(request))
+        );
+        return Result.success(payload.message(), payload.data());
+    }
+
+    /**
+     * 更新当前账号可访问就诊人的既往史。
+     *
+     * @param historyId 既往史 ID
+     * @param idempotencyKey 客户端幂等键
+     * @param request 更新既往史请求
+     * @return 更新后的既往史信息
+     */
+    @PutMapping("/histories/{historyId}")
+    @Operation(summary = "更新既往史")
+    public Result<MedicalHistoryUpdateVO> updateMedicalHistory(
+            @PathVariable @Positive(message = "既往史ID必须为正整数") Long historyId,
+            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @Valid @RequestBody MedicalHistoryUpdateRequest request) {
+        Long userId = CUserContext.getRequired().userId();
+        IdempotencyPayload<MedicalHistoryUpdateVO> payload = idempotencyService.execute(
+                userId,
+                "/c/v1/health-record/histories/" + historyId,
+                idempotencyKey,
+                request,
+                MedicalHistoryUpdateVO.class,
+                () -> new IdempotencyPayload<>("既往史已更新", healthService.updateMedicalHistory(historyId, request))
         );
         return Result.success(payload.message(), payload.data());
     }

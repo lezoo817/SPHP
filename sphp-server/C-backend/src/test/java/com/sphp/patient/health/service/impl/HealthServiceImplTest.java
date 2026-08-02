@@ -5,6 +5,7 @@ import com.sphp.patient.auth.support.context.CUserPrincipal;
 import com.sphp.patient.health.dto.AllergyCreateRequest;
 import com.sphp.patient.health.dto.AllergyUpdateRequest;
 import com.sphp.patient.health.dto.MedicalHistoryCreateRequest;
+import com.sphp.patient.health.dto.MedicalHistoryUpdateRequest;
 import com.sphp.patient.health.entity.PatientAllergy;
 import com.sphp.patient.health.entity.PatientMedicalHistory;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
@@ -15,6 +16,7 @@ import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.health.vo.AllergyCreateVO;
 import com.sphp.patient.health.vo.AllergyUpdateVO;
 import com.sphp.patient.health.vo.MedicalHistoryCreateVO;
+import com.sphp.patient.health.vo.MedicalHistoryUpdateVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -164,6 +166,37 @@ class HealthServiceImplTest {
                 history.getPatientId().equals(20001L)
                         && "高血压病史5年".equals(history.getContent())
                         && LocalDate.of(2021, 1, 1).equals(history.getOccurredAt())));
+    }
+
+    /**
+     * 验证更新既往史时保留未传发生日期，并使用患者归属条件更新。
+     */
+    @Test
+    void updateMedicalHistoryPreservesMissingOccurredAtAndChecksPatientScope() {
+        HealthPatientMapper healthPatientMapper = mock(HealthPatientMapper.class);
+        PatientAllergyMapper allergyMapper = mock(PatientAllergyMapper.class);
+        PatientMedicalHistoryMapper historyMapper = mock(PatientMedicalHistoryMapper.class);
+        HealthServiceImpl healthService = new HealthServiceImpl(healthPatientMapper, allergyMapper, historyMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        MedicalHistoryUpdateRequest request = new MedicalHistoryUpdateRequest();
+        request.setContent("高血压病史6年");
+        PatientMedicalHistory existing = history(17001L, "高血压病史5年", LocalDate.of(2021, 1, 1));
+        existing.setPatientId(20001L);
+        when(historyMapper.selectOne(any())).thenReturn(existing);
+        when(healthPatientMapper.existsActivePatient(20001L)).thenReturn(true);
+        when(healthPatientMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(historyMapper.update(any(PatientMedicalHistory.class), any())).thenReturn(1);
+
+        MedicalHistoryUpdateVO result = healthService.updateMedicalHistory(17001L, request);
+
+        assertEquals(17001L, result.getId());
+        assertEquals("高血压病史6年", result.getContent());
+        assertEquals(LocalDate.of(2021, 1, 1), result.getOccurredAt());
+        verify(historyMapper).update(org.mockito.ArgumentMatchers.<PatientMedicalHistory>argThat(history ->
+                history.getPatientId().equals(20001L)
+                        && "高血压病史6年".equals(history.getContent())
+                        && LocalDate.of(2021, 1, 1).equals(history.getOccurredAt())), any());
     }
 
     /**

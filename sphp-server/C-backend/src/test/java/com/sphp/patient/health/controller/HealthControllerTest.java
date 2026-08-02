@@ -5,9 +5,11 @@ import com.sphp.patient.health.service.HealthService;
 import com.sphp.patient.health.dto.AllergyCreateRequest;
 import com.sphp.patient.health.dto.AllergyUpdateRequest;
 import com.sphp.patient.health.dto.MedicalHistoryCreateRequest;
+import com.sphp.patient.health.dto.MedicalHistoryUpdateRequest;
 import com.sphp.patient.health.vo.AllergyCreateVO;
 import com.sphp.patient.health.vo.AllergyUpdateVO;
 import com.sphp.patient.health.vo.MedicalHistoryCreateVO;
+import com.sphp.patient.health.vo.MedicalHistoryUpdateVO;
 import com.sphp.patient.health.vo.HealthProfileVO;
 import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.auth.support.context.CUserContext;
@@ -163,6 +165,34 @@ class HealthControllerTest {
                 .andExpect(jsonPath("$.message").value("既往史已保存"))
                 .andExpect(jsonPath("$.data.id").value(17001L))
                 .andExpect(jsonPath("$.data.occurredAt").value("2021-01-01"));
+    }
+
+    /**
+     * 验证更新既往史接口通过幂等服务返回更新结果。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void updateMedicalHistoryReturnsIdempotentSuccessResult() throws Exception {
+        HealthService healthService = mock(HealthService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        MockMvc mockMvc = newMockMvc(healthService, idempotencyService);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        MedicalHistoryUpdateRequest request = new MedicalHistoryUpdateRequest();
+        request.setContent("高血压病史6年");
+        when(idempotencyService.execute(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new IdempotencyPayload<>("既往史已更新", MedicalHistoryUpdateVO.builder()
+                        .id(17001L).content("高血压病史6年")
+                        .occurredAt(LocalDate.of(2021, 1, 1)).updatedAt(OffsetDateTime.now()).build()));
+
+        mockMvc.perform(put("/c/v1/health-record/histories/17001")
+                        .header("X-Idempotency-Key", "history-key-002")
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("既往史已更新"))
+                .andExpect(jsonPath("$.data.content").value("高血压病史6年"));
     }
 
     /**

@@ -8,6 +8,7 @@ import com.sphp.patient.health.entity.PatientMedicalHistory;
 import com.sphp.patient.health.dto.AllergyCreateRequest;
 import com.sphp.patient.health.dto.AllergyUpdateRequest;
 import com.sphp.patient.health.dto.MedicalHistoryCreateRequest;
+import com.sphp.patient.health.dto.MedicalHistoryUpdateRequest;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
 import com.sphp.patient.health.mapper.HealthPatientProfileRecord;
 import com.sphp.patient.health.mapper.PatientAllergyMapper;
@@ -17,6 +18,7 @@ import com.sphp.patient.health.vo.AllergyItemVO;
 import com.sphp.patient.health.vo.AllergyCreateVO;
 import com.sphp.patient.health.vo.AllergyUpdateVO;
 import com.sphp.patient.health.vo.MedicalHistoryCreateVO;
+import com.sphp.patient.health.vo.MedicalHistoryUpdateVO;
 import com.sphp.patient.health.vo.HealthProfileVO;
 import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.health.vo.MedicalHistoryItemVO;
@@ -170,6 +172,47 @@ public class HealthServiceImpl implements HealthService {
                 .id(history.getId())
                 .content(history.getContent())
                 .occurredAt(history.getOccurredAt())
+                .build();
+    }
+
+    /**
+     * 更新当前账号可访问就诊人的既往史。
+     *
+     * @param historyId 既往史 ID，所属就诊人由服务端反查
+     * @param request 更新既往史请求
+     * @return 更新后的既往史信息
+     * @throws CAuthException 既往史不存在、已删除或条件更新失败时抛出
+     */
+    @Override
+    public MedicalHistoryUpdateVO updateMedicalHistory(Long historyId, MedicalHistoryUpdateRequest request) {
+        PatientMedicalHistory existing = historyMapper.selectOne(Wrappers.<PatientMedicalHistory>lambdaQuery()
+                .eq(PatientMedicalHistory::getId, historyId)
+                .isNull(PatientMedicalHistory::getDeletedAt));
+        if (existing == null) {
+            throw notFound("既往史不存在或已删除");
+        }
+        Long targetPatientId = requireAccessiblePatientId(existing.getPatientId());
+
+        OffsetDateTime now = OffsetDateTime.now();
+        PatientMedicalHistory updated = new PatientMedicalHistory();
+        updated.setId(historyId);
+        updated.setPatientId(targetPatientId);
+        updated.setContent(request.getContent());
+        updated.setOccurredAt(request.getOccurredAt() == null ? existing.getOccurredAt() : request.getOccurredAt());
+        updated.setUpdatedAt(now);
+        // 使用患者范围和未删除条件更新，避免资源在并发场景下被越权或重复修改
+        int affected = historyMapper.update(updated, Wrappers.<PatientMedicalHistory>lambdaUpdate()
+                .eq(PatientMedicalHistory::getId, historyId)
+                .eq(PatientMedicalHistory::getPatientId, targetPatientId)
+                .isNull(PatientMedicalHistory::getDeletedAt));
+        if (affected != 1) {
+            throw notFound("既往史不存在或已删除");
+        }
+        return MedicalHistoryUpdateVO.builder()
+                .id(historyId)
+                .content(updated.getContent())
+                .occurredAt(updated.getOccurredAt())
+                .updatedAt(now)
                 .build();
     }
 

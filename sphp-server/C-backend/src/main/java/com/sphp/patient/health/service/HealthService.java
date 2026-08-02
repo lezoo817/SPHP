@@ -4,9 +4,11 @@ import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.health.dto.AllergyCreateRequest;
 import com.sphp.patient.health.dto.AllergyUpdateRequest;
 import com.sphp.patient.health.dto.MedicalHistoryCreateRequest;
+import com.sphp.patient.health.dto.MedicalHistoryUpdateRequest;
 import com.sphp.patient.health.vo.AllergyCreateVO;
 import com.sphp.patient.health.vo.AllergyUpdateVO;
 import com.sphp.patient.health.vo.MedicalHistoryCreateVO;
+import com.sphp.patient.health.vo.MedicalHistoryUpdateVO;
 
 /**
  * C端健康档案服务。
@@ -45,4 +47,13 @@ public interface HealthService {
      * @return 新建既往史信息
      */
     MedicalHistoryCreateVO createMedicalHistory(MedicalHistoryCreateRequest request);
+
+    /**
+     * 更新当前账号可访问就诊人的既往史。
+     *
+     * @param historyId 既往史 ID，所属就诊人由服务端反查
+     * @param request 更新既往史请求
+     * @return 更新后的既往史信息
+     */
+    MedicalHistoryUpdateVO updateMedicalHistory(Long historyId, MedicalHistoryUpdateRequest request);
 }
