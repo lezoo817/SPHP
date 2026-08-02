@@ -8,7 +8,7 @@ B 端: GET /api/b/auth/token/parse（待 Java 补充）
 传服务端（默认 c_end）。校验通过后将 userId / scope 注入 request.state，
 供限流中间件与编排层使用。
 
-失败策略：debug 模式降级为匿名（便于本地测试），生产模式返回 401。
+失败策略：始终返回 401（生产与开发一致，不降级匿名）。
 """
 
 import logging
@@ -37,16 +37,11 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         if request.url.path in self.EXEMPT_PATHS:
             return await call_next(request)
 
-        settings = get_settings()
         auth_header = request.headers.get("Authorization", "")
         scope = request.headers.get("X-Scope", "c_end")
 
-        # 无 Bearer token
+        # 无 Bearer token -> 始终 401
         if not auth_header.startswith("Bearer "):
-            if settings.debug:
-                logger.warning("无 Token，debug 模式降级为匿名用户")
-                _inject_anonymous(request, scope)
-                return await call_next(request)
             return _unauthorized("缺少有效的鉴权 Token")
 
         token = auth_header.removeprefix("Bearer ").strip()
@@ -60,21 +55,8 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             request.state.jwt_token = token
             return await call_next(request)
 
-        # 校验失败：debug 降级，生产拒绝
-        if settings.debug:
-            logger.warning("JWT 校验失败，debug 模式降级为匿名用户")
-            _inject_anonymous(request, scope)
-            return await call_next(request)
-
+        # 校验失败 -> 始终 401
         return _unauthorized("Token 无效或已过期")
-
-
-def _inject_anonymous(request: Request, scope: str) -> None:
-    """debug 降级时注入匿名状态。"""
-    request.state.user_id = None
-    request.state.account = "anonymous"
-    request.state.scope = scope
-    request.state.jwt_token = None
 
 
 def _unauthorized(message: str) -> JSONResponse:
