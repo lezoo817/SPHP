@@ -149,16 +149,20 @@ async def tool_executor(state: AgentState) -> dict:
     # 包装异常为错误结果
     formatted: list[dict[str, Any]] = []
     for i, result in enumerate(results):
+        arguments = tool_calls[i].get("arguments", {})
         if isinstance(result, Exception):
             formatted.append(
                 {
                     "tool_name": tool_calls[i].get("name", ""),
                     "success": False,
                     "error": {"code": "TOOL_FAILED", "message": str(result)},
+                    # 携带参数，供 SSE 层反推 action 事件（子图循环会覆盖 tool_calls）
+                    "arguments": arguments,
                 }
             )
         else:
-            formatted.append(result)
+            # 不可变合并：原结果 + 参数（供 SSE 层反推 action 事件）
+            formatted.append({**result, "arguments": arguments})
         # 推送 observation 事件（工具返回结果）
         writer({"type": "tool_observation", "result": formatted[-1]})
 

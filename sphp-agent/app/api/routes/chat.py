@@ -124,14 +124,7 @@ async def _sse_generator(
                         )
                     elif ctype == "tool_observation":
                         result = chunk.get("result", {})
-                        obs = {
-                            "tool": result.get("tool_name", ""),
-                            "success": result.get("success", False),
-                        }
-                        if not result.get("success"):
-                            error = result.get("error", {})
-                            obs["error"] = error.get("message", "执行失败")
-                        yield _sse("observation", obs)
+                        yield _sse("observation", _build_observation(result))
 
                 elif mode == "messages":
                     msg, meta = chunk
@@ -153,7 +146,22 @@ async def _sse_generator(
                         if not isinstance(node_update, dict):
                             continue
                         tool_calls = node_update.get("tool_calls") or []
-                        if tool_calls:
+                        tool_results = node_update.get("tool_results") or []
+                        if tool_results:
+                            # 子图循环会把 tool_calls 覆盖为空，action 无法从 tool_calls
+                            # 重建，改为从 tool_results 反推（工具确已执行）：
+                            # 每个结果推送 action -> observation 配对
+                            for tr in tool_results:
+                                yield _sse(
+                                    "action",
+                                    {
+                                        "tool": tr.get("tool_name", ""),
+                                        "arguments": tr.get("arguments", {}),
+                                    },
+                                )
+                                yield _sse("observation", _build_observation(tr))
+                        elif tool_calls:
+                            # 仅 tool_calls 无结果（理论顶层场景）：只推 action
                             for tc in tool_calls:
                                 yield _sse(
                                     "action",
@@ -162,17 +170,6 @@ async def _sse_generator(
                                         "arguments": tc.get("arguments", {}),
                                     },
                                 )
-                        tool_results = node_update.get("tool_results") or []
-                        if tool_results:
-                            for tr in tool_results:
-                                obs = {
-                                    "tool": tr.get("tool_name", ""),
-                                    "success": tr.get("success", False),
-                                }
-                                if not tr.get("success"):
-                                    error = tr.get("error", {})
-                                    obs["error"] = error.get("message", "执行失败")
-                                yield _sse("observation", obs)
 
                         # L2 操作需用户确认：推送 card 事件（系分 §6.2.2）
                         pending_list = node_update.get("pending_confirmations") or []
@@ -209,6 +206,18 @@ async def _sse_generator(
 def _sse(event: str, payload: dict) -> str:
     """构造一条 SSE 事件。"""
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _build_observation(result: dict) -> dict:
+    """构建 observation 事件内容（工具执行结果，含失败原因）。"""
+    obs = {
+        "tool": result.get("tool_name", ""),
+        "success": result.get("success", False),
+    }
+    if not result.get("success"):
+        error = result.get("error", {})
+        obs["error"] = error.get("message", "执行失败")
+    return obs
 
 
 # 工具中文标签（系分 §6.2.2 card title/summary 展示）
