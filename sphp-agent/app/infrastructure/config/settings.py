@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     redis_password: str | None = None
 
     # ---- RabbitMQ ----
-    # 从 .env 的 RABBITMQ_HOST / RABBITMQ_PORT / RABBITMQ_USER / RABBITMQ_PASSWORD / RABBITMQ_VHOST 读取。
+    # 从 .env 的 RABBITMQ_* 读取。
     rabbitmq_host: str = "localhost"
     rabbitmq_port: int = 5672
     rabbitmq_user: str = "guest"
@@ -102,6 +102,7 @@ class Settings(BaseSettings):
     kb_chunk_size: int = 500
     kb_chunk_overlap: int = 50
     kb_top_k: int = 5
+    kb_ingest_root: str = ""  # 入库允许的根目录绝对路径，空则拒绝目录入库（防路径遍历）
 
     # ---- Agent 行为参数 ----
     confirm_token_ttl: int = 300
