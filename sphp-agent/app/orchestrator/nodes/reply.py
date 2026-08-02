@@ -3,6 +3,7 @@
 汇总所有上游节点输出，调用 LLM 生成自然语言回复。
 """
 
+import json
 import logging
 from typing import Any
 
@@ -15,6 +16,9 @@ logger = logging.getLogger(__name__)
 
 # 医疗安全声明（强制注入所有回复末尾）
 MEDICAL_DISCLAIMER = "\n\n---\n⚠️ **AI 建议仅供参考，不作为诊断依据。如有疑问请咨询专业医生。**"
+
+# 工具结果注入 LLM 的最大字符数，超过则截断
+MAX_DATA_CHARS = 2000
 
 # 回复生成系统提示词
 REPLY_SYSTEM_PROMPT = """你是一个医疗健康助手，正在为用户提供服务。
@@ -90,13 +94,16 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
 
 
 def _format_tool_results(tool_results: list[dict]) -> str:
-    """格式化工具调用结果为自然语言摘要。
+    """格式化工具调用结果为 LLM 可读的自然语言文本。
+
+    从 Java 响应信封（{code, message, data, traceId}）提取内层业务数据，
+    JSON 序列化后注入 LLM 上下文，确保 LLM 基于真实数据生成回复。
 
     Args:
         tool_results: 工具执行结果列表。
 
     Returns:
-        str: 自然语言格式的工具结果摘要。
+        str: 含真实业务数据的文本摘要。
     """
     summaries = []
     for result in tool_results:
@@ -105,7 +112,18 @@ def _format_tool_results(tool_results: list[dict]) -> str:
 
         if success:
             data = result.get("data", {})
-            summaries.append(f"✓ {tool_name}: 执行成功，获取 {len(data)} 条数据")
+            # 尝试解 Java 响应信封（{code, message, data, traceId}），提取内层业务数据
+            if isinstance(data, dict) and "data" in data and data.get("data") is not None:
+                payload = data["data"]
+            else:
+                payload = data  # 本地工具或非信封格式
+            try:
+                text = json.dumps(payload, ensure_ascii=False)
+            except (TypeError, ValueError):
+                text = str(payload)
+            if len(text) > MAX_DATA_CHARS:
+                text = text[:MAX_DATA_CHARS] + "...(截断)"
+            summaries.append(f"✓ {tool_name}: {text}")
         else:
             error_msg = result.get("error", {}).get("message", "未知错误")
             summaries.append(f"✗ {tool_name}: 执行失败 - {error_msg}")
