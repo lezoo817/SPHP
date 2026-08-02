@@ -9,8 +9,8 @@ from pathlib import Path
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from app.infrastructure.config.settings import get_settings
 from app.engine.rag.vectorstore import get_vectorstore
+from app.infrastructure.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 

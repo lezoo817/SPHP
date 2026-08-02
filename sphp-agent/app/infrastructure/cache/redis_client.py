@@ -31,15 +31,21 @@ def get_redis() -> redis.Redis:
 
 
 async def close_redis() -> None:
-    """关闭 Redis 连接（优雅关闭时调用）。"""
+    """关闭 Redis 连接（优雅关闭时调用）。
+
+    清除 lru_cache，避免后续 get_redis() 返回已关闭的死连接
+    （热重载/测试/优雅关闭场景下会触发）。
+    """
     r = get_redis()
     await r.aclose()
+    get_redis.cache_clear()
     logger.info("Redis connection closed")
 
 
 # ---- confirm_token 操作（系分 §5.5）----
 
 CONFIRM_TOKEN_PREFIX = "confirm"
+
 
 async def set_confirm_token(
     token_id: str,
@@ -58,14 +64,17 @@ async def set_confirm_token(
     ttl = ttl or s.confirm_token_ttl
 
     key = f"{CONFIRM_TOKEN_PREFIX}:{session_id}:{tool_name}:{token_id}"
-    value = json.dumps({
-        "token_id": token_id,
-        "session_id": session_id,
-        "user_id": user_id,
-        "tool_name": tool_name,
-        "tool_arguments": tool_arguments,
-        "card_type": card_type,
-    }, ensure_ascii=False)
+    value = json.dumps(
+        {
+            "token_id": token_id,
+            "session_id": session_id,
+            "user_id": user_id,
+            "tool_name": tool_name,
+            "tool_arguments": tool_arguments,
+            "card_type": card_type,
+        },
+        ensure_ascii=False,
+    )
 
     client = get_redis()
     await client.setex(key, ttl, value)
@@ -104,9 +113,11 @@ async def get_and_delete_confirm_token(
 
 # ---- 限流操作（系分 §10.4）----
 
+
 async def check_rate_limit(user_id: str, limit: int, window: int = 60) -> bool:
     """滑动窗口限流检查。"""
     import time
+
     client = get_redis()
     key = f"rate_limit:{user_id}"
     now = time.time()

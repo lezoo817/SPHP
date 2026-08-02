@@ -1,18 +1,20 @@
 """对话接口（系分 §6.2）。
 
 前端直连 Agent 对话端点（SSE 流式）+ L2 确认回调。
-合并了原 confirm.py 的确认端点。
 """
 
 import json
 import logging
+import traceback
+from collections.abc import AsyncIterator
+from uuid import uuid4
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from app.api.schemas.chat import ChatRequest, ConfirmRequest, ConfirmResponse, ErrorResponse
-from app.orchestrator.state import AgentState
+from app.api.schemas.chat import ChatRequest, ConfirmRequest, ConfirmResponse
 from app.orchestrator.graphs.main_graph import build_main_graph
+from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
 
@@ -31,22 +33,30 @@ def _get_graph():
 
 
 @router.post("/chat/stream")
-async def chat_stream(req: ChatRequest, request: Request):
+async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
     """对话主接口（系分 §6.2.1，SSE 流式）。
 
-    前端发起对话 → JWT 鉴权 → LLM 推理 → SSE 流式返回。
+    前端发起对话 -> JWT 鉴权 -> LLM 推理 -> SSE 流式返回。
     """
-    # 从中间件获取 JWT token 和 trace_id
-    token = getattr(request.state, "jwt_token", None) if hasattr(request, "state") else None
-    trace_id = getattr(request.state, "trace_id", "") if hasattr(request, "state") else ""
+    token = getattr(request.state, "jwt_token", None)
+    trace_id = getattr(request.state, "trace_id", "")
+    initial_state = _build_initial_state(req, request, token)
 
-    # 构造初始状态（jwt_token 注入到状态中，供 auth_node 使用）
-    initial_state: AgentState = {
-        "messages": [],
+    return StreamingResponse(
+        _sse_generator(initial_state, req.session_id, trace_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+def _build_initial_state(req: ChatRequest, request: Request, token: str | None) -> AgentState:
+    """构造初始状态（不依赖外部 mutation）。"""
+    return {
+        "messages": [{"role": "user", "content": req.content}],
         "session_id": req.session_id,
         "intent": None,
-        "user_id": None,
-        "scope": req.scope,
+        "user_id": getattr(request.state, "user_id", None),
+        "scope": getattr(request.state, "scope", req.scope),
         "roles": None,
         "dept_id": None,
         "doctor_id": None,
@@ -58,58 +68,80 @@ async def chat_stream(req: ChatRequest, request: Request):
         "jwt_token": token,
     }
 
-    async def sse_generator():
-        """SSE 流式输出生成器（系分 §6.2.1）。"""
-        try:
-            graph = _get_graph()
-            from uuid import uuid4
 
-            thread_id = req.session_id or str(uuid4())
-            config = {"configurable": {"thread_id": thread_id}}
+async def _sse_generator(
+    initial_state: AgentState, session_id: str | None, trace_id: str
+) -> AsyncIterator[str]:
+    """SSE 流式输出生成器（系分 §6.2.1，基于 astream_events v2）。
 
-            # 添加用户消息
-            initial_state["messages"] = [{"role": "user", "content": req.content}]
+    - on_chat_model_stream（reply_node）-> message 事件，逐 token 推送
+    - on_tool_start / on_tool_end -> action / observation 事件
+    - on_chain_end（reply_node）-> 未流式时兜底推送完整回复
+    - 结束 -> done 事件
+    """
+    graph = _get_graph()
+    thread_id = session_id or str(uuid4())
+    config = {"configurable": {"thread_id": thread_id}}
 
-            logger.info(f"[SSE] 开始流程执行, thread_id={thread_id}")
+    logger.info("[SSE] 开始流程执行, thread_id=%s", thread_id)
+    streamed_reply = False
 
-            # 执行LangGraph流程
-            final_state = None
-            async for chunk in graph.astream(initial_state, config=config):
-                for node_name, output in chunk.items():
-                    logger.debug(f"[SSE] 节点完成: {node_name}")
+    try:
+        async for event in graph.astream_events(initial_state, config=config, version="v2"):
+            kind = event.get("event", "")
+            name = event.get("name", "")
+            data = event.get("data", {}) or {}
+            node = (event.get("metadata") or {}).get("langgraph_node", "")
 
-                    # 推送节点执行事件
-                    yield f"event: thought\ndata: {json.dumps({'node': node_name}, ensure_ascii=False)}\n\n"
+            # LLM 逐 token 流式输出（仅 reply_node，过滤 intent_node 的分类输出）
+            if kind == "on_chat_model_stream" and node == "reply_node":
+                chunk = data.get("chunk")
+                delta = getattr(chunk, "content", "") if chunk else ""
+                if delta:
+                    streamed_reply = True
+                    yield _sse("message", {"delta": delta})
 
-                    # 保存最终状态
-                    final_state = output
+            # 工具调用事件
+            elif kind == "on_tool_start":
+                yield _sse("action", {"tool": name})
+            elif kind == "on_tool_end":
+                yield _sse("observation", {"tool": name})
 
-            # 推送最终消息
-            if final_state and "messages" in final_state:
-                messages = final_state.get("messages", [])
-                if messages:
-                    last_msg = messages[-1]
-                    if isinstance(last_msg, dict) and "content" in last_msg:
-                        content = last_msg["content"]
-                        logger.info(f"[SSE] 推送回复, 长度={len(content)}")
-                        yield f"event: message\ndata: {json.dumps({'delta': content}, ensure_ascii=False)}\n\n"
+            # 兜底：reply_node 完成但未流式时，推送完整回复
+            elif kind == "on_chain_end" and node == "reply_node" and not streamed_reply:
+                content = _extract_last_content(data.get("output"))
+                if content:
+                    yield _sse("message", {"delta": content})
 
-            # 完成
-            logger.info(f"[SSE] 流程完成, session_id={thread_id}")
-            yield f"event: done\ndata: {json.dumps({'session_id': thread_id, 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
+        logger.info("[SSE] 流程完成, session_id=%s", thread_id)
+        yield _sse("done", {"session_id": thread_id, "trace_id": trace_id})
 
-        except Exception as e:
-            import traceback
-            error_detail = traceback.format_exc()
-            logger.error(f"[SSE] 异常: {str(e)}\n{error_detail}")
-            yield f"event: error\ndata: {json.dumps({'code': 'SERVER_ERROR', 'message': f'服务异常: {str(e)}', 'trace_id': trace_id}, ensure_ascii=False)}\n\n"
-            yield f"event: done\ndata: {json.dumps({}, ensure_ascii=False)}\n\n"
+    except Exception as e:
+        logger.error("[SSE] 异常: %s\n%s", e, traceback.format_exc())
+        # 不向客户端泄露内部异常细节
+        yield _sse(
+            "error",
+            {"code": "SERVER_ERROR", "message": "服务异常，请稍后重试", "trace_id": trace_id},
+        )
+        yield _sse("done", {})
 
-    return StreamingResponse(
-        sse_generator(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
-    )
+
+def _sse(event: str, payload: dict) -> str:
+    """构造一条 SSE 事件。"""
+    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _extract_last_content(output: object) -> str:
+    """从节点输出中提取最后一条消息的文本。"""
+    if not isinstance(output, dict):
+        return ""
+    messages = output.get("messages", [])
+    if not messages:
+        return ""
+    last = messages[-1]
+    if isinstance(last, dict):
+        return last.get("content", "")
+    return getattr(last, "content", "")
 
 
 @router.post("/chat/confirm", response_model=ConfirmResponse)
@@ -118,15 +150,10 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
 
     前端用户点击确认卡片后回调此端点。
     Agent 校验 confirm_token，通过后继续执行对应的 MCP 工具。
+
+    ⚠️ 未实现：confirm_token 校验与 L2 工具执行（待后续完善）。
     """
     trace_id = getattr(request.state, "trace_id", "")
-
     # TODO: 从 Redis 获取并删除 confirm_token（一次性消费）
-    # from app.infrastructure.cache.redis_client import get_and_delete_confirm_token
-    # token_data = await get_and_delete_confirm_token(...)
-    # if token_data is None:
-    #     return ConfirmResponse(code="CONFIRM_EXPIRED", message="确认已超时，请重新发起操作", data=None, traceId=trace_id)
-
     # TODO: 校验通过后继续执行 MCP 工具，通过 SSE 推送结果
-
     return ConfirmResponse(code="00000", message="确认成功，正在处理", data=None, traceId=trace_id)

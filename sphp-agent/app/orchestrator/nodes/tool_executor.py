@@ -8,12 +8,10 @@ import asyncio
 import hashlib
 import json
 import time
-from typing import Any
 
-from app.orchestrator.state import AgentState
-from app.engine.tools.schema_registry import ToolRegistry, SecurityLevel
+from app.engine.tools.schema_registry import ToolRegistry
 from app.infrastructure.audit.logger import log_tool_call
-from app.infrastructure.config.settings import get_settings
+from app.orchestrator.state import AgentState
 
 
 async def tool_executor(state: AgentState) -> dict:
@@ -43,11 +41,13 @@ async def tool_executor(state: AgentState) -> dict:
     formatted = []
     for i, result in enumerate(results):
         if isinstance(result, Exception):
-            formatted.append({
-                "tool_name": tool_calls[i].get("name", ""),
-                "success": False,
-                "error": {"code": "TOOL_FAILED", "message": str(result)},
-            })
+            formatted.append(
+                {
+                    "tool_name": tool_calls[i].get("name", ""),
+                    "success": False,
+                    "error": {"code": "TOOL_FAILED", "message": str(result)},
+                }
+            )
         else:
             formatted.append(result)
 
@@ -58,11 +58,11 @@ async def _execute_mcp(tool_name: str, arguments: dict, state: AgentState) -> di
     """通过 MCP Client 调用 MCP Server 执行工具。"""
     start = time.time()
     user_id = state.get("user_id")
-    settings = get_settings()
 
     # TODO: 接入 MCP Client → tools/call
     # 当前占位：直接调 Java REST API（过渡实现）
     from app.infrastructure.java_client import call_java_api
+
     try:
         result = await call_java_api(
             tool_name=tool_name,
@@ -76,7 +76,11 @@ async def _execute_mcp(tool_name: str, arguments: dict, state: AgentState) -> di
     except Exception as e:
         duration_ms = (time.time() - start) * 1000
         _log_audit(state, tool_name, arguments, "failed", duration_ms)
-        return {"tool_name": tool_name, "success": False, "error": {"code": "TOOL_FAILED", "message": str(e)}}
+        return {
+            "tool_name": tool_name,
+            "success": False,
+            "error": {"code": "TOOL_FAILED", "message": str(e)},
+        }
 
 
 async def _execute_local(tool_name: str, arguments: dict, state: AgentState) -> dict:
@@ -85,6 +89,7 @@ async def _execute_local(tool_name: str, arguments: dict, state: AgentState) -> 
 
     if tool_name in ("search_medical_knowledge", "interpret_report"):
         from app.engine.rag.search import search_knowledge
+
         query = arguments.get("query") or arguments.get("report_content", "")
         results = search_knowledge(query=query)
         duration_ms = (time.time() - start) * 1000
@@ -92,14 +97,18 @@ async def _execute_local(tool_name: str, arguments: dict, state: AgentState) -> 
         return {"tool_name": tool_name, "success": True, "data": {"results": results}}
 
     _log_audit(state, tool_name, arguments, "failed", 0)
-    return {"tool_name": tool_name, "success": False, "error": {"code": "UNKNOWN_TOOL", "message": f"未知的本地工具: {tool_name}"}}
+    return {
+        "tool_name": tool_name,
+        "success": False,
+        "error": {"code": "UNKNOWN_TOOL", "message": f"未知的本地工具: {tool_name}"},
+    }
 
 
-def _log_audit(state: AgentState, tool_name: str, arguments: dict, result: str, duration_ms: float) -> None:
+def _log_audit(
+    state: AgentState, tool_name: str, arguments: dict, result: str, duration_ms: float
+) -> None:
     """记录审计日志。"""
-    params_hash = hashlib.sha256(
-        json.dumps(arguments, sort_keys=True).encode()
-    ).hexdigest()[:16]
+    params_hash = hashlib.sha256(json.dumps(arguments, sort_keys=True).encode()).hexdigest()[:16]
     log_tool_call(
         session_id=state.get("session_id", ""),
         user_id=str(state.get("user_id", "")),

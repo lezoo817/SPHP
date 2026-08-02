@@ -4,9 +4,9 @@
 当前输出到 structlog → stdout，后续可切至 PG/ES。
 """
 
-import structlog
 import time
-from typing import Any
+
+import structlog
 
 logger = structlog.get_logger("audit")
 

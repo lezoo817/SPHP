@@ -6,10 +6,9 @@
 import logging
 from typing import Any
 
-from langchain_core.messages import BaseMessage
-
 from app.engine.llm.factory import build_llm
 from app.orchestrator.state import AgentState
+from app.orchestrator.utils import get_last_user_content
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +58,8 @@ async def intent_node(state: AgentState) -> dict[str, Any]:
     Raises:
         无：意图识别失败时降级为 "qa" 兜底。
     """
-    # 获取用户最新消息
-    user_message = ""
-    if state.get("messages"):
-        last_msg: BaseMessage = state["messages"][-1]
-        user_message = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+    # 获取用户最新消息（兼容 dict / BaseMessage）
+    user_message = get_last_user_content(state)
 
     # 关键词快速通道（≤10 字时直接路由）
     if len(user_message) <= 10:

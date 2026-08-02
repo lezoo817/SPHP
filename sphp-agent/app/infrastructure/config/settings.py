@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     debug: bool = False
     agent_host: str = "0.0.0.0"
     agent_port: int = 8081
+    # CORS 允许的前端来源（生产由 .env 的 CORS_ORIGINS 覆盖）
+    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     # ---- Java 后端（系分 §9.5）----
     java_base_url: str = "http://localhost:8080"
@@ -71,11 +73,11 @@ class Settings(BaseSettings):
     siliconflow_embedding_model: str = "BAAI/bge-m3"
 
     # ---- PostgreSQL + pgvector ----
-    # 默认值对齐本地开发库，生产环境由 .env 的 PG_* 覆盖。
+    # 本地开发库密码请在 .env 的 PG_PASSWORD 配置，不硬编码到源码。
     pg_host: str = "localhost"
     pg_port: int = 5432
     pg_user: str = "sphp"
-    pg_password: str = "sphp123"
+    pg_password: str = ""
     pg_database: str = "sphp"
 
     # ---- Redis ----
@@ -85,11 +87,11 @@ class Settings(BaseSettings):
     redis_password: str | None = None
 
     # ---- RabbitMQ ----
-    # 从 .env 的 RABBITMQ_HOST / RABBITMQ_PORT / RABBITMQ_USER / RABBITMQ_PASSWORD / RABBITMQ_VHOST 读取。
+    # 从 .env 的 RABBITMQ_* 读取。
     rabbitmq_host: str = "localhost"
     rabbitmq_port: int = 5672
     rabbitmq_user: str = "guest"
-    rabbitmq_password: str = "guest"
+    rabbitmq_password: str = ""  # 由 .env 的 RABBITMQ_PASSWORD 提供
     rabbitmq_vhost: str = "/"
 
     @property
@@ -102,6 +104,7 @@ class Settings(BaseSettings):
     kb_chunk_size: int = 500
     kb_chunk_overlap: int = 50
     kb_top_k: int = 5
+    kb_ingest_root: str = ""  # 入库允许的根目录绝对路径，空则拒绝目录入库（防路径遍历）
 
     # ---- Agent 行为参数 ----
     confirm_token_ttl: int = 300

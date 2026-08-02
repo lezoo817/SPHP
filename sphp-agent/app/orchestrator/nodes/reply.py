@@ -6,14 +6,12 @@
 import logging
 from typing import Any
 
-from langchain_core.messages import BaseMessage
-
 from app.engine.llm.factory import build_llm
 from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
 
-# 医疗安全声明（强制注入）
+# 医疗安全声明（强制注入所有回复末尾）
 MEDICAL_DISCLAIMER = "\n\n---\n⚠️ **AI 建议仅供参考，不作为诊断依据。如有疑问请咨询专业医生。**"
 
 # 回复生成系统提示词
@@ -46,55 +44,40 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         state: 当前图状态，包含 messages / tool_results 等字段。
 
     Returns:
-        dict: 空字典（回复已通过 LangGraph astream_events 推送）。
+        dict: 包含新增的 assistant 消息（由 LangGraph add_messages reducer 累积）。
 
     Raises:
-        无：生成失败时返回降级话术。
+        无：生成失败时返回降级话术（含安全声明）。
     """
     try:
         llm = build_llm()
 
-        # 构造系统提示词
         intent = state.get("intent", "qa")
         scope = state.get("scope", "c_end")
         system_prompt = REPLY_SYSTEM_PROMPT.format(intent=intent, scope=scope)
 
-        # 构造消息列表
-        messages: list[BaseMessage] = state.get("messages", [])
+        # 构造 LLM 输入（不修改 state.messages，避免副作用）
+        llm_messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+        llm_messages.extend(state.get("messages", []))
 
-        # 如果有工具调用结果，注入到消息中
+        # 如果有工具调用结果，注入到上下文
         tool_results = state.get("tool_results")
         if tool_results:
-            # 将工具结果格式化为自然语言
             tool_summary = _format_tool_results(tool_results)
-            messages.append({"role": "system", "content": f"工具调用结果：\n{tool_summary}"})
+            llm_messages.append({"role": "system", "content": f"工具调用结果：\n{tool_summary}"})
 
-        # 调用 LLM 生成回复
-        response = await llm.ainvoke(
-            [
-                {"role": "system", "content": system_prompt},
-                *messages,
-            ]
-        )
-
+        response = await llm.ainvoke(llm_messages)
         reply_content = response.content
 
-        # 注入医疗安全声明
-        if intent in ("triage", "consultation", "qa"):
-            reply_content += MEDICAL_DISCLAIMER
-
-        # 添加回复到消息列表
-        messages.append({"role": "assistant", "content": reply_content})
+        # 强制注入医疗安全声明（所有意图）
+        reply_content += MEDICAL_DISCLAIMER
 
         logger.info("回复生成成功: 长度=%d, 意图=%s", len(reply_content), intent)
-
-        # 返回更新后的消息列表（LangGraph 的 add_messages reducer 会追加）
         return {"messages": [{"role": "assistant", "content": reply_content}]}
 
     except Exception as e:
-        logger.error("回复生成失败: %s", str(e))
-        # 降级话术
-        fallback_message = "抱歉，我遇到了一些问题，请稍后重试。"
+        logger.error("回复生成失败: %s", e)
+        fallback_message = "抱歉，我遇到了一些问题，请稍后重试。" + MEDICAL_DISCLAIMER
         return {"messages": [{"role": "assistant", "content": fallback_message}]}
 
 

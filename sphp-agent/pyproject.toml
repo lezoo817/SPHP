@@ -60,6 +60,10 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 
+[tool.ruff.lint.per-file-ignores]
+# MCP 工具封装为声明式 Schema，description 较长以利于 LLM 理解，放宽行长
+"app/mcp_server/tools/*.py" = ["E501"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true
