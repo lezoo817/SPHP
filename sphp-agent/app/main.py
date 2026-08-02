@@ -29,14 +29,16 @@ async def lifespan(app: FastAPI):
     logging.basicConfig(level=getattr(logging, settings.log_level, logging.INFO))
 
     # 步骤 4：注册工具 Schema
-    from app.engine.tools.c_schemas import register_c_tools
     from app.engine.tools.b_schemas import register_b_tools
+    from app.engine.tools.c_schemas import register_c_tools
+
     register_c_tools()
     register_b_tools()
     logger.info("Tool schemas registered (C:30, B:9)")
 
     # 步骤 5：启动 MCP Server
     from app.mcp_server.server import start_mcp_server, stop_mcp_server
+
     try:
         start_mcp_server()
         logger.info("MCP Server started (stdio transport)")
@@ -50,8 +52,9 @@ async def lifespan(app: FastAPI):
     stop_mcp_server()
 
     # 关闭基础设施连接
-    from app.infrastructure.java_client import close_client
     from app.infrastructure.cache.redis_client import close_redis
+    from app.infrastructure.java_client import close_client
+
     await close_client()
     await close_redis()
     logger.info("Agent shutdown complete")
@@ -76,9 +79,10 @@ def create_app() -> FastAPI:
     )
 
     # 中间件
-    from app.api.middleware.tracing import TracingMiddleware
     from app.api.middleware.jwt_auth import JWTAuthMiddleware
     from app.api.middleware.rate_limit import RateLimitMiddleware
+    from app.api.middleware.tracing import TracingMiddleware
+
     app.add_middleware(TracingMiddleware)
     app.add_middleware(JWTAuthMiddleware)
     app.add_middleware(RateLimitMiddleware)
@@ -96,13 +100,14 @@ def create_app() -> FastAPI:
 
         检查 PG / Redis / LLM 连通性。
         """
-        checks = {"pg": "ok", "redis": "ok", "llm": "ok"}
+        # 初始化为 checking，检查后更新为 ok/error（避免检查前误报 ok）
+        checks = {"pg": "checking", "redis": "checking", "llm": "checking"}
 
         # 检查 PostgreSQL 连接
         try:
             from app.engine.rag.vectorstore import get_vectorstore
 
-            vs = await get_vectorstore()
+            vs = get_vectorstore()
             if vs:
                 checks["pg"] = "ok"
             else:
@@ -114,7 +119,7 @@ def create_app() -> FastAPI:
         try:
             from app.infrastructure.cache.redis_client import get_redis
 
-            redis = await get_redis()
+            redis = get_redis()
             await redis.ping()
             checks["redis"] = "ok"
         except Exception:
