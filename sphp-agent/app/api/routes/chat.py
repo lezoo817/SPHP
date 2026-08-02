@@ -72,12 +72,16 @@ def _build_initial_state(req: ChatRequest, request: Request, token: str | None) 
 async def _sse_generator(
     initial_state: AgentState, session_id: str | None, trace_id: str
 ) -> AsyncIterator[str]:
-    """SSE 流式输出生成器（系分 §6.2.1，基于 astream_events v2）。
+    """SSE 流式输出生成器（系分 §6.2.1，基于 astream 混合 stream_mode）。
 
-    - on_chat_model_stream（reply_node）-> message 事件，逐 token 推送
-    - on_tool_start / on_tool_end -> action / observation 事件
-    - on_chain_end（reply_node）-> 未流式时兜底推送完整回复
-    - 结束 -> done 事件
+    节点内 ``get_stream_writer()`` 推送的自定义事件在 ``custom`` 模式接收，
+    节点内 LLM 的 token 输出在 ``messages`` 模式接收（msg.content 逐 token）。
+    事件映射：
+    - custom 且 type=tool_action     -> ``event: action``（工具开始）
+    - custom 且 type=tool_observation -> ``event: observation``（工具结果）
+    - messages 且 msg 是 AIMessage    -> ``event: message``（回复 token）
+    - updates 含 reply_node 输出     -> 未流式时兜底推送完整回复
+    - 结束                           -> ``event: done``
     """
     graph = _get_graph()
     thread_id = session_id or str(uuid4())
@@ -87,31 +91,48 @@ async def _sse_generator(
     streamed_reply = False
 
     try:
-        async for event in graph.astream_events(initial_state, config=config, version="v2"):
-            kind = event.get("event", "")
-            name = event.get("name", "")
-            data = event.get("data", {}) or {}
-            node = (event.get("metadata") or {}).get("langgraph_node", "")
+        async for mode, chunk in graph.astream(
+            initial_state,
+            config=config,
+            stream_mode=["custom", "messages", "updates"],
+        ):
+            if mode == "custom":
+                if not isinstance(chunk, dict):
+                    continue
+                ctype = chunk.get("type", "")
+                if ctype == "tool_action":
+                    yield _sse(
+                        "action",
+                        {"tool": chunk.get("tool", ""), "arguments": chunk.get("arguments", {})},
+                    )
+                elif ctype == "tool_observation":
+                    result = chunk.get("result", {})
+                    yield _sse(
+                        "observation",
+                        {
+                            "tool": result.get("tool_name", ""),
+                            "success": result.get("success", False),
+                        },
+                    )
 
-            # LLM 逐 token 流式输出（仅 reply_node，过滤 intent_node 的分类输出）
-            if kind == "on_chat_model_stream" and node == "reply_node":
-                chunk = data.get("chunk")
-                delta = getattr(chunk, "content", "") if chunk else ""
-                if delta:
-                    streamed_reply = True
-                    yield _sse("message", {"delta": delta})
+            elif mode == "messages":
+                msg, meta = chunk
+                node = (meta or {}).get("langgraph_node", "")
+                # 仅 reply_node 的 assistant token 推送给前端
+                # （intent_node / tool_caller 的 LLM 输出不推送）
+                if node == "reply_node" and getattr(msg, "type", "") == "ai":
+                    delta = getattr(msg, "content", "") or ""
+                    if delta:
+                        streamed_reply = True
+                        yield _sse("message", {"delta": delta})
 
-            # 工具调用事件
-            elif kind == "on_tool_start":
-                yield _sse("action", {"tool": name})
-            elif kind == "on_tool_end":
-                yield _sse("observation", {"tool": name})
-
-            # 兜底：reply_node 完成但未流式时，推送完整回复
-            elif kind == "on_chain_end" and node == "reply_node" and not streamed_reply:
-                content = _extract_last_content(data.get("output"))
-                if content:
-                    yield _sse("message", {"delta": content})
+            elif mode == "updates":
+                # reply_node 完成但未流式时，兜底推送完整回复
+                if "reply_node" in chunk and not streamed_reply:
+                    output = chunk.get("reply_node", {})
+                    content = _extract_last_content(output)
+                    if content:
+                        yield _sse("message", {"delta": content})
 
         logger.info("[SSE] 流程完成, session_id=%s", thread_id)
         yield _sse("done", {"session_id": thread_id, "trace_id": trace_id})

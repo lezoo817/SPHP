@@ -2,12 +2,20 @@
 
 从 engine/tools/executor.py 迁移而来，按系分要求移到编排层。
 负责区分 MCP 工具和本地工具，走不同执行路径。
+
+工具可见性（系分 §5.12）：
+    通过 ``get_stream_writer()`` 推送 ``tool_action`` / ``tool_observation``
+    自定义事件，SSE 层在 ``astream(stream_mode=["custom", ...])`` 中接收，
+    映射为 ``event: action`` / ``event: observation`` 推送给前端。
 """
 
 import asyncio
 import hashlib
 import json
 import time
+from typing import Any
+
+from langgraph.config import get_stream_writer
 
 from app.engine.tools.schema_registry import ToolRegistry
 from app.infrastructure.audit.logger import log_tool_call
@@ -20,16 +28,21 @@ async def tool_executor(state: AgentState) -> dict:
     MCP 工具：通过 MCP Client 调用 tools/call
     本地工具：直接执行，跳过 MCP 层
 
+    每个工具调用前后推送 tool_action / tool_observation 事件，
     多个独立工具调用使用 asyncio.gather() 并发执行。
     """
     tool_calls = state.get("tool_calls") or []
     if not tool_calls:
         return {"tool_results": []}
 
+    writer = get_stream_writer()
+
     tasks = []
     for tc in tool_calls:
         tool_name = tc.get("name", "")
         arguments = tc.get("arguments", {})
+        # 推送 action 事件（工具调用开始）
+        writer({"type": "tool_action", "tool": tool_name, "arguments": arguments})
         if ToolRegistry.is_local(tool_name):
             tasks.append(_execute_local(tool_name, arguments, state))
         else:
@@ -38,7 +51,7 @@ async def tool_executor(state: AgentState) -> dict:
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # 包装异常为错误结果
-    formatted = []
+    formatted: list[dict[str, Any]] = []
     for i, result in enumerate(results):
         if isinstance(result, Exception):
             formatted.append(
@@ -50,6 +63,8 @@ async def tool_executor(state: AgentState) -> dict:
             )
         else:
             formatted.append(result)
+        # 推送 observation 事件（工具返回结果）
+        writer({"type": "tool_observation", "result": formatted[-1]})
 
     return {"tool_results": formatted}
 
@@ -91,7 +106,7 @@ async def _execute_local(tool_name: str, arguments: dict, state: AgentState) -> 
         from app.engine.rag.search import search_knowledge
 
         query = arguments.get("query") or arguments.get("report_content", "")
-        results = search_knowledge(query=query)
+        results = await search_knowledge(query=query)
         duration_ms = (time.time() - start) * 1000
         _log_audit(state, tool_name, arguments, "success", duration_ms)
         return {"tool_name": tool_name, "success": True, "data": {"results": results}}
