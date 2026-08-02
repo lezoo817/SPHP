@@ -70,22 +70,21 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # 中间件（顺序：后添加的先执行）
+    # 中间件（Starlette: 后添加的先执行，即最后添加的最先执行）
+    # 执行顺序: CORS(预检) -> Tracing -> JWT(注入 user_id) -> RateLimit -> 路由
+    from app.api.middleware.jwt_auth import JWTAuthMiddleware
+    from app.api.middleware.rate_limit import RateLimitMiddleware
+    from app.api.middleware.tracing import TracingMiddleware
+
+    app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(JWTAuthMiddleware)
+    app.add_middleware(TracingMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],  # TODO: 生产环境收敛
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    # 中间件
-    from app.api.middleware.jwt_auth import JWTAuthMiddleware
-    from app.api.middleware.rate_limit import RateLimitMiddleware
-    from app.api.middleware.tracing import TracingMiddleware
-
-    app.add_middleware(TracingMiddleware)
-    app.add_middleware(JWTAuthMiddleware)
-    app.add_middleware(RateLimitMiddleware)
 
     # ---- 路由注册 ----
     from app.api.routes.chat import router as chat_router
