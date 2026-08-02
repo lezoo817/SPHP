@@ -24,7 +24,7 @@ public class RegisteringSlotLockService {
             "local current = redis.call('GET', KEYS[1]); "
                     + "if (not current) then return -1; end; "
                     + "if (tonumber(current) <= 0) then return 0; end; "
-                    + "return redis.call('DECR', KEYS[1]);", Long.class);
+                    + "redis.call('DECR', KEYS[1]); return 1;", Long.class);
     /** 仅在补偿时归还一个已预扣余量的 Lua 脚本 */
     private static final DefaultRedisScript<Long> UNLOCK_SCRIPT = new DefaultRedisScript<>(
             "return redis.call('INCR', KEYS[1]);", Long.class);
@@ -49,7 +49,7 @@ public class RegisteringSlotLockService {
             if (result == null) {
                 throw systemError("号源预扣脚本未返回结果");
             }
-            return result >= 0;
+            return result == 1;
         } catch (CAuthException exception) {
             throw exception;
         } catch (RuntimeException exception) {
