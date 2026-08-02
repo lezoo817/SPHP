@@ -7,6 +7,7 @@ import {
   validateFamilyMember,
   validatePassword,
 } from './form';
+import { filterHospitals, formatAmount, sortHospitals } from './medical';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -24,5 +25,19 @@ describe('前端表单与联调规则', () => {
 
   it('优先使用后端返回的可读错误信息', () => {
     expect(getApiErrorMessage({ code: 'A0400', message: '账号不能为空', traceId: 'trace-1' })).toBe('账号不能为空');
+  });
+});
+
+describe('挂号资源展示规则', () => {
+  it('按中文拼音排序医院名称', () => {
+    expect(sortHospitals([{ name: '上海医院' }, { name: '北京医院' }]).map((item) => item.name)).toEqual(['北京医院', '上海医院']);
+  });
+
+  it('将分金额格式化为元', () => {
+    expect(formatAmount(1250)).toBe('12.50 元');
+  });
+
+  it('按关键词筛选医院名称', () => {
+    expect(filterHospitals([{ name: '省人民医院' }, { name: '市中医院' }], '人民')).toEqual([{ name: '省人民医院' }]);
   });
 });

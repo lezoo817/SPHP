@@ -45,7 +45,8 @@ export default function LoginPage() {
       // 仅保存 Token 对和用户摘要，密码始终停留在当前输入框。
       saveSession(data);
       saveRememberedAccount(account.trim(), rememberAccount);
-      navigate('/mine');
+      // 登录成功后进入首页，加载医院和就诊人上下文。
+      navigate('/home');
     } catch (requestError) { setError(getApiErrorMessage(requestError)); }
     finally { setLoading(false); }
   }
