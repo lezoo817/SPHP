@@ -127,6 +127,14 @@ async def tool_executor(state: AgentState) -> dict:
         arguments = tc.get("arguments", {})
         # 推送 action 事件（工具调用开始）
         writer({"type": "tool_action", "tool": tool_name, "arguments": arguments})
+
+        # 未注册工具：直接生成失败结果，不抛异常
+        if ToolRegistry.get_tool(tool_name) is None:
+            tasks.append(
+                _async_failure(state, tool_name, arguments, "UNKNOWN_TOOL", f"未注册的工具: {tool_name}")
+            )
+            continue
+
         if ToolRegistry.is_local(tool_name):
             tasks.append(_execute_local(tool_name, arguments, state))
         else:
@@ -221,3 +229,22 @@ def _log_audit(
         result=result,
         duration_ms=duration_ms,
     )
+
+
+def _make_failure(
+    state: AgentState, tool_name: str, arguments: dict, code: str, message: str
+) -> dict:
+    """构造工具失败结果。"""
+    _log_audit(state, tool_name, arguments, "failed", 0)
+    return {
+        "tool_name": tool_name,
+        "success": False,
+        "error": {"code": code, "message": message},
+    }
+
+
+async def _async_failure(
+    state: AgentState, tool_name: str, arguments: dict, code: str, message: str
+) -> dict:
+    """异步包装 _make_failure，兼容 asyncio.gather 签名。"""
+    return _make_failure(state, tool_name, arguments, code, message)
