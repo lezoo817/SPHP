@@ -4,6 +4,8 @@ import com.sphp.patient.registration.handler.RegistrationExceptionHandler;
 import com.sphp.patient.registration.service.RegistrationService;
 import com.sphp.patient.registration.vo.HospitalListVO;
 import com.sphp.patient.registration.vo.DepartmentListVO;
+import com.sphp.patient.registration.vo.DoctorListItemVO;
+import com.sphp.patient.registration.vo.DoctorPageVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -67,5 +69,35 @@ class RegistrationControllerTest {
                 .andExpect(jsonPath("$.code").value("00000"))
                 .andExpect(jsonPath("$.data[0].id").value(301L))
                 .andExpect(jsonPath("$.data[0].name").value("呼吸内科"));
+    }
+
+    /**
+     * 验证医生查询接口返回分页信封和指定日期的可预约余量。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void listDoctorsReturnsExpectedEnvelope() throws Exception {
+        RegistrationService registrationService = mock(RegistrationService.class);
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new RegistrationController(registrationService))
+                .setControllerAdvice(new RegistrationExceptionHandler())
+                .build();
+        when(registrationService.listDoctors(101L, 301L, java.time.LocalDate.of(2026, 8, 3), 1, 20))
+                .thenReturn(DoctorPageVO.builder()
+                        .pageNo(1)
+                        .pageSize(20)
+                        .total(1L)
+                        .records(List.of(DoctorListItemVO.builder()
+                                .id(501L).name("张医生").title("主任医师")
+                                .specialty("呼吸内科").registrationFeeCent(5000).availableCount(8L).build()))
+                        .build());
+
+        mockMvc.perform(get("/c/v1/doctors").param("hospitalId", "101").param("departmentId", "301")
+                        .param("date", "2026-08-03"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("00000"))
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.records[0].id").value(501L))
+                .andExpect(jsonPath("$.data.records[0].availableCount").value(8));
     }
 }
