@@ -80,37 +80,6 @@ async def set_confirm_token(
     await client.setex(key, ttl, value)
 
 
-async def get_and_delete_confirm_token(
-    key: str,
-    expected_user_id: str,
-) -> dict | None:
-    """原子性获取并删除确认 token（系分 §5.5 Lua 脚本）。
-
-    校验 user_id 匹配，不匹配返回 None。
-    """
-    # Lua 脚本保证原子性
-    lua_script = """
-    local key = KEYS[1]
-    local expected_user_id = ARGV[1]
-    local value = redis.call('GET', key)
-    if value == false then
-        return nil
-    end
-    local data = cjson.decode(value)
-    if data.user_id ~= expected_user_id then
-        return nil
-    end
-    redis.call('DEL', key)
-    return value
-    """
-
-    client = get_redis()
-    result = await client.eval(lua_script, 1, key, expected_user_id)
-    if result is None:
-        return None
-    return json.loads(result)
-
-
 async def get_and_delete_confirm_token_by_token(
     session_id: str,
     token_id: str,
