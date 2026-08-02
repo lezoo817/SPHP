@@ -42,20 +42,24 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
     """
     token = getattr(request.state, "jwt_token", None)
     trace_id = getattr(request.state, "trace_id", "")
-    initial_state = _build_initial_state(req, request, token)
+    # 无 session 时先生成，保证 state / done / card 会话 ID 一致（L2 确认依赖）
+    session_id = req.session_id or str(uuid4())
+    initial_state = _build_initial_state(req, request, token, session_id)
 
     return StreamingResponse(
-        _sse_generator(initial_state, req.session_id, trace_id),
+        _sse_generator(initial_state, session_id, trace_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
 
 
-def _build_initial_state(req: ChatRequest, request: Request, token: str | None) -> AgentState:
+def _build_initial_state(
+    req: ChatRequest, request: Request, token: str | None, session_id: str
+) -> AgentState:
     """构造初始状态（不依赖外部 mutation）。"""
     return {
         "messages": [{"role": "user", "content": req.content}],
-        "session_id": req.session_id,
+        "session_id": session_id,
         "intent": None,
         "user_id": getattr(request.state, "user_id", None),
         "scope": getattr(request.state, "scope", req.scope),
@@ -296,11 +300,11 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
             code="SESSION_MISMATCH", message="会话不匹配，请刷新重试", data=None, traceId=trace_id
         )
 
-    # 执行对应的 L2 工具
+    # 执行对应的 L2 工具（匿名请求无 user_id，用 getattr 兜底）
     tool_name = record.get("tool_name", "")
     arguments = record.get("tool_arguments", {})
     state: AgentState = {
-        "user_id": request.state.user_id,
+        "user_id": getattr(request.state, "user_id", None),
         "scope": getattr(request.state, "scope", "c_end"),
         "session_id": req.session_id,
     }
