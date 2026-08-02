@@ -5,6 +5,7 @@ import com.sphp.patient.consultation.dto.PreConsultationSaveRequest;
 import com.sphp.patient.consultation.service.ConsultationService;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
+import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.sphp.shared.common.constant.HeaderConstant;
@@ -18,6 +19,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -78,5 +80,18 @@ public class ConsultationController {
             @RequestParam(required = false) @jakarta.validation.constraints.Positive(message = "pageNo 必须为正数") Integer pageNo,
             @RequestParam(required = false) @jakarta.validation.constraints.Positive(message = "pageSize 必须为正数") Integer pageSize) {
         return Result.success("查询成功", consultationService.listConsultations(patientId, status, pageNo, pageSize));
+    }
+
+    /**
+     * 查询当前账号可访问的问诊详情和全部文字消息。
+     *
+     * @param consultationId 问诊记录 ID
+     * @return 问诊详情响应
+     */
+    @GetMapping("/consultations/{consultationId}")
+    @Operation(summary = "查询问诊详情和文字消息")
+    public Result<ConsultationDetailVO> getConsultationDetail(
+            @PathVariable @jakarta.validation.constraints.Positive(message = "consultationId 必须为正数") Long consultationId) {
+        return Result.success("查询成功", consultationService.getConsultationDetail(consultationId));
     }
 }

@@ -1,6 +1,7 @@
 package com.sphp.patient.consultation.service.impl;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.support.context.CUserContext;
@@ -12,9 +13,13 @@ import com.sphp.patient.consultation.entity.ConsultationRecord;
 import com.sphp.patient.consultation.mapper.ConsultationAppointmentRecord;
 import com.sphp.patient.consultation.mapper.ConsultationDataMapper;
 import com.sphp.patient.consultation.mapper.ConsultationListRecord;
+import com.sphp.patient.consultation.mapper.ConsultationDetailRecord;
+import com.sphp.patient.consultation.mapper.ConsultationMessageRecord;
 import com.sphp.patient.consultation.service.ConsultationService;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
+import com.sphp.patient.consultation.vo.ConsultationAttachmentVO;
+import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -124,6 +129,45 @@ public class ConsultationServiceImpl implements ConsultationService {
     }
 
     /**
+     * 查询当前账号可访问的问诊详情与文字消息。
+     *
+     * @param consultationId 问诊记录 ID
+     * @return 问诊详情与文字消息
+     * @throws CAuthException 问诊不存在或当前账号无权访问时抛出
+     */
+    @Override
+    public ConsultationDetailVO getConsultationDetail(Long consultationId) {
+        ConsultationDetailRecord record = consultationDataMapper.selectConsultationDetail(consultationId);
+        if (record == null) {
+            throw notFound("问诊记录不存在");
+        }
+        // 详情先按资源反查患者，再判断当前账号是否持有有效患者关系。
+        resolveAccessiblePatient(CUserContext.getRequired().userId(), record.patientId());
+        List<ConsultationDetailVO.Message> messages = consultationDataMapper.selectConsultationMessages(consultationId)
+                .stream()
+                .map(this::toConsultationMessage)
+                .toList();
+        return ConsultationDetailVO.builder()
+                .id(record.id())
+                .status(record.status())
+                .doctor(ConsultationDetailVO.Doctor.builder()
+                        .id(record.doctorId())
+                        .name(record.doctorName())
+                        .title(record.doctorTitle())
+                        .build())
+                .preConsultation(ConsultationDetailVO.PreConsultation.builder()
+                        .chiefComplaint(record.chiefComplaint())
+                        .historyOfPresentIllness(record.historyOfPresentIllness())
+                        .attachments(deserializeAttachments(record.attachmentsJson()))
+                        .savedAt(record.savedAt())
+                        .submittedAt(record.submittedAt())
+                        .build())
+                .messages(messages)
+                .prescriptionIds(consultationDataMapper.selectConsultationApprovedPrescriptionIds(consultationId))
+                .build();
+    }
+
+    /**
      * 解析当前账号可访问的就诊人，未传时固定使用本人。
      *
      * @param userId 当前 C端用户 ID
@@ -175,6 +219,39 @@ public class ConsultationServiceImpl implements ConsultationService {
                 .status(record.status())
                 .updatedAt(record.updatedAt())
                 .build();
+    }
+
+    /**
+     * 将消息查询投影转换为响应项。
+     *
+     * @param record 消息查询投影
+     * @return 消息响应项
+     */
+    private ConsultationDetailVO.Message toConsultationMessage(ConsultationMessageRecord record) {
+        return ConsultationDetailVO.Message.builder()
+                .id(record.id())
+                .senderType(record.senderType())
+                .content(record.content())
+                .createdAt(record.createdAt())
+                .build();
+    }
+
+    /**
+     * 将数据库 JSONB 附件数组转换为前端展示项。
+     *
+     * @param attachmentsJson 附件 JSON 数组文本
+     * @return 附件展示项列表
+     * @throws CAuthException 存量附件数据异常时抛出
+     */
+    private List<ConsultationAttachmentVO> deserializeAttachments(String attachmentsJson) {
+        if (attachmentsJson == null || attachmentsJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(attachmentsJson, new TypeReference<List<ConsultationAttachmentVO>>() { });
+        } catch (JsonProcessingException exception) {
+            throw systemError("预问诊附件读取失败");
+        }
     }
 
     /**

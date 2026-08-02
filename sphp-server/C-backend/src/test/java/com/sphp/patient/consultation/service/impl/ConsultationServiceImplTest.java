@@ -9,8 +9,11 @@ import com.sphp.patient.consultation.entity.ConsultationRecord;
 import com.sphp.patient.consultation.mapper.ConsultationAppointmentRecord;
 import com.sphp.patient.consultation.mapper.ConsultationDataMapper;
 import com.sphp.patient.consultation.mapper.ConsultationListRecord;
+import com.sphp.patient.consultation.mapper.ConsultationDetailRecord;
+import com.sphp.patient.consultation.mapper.ConsultationMessageRecord;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
+import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -108,6 +111,31 @@ class ConsultationServiceImplTest {
         assertEquals(1L, result.getTotal());
         assertEquals(20, result.getPageSize());
         assertEquals(11001L, result.getRecords().getFirst().getId());
+    }
+
+    /**
+     * 验证问诊详情按资源患者反查归属，并按时间返回消息。
+     */
+    @Test
+    void getConsultationDetailChecksPatientOwnershipAndReturnsMessages() {
+        ConsultationDataMapper dataMapper = mock(ConsultationDataMapper.class);
+        ConsultationServiceImpl service = new ConsultationServiceImpl(dataMapper, new ObjectMapper());
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        when(dataMapper.selectConsultationDetail(11001L)).thenReturn(new ConsultationDetailRecord(
+                11001L, 20001L, "IN_PROGRESS", 30001L, "王医生", "主治医师", "咳嗽",
+                "两日前开始", "[]", OffsetDateTime.now(), OffsetDateTime.now()));
+        when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasConsultationActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectConsultationMessages(11001L)).thenReturn(List.of(
+                new ConsultationMessageRecord(12001L, "DOCTOR", "体温最高多少？", OffsetDateTime.now())));
+        when(dataMapper.selectConsultationApprovedPrescriptionIds(11001L)).thenReturn(List.of(13001L));
+
+        ConsultationDetailVO result = service.getConsultationDetail(11001L);
+
+        assertEquals("IN_PROGRESS", result.getStatus());
+        assertEquals("王医生", result.getDoctor().getName());
+        assertEquals("DOCTOR", result.getMessages().getFirst().getSenderType());
+        assertEquals(13001L, result.getPrescriptionIds().getFirst());
     }
 
     /**

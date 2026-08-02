@@ -3,6 +3,7 @@ package com.sphp.patient.consultation.service;
 import com.sphp.patient.consultation.dto.PreConsultationSaveRequest;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
+import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 
 /**
  * C端问诊与处方查询服务。
@@ -27,4 +28,12 @@ public interface ConsultationService {
      * @return 问诊记录分页响应
      */
     ConsultationPageVO listConsultations(Long patientId, String status, Integer pageNo, Integer pageSize);
+
+    /**
+     * 查询当前账号可访问的问诊详情与文字消息。
+     *
+     * @param consultationId 问诊记录 ID
+     * @return 问诊详情与文字消息
+     */
+    ConsultationDetailVO getConsultationDetail(Long consultationId);
 }

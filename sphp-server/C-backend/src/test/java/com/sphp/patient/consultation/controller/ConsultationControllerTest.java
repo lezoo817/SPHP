@@ -7,6 +7,7 @@ import com.sphp.patient.consultation.handler.ConsultationExceptionHandler;
 import com.sphp.patient.consultation.service.ConsultationService;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
+import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import org.junit.jupiter.api.AfterEach;
@@ -112,6 +113,31 @@ class ConsultationControllerTest {
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.records[0].id").value(11001))
                 .andExpect(jsonPath("$.data.records[0].status").value("PENDING"));
+    }
+
+    /**
+     * 验证问诊详情路由返回医生和消息结构。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void getConsultationDetailReturnsMessages() throws Exception {
+        ConsultationService consultationService = mock(ConsultationService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        when(consultationService.getConsultationDetail(11001L)).thenReturn(ConsultationDetailVO.builder()
+                .id(11001L).status("IN_PROGRESS")
+                .doctor(ConsultationDetailVO.Doctor.builder().id(30001L).name("王医生").title("主治医师").build())
+                .preConsultation(ConsultationDetailVO.PreConsultation.builder().chiefComplaint("咳嗽")
+                        .attachments(java.util.List.of()).build())
+                .messages(java.util.List.of(ConsultationDetailVO.Message.builder().id(12001L)
+                        .senderType("DOCTOR").content("体温最高多少？").createdAt(OffsetDateTime.now()).build()))
+                .prescriptionIds(java.util.List.of()).build());
+
+        newMockMvc(consultationService, idempotencyService)
+                .perform(get("/c/v1/consultations/11001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.doctor.name").value("王医生"))
+                .andExpect(jsonPath("$.data.messages[0].senderType").value("DOCTOR"));
     }
 
     /**
