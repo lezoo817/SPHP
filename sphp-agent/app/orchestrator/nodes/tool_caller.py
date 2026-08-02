@@ -123,8 +123,13 @@ def _extract_tool_calls(response: Any, tool_scope: ToolScope) -> list[dict]:
     calls = getattr(response, "tool_calls", None) or []
     result: list[dict] = []
     for call in calls:
-        name = getattr(call, "name", "")
-        args = getattr(call, "args", {}) or {}
+        # 兼容对象（langchain ToolCall）与 dict 两种格式（不同 LLM 返回不同）
+        if isinstance(call, dict):
+            name = call.get("name", "")
+            args = call.get("args", {}) or {}
+        else:
+            name = getattr(call, "name", "")
+            args = getattr(call, "args", {}) or {}
         tool = ToolRegistry.get_tool(name)
         # 双重过滤：工具必须存在且为 L1/L2（即便 LLM 返回 L3/L4 也拦截）
         is_allowed = (
