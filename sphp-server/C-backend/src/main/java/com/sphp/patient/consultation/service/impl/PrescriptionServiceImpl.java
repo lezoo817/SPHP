@@ -1,0 +1,233 @@
+package com.sphp.patient.consultation.service.impl;
+
+import com.sphp.patient.auth.exception.CAuthException;
+import com.sphp.patient.auth.support.context.CUserContext;
+import com.sphp.patient.common.constant.PrescriptionConstant;
+import com.sphp.patient.common.enums.ConsultationPrescriptionStatusEnum;
+import com.sphp.patient.common.enums.PrescriptionInterpretationStatusEnum;
+import com.sphp.patient.consultation.mapper.PrescriptionDataMapper;
+import com.sphp.patient.consultation.mapper.PrescriptionDetailRecord;
+import com.sphp.patient.consultation.mapper.PrescriptionInterpretationRecord;
+import com.sphp.patient.consultation.mapper.PrescriptionItemRecord;
+import com.sphp.patient.consultation.mapper.PrescriptionListRecord;
+import com.sphp.patient.consultation.mapper.PrescriptionResourceRecord;
+import com.sphp.patient.consultation.service.PrescriptionService;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionDetailVO;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
+import com.sphp.patient.consultation.vo.PrescriptionInterpretationVO;
+import com.sphp.shared.common.enums.ErrorCodeEnum;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+/**
+ * C端处方查询与解读服务实现。
+ */
+@Service
+@RequiredArgsConstructor
+public class PrescriptionServiceImpl implements PrescriptionService {
+
+    private final PrescriptionDataMapper prescriptionDataMapper;
+
+    /**
+     * 分页查询当前账号可访问患者的已批准处方。
+     *
+     * @param patientId 可选就诊人 ID，未传时使用本人
+     * @param pageNo 可选页码
+     * @param pageSize 可选每页数量
+     * @return 已批准处方分页结果
+     * @throws CAuthException 患者归属或分页参数非法时抛出
+     */
+    @Override
+    public ConsultationPrescriptionPageVO prescriptionList(Long patientId, Integer pageNo, Integer pageSize) {
+        Long resolvedPatientId = prescriptionResolveAccessiblePatient(CUserContext.getRequired().userId(), patientId);
+        int resolvedPageNo = pageNo == null ? PrescriptionConstant.DEFAULT_PAGE_NO : pageNo;
+        int resolvedPageSize = pageSize == null ? PrescriptionConstant.DEFAULT_PAGE_SIZE : pageSize;
+        if (resolvedPageSize > PrescriptionConstant.MAX_PAGE_SIZE) {
+            throw prescriptionBadRequest("pageSize 不能超过" + PrescriptionConstant.MAX_PAGE_SIZE);
+        }
+        long offset = (long) (resolvedPageNo - 1) * resolvedPageSize;
+        List<ConsultationPrescriptionPageVO.Item> records = prescriptionDataMapper
+                .prescriptionSelectApprovedList(resolvedPatientId, resolvedPageSize, offset)
+                .stream()
+                .map(this::prescriptionToListItem)
+                .toList();
+        return ConsultationPrescriptionPageVO.builder()
+                .pageNo(resolvedPageNo)
+                .pageSize(resolvedPageSize)
+                .total(prescriptionDataMapper.prescriptionCountApprovedList(resolvedPatientId))
+                .records(records)
+                .build();
+    }
+
+    /**
+     * 查询当前账号可访问的已批准处方详情与药品明细。
+     *
+     * @param prescriptionId 处方 ID
+     * @return 处方详情
+     * @throws CAuthException 处方不存在、不可展示或无权访问时抛出
+     */
+    @Override
+    public ConsultationPrescriptionDetailVO prescriptionGetDetail(Long prescriptionId) {
+        PrescriptionResourceRecord resource = prescriptionRequireApprovedResource(prescriptionId);
+        PrescriptionDetailRecord detail = prescriptionDataMapper.prescriptionSelectApprovedDetail(prescriptionId);
+        if (detail == null) {
+            throw prescriptionNotFound("处方不存在");
+        }
+        List<ConsultationPrescriptionDetailVO.Item> items = prescriptionDataMapper.prescriptionSelectItems(prescriptionId)
+                .stream()
+                .map(this::prescriptionToDetailItem)
+                .toList();
+        return ConsultationPrescriptionDetailVO.builder()
+                .id(resource.id())
+                .status(ConsultationPrescriptionStatusEnum.APPROVED.name())
+                .doctorName(detail.doctorName())
+                .doctor(ConsultationPrescriptionDetailVO.Doctor.builder()
+                        .id(detail.doctorId())
+                        .name(detail.doctorName())
+                        .title(detail.doctorTitle())
+                        .build())
+                .items(items)
+                .build();
+    }
+
+    /**
+     * 查询已生成的处方解读；未就绪的解读不向患者端暴露。
+     *
+     * @param prescriptionId 处方 ID
+     * @return READY 状态处方解读
+     * @throws CAuthException 处方不可访问或解读未就绪时抛出
+     */
+    @Override
+    public PrescriptionInterpretationVO prescriptionGetInterpretation(Long prescriptionId) {
+        prescriptionRequireApprovedResource(prescriptionId);
+        PrescriptionInterpretationRecord interpretation = prescriptionDataMapper
+                .prescriptionSelectInterpretation(prescriptionId);
+        if (interpretation == null || !PrescriptionInterpretationStatusEnum.READY.name().equals(interpretation.status())
+                || interpretation.content() == null || interpretation.content().isBlank()) {
+            throw prescriptionInterpretationNotReady();
+        }
+        return PrescriptionInterpretationVO.builder()
+                .prescriptionId(interpretation.prescriptionId())
+                .content(interpretation.content())
+                .disclaimer(interpretation.disclaimer())
+                .generatedAt(interpretation.generatedAt())
+                .build();
+    }
+
+    /**
+     * 读取处方资源并校验当前用户对所属患者的访问权限和处方展示状态。
+     *
+     * @param prescriptionId 处方 ID
+     * @return 已批准且可访问的处方资源
+     * @throws CAuthException 处方不存在、未批准或无权访问时抛出
+     */
+    private PrescriptionResourceRecord prescriptionRequireApprovedResource(Long prescriptionId) {
+        PrescriptionResourceRecord resource = prescriptionDataMapper.prescriptionSelectResource(prescriptionId);
+        if (resource == null) {
+            throw prescriptionNotFound("处方不存在");
+        }
+        prescriptionResolveAccessiblePatient(CUserContext.getRequired().userId(), resource.patientId());
+        if (!ConsultationPrescriptionStatusEnum.APPROVED.name().equals(resource.status())) {
+            // 未批准处方对患者端不可见，统一按不存在处理，避免泄漏审核状态。
+            throw prescriptionNotFound("处方不存在");
+        }
+        return resource;
+    }
+
+    /**
+     * 解析本人或显式就诊人并校验当前用户有效归属。
+     *
+     * @param userId C端用户 ID
+     * @param requestedPatientId 可选就诊人 ID
+     * @return 当前用户可访问的就诊人 ID
+     * @throws CAuthException 就诊人不存在或无权访问时抛出
+     */
+    private Long prescriptionResolveAccessiblePatient(Long userId, Long requestedPatientId) {
+        Long patientId = requestedPatientId == null
+                ? prescriptionDataMapper.prescriptionSelectSelfPatientId(userId)
+                : requestedPatientId;
+        if (patientId == null || !prescriptionDataMapper.prescriptionExistsActivePatient(patientId)) {
+            throw prescriptionNotFound("就诊人不存在或已停用");
+        }
+        if (!prescriptionDataMapper.prescriptionHasActivePatientRelation(userId, patientId)) {
+            throw prescriptionForbidden("无权访问该就诊人");
+        }
+        return patientId;
+    }
+
+    /**
+     * 将处方列表投影转换为响应项。
+     *
+     * @param record 处方列表投影
+     * @return 处方列表响应项
+     */
+    private ConsultationPrescriptionPageVO.Item prescriptionToListItem(PrescriptionListRecord record) {
+        return ConsultationPrescriptionPageVO.Item.builder()
+                .id(record.id())
+                .consultationId(record.consultationId())
+                .doctorName(record.doctorName())
+                .status(ConsultationPrescriptionStatusEnum.APPROVED.name())
+                .issuedAt(record.issuedAt())
+                .build();
+    }
+
+    /**
+     * 将处方药品投影转换为详情响应项。
+     *
+     * @param record 处方药品投影
+     * @return 处方药品详情
+     */
+    private ConsultationPrescriptionDetailVO.Item prescriptionToDetailItem(PrescriptionItemRecord record) {
+        return ConsultationPrescriptionDetailVO.Item.builder()
+                .drugId(record.drugId())
+                .drugName(record.drugName())
+                .specification(record.specification())
+                .dosage(record.dosage())
+                .frequency(record.frequency())
+                .usage(record.usage())
+                .durationDays(record.durationDays())
+                .build();
+    }
+
+    /**
+     * 创建资源不存在异常。
+     *
+     * @param message 面向客户端的提示
+     * @return HTTP 404 业务异常
+     */
+    private CAuthException prescriptionNotFound(String message) {
+        return new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
+    }
+
+    /**
+     * 创建患者归属越权异常。
+     *
+     * @param message 面向客户端的提示
+     * @return HTTP 403 业务异常
+     */
+    private CAuthException prescriptionForbidden(String message) {
+        return new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, message);
+    }
+
+    /**
+     * 创建解读未生成异常。
+     *
+     * @return HTTP 409 业务异常
+     */
+    private CAuthException prescriptionInterpretationNotReady() {
+        return new CAuthException(ErrorCodeEnum.BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT, "处方解读尚未生成");
+    }
+
+    /**
+     * 创建参数范围异常。
+     *
+     * @param message 面向客户端的提示
+     * @return HTTP 400 业务异常
+     */
+    private CAuthException prescriptionBadRequest(String message) {
+        return new CAuthException(ErrorCodeEnum.PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST, message);
+    }
+}

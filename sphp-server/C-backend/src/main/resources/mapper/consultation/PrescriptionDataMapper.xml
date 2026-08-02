@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sphp.patient.consultation.mapper.PrescriptionDataMapper">
+
+    <select id="prescriptionSelectSelfPatientId" resultType="java.lang.Long">
+        SELECT pur.patient_id
+        FROM patient_user_relation pur
+                 INNER JOIN patient p ON p.id = pur.patient_id AND p.deleted_at IS NULL
+        WHERE pur.user_id = #{userId}
+          AND pur.relationship = 'SELF'
+          AND pur.deleted_at IS NULL
+        ORDER BY pur.created_at ASC, pur.id ASC
+        LIMIT 1
+    </select>
+
+    <select id="prescriptionExistsActivePatient" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1 FROM patient WHERE id = #{patientId} AND deleted_at IS NULL
+        )
+    </select>
+
+    <select id="prescriptionHasActivePatientRelation" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM patient_user_relation
+            WHERE user_id = #{userId}
+              AND patient_id = #{patientId}
+              AND deleted_at IS NULL
+        )
+    </select>
+
+    <select id="prescriptionSelectApprovedList" resultType="com.sphp.patient.consultation.mapper.PrescriptionListRecord">
+        SELECT p.id, p.consult_id AS consultation_id, d.name AS doctor_name, p.issued_at
+        FROM prescription p
+                 LEFT JOIN doctor d ON d.id = p.doctor_id
+        WHERE p.patient_id = #{patientId}
+          AND p.status = 'APPROVED'
+          AND p.deleted_at IS NULL
+        ORDER BY p.issued_at DESC NULLS LAST, p.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="prescriptionCountApprovedList" resultType="long">
+        SELECT COUNT(1)
+        FROM prescription
+        WHERE patient_id = #{patientId}
+          AND status = 'APPROVED'
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="prescriptionSelectResource" resultType="com.sphp.patient.consultation.mapper.PrescriptionResourceRecord">
+        SELECT id, patient_id, status
+        FROM prescription
+        WHERE id = #{prescriptionId}
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="prescriptionSelectApprovedDetail" resultType="com.sphp.patient.consultation.mapper.PrescriptionDetailRecord">
+        SELECT p.id, d.id AS doctor_id, d.name AS doctor_name, d.title AS doctor_title
+        FROM prescription p
+                 LEFT JOIN doctor d ON d.id = p.doctor_id
+        WHERE p.id = #{prescriptionId}
+          AND p.status = 'APPROVED'
+          AND p.deleted_at IS NULL
+    </select>
+
+    <select id="prescriptionSelectItems" resultType="com.sphp.patient.consultation.mapper.PrescriptionItemRecord">
+        SELECT pi.drug_id,
+               d.name AS drug_name,
+               d.specification,
+               pi.dosage,
+               pi.frequency,
+               pi.usage_method AS usage,
+               pi.days AS duration_days
+        FROM prescription_item pi
+                 INNER JOIN drug d ON d.id = pi.drug_id
+        WHERE pi.prescription_id = #{prescriptionId}
+        ORDER BY pi.id ASC
+    </select>
+
+    <select id="prescriptionSelectInterpretation" resultType="com.sphp.patient.consultation.mapper.PrescriptionInterpretationRecord">
+        SELECT prescription_id, content, disclaimer, status, generated_at
+        FROM prescription_interpretation
+        WHERE prescription_id = #{prescriptionId}
+          AND deleted_at IS NULL
+        LIMIT 1
+    </select>
+</mapper>
