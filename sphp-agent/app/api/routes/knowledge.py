@@ -1,11 +1,12 @@
 """知识库管理接口：文档入库 + 检索测试。"""
 
-from fastapi import APIRouter, UploadFile, File, Form
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
-from app.engine.rag.ingest import ingest_file, ingest_directory
-from app.engine.rag.search import search_knowledge, format_context
+from fastapi import APIRouter, File, Form, UploadFile
+
+from app.engine.rag.ingest import ingest_directory, ingest_file
+from app.engine.rag.search import format_context, search_knowledge
 
 router = APIRouter(prefix="/api/knowledge", tags=["知识库"])
 
@@ -43,7 +44,7 @@ async def ingest_dir(path: str = Form(...)):
 @router.get("/search")
 async def search(q: str, top_k: int = 5):
     """检索测试：输入问题，返回最相关的知识片段。"""
-    results = search_knowledge(query=q, top_k=top_k)
+    results = await search_knowledge(query=q, top_k=top_k)
     return {
         "query": q,
         "results": results,

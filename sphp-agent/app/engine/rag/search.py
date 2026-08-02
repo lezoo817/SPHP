@@ -5,13 +5,13 @@ Agent 工具调用此模块完成 RAG 检索，将医疗知识作为上下文注
 
 import logging
 
-from app.infrastructure.config.settings import get_settings
 from app.engine.rag.vectorstore import get_vectorstore
+from app.infrastructure.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 
-def search_knowledge(query: str, top_k: int | None = None) -> list[dict]:
+async def search_knowledge(query: str, top_k: int | None = None) -> list[dict]:
     """根据自然语言 query 检索最相关的知识片段。
 
     Args:
@@ -25,15 +25,17 @@ def search_knowledge(query: str, top_k: int | None = None) -> list[dict]:
     k = top_k or get_settings().kb_top_k
     store = get_vectorstore()
 
-    results = store.similarity_search_with_relevance_scores(query, k=k)
+    results = await store.asimilarity_search_with_relevance_scores(query, k=k)
 
     formatted = []
     for doc, score in results:
-        formatted.append({
-            "content": doc.page_content,
-            "source": doc.metadata.get("source_file", doc.metadata.get("source", "未知")),
-            "score": round(score, 4),
-        })
+        formatted.append(
+            {
+                "content": doc.page_content,
+                "source": doc.metadata.get("source_file", doc.metadata.get("source", "未知")),
+                "score": round(score, 4),
+            }
+        )
 
     logger.info("知识检索: query=%r, 命中 %d 条", query, len(formatted))
     return formatted
