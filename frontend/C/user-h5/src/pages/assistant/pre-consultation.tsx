@@ -1,0 +1,9 @@
+import { useRef, useState } from 'react';
+import { useNavigate, useParams } from 'umi';
+import { PageHeader } from '../../components/PageHeader';
+import { getSelection } from '../../models/selection';
+import { savePreConsultation } from '../../services/consultation';
+import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
+
+/** 保存草稿或提交已支付挂号的预问诊信息。 */
+export default function PreConsultationPage() { const { appointmentId } = useParams(); const navigate = useNavigate(); const [chiefComplaint, setChiefComplaint] = useState(''); const [history, setHistory] = useState(''); const [notice, setNotice] = useState(''); const key = useRef<string>(); async function save(submit: boolean) { if (!chiefComplaint.trim()) return setNotice('请填写主诉'); try { const result = await savePreConsultation({ patientId: getSelection().patientId, appointmentId: Number(appointmentId), chiefComplaint, historyOfPresentIllness: history || undefined, submit }, key.current || (key.current = createIdempotencyKey())); key.current = undefined; if (submit) navigate(`/assistant/consultation/${result.consultationId}`); else setNotice('草稿已保存'); } catch (error) { setNotice(getApiErrorMessage(error)); } } return <main className="subpage"><PageHeader title="预问诊" /><section className="subpage-content"><div className="form-stack"><label>主诉<textarea rows={4} maxLength={2000} value={chiefComplaint} placeholder="请描述主要不适" onChange={(event) => setChiefComplaint(event.target.value)} /></label><label>现病史<textarea rows={5} maxLength={2000} value={history} placeholder="可选，补充症状发生时间和变化" onChange={(event) => setHistory(event.target.value)} /></label><button className="secondary-button" type="button" onClick={() => void save(false)}>保存草稿</button><button className="primary-button" type="button" onClick={() => void save(true)}>提交预问诊</button></div></section>{notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}</main>; }
