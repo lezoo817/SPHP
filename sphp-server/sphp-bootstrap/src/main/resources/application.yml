@@ -86,6 +86,7 @@ sphp:
       secret: ${dev.sphp.jwt.admin.secret}
       expiration: ${dev.sphp.jwt.admin.expiration}
   registration:
+    # C端挂号订单待支付窗口，单位秒，默认 900 秒。
     payment-timeout: ${dev.sphp.registration.payment-timeout}
     # C端可查询的未来放号天数，包含当天。
     slot-release-days: ${dev.sphp.registration.slot-release-days}

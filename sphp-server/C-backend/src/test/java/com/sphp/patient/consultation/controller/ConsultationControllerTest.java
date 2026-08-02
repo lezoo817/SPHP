@@ -1,0 +1,232 @@
+package com.sphp.patient.consultation.controller;
+
+import com.sphp.patient.auth.support.context.CUserContext;
+import com.sphp.patient.auth.support.context.CUserPrincipal;
+import com.sphp.patient.consultation.dto.PreConsultationSaveRequest;
+import com.sphp.patient.consultation.handler.ConsultationExceptionHandler;
+import com.sphp.patient.consultation.service.ConsultationService;
+import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
+import com.sphp.patient.consultation.vo.ConsultationPageVO;
+import com.sphp.patient.consultation.vo.ConsultationDetailVO;
+import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionDetailVO;
+import com.sphp.patient.support.idempotency.CIdempotencyService;
+import com.sphp.patient.support.idempotency.IdempotencyPayload;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.time.OffsetDateTime;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * C端问诊控制器接口测试。
+ */
+class ConsultationControllerTest {
+
+    /**
+     * 每个测试结束后清理线程用户上下文。
+     */
+    @AfterEach
+    void clearContext() {
+        CUserContext.clear();
+    }
+
+    /**
+     * 验证提交预问诊走幂等处理并返回保存与提交时间。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void savePreConsultationReturnsIdempotentSubmitResult() throws Exception {
+        ConsultationService consultationService = mock(ConsultationService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        PreConsultationSaveVO result = PreConsultationSaveVO.builder()
+                .consultationId(11001L)
+                .status("PENDING")
+                .savedAt(OffsetDateTime.parse("2026-08-02T10:00:00+08:00"))
+                .submittedAt(OffsetDateTime.parse("2026-08-02T10:00:00+08:00"))
+                .build();
+        when(idempotencyService.execute(any(), anyString(), anyString(), any(), any(), any()))
+                .thenReturn(new IdempotencyPayload<>("预问诊已提交", result));
+
+        newMockMvc(consultationService, idempotencyService)
+                .perform(post("/c/v1/consultations/pre-consultations")
+                        .header("X-Idempotency-Key", "pre-consultation-001")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"appointmentId\":7001,\"chiefComplaint\":\"咳嗽发热三天\",\"submit\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("00000"))
+                .andExpect(jsonPath("$.message").value("预问诊已提交"))
+                .andExpect(jsonPath("$.data.consultationId").value(11001))
+                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.submittedAt").exists());
+    }
+
+    /**
+     * 验证状态变更接口缺少幂等键时返回统一参数错误。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void savePreConsultationRejectsMissingIdempotencyKey() throws Exception {
+        ConsultationService consultationService = mock(ConsultationService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+
+        newMockMvc(consultationService, idempotencyService)
+                .perform(post("/c/v1/consultations/pre-consultations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"appointmentId\":7001,\"chiefComplaint\":\"咳嗽\",\"submit\":false}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("A0400"));
+    }
+
+    /**
+     * 验证问诊列表路由返回分页响应。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void listConsultationsReturnsPageResult() throws Exception {
+        ConsultationService consultationService = mock(ConsultationService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        when(consultationService.listConsultations(20001L, "PENDING", 1, 20))
+                .thenReturn(ConsultationPageVO.builder().pageNo(1).pageSize(20).total(1)
+                        .records(java.util.List.of(ConsultationPageVO.Item.builder().id(11001L)
+                                .appointmentId(7001L).doctorName("王医生").status("PENDING")
+                                .updatedAt(OffsetDateTime.parse("2026-08-02T10:00:00+08:00")).build()))
+                        .build());
+
+        newMockMvc(consultationService, idempotencyService)
+                .perform(get("/c/v1/consultations").param("patientId", "20001")
+                        .param("status", "PENDING").param("pageNo", "1").param("pageSize", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.records[0].id").value(11001))
+                .andExpect(jsonPath("$.data.records[0].status").value("PENDING"));
+    }
+
+    /**
+     * 验证问诊详情路由返回医生和消息结构。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void getConsultationDetailReturnsMessages() throws Exception {
+        ConsultationService consultationService = mock(ConsultationService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        when(consultationService.getConsultationDetail(11001L)).thenReturn(ConsultationDetailVO.builder()
+                .id(11001L).status("IN_PROGRESS")
+                .doctor(ConsultationDetailVO.Doctor.builder().id(30001L).name("王医生").title("主治医师").build())
+                .preConsultation(ConsultationDetailVO.PreConsultation.builder().chiefComplaint("咳嗽")
+                        .attachments(java.util.List.of()).build())
+                .messages(java.util.List.of(ConsultationDetailVO.Message.builder().id(12001L)
+                        .senderType("DOCTOR").content("体温最高多少？").createdAt(OffsetDateTime.now()).build()))
+                .prescriptionIds(java.util.List.of()).build());
+
+        newMockMvc(consultationService, idempotencyService)
+                .perform(get("/c/v1/consultations/11001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.doctor.name").value("王医生"))
+                .andExpect(jsonPath("$.data.messages[0].senderType").value("DOCTOR"));
+    }
+
+    /**
+     * 验证发送文字消息路由通过幂等服务返回消息结果。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void sendConsultationMessageReturnsIdempotentResult() throws Exception {
+        ConsultationService consultationService = mock(ConsultationService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        ConsultationMessageSendVO result = ConsultationMessageSendVO.builder().messageId(12001L)
+                .consultationId(11001L).senderType("PATIENT").content("最高体温38.5度")
+                .createdAt(OffsetDateTime.now()).build();
+        when(idempotencyService.execute(any(), anyString(), anyString(), any(), any(), any()))
+                .thenReturn(new IdempotencyPayload<>("消息已发送", result));
+
+        newMockMvc(consultationService, idempotencyService)
+                .perform(post("/c/v1/consultations/11001/messages")
+                        .header("X-Idempotency-Key", "consultation-message-001")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"最高体温38.5度\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("消息已发送"))
+                .andExpect(jsonPath("$.data.messageId").value(12001))
+                .andExpect(jsonPath("$.data.senderType").value("PATIENT"));
+    }
+
+    /**
+     * 验证处方列表路由返回已批准处方分页结构。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void listPrescriptionsReturnsApprovedPrescriptionPage() throws Exception {
+        ConsultationService consultationService = mock(ConsultationService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        when(consultationService.listPrescriptions(20001L, 1, 20))
+                .thenReturn(ConsultationPrescriptionPageVO.builder().pageNo(1).pageSize(20).total(1)
+                        .records(java.util.List.of(ConsultationPrescriptionPageVO.Item.builder().id(13001L)
+                                .consultationId(11001L).doctorName("王医生").status("APPROVED")
+                                .issuedAt(OffsetDateTime.now()).build())).build());
+
+        newMockMvc(consultationService, idempotencyService)
+                .perform(get("/c/v1/prescriptions").param("patientId", "20001")
+                        .param("pageNo", "1").param("pageSize", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records[0].status").value("APPROVED"))
+                .andExpect(jsonPath("$.data.records[0].consultationId").value(11001));
+    }
+
+    /**
+     * 验证处方详情路由返回药品明细。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void getPrescriptionDetailReturnsItems() throws Exception {
+        ConsultationService consultationService = mock(ConsultationService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        when(consultationService.getPrescriptionDetail(13001L)).thenReturn(ConsultationPrescriptionDetailVO.builder()
+                .id(13001L).status("APPROVED").doctorName("王医生")
+                .doctor(ConsultationPrescriptionDetailVO.Doctor.builder().id(30001L).name("王医生").build())
+                .items(java.util.List.of(ConsultationPrescriptionDetailVO.Item.builder().drugId(14001L)
+                        .drugName("阿莫西林胶囊").specification("0.25g*24粒").dosage("0.5g")
+                        .frequency("每日3次").usage("口服").durationDays((short) 5).build()))
+                .build());
+
+        newMockMvc(consultationService, idempotencyService)
+                .perform(get("/c/v1/prescriptions/13001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED"))
+                .andExpect(jsonPath("$.data.items[0].drugName").value("阿莫西林胶囊"));
+    }
+
+    /**
+     * 创建问诊控制器测试环境。
+     *
+     * @param consultationService 问诊服务模拟对象
+     * @param idempotencyService 幂等服务模拟对象
+     * @return MockMvc 测试对象
+     */
+    private MockMvc newMockMvc(ConsultationService consultationService, CIdempotencyService idempotencyService) {
+        return MockMvcBuilders.standaloneSetup(new ConsultationController(consultationService, idempotencyService))
+                .setControllerAdvice(new ConsultationExceptionHandler())
+                .build();
+    }
+}

@@ -1,0 +1,70 @@
+package com.sphp.patient.consultation.service;
+
+import com.sphp.patient.consultation.dto.PreConsultationSaveRequest;
+import com.sphp.patient.consultation.dto.ConsultationMessageSendRequest;
+import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
+import com.sphp.patient.consultation.vo.ConsultationPageVO;
+import com.sphp.patient.consultation.vo.ConsultationDetailVO;
+import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
+import com.sphp.patient.consultation.vo.ConsultationPrescriptionDetailVO;
+
+/**
+ * C端问诊与处方查询服务。
+ */
+public interface ConsultationService {
+
+    /**
+     * 创建、保存或提交当前账号可访问就诊人的预问诊。
+     *
+     * @param request 预问诊请求参数
+     * @return 保存后的问诊信息
+     */
+    PreConsultationSaveVO savePreConsultation(PreConsultationSaveRequest request);
+
+    /**
+     * 分页查询当前账号指定就诊人的问诊记录。
+     *
+     * @param patientId 可选就诊人 ID，未传时查询本人
+     * @param status 可选问诊状态
+     * @param pageNo 可选页码
+     * @param pageSize 可选页大小
+     * @return 问诊记录分页响应
+     */
+    ConsultationPageVO listConsultations(Long patientId, String status, Integer pageNo, Integer pageSize);
+
+    /**
+     * 查询当前账号可访问的问诊详情与文字消息。
+     *
+     * @param consultationId 问诊记录 ID
+     * @return 问诊详情与文字消息
+     */
+    ConsultationDetailVO getConsultationDetail(Long consultationId);
+
+    /**
+     * 向进行中的问诊发送患者文字消息。
+     *
+     * @param consultationId 问诊记录 ID
+     * @param request 文字消息请求参数
+     * @return 已发送消息信息
+     */
+    ConsultationMessageSendVO sendConsultationMessage(Long consultationId, ConsultationMessageSendRequest request);
+
+    /**
+     * 分页查询当前账号指定就诊人的已批准处方。
+     *
+     * @param patientId 可选就诊人 ID，未传时查询本人
+     * @param pageNo 可选页码
+     * @param pageSize 可选页大小
+     * @return 已批准处方分页响应
+     */
+    ConsultationPrescriptionPageVO listPrescriptions(Long patientId, Integer pageNo, Integer pageSize);
+
+    /**
+     * 查询当前账号可访问的已批准处方详情与药品明细。
+     *
+     * @param prescriptionId 处方 ID
+     * @return 已批准处方详情
+     */
+    ConsultationPrescriptionDetailVO getPrescriptionDetail(Long prescriptionId);
+}

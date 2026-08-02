@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sphp.patient.registration.mapper.RegisteringDataMapper">
+    <select id="selectRegisteringSelfPatientId" resultType="long">
+        SELECT patient_id FROM patient_user_relation
+        WHERE user_id = #{userId} AND relationship = 'SELF' AND deleted_at IS NULL
+        ORDER BY created_at ASC LIMIT 1
+    </select>
+    <select id="existsRegisteringActivePatient" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM patient WHERE id = #{patientId} AND deleted_at IS NULL)
+    </select>
+    <select id="hasActivePatientRelation" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM patient_user_relation
+                      WHERE user_id = #{userId} AND patient_id = #{patientId} AND deleted_at IS NULL)
+    </select>
+    <select id="selectRegisteringSlotLockInfo" resultType="com.sphp.patient.registration.mapper.RegisteringSlotLockRecord">
+        SELECT sl.id AS slot_id, d.hospital_id, d.id AS doctor_id, d.registration_fee_cent AS fee_cent,
+               s.schedule_date, sl.start_time, sl.end_time, s.status AS schedule_status, d.status AS doctor_status
+        FROM slot sl INNER JOIN schedule s ON s.id = sl.schedule_id AND s.deleted_at IS NULL
+        INNER JOIN doctor d ON d.id = s.doctor_id AND d.deleted_at IS NULL
+        INNER JOIN hospital h ON h.id = d.hospital_id AND h.deleted_at IS NULL AND h.status = 'ENABLED'
+        WHERE sl.id = #{slotId} AND d.hospital_id = #{hospitalId} AND sl.deleted_at IS NULL
+    </select>
+    <select id="countRegisteringAvailableSnapshots" resultType="long">
+        SELECT COUNT(1) FROM slot_snapshot WHERE slot_id = #{slotId} AND status = 'AVAILABLE' AND deleted_at IS NULL
+    </select>
+    <select id="registeringLockOneSnapshot" resultType="long">
+        WITH candidate AS (
+            SELECT id FROM slot_snapshot WHERE slot_id = #{slotId} AND status = 'AVAILABLE' AND deleted_at IS NULL
+            ORDER BY id ASC FOR UPDATE SKIP LOCKED LIMIT 1
+        )
+        UPDATE slot_snapshot ss SET status = 'LOCKED', patient_id = #{patientId}, locked_at = #{lockedAt}, updated_at = #{lockedAt}
+        FROM candidate WHERE ss.id = candidate.id RETURNING ss.id
+    </select>
+    <sql id="appointmentJoin">
+        FROM appointment a INNER JOIN slot_snapshot ss ON ss.id = a.slot_snapshot_id AND ss.deleted_at IS NULL
+        INNER JOIN slot sl ON sl.id = ss.slot_id AND sl.deleted_at IS NULL
+        INNER JOIN schedule s ON s.id = sl.schedule_id AND s.deleted_at IS NULL
+        INNER JOIN doctor d ON d.id = a.doctor_id AND d.deleted_at IS NULL
+        INNER JOIN department dp ON dp.id = d.dept_id AND dp.deleted_at IS NULL
+        LEFT JOIN payment_order po ON po.appointment_id = a.id
+    </sql>
+    <sql id="appointmentFields">
+        a.id, a.patient_id, a.slot_snapshot_id AS snapshot_id, sl.id AS slot_id, a.doctor_id, d.name AS doctor_name,
+        dp.name AS department_name, s.schedule_date, sl.start_time, sl.end_time, a.status, a.amount_cent, a.expire_at,
+        po.id AS payment_id, po.status AS payment_status
+    </sql>
+    <select id="selectRegisteringAppointments" resultType="com.sphp.patient.registration.mapper.RegisteringAppointmentRecord">
+        SELECT <include refid="appointmentFields"/> <include refid="appointmentJoin"/>
+        WHERE a.patient_id = #{patientId} AND a.deleted_at IS NULL
+        <if test="status != null and status != ''">AND a.status = #{status}</if>
+        ORDER BY a.created_at DESC, a.id DESC LIMIT #{limit} OFFSET #{offset}
+    </select>
+    <select id="countRegisteringAppointments" resultType="long">
+        SELECT COUNT(1) FROM appointment WHERE patient_id = #{patientId} AND deleted_at IS NULL
+        <if test="status != null and status != ''">AND status = #{status}</if>
+    </select>
+    <select id="selectRegisteringAppointment" resultType="com.sphp.patient.registration.mapper.RegisteringAppointmentRecord">
+        SELECT <include refid="appointmentFields"/> <include refid="appointmentJoin"/> WHERE a.id = #{appointmentId} AND a.deleted_at IS NULL
+    </select>
+    <select id="selectRegisteringPayment" resultType="com.sphp.patient.registration.mapper.RegisteringPaymentRecord">
+        SELECT po.id, po.appointment_id, a.patient_id, po.payer_user_id, a.slot_snapshot_id AS snapshot_id, ss.slot_id,
+               po.amount_cent, po.status AS payment_status, a.status AS appointment_status, po.expire_at, po.paid_at, u.password_hash
+        FROM payment_order po INNER JOIN appointment a ON a.id = po.appointment_id AND a.deleted_at IS NULL
+        INNER JOIN slot_snapshot ss ON ss.id = a.slot_snapshot_id AND ss.deleted_at IS NULL
+        INNER JOIN c_user u ON u.id = po.payer_user_id AND u.deleted_at IS NULL
+        WHERE po.id = #{paymentId} AND po.appointment_id IS NOT NULL
+    </select>
+    <update id="registeringCancelUnpaidAppointment">UPDATE appointment SET status='CANCELLED', cancelled_at=#{now}, updated_at=#{now} WHERE id=#{appointmentId} AND status='UNPAID' AND deleted_at IS NULL</update>
+    <update id="registeringClosePendingPayment">UPDATE payment_order SET status='CLOSED', updated_at=#{now} WHERE appointment_id=#{appointmentId} AND status='PENDING'</update>
+    <update id="registeringReleaseLockedSnapshot">UPDATE slot_snapshot SET status='RELEASED', patient_id=NULL, updated_at=#{now} WHERE id=#{snapshotId} AND status='LOCKED' AND deleted_at IS NULL</update>
+    <select id="lockRegisteringWaitlistSlot" resultType="com.sphp.patient.registration.mapper.RegisteringSlotLockRecord">
+        SELECT sl.id AS slot_id, d.hospital_id, d.id AS doctor_id, d.registration_fee_cent AS fee_cent, s.schedule_date,
+               sl.start_time, sl.end_time, s.status AS schedule_status, d.status AS doctor_status
+        FROM slot sl INNER JOIN schedule s ON s.id=sl.schedule_id AND s.deleted_at IS NULL INNER JOIN doctor d ON d.id=s.doctor_id AND d.deleted_at IS NULL
+        WHERE sl.id=#{slotId} AND sl.deleted_at IS NULL FOR UPDATE
+    </select>
+    <select id="existsRegisteringActiveWaitlist" resultType="boolean">SELECT EXISTS(SELECT 1 FROM appointment_waitlist WHERE patient_id=#{patientId} AND slot_id=#{slotId} AND deleted_at IS NULL AND status IN ('WAITING','NOTIFIED'))</select>
+    <select id="selectRegisteringNextQueueNo" resultType="int">SELECT COALESCE(MAX(queue_no), 0) + 1 FROM appointment_waitlist WHERE slot_id=#{slotId} AND deleted_at IS NULL AND status IN ('WAITING','NOTIFIED')</select>
+    <update id="registeringMarkPaymentSuccess">UPDATE payment_order SET status='SUCCESS', paid_at=#{now}, updated_at=#{now} WHERE id=#{paymentId} AND status='PENDING'</update>
+    <update id="registeringMarkAppointmentPaid">UPDATE appointment SET status='PAID', paid_at=#{now}, updated_at=#{now} WHERE id=#{appointmentId} AND status='UNPAID' AND deleted_at IS NULL</update>
+    <update id="registeringMarkSnapshotSold">UPDATE slot_snapshot SET status='SOLD', sold_at=#{now}, updated_at=#{now} WHERE id=#{snapshotId} AND status='LOCKED' AND deleted_at IS NULL</update>
+</mapper>
