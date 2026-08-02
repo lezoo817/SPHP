@@ -7,6 +7,8 @@ import logging
 from typing import Any
 
 from app.engine.llm.factory import build_llm
+from app.engine.memory.buffer import truncate_messages
+from app.infrastructure.config.settings import get_settings
 from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -58,7 +60,8 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
 
         # 构造 LLM 输入（不修改 state.messages，避免副作用）
         llm_messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-        llm_messages.extend(state.get("messages", []))
+        history = truncate_messages(state.get("messages", []), get_settings().memory_window_size)
+        llm_messages.extend(history)
 
         # 如果有 RAG 检索知识，注入到上下文（本轮有效，不写入历史）
         rag_context = state.get("rag_context")

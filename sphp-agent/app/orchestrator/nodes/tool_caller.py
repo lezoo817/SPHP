@@ -14,14 +14,15 @@ import logging
 from typing import Any
 
 from app.engine.llm.factory import build_llm
+from app.engine.memory.buffer import truncate_messages
 from app.engine.tools.schema_registry import SecurityLevel, ToolRegistry, ToolScope
+from app.infrastructure.config.settings import get_settings
 from app.orchestrator.state import AgentState
-from app.orchestrator.utils import get_last_user_content
 
 logger = logging.getLogger(__name__)
 
 # 工具决策系统提示词
-TOOL_CALLER_PROMPT = """你是医疗平台的工具调用助手。
+TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的工具调用助手。
 
 你可以使用以下工具来完成用户请求（只使用列表内的工具）：
 
@@ -32,8 +33,6 @@ TOOL_CALLER_PROMPT = """你是医疗平台的工具调用助手。
 2. 一次性调用所有需要的工具（可并行）
 3. 参数严格按工具定义填写，缺失的信息先询问用户
 4. 不要编造工具名或参数
-
-用户请求：{user_message}
 """
 
 
@@ -90,13 +89,12 @@ async def tool_caller(state: AgentState) -> dict[str, Any]:
     llm = build_llm()
     llm_with_tools = llm.bind_tools(tools)
 
-    user_message = get_last_user_content(state)
-    prompt = TOOL_CALLER_PROMPT.format(
-        tools_desc=_build_tools_prompt(tools), user_message=user_message
-    )
+    history = truncate_messages(state.get("messages", []), get_settings().memory_window_size)
+    system_prompt = TOOL_CALLER_SYSTEM_PROMPT.format(tools_desc=_build_tools_prompt(tools))
+    messages = [{"role": "system", "content": system_prompt}] + history
 
     try:
-        response = await llm_with_tools.ainvoke([{"role": "user", "content": prompt}])
+        response = await llm_with_tools.ainvoke(messages)
         tool_calls = _extract_tool_calls(response, tool_scope)
         logger.info(
             "工具决策: scope=%s, 选择 %d 个工具: %s",
