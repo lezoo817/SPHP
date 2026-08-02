@@ -4,7 +4,6 @@
 待中间件注入 roles 后补充）。
 """
 
-import asyncio
 import tempfile
 from pathlib import Path
 
@@ -56,8 +55,8 @@ async def ingest_single_file(request: Request, file: UploadFile = File(...)) -> 
         tmp_path = tmp.name
 
     try:
-        # 同步入库用 to_thread 包装，避免阻塞事件循环
-        chunks = await asyncio.to_thread(ingest_file, tmp_path)
+        # ingest_file 为 async（内部 await 向量化 + 写库），直接 await
+        chunks = await ingest_file(tmp_path)
         return {"status": "success", "file": file.filename, "chunks": chunks}
     finally:
         Path(tmp_path).unlink(missing_ok=True)
@@ -84,7 +83,7 @@ async def ingest_dir(request: Request, path: str = Form(...)) -> dict:
     if not dir_path.is_dir():
         raise HTTPException(status_code=404, detail=f"目录不存在: {path}")
 
-    chunks = await asyncio.to_thread(ingest_directory, dir_path)
+    chunks = await ingest_directory(dir_path)
     return {"status": "success", "directory": path, "total_chunks": chunks}
 
 
