@@ -214,7 +214,8 @@ def _log_audit(
     params_hash = hashlib.sha256(json.dumps(arguments, sort_keys=True).encode()).hexdigest()[:16]
     log_tool_call(
         session_id=state.get("session_id", ""),
-        user_id=str(state.get("user_id", "")),
+        # None（匿名）记为空串而非 "None"，保持审计一致性
+        user_id=str(state.get("user_id") or ""),
         tool_name=tool_name,
         params_hash=params_hash,
         result=result,

@@ -227,7 +227,7 @@ def _build_card(pending: dict) -> dict:
         "session_id": pending.get("session_id", ""),
         "title": title,
         "summary": summary,
-        "expires_at": "",
+        "expires_at": pending.get("expires_at", ""),
     }
 
 

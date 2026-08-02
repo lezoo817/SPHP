@@ -7,10 +7,12 @@
 """
 
 import logging
+import time
 import uuid
 
 from app.engine.tools.schema_registry import SecurityLevel, ToolRegistry
 from app.infrastructure.cache.redis_client import set_confirm_token
+from app.infrastructure.config.settings import get_settings
 from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -59,6 +61,10 @@ async def safety_check(state: AgentState) -> dict:
                 risk_flags.append(f"redis_unavailable_{tool_name}")
                 continue
 
+            # 过期时间（ISO 格式），与 Redis TTL 一致，供 card 事件展示倒计时
+            expires_at = time.strftime(
+                "%Y-%m-%dT%H:%M:%S", time.localtime(time.time() + get_settings().confirm_token_ttl)
+            )
             pending_confirmations.append(
                 {
                     "tool_name": tool_name,
@@ -66,6 +72,7 @@ async def safety_check(state: AgentState) -> dict:
                     "confirm_token": token,
                     "card_type": _map_card_type(tool_name),
                     "session_id": session_id,
+                    "expires_at": expires_at,
                 }
             )
             # L2 工具不直接执行（等确认），也不放入 allowed_calls

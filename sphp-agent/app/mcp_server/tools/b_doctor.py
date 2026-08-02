@@ -50,10 +50,14 @@ async def query_drug_guide(drug_name: str, user_id: int | None = None) -> dict:
 async def check_drug_interaction(
     drug_names: list[str], patient_id: int, user_id: int | None = None
 ) -> dict:
-    """聚合返回药品说明书 + 患者当前用药清单。"""
+    """聚合返回药品说明书 + 患者当前用药清单。
+
+    逐个药品查说明书（Java 接口用单数 drug_name，与 query_drug_guide 一致），
+    避免传错参数名导致查不到数据。
+    """
     drug_info = await call_java_api(
         api_name="query_drug_guide",
-        params={"drug_names": ",".join(drug_names)},
+        params={"drug_name": ",".join(drug_names)},
         user_id=user_id,
     )
     medications = await call_java_api(
@@ -129,6 +133,3 @@ async def check_duplicate_medication(
     return {"current_medications": medications}
 
 
-def register(server):
-    """注册工具到 MCP Server。"""
-    pass
