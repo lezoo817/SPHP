@@ -69,7 +69,7 @@ def _build_initial_state(
         "hospital_id": (req.context or {}).get("hospital_id"),
         "tool_calls": None,
         "tool_results": None,
-        "pending_confirmation": None,
+        "pending_confirmations": None,
         "risk_flags": [],
         "jwt_token": token,
         "rag_context": None,
@@ -164,9 +164,9 @@ async def _sse_generator(
                             )
 
                     # L2 操作需用户确认：推送 card 事件（系分 §6.2.2）
-                    pending = node_update.get("pending_confirmation")
-                    if pending:
-                        yield _sse("card", _build_card(pending))
+                    pending_list = node_update.get("pending_confirmations") or []
+                    for p in pending_list:
+                        yield _sse("card", _build_card(p))
 
                 # reply_node 完成但未流式时，兜底推送完整回复
                 if "reply_node" in chunk and not streamed_reply:

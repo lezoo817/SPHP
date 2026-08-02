@@ -16,8 +16,14 @@ from app.orchestrator.state import AgentState
 
 
 def route_safety(state: AgentState) -> str:
-    """L1 -> tool_executor, L2 -> 等待确认（挂起）。"""
-    if state.get("pending_confirmation"):
+    """L1 → tool_executor（立即执行），仅 L2 无 L1 → pending_confirm（挂起）。"""
+    has_tool_calls = bool(state.get("tool_calls"))
+    has_pending = bool(state.get("pending_confirmations"))
+    if has_tool_calls:
+        # 有 L1 工具：先执行，pending_confirmations 保留在 state 中
+        return "execute"
+    if has_pending:
+        # 仅有 L2 待确认，无 L1 工具：挂起等待用户确认
         return "pending_confirm"
     return "execute"
 

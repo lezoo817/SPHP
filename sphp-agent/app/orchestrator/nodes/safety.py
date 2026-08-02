@@ -85,13 +85,11 @@ async def safety_check(state: AgentState) -> dict:
             allowed_calls.append(tc)
 
     result: dict = {"risk_flags": risk_flags}
-    # 只有存在待确认的 L2 时才挂起（子图 route_safety 据此路由）
+    # 总是回写过滤后的 tool_calls（L1 工具），让 tool_executor 立即执行
+    # 同时 pending_confirmations 全量写入，供 route_safety 判断路由
+    result["tool_calls"] = allowed_calls
     if pending_confirmations:
-        result["pending_confirmation"] = pending_confirmations[0]
-    else:
-        # 无 L2 待确认：回写过滤后的 tool_calls，让 tool_executor 只执行放行项
-        result["tool_calls"] = allowed_calls
-
+        result["pending_confirmations"] = pending_confirmations
     return result
 
 

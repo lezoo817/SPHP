@@ -46,8 +46,8 @@ class AgentState(TypedDict):
     # 工具执行结果列表（含成功和失败），由 tool_executor 写入
     tool_results: list[dict] | None
 
-    # 待用户确认的 L2 操作信息，非空时 reply_node 推送 card 事件
-    pending_confirmation: dict | None
+    # 待用户确认的 L2 操作列表，非空时 reply_node 推送 card 事件
+    pending_confirmations: list | None
 
     # 本轮 RAG 检索到的医学知识上下文（不入 messages 历史，仅本次回复使用）
     rag_context: str | None
