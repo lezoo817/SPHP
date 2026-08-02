@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     # ---- 应用 ----
     app_name: str = "智愈先锋 AI Agent 服务"
     debug: bool = False
+    # 无 token 时降级为匿名（仅开发环境设为 true，生产必须 false）
+    allow_anonymous: bool = False
     agent_host: str = "0.0.0.0"
     agent_port: int = 8081
     # CORS 允许的前端来源（生产由 .env 的 CORS_ORIGINS 覆盖）

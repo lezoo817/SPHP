@@ -8,7 +8,9 @@ B 端: GET /api/b/auth/token/parse（待 Java 补充）
 传服务端（默认 c_end）。校验通过后将 userId / scope 注入 request.state，
 供限流中间件与编排层使用。
 
-失败策略：始终返回 401（生产与开发一致，不降级匿名）。
+失败策略：
+    - 无 Bearer token：ALLOW_ANONYMOUS=true 时降级为匿名，否则 401
+    - 携带 token 但校验失败：始终 401（不降级，保持 D1 严格策略）
 """
 
 import logging
@@ -28,7 +30,11 @@ _AUTH_TIMEOUT = 10.0
 
 
 class JWTAuthMiddleware(BaseHTTPMiddleware):
-    """JWT 鉴权中间件：校验 Bearer token，注入 userId / scope 到 request.state。"""
+    """JWT 鉴权中间件：校验 Bearer token，注入 userId / scope 到 request.state。
+
+    无 token 且 ``ALLOW_ANONYMOUS=true`` 时降级为匿名（仅开发环境），
+    匿名请求不注入 user_id，以 ``request.state.anonymous`` 标记。
+    """
 
     # 不需要鉴权的路径
     EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
@@ -40,9 +46,9 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         auth_header = request.headers.get("Authorization", "")
         scope = request.headers.get("X-Scope", "c_end")
 
-        # 无 Bearer token -> 始终 401
+        # 无 Bearer token
         if not auth_header.startswith("Bearer "):
-            return _unauthorized("缺少有效的鉴权 Token")
+            return await self._handle_no_token(request, call_next, scope)
 
         token = auth_header.removeprefix("Bearer ").strip()
         user_info = await _safe_parse_token(token, scope)
@@ -55,8 +61,27 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             request.state.jwt_token = token
             return await call_next(request)
 
-        # 校验失败 -> 始终 401
+        # 携带 token 但校验失败 -> 始终 401（不降级，保持 D1 严格策略）
         return _unauthorized("Token 无效或已过期")
+
+    async def _handle_no_token(
+        self, request: Request, call_next: RequestResponseEndpoint, scope: str
+    ) -> Response:
+        """无 token 分支：ALLOW_ANONYMOUS=true 时降级匿名，否则 401。
+
+        匿名作用域沿用请求头 ``X-Scope``（缺省 c_end），
+        不强制覆盖，避免 B 端匿名请求被错误路由到 C 端。
+        """
+        settings = get_settings()
+        if not settings.allow_anonymous:
+            return _unauthorized("缺少有效的鉴权 Token")
+
+        logger.warning("无 token 请求降级为匿名: path=%s, scope=%s", request.url.path, scope)
+        request.state.anonymous = True
+        request.state.scope = scope
+        request.state.jwt_token = None
+        # 不设置 user_id / account，保持 None 以区分真实用户
+        return await call_next(request)
 
 
 def _unauthorized(message: str) -> JSONResponse:
