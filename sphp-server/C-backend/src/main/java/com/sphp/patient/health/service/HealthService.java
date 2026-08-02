@@ -3,8 +3,10 @@ package com.sphp.patient.health.service;
 import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.health.dto.AllergyCreateRequest;
 import com.sphp.patient.health.dto.AllergyUpdateRequest;
+import com.sphp.patient.health.dto.MedicalHistoryCreateRequest;
 import com.sphp.patient.health.vo.AllergyCreateVO;
 import com.sphp.patient.health.vo.AllergyUpdateVO;
+import com.sphp.patient.health.vo.MedicalHistoryCreateVO;
 
 /**
  * C端健康档案服务。
@@ -35,4 +37,12 @@ public interface HealthService {
      * @return 更新后的过敏史信息
      */
     AllergyUpdateVO updateAllergy(Long allergyId, AllergyUpdateRequest request);
+
+    /**
+     * 为当前账号可访问就诊人新增既往史。
+     *
+     * @param request 新增既往史请求
+     * @return 新建既往史信息
+     */
+    MedicalHistoryCreateVO createMedicalHistory(MedicalHistoryCreateRequest request);
 }

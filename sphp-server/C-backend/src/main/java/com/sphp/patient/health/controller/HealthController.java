@@ -4,8 +4,10 @@ import com.sphp.patient.health.service.HealthService;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.health.dto.AllergyCreateRequest;
 import com.sphp.patient.health.dto.AllergyUpdateRequest;
+import com.sphp.patient.health.dto.MedicalHistoryCreateRequest;
 import com.sphp.patient.health.vo.AllergyCreateVO;
 import com.sphp.patient.health.vo.AllergyUpdateVO;
+import com.sphp.patient.health.vo.MedicalHistoryCreateVO;
 import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
@@ -100,6 +102,30 @@ public class HealthController {
                 request,
                 AllergyUpdateVO.class,
                 () -> new IdempotencyPayload<>("过敏史已更新", healthService.updateAllergy(allergyId, request))
+        );
+        return Result.success(payload.message(), payload.data());
+    }
+
+    /**
+     * 为当前账号可访问就诊人新增既往史。
+     *
+     * @param idempotencyKey 客户端幂等键
+     * @param request 新增既往史请求
+     * @return 新建既往史信息
+     */
+    @PostMapping("/histories")
+    @Operation(summary = "新增既往史")
+    public Result<MedicalHistoryCreateVO> createMedicalHistory(
+            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @Valid @RequestBody MedicalHistoryCreateRequest request) {
+        Long userId = CUserContext.getRequired().userId();
+        IdempotencyPayload<MedicalHistoryCreateVO> payload = idempotencyService.execute(
+                userId,
+                "/c/v1/health-record/histories",
+                idempotencyKey,
+                request,
+                MedicalHistoryCreateVO.class,
+                () -> new IdempotencyPayload<>("既往史已保存", healthService.createMedicalHistory(request))
         );
         return Result.success(payload.message(), payload.data());
     }

@@ -4,8 +4,10 @@ import com.sphp.patient.health.handler.HealthExceptionHandler;
 import com.sphp.patient.health.service.HealthService;
 import com.sphp.patient.health.dto.AllergyCreateRequest;
 import com.sphp.patient.health.dto.AllergyUpdateRequest;
+import com.sphp.patient.health.dto.MedicalHistoryCreateRequest;
 import com.sphp.patient.health.vo.AllergyCreateVO;
 import com.sphp.patient.health.vo.AllergyUpdateVO;
+import com.sphp.patient.health.vo.MedicalHistoryCreateVO;
 import com.sphp.patient.health.vo.HealthProfileVO;
 import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.auth.support.context.CUserContext;
@@ -13,12 +15,15 @@ import com.sphp.patient.auth.support.context.CUserPrincipal;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 
 import java.util.List;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
 import static org.mockito.Mockito.mock;
@@ -36,7 +41,8 @@ import static org.springframework.http.MediaType.APPLICATION_JSON;
  */
 class HealthControllerTest {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules()
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     /**
      * 每个测试结束后清理当前 C端用户上下文。
@@ -55,9 +61,7 @@ class HealthControllerTest {
     void getHealthRecordReturnsExpectedEnvelope() throws Exception {
         HealthService healthService = mock(HealthService.class);
         CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new HealthController(healthService, idempotencyService))
-                .setControllerAdvice(new HealthExceptionHandler())
-                .build();
+        MockMvc mockMvc = newMockMvc(healthService, idempotencyService);
         when(healthService.getHealthRecord(20001L)).thenReturn(HealthRecordVO.builder()
                 .profile(HealthProfileVO.builder().id(20001L).name("张三").gender("MALE").build())
                 .allergies(List.of())
@@ -83,9 +87,7 @@ class HealthControllerTest {
     void createAllergyReturnsIdempotentSuccessResult() throws Exception {
         HealthService healthService = mock(HealthService.class);
         CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new HealthController(healthService, idempotencyService))
-                .setControllerAdvice(new HealthExceptionHandler())
-                .build();
+        MockMvc mockMvc = newMockMvc(healthService, idempotencyService);
         CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
                 OffsetDateTime.now().plusHours(1), "session-hash"));
         AllergyCreateRequest request = new AllergyCreateRequest();
@@ -114,9 +116,7 @@ class HealthControllerTest {
     void updateAllergyReturnsIdempotentSuccessResult() throws Exception {
         HealthService healthService = mock(HealthService.class);
         CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new HealthController(healthService, idempotencyService))
-                .setControllerAdvice(new HealthExceptionHandler())
-                .build();
+        MockMvc mockMvc = newMockMvc(healthService, idempotencyService);
         CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
                 OffsetDateTime.now().plusHours(1), "session-hash"));
         AllergyUpdateRequest request = new AllergyUpdateRequest();
@@ -133,5 +133,49 @@ class HealthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("过敏史已更新"))
                 .andExpect(jsonPath("$.data.allergen").value("阿莫西林"));
+    }
+
+    /**
+     * 验证新增既往史接口通过幂等服务返回首次成功结果。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void createMedicalHistoryReturnsIdempotentSuccessResult() throws Exception {
+        HealthService healthService = mock(HealthService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        MockMvc mockMvc = newMockMvc(healthService, idempotencyService);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        MedicalHistoryCreateRequest request = new MedicalHistoryCreateRequest();
+        request.setContent("高血压病史5年");
+        request.setOccurredAt(LocalDate.of(2021, 1, 1));
+        when(idempotencyService.execute(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new IdempotencyPayload<>("既往史已保存", MedicalHistoryCreateVO.builder()
+                        .id(17001L).content("高血压病史5年")
+                        .occurredAt(LocalDate.of(2021, 1, 1)).build()));
+
+        mockMvc.perform(post("/c/v1/health-record/histories")
+                        .header("X-Idempotency-Key", "history-key-001")
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("既往史已保存"))
+                .andExpect(jsonPath("$.data.id").value(17001L))
+                .andExpect(jsonPath("$.data.occurredAt").value("2021-01-01"));
+    }
+
+    /**
+     * 创建使用生产日期序列化规则的健康档案控制器测试环境。
+     *
+     * @param healthService 健康档案服务模拟对象
+     * @param idempotencyService 幂等服务模拟对象
+     * @return MockMvc 测试对象
+     */
+    private MockMvc newMockMvc(HealthService healthService, CIdempotencyService idempotencyService) {
+        return MockMvcBuilders.standaloneSetup(new HealthController(healthService, idempotencyService))
+                .setControllerAdvice(new HealthExceptionHandler())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(objectMapper))
+                .build();
     }
 }

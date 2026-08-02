@@ -7,6 +7,7 @@ import com.sphp.patient.health.entity.PatientAllergy;
 import com.sphp.patient.health.entity.PatientMedicalHistory;
 import com.sphp.patient.health.dto.AllergyCreateRequest;
 import com.sphp.patient.health.dto.AllergyUpdateRequest;
+import com.sphp.patient.health.dto.MedicalHistoryCreateRequest;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
 import com.sphp.patient.health.mapper.HealthPatientProfileRecord;
 import com.sphp.patient.health.mapper.PatientAllergyMapper;
@@ -15,6 +16,7 @@ import com.sphp.patient.health.service.HealthService;
 import com.sphp.patient.health.vo.AllergyItemVO;
 import com.sphp.patient.health.vo.AllergyCreateVO;
 import com.sphp.patient.health.vo.AllergyUpdateVO;
+import com.sphp.patient.health.vo.MedicalHistoryCreateVO;
 import com.sphp.patient.health.vo.HealthProfileVO;
 import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.health.vo.MedicalHistoryItemVO;
@@ -143,6 +145,31 @@ public class HealthServiceImpl implements HealthService {
                 .allergen(updated.getAllergen())
                 .reaction(updated.getReaction())
                 .updatedAt(now)
+                .build();
+    }
+
+    /**
+     * 为当前账号可访问就诊人新增既往史。
+     *
+     * @param request 新增既往史请求
+     * @return 新建既往史信息
+     * @throws CAuthException 就诊人不存在、无权访问或写入失败时抛出
+     */
+    @Override
+    public MedicalHistoryCreateVO createMedicalHistory(MedicalHistoryCreateRequest request) {
+        Long targetPatientId = resolveAccessiblePatientId(request.getPatientId());
+        PatientMedicalHistory history = new PatientMedicalHistory();
+        history.setPatientId(targetPatientId);
+        history.setContent(request.getContent());
+        history.setOccurredAt(request.getOccurredAt());
+        // 插入结果必须为一条，避免数据库异常被包装为伪成功响应
+        if (historyMapper.insert(history) != 1) {
+            throw new CAuthException(ErrorCodeEnum.SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, "既往史保存失败");
+        }
+        return MedicalHistoryCreateVO.builder()
+                .id(history.getId())
+                .content(history.getContent())
+                .occurredAt(history.getOccurredAt())
                 .build();
     }
 
