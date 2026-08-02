@@ -111,6 +111,75 @@ async def get_and_delete_confirm_token(
     return json.loads(result)
 
 
+async def get_and_delete_confirm_token_by_token(
+    session_id: str,
+    token_id: str,
+    expected_user_id: str,
+) -> dict | None:
+    """按前端回传的 confirm_token 原子消费（系分 §5.5，Lua 一次性）。
+
+    /chat/confirm 只回传 session_id + confirm_token，而 Redis key 是
+    ``confirm:{session_id}:{tool_name}:{token_id}``（tool_name 未知），
+    因此按 session_id 前缀 SCAN 匹配 token_id 后缀，再校验 user_id 后
+    一次性 GET + DEL。Lua 脚本整体原子执行，多游标 SCAN 亦安全。
+
+    Args:
+        session_id: 前端回传的会话 ID，用于构造前缀 confirm:{session_id}:*
+        token_id: 前端回传的确认令牌（UUID4），匹配 key 后缀
+        expected_user_id: 当前请求用户 ID，与值内 user_id 比对
+
+    Returns:
+        匹配且校验通过时返回 token 记录 dict；未匹配 / 用户不匹配返回 None。
+    """
+    # Lua 脚本：SCAN 前缀匹配 token_id，校验 user_id，GET + DEL
+    lua_script = """
+    local session_id = ARGV[1]
+    local token_id = ARGV[2]
+    local expected_user_id = ARGV[3]
+    local pattern = 'confirm:' .. session_id .. ':*'
+    local cursor = '0'
+    local suffix = ':' .. token_id
+    local value = false
+
+    repeat
+        local scan_result = redis.call('SCAN', cursor, 'MATCH', pattern, 'COUNT', 50)
+        cursor = scan_result[1]
+        local keys = scan_result[2]
+        for i, key in ipairs(keys) do
+            -- 匹配 token_id 后缀（key 以 :{token_id} 结尾）
+            local len = #key
+            local suffix_start = len - #suffix + 1
+            if suffix_start >= 1 and string.sub(key, suffix_start) == suffix then
+                local v = redis.call('GET', key)
+                if v ~= false then
+                    local data = cjson.decode(v)
+                    if data.user_id == expected_user_id then
+                        redis.call('DEL', key)
+                        value = v
+                        break
+                    end
+                end
+            end
+        end
+        if value ~= false then
+            break
+        end
+    until cursor == '0'
+
+    if value == false then
+        return nil
+    end
+    return value
+    """
+
+    client = get_redis()
+    # Lua 脚本只用 ARGV（session/token/user_id 均为参数），numkeys=0
+    result = await client.eval(lua_script, 0, session_id, token_id, expected_user_id)
+    if result is None:
+        return None
+    return json.loads(result)
+
+
 # ---- 限流操作（系分 §10.4）----
 
 
