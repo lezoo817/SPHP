@@ -87,6 +87,8 @@ sphp:
       expiration: ${dev.sphp.jwt.admin.expiration}
   registration:
     payment-timeout: ${dev.sphp.registration.payment-timeout}
+    # C端可查询的未来放号天数，包含当天。
+    slot-release-days: ${dev.sphp.registration.slot-release-days}
   auth:
     captcha-expiration: ${dev.sphp.auth.captcha-expiration}
     login-max-failures: ${dev.sphp.auth.login-max-failures}
