@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sphp.patient.registration.mapper.RegistrationResourceMapper">
+
+    <select id="selectAvailableHospitals" resultType="com.sphp.patient.registration.mapper.HospitalRecord">
+        SELECT id AS hospital_id, name, level, address, contact
+        FROM hospital
+        WHERE status = 'ENABLED'
+          AND deleted_at IS NULL
+        ORDER BY id ASC
+    </select>
+
+    <select id="selectAvailableHospital" resultType="com.sphp.patient.registration.mapper.HospitalRecord">
+        SELECT id AS hospital_id, name, level, address, contact
+        FROM hospital
+        WHERE id = #{hospitalId}
+          AND status = 'ENABLED'
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="selectAvailableDepartments" resultType="com.sphp.patient.registration.mapper.DepartmentRecord">
+        SELECT id, name, description
+        FROM department
+        WHERE hospital_id = #{hospitalId}
+          AND status = 'ENABLED'
+          AND deleted_at IS NULL
+        <if test="keyword != null and keyword != ''">
+            AND name ILIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        ORDER BY id ASC
+    </select>
+
+    <select id="selectAvailableDepartmentLink" resultType="com.sphp.patient.registration.mapper.DepartmentLinkRecord">
+        SELECT id, hospital_id
+        FROM department
+        WHERE id = #{departmentId}
+          AND status = 'ENABLED'
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="selectAvailableDoctors" resultType="com.sphp.patient.registration.mapper.DoctorRecord">
+        SELECT d.id,
+               d.name,
+               d.title,
+               d.specialty,
+               d.registration_fee_cent,
+               COUNT(ss.id) FILTER (WHERE ss.status = 'AVAILABLE' AND ss.deleted_at IS NULL) AS available_count
+        FROM doctor d
+        LEFT JOIN schedule s ON s.doctor_id = d.id
+                            AND s.schedule_date = #{date}
+                            AND s.status = 'PUBLISHED'
+                            AND s.deleted_at IS NULL
+        LEFT JOIN slot sl ON sl.schedule_id = s.id AND sl.deleted_at IS NULL
+        LEFT JOIN slot_snapshot ss ON ss.slot_id = sl.id AND ss.deleted_at IS NULL
+        WHERE d.hospital_id = #{hospitalId}
+          AND d.dept_id = #{departmentId}
+          AND d.status = 'ENABLED'
+          AND d.deleted_at IS NULL
+        GROUP BY d.id, d.name, d.title, d.specialty, d.registration_fee_cent
+        ORDER BY d.id ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countAvailableDoctors" resultType="long">
+        SELECT COUNT(1)
+        FROM doctor
+        WHERE hospital_id = #{hospitalId}
+          AND dept_id = #{departmentId}
+          AND status = 'ENABLED'
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="selectAvailableDoctorLink" resultType="com.sphp.patient.registration.mapper.DoctorLinkRecord">
+        SELECT id, hospital_id
+        FROM doctor
+        WHERE id = #{doctorId}
+          AND status = 'ENABLED'
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="hasPublishedSchedule" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM schedule
+            WHERE doctor_id = #{doctorId}
+              AND schedule_date = #{date}
+              AND status = 'PUBLISHED'
+              AND deleted_at IS NULL
+        )
+    </select>
+
+    <select id="selectPublishedSlots" resultType="com.sphp.patient.registration.mapper.SlotRecord">
+        SELECT sl.id AS slot_id,
+               sl.start_time,
+               sl.end_time,
+               d.registration_fee_cent AS fee_cent,
+               COUNT(ss.id) FILTER (WHERE ss.status = 'AVAILABLE' AND ss.deleted_at IS NULL) AS available_count,
+               s.status AS schedule_status
+        FROM doctor d
+        INNER JOIN schedule s ON s.doctor_id = d.id
+                             AND s.schedule_date = #{date}
+                             AND s.status = 'PUBLISHED'
+                             AND s.deleted_at IS NULL
+        INNER JOIN slot sl ON sl.schedule_id = s.id AND sl.deleted_at IS NULL
+        LEFT JOIN slot_snapshot ss ON ss.slot_id = sl.id AND ss.deleted_at IS NULL
+        WHERE d.id = #{doctorId}
+          AND d.status = 'ENABLED'
+          AND d.deleted_at IS NULL
+        GROUP BY sl.id, sl.start_time, sl.end_time, d.registration_fee_cent, s.status
+        ORDER BY sl.start_time ASC, sl.id ASC
+    </select>
+</mapper>
