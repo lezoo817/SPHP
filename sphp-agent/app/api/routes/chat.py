@@ -72,6 +72,7 @@ def _build_initial_state(
         "pending_confirmation": None,
         "risk_flags": [],
         "jwt_token": token,
+        "rag_context": None,
     }
 
 

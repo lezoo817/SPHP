@@ -27,14 +27,14 @@ async def rag_node(state: AgentState) -> dict:
 
         results = await search_knowledge(query=user_message)
 
-        # 无命中：不注入上下文，避免误导 LLM
+        # 无命中：显式清空 rag_context，避免跨轮残留
         if not results:
-            return {}
+            return {"rag_context": None}
 
         context = format_context(results)
         return {"rag_context": f"相关医学知识：\n{context}"}
 
     except Exception as e:
-        # RAG 失败时不阻塞流程
+        # RAG 失败时不阻塞流程，显式清空 rag_context
         logger.warning("RAG 检索失败: %s", e)
-        return {}
+        return {"rag_context": None}
