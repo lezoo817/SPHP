@@ -31,15 +31,6 @@ class ConfirmRequest(BaseModel):
     session_id: str = Field(..., description="当前对话会话 ID")
 
 
-class ChatResponse(BaseModel):
-    """对话响应（非 SSE 场景，如错误响应）-- 统一信封。"""
-
-    code: str = "00000"
-    message: str = "success"
-    data: dict | None = None
-    traceId: str = ""  # noqa: N815  # 对外统一信封契约，保持 camelCase
-
-
 class ConfirmResponse(BaseModel):
     """L2 确认回调响应（系分 §6.2.2）-- 统一信封。"""
 
@@ -47,20 +38,3 @@ class ConfirmResponse(BaseModel):
     message: str = "success"
     data: dict | None = None
     traceId: str = ""  # noqa: N815  # 对外统一信封契约，保持 camelCase
-
-
-class ErrorResponse(BaseModel):
-    """统一错误响应 -- 统一信封（code 为字符串错误码）。"""
-
-    code: str
-    message: str
-    data: None = None
-    traceId: str = ""  # noqa: N815  # 对外统一信封契约，保持 camelCase
-
-
-class HealthResponse(BaseModel):
-    """健康检查响应（系分 §4.5）。"""
-
-    status: str
-    checks: dict
-    version: str
