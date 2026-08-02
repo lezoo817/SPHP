@@ -9,20 +9,22 @@
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class SecurityLevel(str, Enum):
+class SecurityLevel(StrEnum):
     """安全等级，对应系分 §5.4 L1-L4 体系。"""
+
     L1 = "L1"  # 查询级：只读，不产生业务变更
     L2 = "L2"  # 业务级：创建/修改业务数据，需用户确认
     L3 = "L3"  # 资金级：Agent 代码硬拦截，不注册
     L4 = "L4"  # 禁止级：Agent 代码硬拦截，不注册
 
 
-class ToolScope(str, Enum):
+class ToolScope(StrEnum):
     """工具服务端。"""
+
     C_END = "c_end"
     B_END = "b_end"
 
@@ -39,6 +41,7 @@ class ToolSchema:
         security_level: 安全等级 L1 / L2 / L3（L3 不注册）
         executor: 执行器类型 "mcp"（经 MCP Server 调 Java）或 "local"（本地执行）
     """
+
     name: str
     description: str
     parameters: dict[str, Any] = field(default_factory=dict)
@@ -67,6 +70,7 @@ class ToolRegistry:
 
     启动时加载 c_schemas + b_schemas，运行时供 LLM 推理查询。
     """
+
     _tools: dict[str, ToolSchema] = {}
 
     @classmethod
@@ -84,7 +88,8 @@ class ToolRegistry:
     def get_tools_by_scope(cls, scope: ToolScope) -> list[ToolSchema]:
         """获取某端的所有工具（排除 L3/L4，Agent 不可调用）。"""
         return [
-            t for t in cls._tools.values()
+            t
+            for t in cls._tools.values()
             if t.scope == scope and t.security_level not in (SecurityLevel.L3, SecurityLevel.L4)
         ]
 
