@@ -153,5 +153,71 @@ declare global {
     interface UpdateDoctorStatusReq {
       status: 'ENABLED' | 'DISABLED' | 'SUSPENDED';
     }
+
+    /** 排班列表项 */
+    interface Schedule {
+      id: number;
+      doctorId: number;
+      doctorName: string;
+      deptId: number;
+      deptName: string;
+      scheduleDate: string; // yyyy-MM-dd
+      shift: 'MORNING' | 'AFTERNOON';
+      totalSlots: number;
+      bookedCount: number;
+      remainCount: number;
+      lockedCount: number;
+      status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
+      publishedAt?: string;
+    }
+
+    /** 排班列表查询参数 */
+    interface ScheduleListParams extends PageParams {
+      date?: string;
+      deptId?: number;
+      doctorId?: number;
+      status?: string;
+    }
+
+    /** 创建排班请求 */
+    interface CreateScheduleReq {
+      doctorId: number;
+      scheduleDate: string; // yyyy-MM-dd
+      shift: 'MORNING' | 'AFTERNOON';
+      totalSlots: number;
+    }
+
+    /** 号源时段配置项（后端返回） */
+    interface SlotConfig {
+      id: number;
+      startTime: string; // HH:mm
+      endTime: string; // HH:mm
+      totalCount: number;
+      remainCount: number;
+    }
+
+    /** 号源时段配置请求项 */
+    interface SlotConfigItem {
+      startTime: string; // HH:mm
+      endTime: string; // HH:mm
+      count: number;
+    }
+
+    /** 锁定号源看板查询参数 */
+    interface LockedSlotsParams extends PageParams {
+      date: string; // yyyy-MM-dd（必填）
+      deptId?: number;
+    }
+
+    /** 锁定号源看板项 */
+    interface LockedSlot {
+      slotId: number;
+      scheduleId: number;
+      doctorName: string;
+      patientName: string;
+      lockedAt: string;
+      status: string;
+      expireAt: string; // lockedAt + 15min
+    }
   }
 }
