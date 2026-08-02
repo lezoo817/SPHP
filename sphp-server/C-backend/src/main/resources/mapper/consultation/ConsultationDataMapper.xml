@@ -115,7 +115,7 @@
         LEFT JOIN doctor d ON d.id = cr.doctor_id
         WHERE cr.id = #{consultationId}
           AND cr.deleted_at IS NULL
-        FOR UPDATE
+        FOR UPDATE OF cr
     </select>
 
     <select id="selectConsultationMessages" resultType="com.sphp.patient.consultation.mapper.ConsultationMessageRecord">
