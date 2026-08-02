@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -46,6 +47,10 @@ public class CJwtInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws IOException {
         // 请求入口先清理可能残留的线程身份，确保失败路径也不会复用旧上下文
         CUserContext.clear();
+        // 浏览器跨域预检不携带 Token，交由全局 CORS 配置返回允许的请求头和方法
+        if (HttpMethod.OPTIONS.matches(request.getMethod())) {
+            return true;
+        }
         // 外部身份头不能替代 JWT 建立 C端用户上下文
         if (StringUtils.hasText(request.getHeader(HeaderConstant.USER_ID))) {
             writeUnauthorized(response, "不允许使用外部用户身份头");
