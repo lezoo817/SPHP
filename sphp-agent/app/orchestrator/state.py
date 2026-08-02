@@ -49,6 +49,9 @@ class AgentState(TypedDict):
     # 待用户确认的 L2 操作信息，非空时 reply_node 推送 card 事件
     pending_confirmation: dict | None
 
+    # 本轮 RAG 检索到的医学知识上下文（不入 messages 历史，仅本次回复使用）
+    rag_context: str | None
+
     # 风险标记，由 safety_check 节点追加
     risk_flags: list[str]
 

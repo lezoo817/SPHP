@@ -60,6 +60,11 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         llm_messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
         llm_messages.extend(state.get("messages", []))
 
+        # 如果有 RAG 检索知识，注入到上下文（本轮有效，不写入历史）
+        rag_context = state.get("rag_context")
+        if rag_context:
+            llm_messages.append({"role": "system", "content": rag_context})
+
         # 如果有工具调用结果，注入到上下文
         tool_results = state.get("tool_results")
         if tool_results:
