@@ -9,21 +9,20 @@ from langchain_openai import ChatOpenAI
 from app.infrastructure.config.settings import get_settings
 
 
-def build_llm(provider: str | None = None, temperature: float = 0.3) -> ChatOpenAI:
+def build_llm(provider: str | None = None, temperature: float | None = None) -> ChatOpenAI:
     """构造一个 ChatOpenAI 实例。
 
     Args:
         provider: deepseek / zhipu / qwen，留空用 settings.llm_provider。
-        temperature: 温度，导诊等场景建议 0.2~0.4。
+        temperature: 温度，留空用 settings.llm_temperature。
     """
     settings = get_settings()
     provider = provider or settings.llm_provider
+    temperature = temperature if temperature is not None else settings.llm_temperature
     api_key, base_url, model = settings.llm_config(provider)
 
     if not api_key:
-        raise ValueError(
-            f"未配置 {provider} 的 API key，请在 .env 中填入对应 *_API_KEY"
-        )
+        raise ValueError(f"未配置 {provider} 的 API key，请在 .env 中填入对应 *_API_KEY")
 
     return ChatOpenAI(
         model=model,
