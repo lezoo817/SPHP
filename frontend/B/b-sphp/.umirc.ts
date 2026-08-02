@@ -1,4 +1,5 @@
 import { defineConfig } from '@umijs/max';
+import routes from './config/routes';
 
 export default defineConfig({
   port: 8000,
@@ -7,31 +8,8 @@ export default defineConfig({
   model: {},
   initialState: {},
   request: {},
-  layout: {
-    title: '@umijs/max',
-  },
-  routes: [
-    {
-      path: '/',
-      redirect: '/home',
-    },
-    {
-      name: '首页',
-      path: '/home',
-      component: './Home',
-    },
-    {
-      name: '权限演示',
-      path: '/access',
-      component: './Access',
-    },
-    {
-      name: ' CRUD 示例',
-      path: '/table',
-      component: './Table',
-    },
-  ],
+  layout: {},
+  routes,
   npmClient: 'pnpm',
   utoopack: {},
 });
-
