@@ -156,6 +156,11 @@ async def _sse_generator(
                                 },
                             )
 
+                    # L2 操作需用户确认：推送 card 事件（系分 §6.2.2）
+                    pending = node_update.get("pending_confirmation")
+                    if pending:
+                        yield _sse("card", _build_card(pending))
+
                 # reply_node 完成但未流式时，兜底推送完整回复
                 if "reply_node" in chunk and not streamed_reply:
                     output = chunk.get("reply_node", {})
@@ -179,6 +184,45 @@ async def _sse_generator(
 def _sse(event: str, payload: dict) -> str:
     """构造一条 SSE 事件。"""
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+# 工具中文标签（系分 §6.2.2 card title/summary 展示）
+_TOOL_LABELS = {
+    "create_appointment": "确认挂号",
+    "cancel_appointment": "确认取消挂号",
+    "save_pre_consultation": "确认提交预问诊",
+    "send_consultation_message": "确认发送问诊消息",
+    "create_drug_order": "确认创建购药订单",
+    "cancel_drug_order": "确认取消购药订单",
+    "confirm_drug_receipt": "确认收货",
+    "manage_allergy": "确认更新过敏史",
+    "manage_medical_history": "确认更新既往史",
+    "create_report": "确认录入检查报告",
+    "update_medication_plan": "确认更新用药计划",
+    "confirm_follow_up": "确认随访提醒",
+    "join_waitlist": "确认登记候补",
+    "generate_draft_note": "确认保存病历草稿",
+}
+
+
+def _build_card(pending: dict) -> dict:
+    """构造 L2 确认卡片（系分 §6.2.2 card 事件）。"""
+    tool_name = pending.get("tool_name", "")
+    card_type = pending.get("card_type", "confirm_generic")
+    title = _TOOL_LABELS.get(tool_name, "操作确认")
+    # summary 取关键参数（slot_id/doctor_id/prescription_id 等）
+    args = pending.get("tool_arguments", {})
+    key_params = [v for v in args.values() if v is not None][:3]
+    summary = f"{title}（参数: {', '.join(str(v) for v in key_params)}）" if key_params else title
+
+    return {
+        "card_type": card_type,
+        "confirm_token": pending.get("confirm_token", ""),
+        "session_id": pending.get("session_id", ""),
+        "title": title,
+        "summary": summary,
+        "expires_at": "",
+    }
 
 
 def _extract_last_content(output: object) -> str:
