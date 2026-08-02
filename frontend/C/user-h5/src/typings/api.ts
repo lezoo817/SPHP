@@ -101,3 +101,26 @@ export interface MedicalHistoryPayload {
   content: string;
   occurredAt?: string;
 }
+
+/** 可供选择的医院。 */
+export interface Hospital { hospitalId: number; name: string; level?: string; address?: string; contact?: string; }
+/** 医院下的可预约科室。 */
+export interface Department { id: number; name: string; description?: string; }
+/** 医生及当天可用号源摘要。 */
+export interface Doctor { id: number; name: string; title?: string; specialty?: string; registrationFeeCent: number; availableCount: number; departmentName?: string; }
+/** 医生预约时段。 */
+export interface AppointmentSlot { slotId: number; startTime: string; endTime: string; feeCent: number; availableCount: number; }
+/** 挂号订单列表项。 */
+export interface Appointment { id: number; doctorName: string; departmentName: string; startTime: string; status: 'UNPAID' | 'PAID' | 'COMPLETED' | 'CANCELLED'; amountCent: number; expireAt?: string; }
+/** 挂号订单详情。 */
+export interface AppointmentDetail extends Appointment { doctor: { id: number; name: string; departmentName: string }; slot: { id: number; startTime: string; endTime: string }; payment?: { id: number; status: string }; }
+/** 分页响应。 */
+export interface PageData<T> { pageNo: number; pageSize: number; total: number; records: T[]; }
+/** 问诊记录列表项。 */
+export interface Consultation { id: number; appointmentId: number; doctorName: string; status: 'DRAFT' | 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'NO_SHOW'; updatedAt: string; }
+/** 问诊详情与文字消息。 */
+export interface ConsultationDetail extends Consultation { doctor: { id: number; name: string; title?: string }; preConsultation?: { chiefComplaint: string; historyOfPresentIllness?: string; attachments?: { name: string; url: string }[]; savedAt?: string; submittedAt?: string }; messages: { id: number; senderType: string; content: string; createdAt: string }[]; prescriptionIds: number[]; }
+/** 已批准处方列表项。 */
+export interface Prescription { id: number; consultationId: number; doctorName: string; status: 'APPROVED'; issuedAt: string; }
+/** 已批准处方详情。 */
+export interface PrescriptionDetail extends Prescription { doctor: { id: number; name: string; title?: string }; items: { drugId: number; drugName: string; specification?: string; dosage?: string; frequency?: string; usage?: string; durationDays?: number }[]; }
