@@ -97,6 +97,3 @@ async def query_payment_status(payment_id: int, user_id: int | None = None) -> d
     )
 
 
-def register(server):
-    """注册工具到 MCP Server。"""
-    pass

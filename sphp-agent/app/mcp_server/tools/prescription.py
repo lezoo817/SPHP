@@ -30,6 +30,3 @@ async def interpret_prescription(prescription_id: int, user_id: int | None = Non
     )
 
 
-def register(server):
-    """注册工具到 MCP Server。"""
-    pass

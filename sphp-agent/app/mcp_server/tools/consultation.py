@@ -45,6 +45,3 @@ async def send_consultation_message(
     )
 
 
-def register(server):
-    """注册工具到 MCP Server。"""
-    pass

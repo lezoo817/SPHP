@@ -23,6 +23,3 @@ async def manage_notifications(
     return await call_java_api(api_name="manage_notifications:list", user_id=user_id)
 
 
-def register(server):
-    """注册工具到 MCP Server。"""
-    pass

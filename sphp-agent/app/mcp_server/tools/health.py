@@ -132,6 +132,3 @@ async def confirm_follow_up(
     )
 
 
-def register(server):
-    """注册工具到 MCP Server。"""
-    pass

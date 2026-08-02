@@ -76,6 +76,3 @@ async def confirm_drug_receipt(drug_order_id: int, user_id: int | None = None) -
     )
 
 
-def register(server):
-    """注册工具到 MCP Server。"""
-    pass
