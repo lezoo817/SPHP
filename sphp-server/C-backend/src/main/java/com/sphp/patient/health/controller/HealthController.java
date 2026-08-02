@@ -3,7 +3,9 @@ package com.sphp.patient.health.controller;
 import com.sphp.patient.health.service.HealthService;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.health.dto.AllergyCreateRequest;
+import com.sphp.patient.health.dto.AllergyUpdateRequest;
 import com.sphp.patient.health.vo.AllergyCreateVO;
+import com.sphp.patient.health.vo.AllergyUpdateVO;
 import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
@@ -18,6 +20,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -70,6 +74,32 @@ public class HealthController {
                 request,
                 AllergyCreateVO.class,
                 () -> new IdempotencyPayload<>("过敏史已保存", healthService.createAllergy(request))
+        );
+        return Result.success(payload.message(), payload.data());
+    }
+
+    /**
+     * 更新当前账号可访问就诊人的过敏史。
+     *
+     * @param allergyId 过敏史 ID
+     * @param idempotencyKey 客户端幂等键
+     * @param request 更新过敏史请求
+     * @return 更新后的过敏史信息
+     */
+    @PutMapping("/allergies/{allergyId}")
+    @Operation(summary = "更新过敏史")
+    public Result<AllergyUpdateVO> updateAllergy(
+            @PathVariable @Positive(message = "过敏史ID必须为正整数") Long allergyId,
+            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @Valid @RequestBody AllergyUpdateRequest request) {
+        Long userId = CUserContext.getRequired().userId();
+        IdempotencyPayload<AllergyUpdateVO> payload = idempotencyService.execute(
+                userId,
+                "/c/v1/health-record/allergies/" + allergyId,
+                idempotencyKey,
+                request,
+                AllergyUpdateVO.class,
+                () -> new IdempotencyPayload<>("过敏史已更新", healthService.updateAllergy(allergyId, request))
         );
         return Result.success(payload.message(), payload.data());
     }

@@ -3,6 +3,7 @@ package com.sphp.patient.health.service.impl;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
 import com.sphp.patient.health.dto.AllergyCreateRequest;
+import com.sphp.patient.health.dto.AllergyUpdateRequest;
 import com.sphp.patient.health.entity.PatientAllergy;
 import com.sphp.patient.health.entity.PatientMedicalHistory;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
@@ -11,6 +12,7 @@ import com.sphp.patient.health.mapper.PatientAllergyMapper;
 import com.sphp.patient.health.mapper.PatientMedicalHistoryMapper;
 import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.health.vo.AllergyCreateVO;
+import com.sphp.patient.health.vo.AllergyUpdateVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -97,6 +99,37 @@ class HealthServiceImplTest {
                 allergy.getPatientId().equals(20001L)
                         && "青霉素".equals(allergy.getAllergen())
                         && "皮疹".equals(allergy.getReaction())));
+    }
+
+    /**
+     * 验证更新过敏史时保留未传的过敏反应，并使用患者归属条件更新。
+     */
+    @Test
+    void updateAllergyPreservesMissingReactionAndChecksPatientScope() {
+        HealthPatientMapper healthPatientMapper = mock(HealthPatientMapper.class);
+        PatientAllergyMapper allergyMapper = mock(PatientAllergyMapper.class);
+        PatientMedicalHistoryMapper historyMapper = mock(PatientMedicalHistoryMapper.class);
+        HealthServiceImpl healthService = new HealthServiceImpl(healthPatientMapper, allergyMapper, historyMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        AllergyUpdateRequest request = new AllergyUpdateRequest();
+        request.setAllergen("阿莫西林");
+        PatientAllergy existing = allergy(16001L, "青霉素", "皮疹");
+        existing.setPatientId(20001L);
+        when(healthPatientMapper.existsActivePatient(20001L)).thenReturn(true);
+        when(healthPatientMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(allergyMapper.selectOne(any())).thenReturn(existing);
+        when(allergyMapper.update(any(PatientAllergy.class), any())).thenReturn(1);
+
+        AllergyUpdateVO result = healthService.updateAllergy(16001L, request);
+
+        assertEquals(16001L, result.getId());
+        assertEquals("阿莫西林", result.getAllergen());
+        assertEquals("皮疹", result.getReaction());
+        verify(allergyMapper).update(org.mockito.ArgumentMatchers.<PatientAllergy>argThat(allergy ->
+                allergy.getPatientId().equals(20001L)
+                        && "阿莫西林".equals(allergy.getAllergen())
+                        && "皮疹".equals(allergy.getReaction())), any());
     }
 
     /**

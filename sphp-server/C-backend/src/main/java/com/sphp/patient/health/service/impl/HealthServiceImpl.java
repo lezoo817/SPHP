@@ -6,6 +6,7 @@ import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.health.entity.PatientAllergy;
 import com.sphp.patient.health.entity.PatientMedicalHistory;
 import com.sphp.patient.health.dto.AllergyCreateRequest;
+import com.sphp.patient.health.dto.AllergyUpdateRequest;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
 import com.sphp.patient.health.mapper.HealthPatientProfileRecord;
 import com.sphp.patient.health.mapper.PatientAllergyMapper;
@@ -13,6 +14,7 @@ import com.sphp.patient.health.mapper.PatientMedicalHistoryMapper;
 import com.sphp.patient.health.service.HealthService;
 import com.sphp.patient.health.vo.AllergyItemVO;
 import com.sphp.patient.health.vo.AllergyCreateVO;
+import com.sphp.patient.health.vo.AllergyUpdateVO;
 import com.sphp.patient.health.vo.HealthProfileVO;
 import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.health.vo.MedicalHistoryItemVO;
@@ -22,6 +24,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.time.OffsetDateTime;
 
 /**
  * C端健康档案服务实现。
@@ -103,6 +106,47 @@ public class HealthServiceImpl implements HealthService {
     }
 
     /**
+     * 更新当前账号可访问就诊人的过敏史。
+     *
+     * @param allergyId 过敏史 ID，所属就诊人由服务端反查
+     * @param request 更新过敏史请求
+     * @return 更新后的过敏史信息
+     * @throws CAuthException 过敏史不存在、已删除或条件更新失败时抛出
+     */
+    @Override
+    public AllergyUpdateVO updateAllergy(Long allergyId, AllergyUpdateRequest request) {
+        PatientAllergy existing = allergyMapper.selectOne(Wrappers.<PatientAllergy>lambdaQuery()
+                .eq(PatientAllergy::getId, allergyId)
+                .isNull(PatientAllergy::getDeletedAt));
+        if (existing == null) {
+            throw notFound("过敏史不存在或已删除");
+        }
+        Long targetPatientId = requireAccessiblePatientId(existing.getPatientId());
+
+        OffsetDateTime now = OffsetDateTime.now();
+        PatientAllergy updated = new PatientAllergy();
+        updated.setId(allergyId);
+        updated.setPatientId(targetPatientId);
+        updated.setAllergen(request.getAllergen());
+        updated.setReaction(request.getReaction() == null ? existing.getReaction() : request.getReaction());
+        updated.setUpdatedAt(now);
+        // 使用患者范围和未删除条件更新，避免资源在并发场景下被越权或重复修改
+        int affected = allergyMapper.update(updated, Wrappers.<PatientAllergy>lambdaUpdate()
+                .eq(PatientAllergy::getId, allergyId)
+                .eq(PatientAllergy::getPatientId, targetPatientId)
+                .isNull(PatientAllergy::getDeletedAt));
+        if (affected != 1) {
+            throw notFound("过敏史不存在或已删除");
+        }
+        return AllergyUpdateVO.builder()
+                .id(allergyId)
+                .allergen(updated.getAllergen())
+                .reaction(updated.getReaction())
+                .updatedAt(now)
+                .build();
+    }
+
+    /**
      * 解析并校验当前账号可访问的目标就诊人。
      *
      * @param patientId 请求指定的就诊人 ID，可为 null
@@ -118,6 +162,18 @@ public class HealthServiceImpl implements HealthService {
             }
             return selfPatientId;
         }
+        return requireAccessiblePatientId(patientId);
+    }
+
+    /**
+     * 校验当前 C端账号是否可访问指定的有效就诊人。
+     *
+     * @param patientId 就诊人 ID
+     * @return 已校验的就诊人 ID
+     * @throws CAuthException 就诊人不存在或不属于当前账号时抛出
+     */
+    private Long requireAccessiblePatientId(Long patientId) {
+        Long userId = CUserContext.getRequired().userId();
         if (!healthPatientMapper.existsActivePatient(patientId)) {
             throw notFound("就诊人不存在或已停用");
         }

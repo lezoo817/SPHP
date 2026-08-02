@@ -3,7 +3,9 @@ package com.sphp.patient.health.controller;
 import com.sphp.patient.health.handler.HealthExceptionHandler;
 import com.sphp.patient.health.service.HealthService;
 import com.sphp.patient.health.dto.AllergyCreateRequest;
+import com.sphp.patient.health.dto.AllergyUpdateRequest;
 import com.sphp.patient.health.vo.AllergyCreateVO;
+import com.sphp.patient.health.vo.AllergyUpdateVO;
 import com.sphp.patient.health.vo.HealthProfileVO;
 import com.sphp.patient.health.vo.HealthRecordVO;
 import com.sphp.patient.auth.support.context.CUserContext;
@@ -24,6 +26,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -100,5 +103,35 @@ class HealthControllerTest {
                 .andExpect(jsonPath("$.code").value("00000"))
                 .andExpect(jsonPath("$.message").value("过敏史已保存"))
                 .andExpect(jsonPath("$.data.id").value(16001L));
+    }
+
+    /**
+     * 验证更新过敏史接口通过幂等服务返回更新结果。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void updateAllergyReturnsIdempotentSuccessResult() throws Exception {
+        HealthService healthService = mock(HealthService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new HealthController(healthService, idempotencyService))
+                .setControllerAdvice(new HealthExceptionHandler())
+                .build();
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        AllergyUpdateRequest request = new AllergyUpdateRequest();
+        request.setAllergen("阿莫西林");
+        when(idempotencyService.execute(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new IdempotencyPayload<>("过敏史已更新", AllergyUpdateVO.builder()
+                        .id(16001L).allergen("阿莫西林").reaction("皮疹")
+                        .updatedAt(OffsetDateTime.now()).build()));
+
+        mockMvc.perform(put("/c/v1/health-record/allergies/16001")
+                        .header("X-Idempotency-Key", "allergy-key-002")
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("过敏史已更新"))
+                .andExpect(jsonPath("$.data.allergen").value("阿莫西林"));
     }
 }
