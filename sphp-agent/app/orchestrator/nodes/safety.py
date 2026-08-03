@@ -110,5 +110,6 @@ def _map_card_type(tool_name: str) -> str:
         "update_medication_plan": "confirm_medication_plan",
         "confirm_follow_up": "confirm_follow_up",
         "generate_draft_note": "confirm_draft_note",
+        "query_patient_history": "confirm_patient_history",
     }
     return mapping.get(tool_name, "confirm_generic")

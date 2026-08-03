@@ -272,6 +272,7 @@ _TOOL_LABELS = {
     "confirm_follow_up": "确认随访提醒",
     "join_waitlist": "确认登记候补",
     "generate_draft_note": "确认保存病历草稿",
+    "query_patient_history": "确认查询患者档案",
 }
 
 
@@ -419,5 +420,6 @@ def _success_message(tool_name: str) -> str:
         "confirm_follow_up": "随访提醒已确认",
         "join_waitlist": "已登记候补",
         "generate_draft_note": "病历草稿已保存",
+        "query_patient_history": "患者档案已查询",
     }
     return messages.get(tool_name, "操作成功")
