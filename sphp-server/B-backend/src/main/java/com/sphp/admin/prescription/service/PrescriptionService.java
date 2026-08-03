@@ -1,6 +1,7 @@
 package com.sphp.admin.prescription.service;
 
 import com.sphp.admin.common.vo.PageResult;
+import com.sphp.admin.prescription.dto.AuditRequest;
 import com.sphp.admin.prescription.dto.PrescriptionDetailVO;
 import com.sphp.admin.prescription.dto.PrescriptionListVO;
 import com.sphp.admin.prescription.dto.PrescriptionSubmitRequest;
@@ -29,4 +30,14 @@ public interface PrescriptionService {
      * 查询处方详情（系分 §5.6.3）。
      */
     PrescriptionDetailVO getDetail(Long id);
+
+    /**
+     * 分页查询待审核处方列表（系分 §5.6.4）。
+     */
+    PageResult<PrescriptionListVO> pendingAuditList(int page, int size);
+
+    /**
+     * 审核处方（系分 §5.6.5）。
+     */
+    void audit(Long id, AuditRequest request);
 }

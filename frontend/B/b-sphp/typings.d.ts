@@ -326,5 +326,147 @@ declare global {
       content: string;
       createdAt: string;
     }
+
+    // ===================== 处方管理 =====================
+
+    /** 处方列表项 */
+    interface Prescription {
+      id: number;
+      consultId: number;
+      patientId: number;
+      patientName: string;
+      doctorId: number;
+      doctorName: string;
+      deptId: number;
+      deptName: string;
+      status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+      itemCount: number;
+      issuedAt?: string;
+      createdAt: string;
+      updatedAt: string;
+    }
+
+    /** 处方明细项（列表返回） */
+    interface PrescriptionItem {
+      id: number;
+      drugId: number;
+      drugName: string;
+      dosage: string;
+      frequency: string;
+      usageMethod: string;
+      days: number;
+      quantity: number;
+    }
+
+    /** 处方详情 */
+    interface PrescriptionDetail {
+      id: number;
+      consultId: number;
+      patientId: number;
+      patientName: string;
+      doctorId: number;
+      doctorName: string;
+      deptId: number;
+      deptName: string;
+      status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+      auditRequired: boolean;
+      rejectReason?: string;
+      items: PrescriptionItem[];
+      createdAt: string;
+      updatedAt: string;
+    }
+
+    /** 处方列表查询参数 */
+    interface PrescriptionListParams extends PageParams {
+      consultId?: number;
+      patientId?: number;
+      status?: string;
+    }
+
+    /** 提交处方请求 */
+    interface PrescriptionSubmitReq {
+      consultId: number;
+      items: {
+        drugId: number;
+        dosage: string;
+        frequency: string;
+        usageMethod: string;
+        days: number;
+        quantity: number;
+      }[];
+    }
+
+    /** 提交处方结果 */
+    interface PrescriptionSubmitResult {
+      id: number;
+      status: string;
+      auditRequired: boolean;
+      riskWarnings: RiskWarning[];
+    }
+
+    /** 风险预警 */
+    interface RiskWarning {
+      level: 'WARNING' | 'ERROR';
+      rule: string;
+      message: string;
+    }
+
+    /** 审核请求 */
+    interface AuditReq {
+      action: 'APPROVED' | 'REJECTED';
+      rejectReason?: string;
+    }
+
+    /** 待审核列表项 */
+    interface PendingAuditItem {
+      id: number;
+      consultId: number;
+      patientId: number;
+      patientName: string;
+      doctorId: number;
+      doctorName: string;
+      deptId: number;
+      deptName: string;
+      itemCount: number;
+      issuedAt?: string;
+      createdAt: string;
+    }
+
+    /** 处方模板 */
+    interface PrescriptionTemplate {
+      id: number;
+      name: string;
+      deptId?: number;
+      deptName?: string;
+      items: {
+        drugId: number;
+        drugName: string;
+        dosage: string;
+        usageMethod: string;
+        days: number;
+        quantity: number;
+      }[];
+      createdAt: string;
+    }
+
+    /** 模板列表查询参数 */
+    interface TemplateListParams extends PageParams {
+      name?: string;
+      deptId?: number;
+    }
+
+    /** 保存模板请求 */
+    interface SaveTemplateReq {
+      name: string;
+      deptId?: number;
+      items: {
+        drugId: number;
+        dosage: string;
+        frequency: string;
+        usageMethod: string;
+        days: number;
+        quantity: number;
+      }[];
+    }
   }
 }
