@@ -11,6 +11,7 @@ import { filterHospitals, formatAmount, sortHospitals } from './medical';
 import { resolveSelfPatientId } from '../models/selection';
 import { buildDrugOrderListPath } from '../services/pharmacy';
 import { matchesDrugOrderTab } from './pharmacy';
+import { hasSearchKeyword, resolveInitialDepartment } from './home-search';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -59,5 +60,16 @@ describe('购药订单展示规则', () => {
 
   it('订单名称关键词经过编码并传递给列表接口', () => {
     expect(buildDrugOrderListPath({ patientId: 20001, keyword: '阿莫 西林', pageSize: 100 })).toContain('keyword=%E9%98%BF%E8%8E%AB+%E8%A5%BF%E6%9E%97');
+  });
+});
+
+describe('首页科室与搜索规则', () => {
+  it('默认选择当前医院的第一个科室', () => {
+    expect(resolveInitialDepartment([{ id: 2, name: '外科' }, { id: 1, name: '内科' }])).toEqual({ id: 2, name: '外科' });
+  });
+
+  it('空白关键词不允许发起搜索', () => {
+    expect(hasSearchKeyword('   ')).toBe(false);
+    expect(hasSearchKeyword('心内科')).toBe(true);
   });
 });
