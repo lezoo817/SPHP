@@ -11,6 +11,7 @@ LLM 未选工具或解析失败时降级为 ``tool_calls=[]``，由回复节点�
 """
 
 import logging
+from datetime import date
 from typing import Any
 
 from app.engine.llm.factory import build_llm
@@ -24,6 +25,8 @@ logger = logging.getLogger(__name__)
 # 工具决策系统提示词
 TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的工具调用助手。
 
+当前日期：{today}（服务器本地日期，YYYY-MM-DD）
+
 你可以使用以下工具来完成用户请求（只使用列表内的工具）：
 
 {tools_desc}
@@ -36,10 +39,18 @@ TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的工具调用助手。
      必须先执行查询、等结果返回后再调用，禁止在首次并行中编造该参数
 3. 参数严格按工具定义填写，缺失的信息先询问用户，或等上一轮工具结果返回后再决策
 4. 不要编造工具名或参数
-5. 工具调用结果会自动返回，不需要让用户等待重试
-6. 创建/修改/取消类操作（如创建挂号、取消挂号）在拿到所需参数后**直接调用对应工具**，
+5. **日期参数必须用当前日期或之后的日期**：用户说"今天"即 {today}；说"X月X日"若未给出年份，
+   默认当年，且不得早于今天。禁止编造过去日期
+6. 工具调用结果会自动返回，不需要让用户等待重试
+7. 创建/修改/取消类操作（如创建挂号、取消挂号）在拿到所需参数后**直接调用对应工具**，
    不要用自然语言反问用户"是否确认"——用户请求即代表发起授权，系统会通过确认卡片
-   让用户最终确认，你只需调用工具即可"""
+   让用户最终确认，你只需调用工具即可
+8. **完成判断（每次决策前先检查）**：
+   - 如果上一步工具结果已返回用户所需的全部信息，**停止调用工具**
+   - 如果用户请求包含创建/修改/取消操作（如"挂X的号"），查询步骤只是前置，
+     拿到所需参数后**必须继续**调用对应创建/修改/取消工具，不要提前停止
+   - 不要重复调用已执行过的工具（相同参数、相同目的）
+9. 一次只推进一个必要的查询/操作步骤，避免一次轮询所有信息"""
 
 
 def _build_tools_prompt(tools: list[dict[str, Any]]) -> str:
@@ -114,7 +125,9 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     llm_with_tools = llm.bind_tools(tools)
 
     history = truncate_messages(state.get("messages", []), get_settings().memory_window_size)
-    system_prompt = TOOL_CALLER_SYSTEM_PROMPT.format(tools_desc=_build_tools_prompt(tools))
+    system_prompt = TOOL_CALLER_SYSTEM_PROMPT.format(
+        tools_desc=_build_tools_prompt(tools), today=date.today().isoformat()
+    )
     messages = [{"role": "system", "content": system_prompt}] + history
 
     # 注入已执行工具的结果（子图循环累积了前面所有轮次，LLM 分步决策可见）
@@ -128,6 +141,10 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     try:
         response = await llm_with_tools.ainvoke(messages)
         tool_calls = _extract_tool_calls(response, tool_scope, effective_allowed)
+        # 软兜底：拦截「相同参数 + 上次已成功」的重复调用（LLM 提示词收敛不可靠，
+        # 这里做确定性去重——循环问题 P3-6）。意外截断/失败的重试放行，操作型 L2
+        # 不进入 tool_results 天然豁免。
+        tool_calls = _dedupe_tool_calls(tool_calls, state.get("tool_results") or [])
         logger.info(
             "工具决策: scope=%s, 选择 %d 个工具: %s",
             scope,
@@ -139,6 +156,43 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     except Exception as e:
         logger.error("工具决策失败: %s", e)
         return {"tool_calls": []}
+
+
+def _dedupe_tool_calls(
+    tool_calls: list[dict[str, Any]], executed: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """过滤与已执行结果重复的工具调用（确定性防循环，P3-6）。
+
+    判定「重复」需同时满足：工具名相同 + 参数完全一致 + 上次执行已成功。
+    - 上次失败/超时（success=False）→ 模型自主重试合理，放行
+    - 参数不同 → 合法多步推进（换科室/换日期），放行
+    - 已执行列表为空 → 首查，放行
+
+    Args:
+        tool_calls: LLM 本轮要调用的工具列表（[{name, arguments}]）。
+        executed: 本轮对话子图循环已执行的工具结果列表（含 tool_name /
+            arguments / success 字段）。
+
+    Returns:
+        list[dict]: 过滤后的工具调用列表，重复项被剔除。
+    """
+    if not executed:
+        return tool_calls
+    deduped: list[dict[str, Any]] = []
+    for call in tool_calls:
+        name = call["name"]
+        args = call.get("arguments") or {}
+        is_dup = any(
+            prev.get("tool_name") == name
+            and (prev.get("arguments") or {}) == args
+            and prev.get("success")
+            for prev in executed
+        )
+        if is_dup:
+            logger.info("去重重复工具调用: %s %s（上次已成功）", name, args)
+        else:
+            deduped.append(call)
+    return deduped
 
 
 def _extract_tool_calls(

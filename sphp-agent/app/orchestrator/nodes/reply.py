@@ -5,6 +5,7 @@
 
 import json
 import logging
+from datetime import date
 from typing import Any
 
 from app.engine.llm.factory import build_llm
@@ -20,6 +21,8 @@ MEDICAL_DISCLAIMER = "\n\n---\n⚠️ **AI 建议仅供参考，不作为诊断�
 # 回复生成系统提示词
 REPLY_SYSTEM_PROMPT = """你是一个医疗健康助手，正在为用户提供服务。
 
+当前日期：{today}（服务器本地日期，YYYY-MM-DD）
+
 当前场景：
 - 用户意图：{intent}
 - 服务端：{scope}
@@ -29,6 +32,7 @@ REPLY_SYSTEM_PROMPT = """你是一个医疗健康助手，正在为用户提供�
 2. 如果有工具调用结果，优先基于结果回答
 3. 保持回复简洁、专业，避免过度医疗建议
 4. 涉及诊断、用药建议时，提醒用户咨询专业医生
+5. 涉及日期/排班信息时，以当前日期 {today} 为参照，不得混淆或编造日期
 
 注意：
 - 不要编造医疗数据
@@ -57,7 +61,9 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
 
         intent = state.get("intent", "qa")
         scope = state.get("scope", "c_end")
-        system_prompt = REPLY_SYSTEM_PROMPT.format(intent=intent, scope=scope)
+        system_prompt = REPLY_SYSTEM_PROMPT.format(
+            intent=intent, scope=scope, today=date.today().isoformat()
+        )
 
         # 构造 LLM 输入（不修改 state.messages，避免副作用）
         llm_messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
