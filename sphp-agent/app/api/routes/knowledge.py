@@ -1,7 +1,7 @@
 """知识库管理接口：文档入库 + 检索测试。
 
-⚠️ 入库为高危操作，需登录鉴权（后续应限制为 B 端 ADMIN 角色，
-待中间件注入 roles 后补充）。
+⚠️ 入库为高危写操作，限制为 B 端 ADMIN 角色（M5-T3）；
+检索测试仅需登录即可。
 """
 
 import tempfile
@@ -21,23 +21,34 @@ _MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 _MAX_TOP_K = 50
 
 
-def _require_auth(request: Request) -> None:
-    """校验已登录（user_id 由 JWT 中间件注入）。
+def _require_auth(request: Request, *, admin_only: bool = False) -> None:
+    """校验登录；admin_only=True 时额外校验 B 端 ADMIN 角色（M5-T3）。
 
-    debug 模式跳过鉴权便于本地测试；生产模式要求 user_id 非空。
-    TODO: 后续应校验 B 端 ADMIN 角色（需中间件注入 roles）。
+    debug 模式跳过鉴权便于本地测试；生产模式要求 user_id 非空，
+    入库（admin_only）还需 request.state.roles 含 "ADMIN"。
+
+    Args:
+        request: FastAPI 请求，roles 由 JWT 中间件从 B 端 token/parse 注入。
+        admin_only: 是否要求 ADMIN 角色（入库等高危写操作）。
+
+    Raises:
+        HTTPException: 未登录 401 / 非 ADMIN 403。
     """
     settings = get_settings()
     if settings.debug:
         return
     if getattr(request.state, "user_id", None) is None:
         raise HTTPException(status_code=401, detail="未授权：请先登录")
+    if admin_only:
+        roles = getattr(request.state, "roles", []) or []
+        if "ADMIN" not in roles:
+            raise HTTPException(status_code=403, detail="无权限：需要管理员角色")
 
 
 @router.post("/ingest/file")
 async def ingest_single_file(request: Request, file: UploadFile = File(...)) -> dict:
-    """上传单个文件入库（支持 .txt / .md / .pdf / .csv）。"""
-    _require_auth(request)
+    """上传单个文件入库（支持 .txt / .md / .pdf / .csv），需 B 端 ADMIN 角色。"""
+    _require_auth(request, admin_only=True)
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="文件名缺失")
@@ -64,11 +75,11 @@ async def ingest_single_file(request: Request, file: UploadFile = File(...)) -> 
 
 @router.post("/ingest/directory")
 async def ingest_dir(request: Request, path: str = Form(...)) -> dict:
-    """指定服务器本地目录批量入库。
+    """指定服务器本地目录批量入库（需 B 端 ADMIN 角色）。
 
     路径须在 ``KB_INGEST_ROOT`` 配置的根目录内，防止路径遍历。
     """
-    _require_auth(request)
+    _require_auth(request, admin_only=True)
 
     dir_path = Path(path).resolve()
     settings = get_settings()
