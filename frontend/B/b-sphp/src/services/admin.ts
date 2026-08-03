@@ -403,3 +403,47 @@ export async function unlockInventory(
     data,
   });
 }
+
+// ===================== 患者管理 =====================
+
+/** 查询患者列表（分页） */
+export async function getPatientList(
+  params: API.PatientListParams,
+): Promise<API.PageResult<API.PatientListItem>> {
+  const res = await request('/api/b/admin/patients', { params });
+  return (res as API.Result<API.PageResult<API.PatientListItem>>).data;
+}
+
+/** 患者详情 */
+export async function getPatientInfo(
+  id: number,
+): Promise<API.PatientDetailInfo> {
+  const res = await request(`/api/b/admin/patients/${id}`);
+  return (res as API.Result<API.PatientDetailInfo>).data;
+}
+
+/** 查询患者就诊记录（分页） */
+export async function getPatientVisits(
+  id: number,
+  params: API.PageParams,
+): Promise<API.PageResult<API.PatientVisitItem>> {
+  const res = await request(`/api/b/admin/patients/${id}/visits`, { params });
+  return (res as API.Result<API.PageResult<API.PatientVisitItem>>).data;
+}
+
+/** 查询患者历史处方（分页） */
+export async function getPatientPrescriptions(
+  id: number,
+  params: API.PageParams,
+): Promise<API.PageResult<API.PatientPrescriptionItem>> {
+  const res = await request(`/api/b/admin/patients/${id}/prescriptions`, { params });
+  return (res as API.Result<API.PageResult<API.PatientPrescriptionItem>>).data;
+}
+
+/** 查询患者当前用药与随访 */
+export async function getPatientMedications(
+  id: number,
+): Promise<API.PatientMedicationResult> {
+  const res = await request(`/api/b/admin/patients/${id}/medications`);
+  return (res as API.Result<API.PatientMedicationResult>).data;
+}
