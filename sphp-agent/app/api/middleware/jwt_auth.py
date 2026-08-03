@@ -59,6 +59,12 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             request.state.account = user_info.get("account")
             request.state.scope = scope
             request.state.jwt_token = token
+            # B 端字段注入（供 API 层权限校验，如 knowledge 入库 ADMIN 校验）：
+            # C 端响应无 roles 字段，默认空列表（无管理权限）
+            request.state.roles = user_info.get("roles", []) or []
+            request.state.dept_id = user_info.get("deptId")
+            request.state.doctor_id = user_info.get("doctorId")
+            request.state.hospital_id = user_info.get("hospitalId")
             return await call_next(request)
 
         # 携带 token 但校验失败 -> 始终 401（不降级，保持 D1 严格策略）
@@ -80,7 +86,11 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         request.state.anonymous = True
         request.state.scope = scope
         request.state.jwt_token = None
-        # 不设置 user_id / account，保持 None 以区分真实用户
+        # 不设置 user_id / account，保持 None 以区分真实用户；roles 置空无权限
+        request.state.roles = []
+        request.state.dept_id = None
+        request.state.doctor_id = None
+        request.state.hospital_id = None
         return await call_next(request)
 
 

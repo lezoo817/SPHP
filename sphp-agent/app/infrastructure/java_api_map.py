@@ -12,7 +12,8 @@ key 为语义接口名：优先与工具同名，双路径/多接口工具用「
     path: 相对路径，``{param}`` 为路径参数占位（调用时替换）
     scope: c_end / b_end，决定 Java base_url 前缀
 
-注意：B 端接口基于系分 V1.0，Java 端完成后可能需要校正本表。
+注意：B 端接口路径已对齐系分 V1.1——patient/drug/department/doctor/schedule
+类 API 统一在 ``/api/b/admin/*`` 下，doctor 专属操作在 ``/api/b/doctor/*`` 下。
 """
 
 # 接口名 -> 接口定义
@@ -218,36 +219,36 @@ JAVA_API_MAP: dict[str, dict[str, str]] = {
         "path": "/api/c/v1/drug-orders/{drug_order_id}/confirm-receipt",
         "scope": "c_end",
     },
-    # ---- B 端：患者聚合 ----
+    # ---- B 端：患者聚合（/api/b/admin/*，系分 V1.1）----
     "query_patient_history:base": {
         "method": "GET",
-        "path": "/api/b/patients/{patient_id}",
+        "path": "/api/b/admin/patients/{patient_id}",
         "scope": "b_end",
     },
     "query_patient_history:visits": {
         "method": "GET",
-        "path": "/api/b/patients/{patient_id}/visits",
+        "path": "/api/b/admin/patients/{patient_id}/visits",
         "scope": "b_end",
     },
     "query_patient_history:prescriptions": {
         "method": "GET",
-        "path": "/api/b/patients/{patient_id}/prescriptions",
+        "path": "/api/b/admin/patients/{patient_id}/prescriptions",
         "scope": "b_end",
     },
     "query_patient_history:medications": {
         "method": "GET",
-        "path": "/api/b/patients/{patient_id}/medications",
+        "path": "/api/b/admin/patients/{patient_id}/medications",
         "scope": "b_end",
     },
     "query_patient_medications": {
         "method": "GET",
-        "path": "/api/b/patients/{patient_id}/medications",
+        "path": "/api/b/admin/patients/{patient_id}/medications",
         "scope": "b_end",
     },
     # ---- B 端：药品与病历 ----
     "query_drug_guide": {
         "method": "GET",
-        "path": "/api/b/drugs",
+        "path": "/api/b/admin/drugs",
         "scope": "b_end",
     },
     "generate_draft_note": {
@@ -255,7 +256,7 @@ JAVA_API_MAP: dict[str, dict[str, str]] = {
         "path": "/api/b/doctor/consult/{consultation_id}/note",
         "scope": "b_end",
     },
-    # ---- B 端：医生推荐（聚合）----
+    # ---- B 端：医生推荐（聚合，/api/b/admin/*）----
     "recommend_care:departments": {
         "method": "GET",
         "path": "/api/b/admin/departments",
@@ -268,7 +269,7 @@ JAVA_API_MAP: dict[str, dict[str, str]] = {
     },
     "recommend_care:schedules": {
         "method": "GET",
-        "path": "/api/b/schedules",
+        "path": "/api/b/admin/schedules",
         "scope": "b_end",
     },
 }

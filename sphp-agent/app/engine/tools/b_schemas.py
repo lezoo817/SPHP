@@ -19,7 +19,10 @@ def _register_patient_query_tools() -> None:
     ToolRegistry.register(
         ToolSchema(
             name="query_patient_history",
-            description="聚合查询患者基本信息、过敏史、既往史、就诊记录、历史处方、当前用药",
+            description=(
+                "聚合查询患者基本信息、过敏史、既往史、就诊记录、历史处方、当前用药。"
+                "需医生授权；按当前患者 ID 过滤。"
+            ),
             parameters={
                 "properties": {
                     "patient_id": {"type": "integer", "description": "患者ID"},
@@ -27,7 +30,7 @@ def _register_patient_query_tools() -> None:
                 "required": ["patient_id"],
             },
             scope=ToolScope.B_END,
-            security_level=SecurityLevel.L1,
+            security_level=SecurityLevel.L2,
             executor="mcp",
         )
     )

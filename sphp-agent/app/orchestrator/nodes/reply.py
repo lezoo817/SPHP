@@ -87,6 +87,13 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
             )
             llm_messages.append({"role": "system", "content": prompt})
 
+        # 风险标记注入（系分 §7.1）：safety_check 记录的未完成/被拒操作，
+        # 要求 LLM 如实告知用户，避免静默失败
+        risk_warning = _format_risk_flags(state.get("risk_flags", []))
+        if risk_warning:
+            content = f"重要提示（必须在回复中如实告知用户）：{risk_warning}。语气平和，不夸大。"
+            llm_messages.append({"role": "system", "content": content})
+
         response = await llm.ainvoke(llm_messages)
         reply_content = response.content
 
@@ -100,6 +107,32 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         logger.error("回复生成失败: %s", e)
         fallback_message = "抱歉，我遇到了一些问题，请稍后重试。" + MEDICAL_DISCLAIMER
         return {"messages": [{"role": "assistant", "content": fallback_message}]}
+
+
+def _format_risk_flags(risk_flags: list[str]) -> str | None:
+    """风险标记转中文警告（系分 §7.1：safety_check 追加，reply 注入回复）。
+
+    支持 safety_check 写入的两种前缀：
+    - ``redis_unavailable_{tool}``：L2 工具因 Redis 不可用被拒绝执行
+    - ``blocked_{tool}``：L3/L4 未授权工具被拦截
+
+    Args:
+        risk_flags: AgentState.risk_flags（safety_check 追加的风险标记列表）。
+
+    Returns:
+        str | None: 中文警告文本；无风险标记时返回 None。
+    """
+    warnings: list[str] = []
+    for flag in risk_flags:
+        if flag.startswith("redis_unavailable_"):
+            tool = flag.removeprefix("redis_unavailable_")
+            warnings.append(f"「{tool}」操作因系统暂时不可用未能执行")
+        elif flag.startswith("blocked_"):
+            tool = flag.removeprefix("blocked_")
+            warnings.append(f"「{tool}」操作未获授权，已拦截")
+    if not warnings:
+        return None
+    return "；".join(warnings)
 
 
 def _format_tool_results(tool_results: list[dict]) -> str:

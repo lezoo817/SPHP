@@ -5,6 +5,7 @@
 
 import json
 import logging
+import uuid
 from functools import lru_cache
 
 import redis.asyncio as redis
@@ -147,6 +148,87 @@ async def get_and_delete_confirm_token_by_token(
     if result is None:
         return None
     return json.loads(result)
+
+
+# ---- 已确认操作回执（M5-T4 / T-M3-L1）----
+
+CONFIRM_DONE_PREFIX = "confirm_done"
+
+
+async def set_confirm_done(
+    session_id: str,
+    tool_name: str,
+    action_result: object,
+    ttl: int | None = None,
+) -> None:
+    """记录已确认并执行成功的操作（T-M3-L1，供下一轮对话引用）。
+
+    /chat/confirm 是独立 HTTP 请求，执行成功结果不进入 graph 状态。
+    写入该回执后，下一轮 ``chat_stream`` 一次性消费注入会话上下文，
+    使"确认后追问"的对话保持连续。
+
+    Args:
+        session_id: 会话 ID。
+        tool_name: 已执行的 L2 工具名。
+        action_result: 工具执行返回的业务数据（Java 信封内层）。
+        ttl: 回执 TTL（秒），默认 settings.confirm_done_ttl。
+    """
+    s = get_settings()
+    ttl = ttl or s.confirm_done_ttl
+
+    key = f"{CONFIRM_DONE_PREFIX}:{session_id}:{tool_name}:{uuid.uuid4()}"
+    value = json.dumps(
+        {"tool_name": tool_name, "action_result": action_result},
+        ensure_ascii=False,
+    )
+
+    client = get_redis()
+    await client.set(key, value, ex=ttl)
+
+
+async def get_and_delete_confirm_done(session_id: str) -> list[dict]:
+    """读取并删除某会话全部已确认操作回执（一次性消费，Lua 原子）。
+
+    注入会话上下文后即删除——注入的 system 消息随 LangGraph checkpointer
+    持久化到消息历史，后续轮次持续可见，无需重复注入。
+
+    Args:
+        session_id: 会话 ID，匹配前缀 ``confirm_done:{session_id}:*``。
+
+    Returns:
+        list[dict]: 全部回执记录列表（含 tool_name / action_result）；
+            无记录时返回空列表。
+    """
+    lua_script = """
+    local session_id = ARGV[1]
+    local pattern = 'confirm_done:' .. session_id .. ':*'
+    local cursor = '0'
+    local results = {}
+
+    repeat
+        local scan_result = redis.call('SCAN', cursor, 'MATCH', pattern, 'COUNT', 50)
+        cursor = scan_result[1]
+        local keys = scan_result[2]
+        for i, key in ipairs(keys) do
+            local v = redis.call('GET', key)
+            if v ~= false then
+                redis.call('DEL', key)
+                table.insert(results, v)
+            end
+        end
+    until cursor == '0'
+
+    if #results == 0 then
+        return nil
+    end
+    return results
+    """
+
+    client = get_redis()
+    result = await client.eval(lua_script, 0, session_id)
+    if result is None:
+        return []
+    return [json.loads(v) for v in result]
 
 
 # ---- 限流操作（系分 §10.4）----
