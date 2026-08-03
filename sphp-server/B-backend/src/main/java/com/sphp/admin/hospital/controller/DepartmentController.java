@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/b/admin/departments")
-@Tag(name = "B端科室管理", description = "科室列表/详情/新增/编辑/启停（管理员）")
+@Tag(name = "2-科室管理", description = "科室列表/详情/新增/编辑/启停（管理员）")
 @RequiredArgsConstructor
 public class DepartmentController {
 

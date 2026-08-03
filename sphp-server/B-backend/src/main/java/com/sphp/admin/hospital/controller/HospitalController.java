@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/b/admin/hospitals")
-@Tag(name = "B端医院管理", description = "查询/编辑医院信息（管理员）")
+@Tag(name = "2-医院管理", description = "查询/编辑医院信息（管理员）")
 @RequiredArgsConstructor
 public class HospitalController {
 
