@@ -31,10 +31,14 @@ class Settings(BaseSettings):
 
     # ---- 应用 ----
     app_name: str = "智愈先锋 AI Agent 服务"
+    # 应用版本号（供 /health 与 OpenAPI 引用，避免多处理硬编码）
+    app_version: str = "2.0.0"
     debug: bool = False
     # 无 token 时降级为匿名（仅开发环境设为 true，生产必须 false）
     allow_anonymous: bool = False
-    agent_host: str = "0.0.0.0"
+    # 监听地址：默认回环（P3-5 安全默认，避免开发环境误暴露到局域网）；
+    # 生产部署需在 .env 覆盖为 0.0.0.0 供外部访问
+    agent_host: str = "127.0.0.1"
     agent_port: int = 8081
     # CORS 允许的前端来源（生产由 .env 的 CORS_ORIGINS 覆盖）
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
@@ -111,6 +115,10 @@ class Settings(BaseSettings):
     confirm_done_ttl: int = 3600
     rate_limit_per_minute: int = 20
     memory_window_size: int = 10
+    # 工具结果注入 LLM 的最大字符数（reply._format_tool_results 截断，防上下文膨胀）
+    max_data_chars: int = 2000
+    # 子图工具调用最大迭代次数（graphs._common.route_continue，防 LLM 无限循环）
+    max_tool_iterations: int = 5
     log_level: str = "INFO"
 
     def llm_config(self, provider: str) -> tuple[str, str, str]:

@@ -15,9 +15,6 @@ from app.infrastructure.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-# 应用版本号（统一引用，避免多处硬编码）
-APP_VERSION = "2.0.0"
-
 # CORS 允许的请求头白名单（P2 收紧）。
 # Agent 使用 Bearer Token 鉴权（非 Cookie），无需跨域携带凭证，故 allow_credentials=False。
 # 原先 allow_headers=["*"] 允许任意请求头（含跨域自定义 X-Scope），收紧为前端实际
@@ -120,7 +117,7 @@ async def health() -> dict[str, Any]:
         "llm": _check_llm(),
     }
     overall = "healthy" if all(v == "ok" for v in checks.values()) else "unhealthy"
-    return {"status": overall, "checks": checks, "version": APP_VERSION}
+    return {"status": overall, "checks": checks, "version": get_settings().app_version}
 
 
 async def _check_pg() -> str:
@@ -170,7 +167,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title=settings.app_name,
-        version=APP_VERSION,
+        version=settings.app_version,
         debug=settings.debug,
         lifespan=lifespan,
     )

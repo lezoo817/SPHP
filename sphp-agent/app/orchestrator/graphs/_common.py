@@ -14,13 +14,11 @@ from typing import Any
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 
+from app.infrastructure.config.settings import get_settings
 from app.orchestrator.nodes.safety import safety_check
 from app.orchestrator.nodes.tool_caller import tool_caller
 from app.orchestrator.nodes.tool_executor import tool_executor
 from app.orchestrator.state import AgentState
-
-# 子图工具调用最大迭代次数，防止 LLM 无限循环
-MAX_TOOL_ITERATIONS = 5
 
 
 def route_safety(state: AgentState) -> str:
@@ -39,12 +37,12 @@ def route_safety(state: AgentState) -> str:
 def route_continue(state: AgentState) -> str:
     """tool_executor 后判断是否继续调用工具。
 
-    如果 LLM 返回了新的 tool_calls 且未超最大迭代次数，循环回 tool_caller；
-    否则结束子图。
+    如果 LLM 返回了新的 tool_calls 且未超最大迭代次数（settings.max_tool_iterations，
+    防 LLM 无限循环），循环回 tool_caller；否则结束子图。
     """
     iteration = state.get("tool_iteration") or 0
     has_tool_calls = bool(state.get("tool_calls"))
-    if has_tool_calls and iteration < MAX_TOOL_ITERATIONS:
+    if has_tool_calls and iteration < get_settings().max_tool_iterations:
         return "continue"
     return "end"
 
