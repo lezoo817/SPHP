@@ -5,9 +5,9 @@ LangGraph StateGraph 串联标准节点：auth -> intent -> [业务子图 | qa |
 qa 路由到 rag_node 检索回答，chitchat 路由到 chitchat_node（不检索）。
 """
 
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
+from app.orchestrator.checkpointer import build_checkpointer
 from app.orchestrator.graphs.consult_graph import build_consultation_graph
 from app.orchestrator.graphs.pharmacy_graph import build_pharmacy_graph
 from app.orchestrator.graphs.registration_graph import build_registration_graph
@@ -85,6 +85,6 @@ def build_main_graph():
 
     builder.add_edge("reply_node", END)
 
-    # 编译（开发环境用 MemorySaver，生产换 PostgresSaver）
-    graph = builder.compile(checkpointer=MemorySaver())
+    # 编译（M6-B3：按 settings.checkpointer_backend 选择，memory/postgres）
+    graph = builder.compile(checkpointer=build_checkpointer())
     return graph
