@@ -23,7 +23,11 @@ from typing import Any, cast
 from app.engine.tools.schema_registry import ToolRegistry
 from app.infrastructure.audit.logger import log_tool_call
 from app.mcp_client.client import MCPClientError, get_mcp_client
-from app.mcp_server.tools.dispatcher import dispatch_tool, is_registered
+from app.mcp_server.tools.dispatcher import (
+    _IDEMPOTENCY_ARG,
+    dispatch_tool,
+    is_registered,
+)
 from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -173,6 +177,7 @@ async def _execute_mcp(
     *,
     confirm_method: str = "none",
     trigger: str = "agent",
+    idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     """执行 MCP 工具（M6-C1：经 MCP Client tools/call，回退直调）。
 
@@ -185,6 +190,10 @@ async def _execute_mcp(
         state: 图状态。
         confirm_method: L2 确认方式（click/none），供审计溯源。
         trigger: 触发来源（manual=人工确认执行 / agent=LLM 自主调用）。
+        idempotency_key: P2 #17 幂等键。L2 确认执行（chat_confirm）传入
+            confirm_token 记录的幂等键，经 ``__idempotency_key__`` 内部键
+            透传 MCP 链路，Java 侧按 X-Idempotency-Key 去重——确认操作
+            失败重试不重复执行业务（挂号/购药等）。Agent 自主调用为 None。
     """
     start = time.time()
     user_id = state.get("user_id")
@@ -209,7 +218,12 @@ async def _execute_mcp(
         }
 
     try:
-        result = await _call_mcp_func(tool_name, arguments, user_id)
+        # P2 #17：确认流程幂等键经内部键透传（_wrap 剥离并注入 ContextVar）；
+        # 注入到副本，不改动原 arguments（审计 params_hash 保持业务参数）
+        exec_args = arguments
+        if idempotency_key:
+            exec_args = {**arguments, _IDEMPOTENCY_ARG: idempotency_key}
+        result = await _call_mcp_func(tool_name, exec_args, user_id)
         duration_ms = (time.time() - start) * 1000
         # 安全（P1-1）：校验 Java 信封 / call_java_api 失败包装，避免 5xx 或
         # 业务失败（code != "00000"）被伪装为 success=True，否则 confirm 会回

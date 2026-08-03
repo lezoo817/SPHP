@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import uuid
+from contextvars import ContextVar, Token
 from typing import Any, cast
 
 import httpx
@@ -29,6 +30,23 @@ _RETRY_BACKOFF = 0.3  # 退避基数（秒）：0.3 / 0.6 / 1.2
 _GATEWAY_RETRYABLE = {502, 503, 504}
 # 写入型方法：依赖 X-Idempotency-Key 去重，重试须复用同一键防重复执行业务
 _WRITE_METHODS = {"POST", "PUT", "PATCH"}
+
+# P2 #17：确认流程幂等键贯穿。L2 确认执行（chat_confirm）经 MCP 链路最终
+# 到 call_java_api，Server 侧与工具封装函数不在同一 asyncio 任务，无法直接
+# 传参；改用 ContextVar——dispatcher._wrap 剥离调用参数中的内部键后设置，
+# 同一任务栈内封装函数的 call_java_api 读取，执行完恢复。Agent 自主调用
+# （context 为空）行为与原来一致（调用内生成唯一键）。
+_IDEMPOTENCY_CONTEXT: ContextVar[str | None] = ContextVar("idempotency_key", default=None)
+
+
+def set_idempotency_context(key: str) -> Token[str | None]:
+    """设置当前任务栈的幂等键，返回恢复句柄（dispatcher._wrap 使用）。"""
+    return _IDEMPOTENCY_CONTEXT.set(key)
+
+
+def reset_idempotency_context(token: Token[str | None]) -> None:
+    """恢复调用前幂等键上下文（dispatcher._wrap 使用）。"""
+    _IDEMPOTENCY_CONTEXT.reset(token)
 
 
 class _RetryableJavaError(Exception):
@@ -209,10 +227,12 @@ async def call_java_api(
         headers["X-User-Id"] = str(user_id)
 
     method_upper = method.upper()
-    # 幂等键：调用方显式传入或本调用生成一次；重试循环全程复用同一键，
-    # 保证 Java 侧去重，网络重试不重复执行业务。
+    # 幂等键：优先级 显式参数 > 当前任务栈确认流程键 > 本调用生成一次；
+    # 重试循环全程复用同一键，保证 Java 侧去重，网络重试不重复执行业务。
     if method_upper in _WRITE_METHODS:
-        headers["X-Idempotency-Key"] = idempotency_key or str(uuid.uuid4())
+        headers["X-Idempotency-Key"] = (
+            idempotency_key or _IDEMPOTENCY_CONTEXT.get() or str(uuid.uuid4())
+        )
 
     # 重试循环：仅 _RetryableJavaError（瞬时故障）触发重试，其余失败直接返回
     attempt = 0

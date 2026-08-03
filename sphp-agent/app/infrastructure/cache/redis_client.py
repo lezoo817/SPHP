@@ -59,10 +59,14 @@ async def set_confirm_token(
     card_type: str,
     ttl: int | None = None,
 ) -> None:
-    """存储确认 token（系分 §5.5，5min TTL，一次性消费）。
+    """存储确认 token（系分 §5.5，5min TTL）。
 
     Redis key 模式: confirm:{{session_id}}:{tool_name}:{token_id}
     （session_id 带 {} 边界定界符，P2 防冒号前缀跨会话越权）
+
+    P2（#17）：记录携带 ``idempotency_key``——同一确认操作的所有执行尝试
+    （含失败重试）复用同一幂等键，Java 侧按 X-Idempotency-Key 去重，
+    防止"Java 已提交但响应超时 -> 用户重试 -> 重复执行业务"。
     """
     s = get_settings()
     ttl = ttl or s.confirm_token_ttl
@@ -76,6 +80,7 @@ async def set_confirm_token(
             "tool_name": tool_name,
             "tool_arguments": tool_arguments,
             "card_type": card_type,
+            "idempotency_key": str(uuid.uuid4()),
         },
         ensure_ascii=False,
     )
@@ -84,17 +89,18 @@ async def set_confirm_token(
     await client.set(key, value, ex=ttl)
 
 
-async def get_and_delete_confirm_token_by_token(
+async def get_confirm_token_by_token(
     session_id: str,
     token_id: str,
     expected_user_id: str,
 ) -> dict[str, Any] | None:
-    """按前端回传的 confirm_token 原子消费（系分 §5.5，Lua 一次性）。
+    """按前端回传的 confirm_token 读取记录（P2 #17：不再消费即删）。
 
     /chat/confirm 只回传 session_id + confirm_token，而 Redis key 是
     ``confirm:{session_id}:{tool_name}:{token_id}``（tool_name 未知），
-    因此按 session_id 前缀 SCAN 匹配 token_id 后缀，再校验 user_id 后
-    一次性 GET + DEL。Lua 脚本整体原子执行，多游标 SCAN 亦安全。
+    因此按 session_id 前缀 SCAN 匹配 token_id 后缀，校验 user_id 后返回
+    记录（**不 DEL**）。删除由 ``delete_confirm_token_by_token`` 在工具
+    执行成功后单独执行，失败时保留 token 供用户重试。
 
     Args:
         session_id: 前端回传的会话 ID，用于构造前缀 confirm:{session_id}:*
@@ -104,7 +110,7 @@ async def get_and_delete_confirm_token_by_token(
     Returns:
         匹配且校验通过时返回 token 记录 dict；未匹配 / 用户不匹配返回 None。
     """
-    # Lua 脚本：SCAN 前缀匹配 token_id，校验 user_id，GET + DEL
+    # Lua 脚本：SCAN 前缀匹配 token_id，校验 user_id，GET（不 DEL）
     lua_script = """
     local session_id = ARGV[1]
     local token_id = ARGV[2]
@@ -127,7 +133,6 @@ async def get_and_delete_confirm_token_by_token(
                 if v ~= false then
                     local data = cjson.decode(v)
                     if data.user_id == expected_user_id then
-                        redis.call('DEL', key)
                         value = v
                         break
                     end
@@ -155,6 +160,62 @@ async def get_and_delete_confirm_token_by_token(
     if result is None:
         return None
     return cast(dict[str, Any], json.loads(result))
+
+
+async def delete_confirm_token_by_token(
+    session_id: str,
+    token_id: str,
+    expected_user_id: str,
+) -> None:
+    """按前端回传的 confirm_token 删除记录（P2 #17：工具执行成功后调用）。
+
+    与 ``get_confirm_token_by_token`` 相同的定位逻辑，仅做 DEL。幂等：
+    记录已不存在（并发双击第一个请求已删）时无害返回。
+
+    Args:
+        session_id: 前端回传的会话 ID，用于构造前缀 confirm:{session_id}:*
+        token_id: 前端回传的确认令牌（UUID4），匹配 key 后缀
+        expected_user_id: 当前请求用户 ID，与值内 user_id 比对（仅删本人记录）
+    """
+    # Lua 脚本：SCAN 前缀匹配 token_id，校验 user_id，DEL
+    lua_script = """
+    local session_id = ARGV[1]
+    local token_id = ARGV[2]
+    local expected_user_id = ARGV[3]
+    local pattern = 'confirm:' .. session_id .. ':*'
+    local cursor = '0'
+    local suffix = ':' .. token_id
+    local deleted = 0
+
+    repeat
+        local scan_result = redis.call('SCAN', cursor, 'MATCH', pattern, 'COUNT', 50)
+        cursor = scan_result[1]
+        local keys = scan_result[2]
+        for i, key in ipairs(keys) do
+            local len = #key
+            local suffix_start = len - #suffix + 1
+            if suffix_start >= 1 and string.sub(key, suffix_start) == suffix then
+                local v = redis.call('GET', key)
+                if v ~= false then
+                    local data = cjson.decode(v)
+                    if data.user_id == expected_user_id then
+                        redis.call('DEL', key)
+                        deleted = 1
+                        break
+                    end
+                end
+            end
+        end
+        if deleted == 1 then
+            break
+        end
+    until cursor == '0'
+
+    return deleted
+    """
+
+    client = get_redis()
+    await client.eval(lua_script, 0, _delimit_session(session_id), token_id, expected_user_id)
 
 
 # ---- 已确认操作回执（M5-T4 / T-M3-L1）----

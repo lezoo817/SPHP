@@ -16,8 +16,9 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.api.schemas.chat import ChatRequest, ConfirmRequest, ConfirmResponse
 from app.infrastructure.cache.redis_client import (
+    delete_confirm_token_by_token,
     get_and_delete_confirm_done,
-    get_and_delete_confirm_token_by_token,
+    get_confirm_token_by_token,
     set_confirm_done,
 )
 from app.orchestrator.graphs.main_graph import build_main_graph
@@ -527,8 +528,9 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     """L2 确认回调（系分 §6.2.2）。
 
     前端用户点击确认卡片后回调此端点。
-    Agent 原子消费 confirm_token（Redis 一次性 GET+DEL），校验 session/user，
-    通过后同步执行对应的 MCP 工具，返回业务执行结果。
+    Agent 读取 confirm_token 记录（Redis GET，不删除），校验 session/user，
+    执行对应的 MCP 工具；成功后才删除 token 并写回执，失败保留 token 供
+    用户重试（复用同一幂等键，Java 侧去重防重复执行业务）。
 
     Args:
         req: ConfirmRequest，含 confirm_token + session_id。
@@ -544,20 +546,21 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     if not req.confirm_token or not req.session_id:
         return _confirm_error("CONFIRM_INVALID", "令牌格式无效", trace_id)
 
-    # 原子消费 confirm_token（一次性 GET+DEL + user_id 校验）
+    # P2 #17：读取 confirm_token 记录（GET 不删）。删除推迟到工具执行成功后，
+    # 失败时保留 token 供用户重试；并发双击由幂等键 + Java 去重兜底。
     try:
-        record = await get_and_delete_confirm_token_by_token(
+        record = await get_confirm_token_by_token(
             session_id=req.session_id,
             token_id=req.confirm_token,
             expected_user_id=user_id,
         )
     except Exception:
         # Redis 不可用
-        logger.error("confirm_token 消费异常: Redis 不可用")
+        logger.error("confirm_token 读取异常: Redis 不可用")
         return _confirm_error("CONFIRM_INVALID", "操作暂时不可用，请稍后重试", trace_id)
 
     if record is None:
-        # token 不存在 / 已消费 / 已过期 / 用户不匹配
+        # token 不存在 / 已过期 / 用户不匹配
         return _confirm_error("CONFIRM_EXPIRED", "操作已超时或无效，请重新发起", trace_id)
 
     # session 校验（record 里的 session 应与请求一致）
@@ -567,6 +570,10 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     # 执行对应的 L2 工具（匿名请求无 user_id，用 getattr 兜底）
     tool_name = record.get("tool_name", "")
     arguments = record.get("tool_arguments", {})
+    # P2 #17：复用 confirm_token 记录的幂等键——同一确认操作（含失败重试）
+    # Java 侧按 X-Idempotency-Key 去重，防止"已提交但响应超时 -> 重试 ->
+    # 重复执行业务"（挂号锁定/购药下单等写操作）。
+    idempotency_key = record.get("idempotency_key")
     # _execute_mcp 只消费 user_id/scope/session_id，无需完整 AgentState，
     # cast 表明这是按需构造的部分状态
     state = cast(
@@ -580,15 +587,33 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     # P2 审计溯源：人工点击确认触发的 L2 工具执行，审计标记
     # confirm_method=click / trigger=manual，区别于 Agent 自主调用
     result = await _execute_mcp(
-        tool_name, arguments, state, confirm_method="click", trigger="manual"
+        tool_name,
+        arguments,
+        state,
+        confirm_method="click",
+        trigger="manual",
+        idempotency_key=idempotency_key,
     )
 
     if not result.get("success"):
         error = result.get("error", {})
+        # P2 #17：执行失败保留 confirm_token（不删），用户可携带原卡片重试，
+        # 复用同一幂等键，Java 去重不重复执行业务。
         # TOOL_FAILED 系分 §6.1 错误码表标注为 500
         return _confirm_error(
             "TOOL_FAILED", error.get("message", "操作执行失败"), trace_id, status_code=500
         )
+
+    # P2 #17：执行成功后删除 confirm_token（一次性语义收敛到此处），
+    # 用户无法再用已成功的卡片重复操作。
+    try:
+        await delete_confirm_token_by_token(
+            session_id=req.session_id,
+            token_id=req.confirm_token,
+            expected_user_id=user_id,
+        )
+    except Exception:
+        logger.warning("删除 confirm_token 失败: token=%s", req.confirm_token)
 
     # M5-T4（T-M3-L1）：写入确认成功回执，供下一轮对话引用（此操作是独立
     # HTTP 请求，结果不进 graph 状态；Redis 回执 + 下轮注入保证对话连续）
