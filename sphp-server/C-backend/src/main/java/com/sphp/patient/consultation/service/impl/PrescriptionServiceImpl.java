@@ -30,7 +30,7 @@ import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
 /**
  * C端处方查询与解读服务实现。
  */
-@Service
+@Service("cPrescriptionServiceImpl")
 @RequiredArgsConstructor
 public class PrescriptionServiceImpl implements PrescriptionService {
     // 处方数据访问接口
