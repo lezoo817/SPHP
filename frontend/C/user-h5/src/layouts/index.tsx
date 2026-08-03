@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'umi';
 import { clearSession, getSession, isSessionTokenExpired } from '../models/session';
 import { AgentFloatingButton } from '../components/agent/AgentFloatingButton';
 import '../styles/app.less';
+import '../styles/health-notification.less';
 
 /** 提供全局样式、路由内容容器与 AI 助手悬浮入口。 */
 export default function Layout() {

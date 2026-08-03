@@ -17,8 +17,8 @@ export function createAppointment(payload: { patientId?: number; hospitalId: num
  * @param status 挂号订单状态，可不传以查询全部状态
  * @returns 不包含空状态参数的挂号订单列表路径
  */
-export function buildAppointmentsPath(patientId?: number, status?: string): string {
-  const params = new URLSearchParams({ pageNo: '1', pageSize: '20' });
+export function buildAppointmentsPath(patientId?: number, status?: string, pageSize = 20): string {
+  const params = new URLSearchParams({ pageNo: '1', pageSize: String(pageSize) });
   if (patientId !== undefined) params.set('patientId', String(patientId));
   // 后端会校验枚举值，未筛选时不能发送空字符串 status=。
   if (status?.trim()) params.set('status', status.trim());
@@ -29,10 +29,11 @@ export function buildAppointmentsPath(patientId?: number, status?: string): stri
  * 查询指定就诊人的挂号订单。
  * @param patientId 当前就诊人 ID
  * @param status 可选的挂号订单状态筛选
+ * @param pageSize 每位就诊人需读取的订单数量，最大为 100
  * @returns 分页挂号订单数据
  */
-export function getAppointments(patientId?: number, status?: string): Promise<PageData<Appointment>> {
-  return request(buildAppointmentsPath(patientId, status), { method: 'GET' });
+export function getAppointments(patientId?: number, status?: string, pageSize = 20): Promise<PageData<Appointment>> {
+  return request(buildAppointmentsPath(patientId, status, pageSize), { method: 'GET' });
 }
 /** 查询挂号订单详情。 */
 export function getAppointment(appointmentId: number): Promise<AppointmentDetail> { return request(`/c/v1/appointments/${appointmentId}`, { method: 'GET' }); }
