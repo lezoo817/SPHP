@@ -1,7 +1,11 @@
-"""JWT 鉴权节点（系分 §5.1）。
+"""JWT 鉴权节点（系分 §5.1，M6-B1 鉴权去重后）。
 
-从请求状态获取 JWT + scope，调用 Java token/parse 接口换取用户信息。
-C端返回 userId/account/tokenExpiresAt，B端额外返回 roles/deptId/doctorId/hospitalId。
+中间件已在 HTTP 层调 Java token/parse 一次并注入 request.state，
+``_build_initial_state`` 将身份字段（user_id/roles/dept_id/...）写入
+AgentState，本节点直接消费已解析身份，**每请求仅一次 Java 鉴权**。
+
+仅当身份缺失但存在 ``jwt_token``（绕过中间件的直连图调用场景）时，
+才兜底调一次 token/parse，保证非 HTTP 路径仍可鉴权。
 """
 
 import logging
@@ -25,49 +29,45 @@ class AgentAuthError(Exception):
 async def auth_node(state: AgentState) -> dict[str, Any]:
     """JWT 鉴权节点（系分 §5.1）。
 
-    从请求状态获取 JWT Token，调用 Java token/parse 接口校验并获取用户信息。
-    B端场景同时写入 roles/dept_id/doctor_id/hospital_id。
+    HTTP 主路径：中间件已解析 token 并注入身份到 request.state（再经
+    ``_build_initial_state`` 写入 AgentState），本节点直接放行，不产生
+    额外 Java 调用（每请求单次鉴权）。
+
+    兜底路径：身份字段缺失但存在 jwt_token（直连图调用），解析一次。
 
     Args:
-        state: 当前图状态，包含 scope 和 jwt_token 字段。
-            scope: c_end / b_end，决定调用哪个 token/parse 接口。
+        state: 当前图状态，含 user_id / roles / scope / jwt_token。
+            scope: c_end / b_end。
             jwt_token: 从 Header 提取的 JWT Token（不含 "Bearer " 前缀）。
 
     Returns:
-        dict: 部分状态更新，包含以下字段：
-            - user_id: 用户唯一标识（C端/B端通用）
-            - roles: 用户角色列表（仅B端，如 ["ADMIN", "DOCTOR"]）
-            - dept_id: 所属科室ID（仅B端）
-            - doctor_id: 关联医生ID（仅B端医生角色）
-            - hospital_id: 医院ID（B端从token解析，C端从context获取）
+        dict: 部分状态更新；主路径返回空 dict（身份已在初始状态中）。
 
     Raises:
         无：鉴权失败时降级为匿名用户，不阻塞流程。
     """
     scope = state.get("scope", "c_end")
+
+    # 中间件已注入身份（user_id 或 roles 非空）-> 直接放行
+    if state.get("user_id") is not None or state.get("roles") is not None:
+        return {}
+
     jwt_token = state.get("jwt_token")
 
-    # 无JWT token时，降级为匿名用户（测试场景）
+    # 无 token 且无注入身份 -> 匿名降级
     if not jwt_token:
         logger.warning("JWT token缺失，降级为匿名用户")
-        return {
-            "user_id": None,
-        }
+        return {"user_id": None}
 
+    # 兜底：直连图调用（绕过中间件），解析一次 token
     try:
-        # 调用 Java token/parse 接口
         user_info = await parse_token(jwt_token, scope)
 
         if not user_info:
             logger.warning("JWT validation failed for scope=%s，降级为匿名用户", scope)
-            return {
-                "user_id": None,
-            }
+            return {"user_id": None}
 
-        # 构造返回的状态更新
-        result: dict[str, Any] = {
-            "user_id": user_info.get("userId"),
-        }
+        result: dict[str, Any] = {"user_id": user_info.get("userId")}
 
         # B端场景：额外写入角色和科室信息
         if scope == "b_end":
@@ -93,6 +93,4 @@ async def auth_node(state: AgentState) -> dict[str, Any]:
 
     except Exception as e:
         logger.error("鉴权节点异常: %s，降级为匿名用户", str(e))
-        return {
-            "user_id": None,
-        }
+        return {"user_id": None}
