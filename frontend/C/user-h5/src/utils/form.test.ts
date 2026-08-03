@@ -13,6 +13,7 @@ import { buildDrugOrderListPath } from '../services/pharmacy';
 import { matchesDrugOrderTab } from './pharmacy';
 import { hasSearchKeyword, resolveInitialDepartment } from './home-search';
 import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
+import { resolveMinePatientId } from '../models/mine-patient';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -90,5 +91,21 @@ describe('个人资料更新规则', () => {
   it('网络重试复用首次生成的幂等键', () => {
     const first = resolveProfileIdempotencyKey();
     expect(resolveProfileIdempotencyKey(first)).toBe(first);
+  });
+});
+
+describe('我的页面就诊人选择规则', () => {
+  const members = [{ patientId: 1, relation: 'SELF', isDefault: true }, { patientId: 2, relation: 'PARENT' }];
+
+  it('默认优先选择本人', () => {
+    expect(resolveMinePatientId(members, undefined)).toBe(1);
+  });
+
+  it('保留仍有效的已选家属', () => {
+    expect(resolveMinePatientId(members, 2)).toBe(2);
+  });
+
+  it('家属失效后回退本人', () => {
+    expect(resolveMinePatientId(members, 99)).toBe(1);
   });
 });
