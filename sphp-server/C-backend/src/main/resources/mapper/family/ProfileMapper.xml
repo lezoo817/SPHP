@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sphp.patient.family.mapper.ProfileMapper">
+
+    <resultMap id="ProfileRecordMap" type="com.sphp.patient.family.mapper.ProfileRecord">
+        <id property="patientId" column="patient_id"/>
+        <result property="name" column="name"/>
+        <result property="gender" column="gender"/>
+        <result property="birthday" column="birthday"/>
+        <result property="phone" column="phone"/>
+        <result property="emergencyContact" column="emergency_contact"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectSelfProfile" resultMap="ProfileRecordMap">
+        SELECT p.id AS patient_id,
+               p.name,
+               p.gender,
+               p.date_of_birth AS birthday,
+               p.phone_ciphertext AS phone,
+               p.emergency_contact,
+               p.updated_at
+        FROM patient_user_relation pur
+        INNER JOIN patient p ON p.id = pur.patient_id
+            AND p.deleted_at IS NULL
+        WHERE pur.user_id = #{userId}
+          AND pur.relationship = 'SELF'
+          AND pur.deleted_at IS NULL
+        LIMIT 1
+    </select>
+
+    <update id="updateSelfProfile">
+        UPDATE patient p
+        SET name = #{name},
+            gender = #{gender},
+            date_of_birth = #{birthday},
+            phone_ciphertext = #{phone},
+            emergency_contact = #{emergencyContact},
+            updated_at = #{updatedAt}
+        FROM patient_user_relation pur
+        WHERE p.id = pur.patient_id
+          AND p.id = #{patientId}
+          AND p.deleted_at IS NULL
+          AND pur.user_id = #{userId}
+          AND pur.relationship = 'SELF'
+          AND pur.deleted_at IS NULL
+    </update>
+</mapper>

@@ -57,6 +57,33 @@ export interface FamilyMemberPayload {
   emergencyContact?: string;
 }
 
+/** 当前登录账号本人资料。 */
+export interface Profile {
+  id: number;
+  name: string;
+  gender?: 'MALE' | 'FEMALE' | 'UNKNOWN';
+  birthday?: string;
+  phone?: string;
+  emergencyContact?: string;
+}
+
+/** 更新本人资料的可提交字段。 */
+export interface ProfileUpdatePayload {
+  name: string;
+  gender?: 'MALE' | 'FEMALE' | 'UNKNOWN';
+  birthday?: string;
+  phone?: string;
+  emergencyContact?: string;
+}
+
+/** 更新本人资料后的最小响应。 */
+export interface ProfileUpdateResult {
+  id: number;
+  name: string;
+  phone?: string;
+  updatedAt: string;
+}
+
 /** 健康档案中的最小患者资料。 */
 export interface HealthProfile {
   id: number;
@@ -124,3 +151,6 @@ export interface ConsultationDetail extends Consultation { doctor: { id: number;
 export interface Prescription { id: number; consultationId: number; doctorName: string; status: 'APPROVED'; issuedAt: string; }
 /** 已批准处方详情。 */
 export interface PrescriptionDetail extends Prescription { doctor: { id: number; name: string; title?: string }; items: { drugId: number; drugName: string; specification?: string; dosage?: string; frequency?: string; usage?: string; durationDays?: number }[]; }
+/** 药房处方库存。 */ export interface PharmacyInventory { pharmacyId:number; name:string; isDefault:boolean; items:{drugId:number;availableCount:number;unitPriceCent:number}[]; }
+/** 购药订单列表项。 */ export interface DrugOrder { id:number; orderName:string; pharmacyName:string; status:string; logisticsStatus?:string; latestLogisticsNode?:string; amountCent:number; expireAt?:string; }
+/** 购药订单详情。 */ export interface DrugOrderDetail extends DrugOrder { pharmacy:{id:number;name:string}; delivery?:{address:string;logisticsStatus:string;traces:{node:string;occurredAt:string}[]}; payment?:{id:number;status:string}; items:{drugId:number;drugName:string;quantity:number;unitPriceCent:number}[]; }

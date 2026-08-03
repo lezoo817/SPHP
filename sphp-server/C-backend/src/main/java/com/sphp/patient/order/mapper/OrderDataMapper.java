@@ -37,13 +37,31 @@ public interface OrderDataMapper {
     /** 支付成功后将单个药品锁定库存转为最终消耗。 */
     int consumeOrderLockedStock(@Param("pharmacyId") Long pharmacyId, @Param("drugId") Long drugId,
                                 @Param("quantity") Integer quantity, @Param("now") OffsetDateTime now);
-    /** 分页查询购药订单。 */
+    /**
+     * 按患者、状态和订单名称分页查询购药订单。
+     *
+     * @param patientId 已完成归属校验的就诊人 ID
+     * @param status 订单状态筛选条件
+     * @param logisticsStatus 物流状态筛选条件
+     * @param keyword 订单名称关键词
+     * @param limit 每页条数
+     * @param offset 偏移量
+     * @return 订单列表投影
+     */
     List<OrderListRecord> selectOrderList(@Param("patientId") Long patientId, @Param("status") String status,
-                                          @Param("logisticsStatus") String logisticsStatus, @Param("limit") int limit,
+                                          @Param("logisticsStatus") String logisticsStatus, @Param("keyword") String keyword, @Param("limit") int limit,
                                           @Param("offset") long offset);
-    /** 统计购药订单。 */
+    /**
+     * 按与列表相同条件统计购药订单数量。
+     *
+     * @param patientId 已完成归属校验的就诊人 ID
+     * @param status 订单状态筛选条件
+     * @param logisticsStatus 物流状态筛选条件
+     * @param keyword 订单名称关键词
+     * @return 匹配的订单数量
+     */
     long countOrderList(@Param("patientId") Long patientId, @Param("status") String status,
-                        @Param("logisticsStatus") String logisticsStatus);
+                        @Param("logisticsStatus") String logisticsStatus, @Param("keyword") String keyword);
     /** 查询购药订单详情。 */
     OrderDetailRecord selectOrderDetail(@Param("drugOrderId") Long drugOrderId);
     /** 查询订单明细。 */

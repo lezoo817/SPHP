@@ -89,17 +89,19 @@ public class OrderServiceImpl implements OrderService {
 
     /** 分页查询当前账号指定就诊人的购药订单。 */
     @Override
-    public DrugOrderPageVO listDrugOrders(Long patientId, String status, String logisticsStatus, Integer pageNo, Integer pageSize) {
+    public DrugOrderPageVO listDrugOrders(Long patientId, String status, String logisticsStatus, String keyword, Integer pageNo, Integer pageSize) {
         Long targetPatientId = resolveAccessiblePatient(CUserContext.getRequired().userId(), patientId);
         validateEnum(status, DrugOrderStatusEnum.values(), "订单状态不在允许范围内");
         validateEnum(logisticsStatus, DrugOrderLogisticsStatusEnum.values(), "物流状态不在允许范围内");
         int resolvedPageNo = pageNo == null ? OrderConstant.DEFAULT_PAGE_NO : pageNo;
         int resolvedPageSize = pageSize == null ? OrderConstant.DEFAULT_PAGE_SIZE : pageSize;
         if (resolvedPageSize > OrderConstant.MAX_PAGE_SIZE) throw parameterOutOfRange("pageSize 不能超过100");
-        List<DrugOrderPageVO.Item> records = orderDataMapper.selectOrderList(targetPatientId, status, logisticsStatus,
+        // 空白关键词不参与查询，避免无意义地影响列表与总数。
+        String normalizedKeyword = keyword == null || keyword.isBlank() ? null : keyword.trim();
+        List<DrugOrderPageVO.Item> records = orderDataMapper.selectOrderList(targetPatientId, status, logisticsStatus, normalizedKeyword,
                 resolvedPageSize, (long) (resolvedPageNo - 1) * resolvedPageSize).stream().map(this::toOrderListItem).toList();
         return DrugOrderPageVO.builder().pageNo(resolvedPageNo).pageSize(resolvedPageSize)
-                .total(orderDataMapper.countOrderList(targetPatientId, status, logisticsStatus)).records(records).build();
+                .total(orderDataMapper.countOrderList(targetPatientId, status, logisticsStatus, normalizedKeyword)).records(records).build();
     }
 
     /** 查询当前账号可访问的购药订单详情。 */
@@ -251,7 +253,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /** 转换购药订单列表项。 */
-    private DrugOrderPageVO.Item toOrderListItem(OrderListRecord record) { return DrugOrderPageVO.Item.builder().id(record.id()).pharmacyName(record.pharmacyName()).status(record.status()).logisticsStatus(record.logisticsStatus()).latestLogisticsNode(record.latestLogisticsNode()).amountCent(record.amountCent()).expireAt(record.expireAt()).build(); }
+    private DrugOrderPageVO.Item toOrderListItem(OrderListRecord record) { return DrugOrderPageVO.Item.builder().id(record.id()).orderName(record.orderName()).pharmacyName(record.pharmacyName()).status(record.status()).logisticsStatus(record.logisticsStatus()).latestLogisticsNode(record.latestLogisticsNode()).amountCent(record.amountCent()).expireAt(record.expireAt()).build(); }
     /** 转换购药订单详情。 */
     private DrugOrderDetailVO toOrderDetail(OrderDetailRecord record) { return DrugOrderDetailVO.builder().id(record.id()).status(record.status())
             .pharmacy(DrugOrderDetailVO.Pharmacy.builder().id(record.pharmacyId()).name(record.pharmacyName()).build())

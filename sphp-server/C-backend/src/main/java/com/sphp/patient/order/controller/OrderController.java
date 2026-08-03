@@ -51,12 +51,23 @@ public class OrderController {
                 () -> new IdempotencyPayload<>("购药订单已创建，请在15分钟内完成支付", orderService.createDrugOrder(request)));
         return Result.success(payload.message(), payload.data());
     }
-    /** 分页查询购药订单。 */
+    /**
+     * 分页查询购药订单。
+     *
+     * @param patientId 就诊人 ID，可不传以查询本人
+     * @param status 订单状态筛选条件
+     * @param logisticsStatus 物流状态筛选条件
+     * @param keyword 订单名称模糊查询关键词
+     * @param pageNo 页码
+     * @param pageSize 每页条数
+     * @return 当前就诊人的订单分页结果
+     */
     @GetMapping("/drug-orders") @Operation(summary = "查询购药订单列表")
     public Result<DrugOrderPageVO> listDrugOrders(@RequestParam(required = false) @Positive Long patientId,
                                                     @RequestParam(required = false) String status, @RequestParam(required = false) String logisticsStatus,
+                                                    @RequestParam(required = false) String keyword,
                                                     @RequestParam(required = false) @Positive Integer pageNo, @RequestParam(required = false) @Positive Integer pageSize) {
-        return Result.success("查询成功", orderService.listDrugOrders(patientId, status, logisticsStatus, pageNo, pageSize));
+        return Result.success("查询成功", orderService.listDrugOrders(patientId, status, logisticsStatus, keyword, pageNo, pageSize));
     }
     /** 查询购药订单详情。 */
     @GetMapping("/drug-orders/{drugOrderId}") @Operation(summary = "查询购药订单详情")

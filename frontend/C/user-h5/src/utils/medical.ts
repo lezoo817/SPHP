@@ -24,3 +24,4 @@ export function formatMedicalTime(value?: string): string {
 export function getRemainingSeconds(expireAt?: string): number {
   return expireAt ? Math.max(0, Math.floor((new Date(expireAt).getTime() - Date.now()) / 1000)) : 0;
 }
+/** 按登录时间计算购药订单的演示预计送达时间。 */ export function getDemoArrival(loginAt:string):string{return new Date(new Date(loginAt).getTime()+22*3600*1000).toLocaleString('zh-CN',{hour:'2-digit',minute:'2-digit'});}

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Bell, BookHeart, ChevronRight, ClipboardPlus, FileChartColumn, HeartPulse, KeyRound, LogOut, MapPin, MessageSquare, Pill, ShieldCheck, UsersRound } from 'lucide-react';
+import { Bell, BookHeart, ChevronRight, ClipboardPlus, FileChartColumn, HeartPulse, LogOut, MapPin, MessageSquare, Pill, ShieldCheck, UsersRound } from 'lucide-react';
 import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
+import { getMinePatientId, resolveMinePatientId, saveMinePatientId } from '../../models/mine-patient';
 import { clearSession, getSession } from '../../models/session';
 import { changePassword, logout } from '../../services/auth';
 import { getFamilyMembers } from '../../services/family';
-import type { FamilyMember } from '../../typings/api';
+import { getProfile } from '../../services/profile';
+import type { FamilyMember, Profile } from '../../typings/api';
 import { getApiErrorMessage, getRelationLabel, validatePassword } from '../../utils/form';
 
 const healthEntries = [
@@ -15,25 +17,38 @@ const healthEntries = [
   { label: '用药提醒', icon: Pill }, { label: '随访计划', icon: HeartPulse }, { label: '通知消息', icon: Bell },
 ];
 
-/** 提供“我的”首页、资料概览和已开放业务入口。 */
+/** 提供“我的”首页、专属当前就诊人资料概览和已开放业务入口。 */
 export default function MinePage() {
   const navigate = useNavigate();
+  const [profile, setProfile] = useState<Profile>();
   const [members, setMembers] = useState<FamilyMember[]>([]);
+  const [minePatientId, setMinePatientId] = useState<number>();
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [passwords, setPasswords] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
   const [submitting, setSubmitting] = useState(false);
 
-  /** 读取本人和家庭成员，用默认成员初始化资料卡。 */
-  async function loadMembers() {
+  /** 读取本人资料与家属列表，并恢复“我的”页面独立选择。 */
+  async function loadMineData() {
     setLoading(true);
-    try { setMembers(await getFamilyMembers()); }
-    catch (requestError) { setNotice(getApiErrorMessage(requestError)); }
-    finally { setLoading(false); }
+    const [profileResult, membersResult] = await Promise.allSettled([getProfile(), getFamilyMembers()]);
+    if (profileResult.status === 'fulfilled') setProfile(profileResult.value);
+    else setNotice(getApiErrorMessage(profileResult.reason));
+    if (membersResult.status === 'fulfilled') {
+      const nextMembers = membersResult.value;
+      setMembers(nextMembers);
+      const resolvedId = resolveMinePatientId(nextMembers, getMinePatientId());
+      if (resolvedId) {
+        // 被解绑成员不再存在时，回退后的本人选择同步覆盖旧会话值。
+        saveMinePatientId(resolvedId);
+        setMinePatientId(resolvedId);
+      }
+    } else setNotice(getApiErrorMessage(membersResult.reason));
+    setLoading(false);
   }
-  useEffect(() => { void loadMembers(); }, []);
-  const current = members.find((member) => member.isDefault) || members[0];
+
+  useEffect(() => { void loadMineData(); }, []);
 
   /** 提交当前密码和新密码，成功后清除已失效会话。 */
   async function submitPasswordChange() {
@@ -58,9 +73,21 @@ export default function MinePage() {
     finally { clearSession(); setSubmitting(false); navigate('/login'); }
   }
 
+  const selectedMember = members.find((member) => member.patientId === minePatientId);
+  const isSelf = selectedMember?.relation === 'SELF';
+  const current = isSelf && profile ? profile : selectedMember;
+  const currentPatientId = selectedMember?.patientId || (isSelf ? profile?.id : undefined);
+  const genderText = current?.gender === 'MALE' ? '男' : current?.gender === 'FEMALE' ? '女' : current?.gender === 'UNKNOWN' ? '未知' : '性别待完善';
+
+  /** 进入当前就诊人的资料处理入口。 */
+  function openCurrentPatientProfile() {
+    if (isSelf) navigate('/mine/profile');
+    else setNotice('家属资料请在就诊人管理中编辑');
+  }
+
   return <main className="mine-page"><header className="mine-hero"><span>我的</span><button className="more-button" aria-label="更多功能" type="button" onClick={() => setNotice('更多功能暂未开放')}>•••</button></header>
-    <section className="profile-card">{loading ? <p>正在读取资料...</p> : current ? <><div className="profile-card__top"><div><h1>{current.name}<em>{current.isDefault ? '默认就诊人' : getRelationLabel(current.relation)}</em></h1><p>{current.gender === 'MALE' ? '男' : current.gender === 'FEMALE' ? '女' : '性别待完善'} · {current.birthday || '生日待完善'}</p></div><ChevronRight color="#7a7477" /></div><div className="profile-lines"><p>登记号 <span>资料暂未完善</span></p><p>身份证 <span>资料暂未完善</span></p><p>手机号 <span>{current.phone || '资料暂未完善'}</span></p></div><div className="profile-card__footer"><button type="button" className="text-button" onClick={() => navigate('/mine/family-members')}>管理就诊人</button><button type="button" className="text-button" onClick={() => setNotice('本人资料接口暂未开放')}>查看资料 <ChevronRight size={15} /></button></div></> : <p>暂无可展示的就诊人资料</p>}</section>
-    <section className="mine-section"><h2>健康服务</h2><div className="health-grid">{healthEntries.map(({ label, icon: Icon, available }) => <button className="health-entry" key={label} type="button" onClick={() => available && current ? navigate(`/mine/health-record?patientId=${current.patientId}`) : setNotice(`${label}暂未开放`)}><Icon size={31} /><span>{label}</span></button>)}</div></section>
+    <section className="profile-card">{loading ? <p>正在读取资料...</p> : current ? <><div className="profile-card__top"><div><h1>{current.name}<em>{isSelf ? '本人' : getRelationLabel(selectedMember?.relation || '')}</em></h1><p>{genderText} · {current.birthday || '生日待完善'}</p></div><button className="profile-card__switch icon-button" type="button" aria-label="管理就诊人" onClick={() => navigate('/mine/family-members')}><ChevronRight color="#7a7477" /></button></div><div className="profile-lines"><p>手机号 <span>{current.phone || '资料暂未完善'}</span></p></div><div className="profile-card__footer"><button type="button" className="text-button" onClick={() => navigate('/mine/family-members')}>管理就诊人</button><button type="button" className="text-button" onClick={openCurrentPatientProfile}>{isSelf ? '查看资料' : '管理资料'} <ChevronRight size={15} /></button></div></> : <p>暂无可展示的就诊人资料</p>}</section>
+    <section className="mine-section"><h2>健康服务</h2><div className="health-grid">{healthEntries.map(({ label, icon: Icon, available }) => <button className="health-entry" key={label} type="button" onClick={() => available && currentPatientId ? navigate(`/mine/health-record?patientId=${currentPatientId}`) : setNotice(`${label}暂未开放`)}><Icon size={31} /><span>{label}</span></button>)}</div></section>
     <section className="mine-section"><h2>近期提醒</h2><div className="reminder-card"><p>当前暂无可联调的提醒数据</p><button type="button" className="text-button" onClick={() => setNotice('提醒服务暂未开放')}>查看</button></div></section>
     <section className="menu-card"><MenuItem icon={UsersRound} label="就诊人管理" onClick={() => navigate('/mine/family-members')} /><MenuItem icon={MapPin} label="我的地址" disabled onClick={() => setNotice('地址服务暂未开放')} /><MenuItem icon={ShieldCheck} label="账号与安全" onClick={() => setShowPasswordDialog(true)} /><MenuItem icon={MessageSquare} label="用户反馈" disabled onClick={() => setNotice('反馈服务暂未开放')} /></section>
     <button className="logout-button" disabled={submitting} type="button" onClick={submitLogout}><LogOut size={18} />退出登录</button>
