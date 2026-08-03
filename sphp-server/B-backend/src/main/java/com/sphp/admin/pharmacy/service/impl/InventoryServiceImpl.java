@@ -12,10 +12,7 @@ import com.sphp.admin.pharmacy.entity.DrugOrder;
 import com.sphp.admin.pharmacy.entity.DrugOrderItem;
 import com.sphp.admin.pharmacy.entity.Pharmacy;
 import com.sphp.admin.pharmacy.entity.PharmacyDrugStock;
-import com.sphp.admin.pharmacy.mapper.DrugOrderItemMapper;
-import com.sphp.admin.pharmacy.mapper.DrugOrderMapper;
-import com.sphp.admin.pharmacy.mapper.PharmacyDrugStockMapper;
-import com.sphp.admin.pharmacy.mapper.PharmacyMapper;
+import com.sphp.admin.pharmacy.mapper.*;
 import com.sphp.admin.pharmacy.service.InventoryService;
 import com.sphp.admin.prescription.entity.Drug;
 import com.sphp.admin.prescription.mapper.DrugMapper;
@@ -39,8 +36,8 @@ public class InventoryServiceImpl implements InventoryService {
 
     private final PharmacyDrugStockMapper stockMapper;
     private final PharmacyMapper pharmacyMapper;
-    private final DrugOrderMapper drugOrderMapper;
-    private final DrugOrderItemMapper drugOrderItemMapper;
+    private final BDrugOrderMapper drugOrderMapper;
+    private final BDrugOrderItemMapper drugOrderItemMapper;
     private final DrugMapper drugMapper;
     private final CurrentUserService currentUserService;
 
