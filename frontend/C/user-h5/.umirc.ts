@@ -14,6 +14,7 @@ export default defineConfig({
     { path: '/assistant/consultation/:consultationId', component: 'assistant/consultation' },
     { path: '/assistant/prescription/:prescriptionId', component: 'assistant/prescription' },
     { path: '/pharmacy', component: 'pharmacy/index' },
+    { path: '/pharmacy/orders', component: 'pharmacy/orders' },
     { path: '/pharmacy/prescription/:prescriptionId', component: 'pharmacy/prescription' },
     { path: '/pharmacy/order/:drugOrderId', component: 'pharmacy/order' },
     { path: '/mine', component: 'mine/index' },

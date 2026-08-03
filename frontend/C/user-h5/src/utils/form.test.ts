@@ -9,6 +9,8 @@ import {
 } from './form';
 import { filterHospitals, formatAmount, sortHospitals } from './medical';
 import { resolveSelfPatientId } from '../models/selection';
+import { buildDrugOrderListPath } from '../services/pharmacy';
+import { matchesDrugOrderTab } from './pharmacy';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -46,5 +48,16 @@ describe('挂号资源展示规则', () => {
 
   it('按关键词筛选医院名称', () => {
     expect(filterHospitals([{ name: '省人民医院' }, { name: '市中医院' }], '人民')).toEqual([{ name: '省人民医院' }]);
+  });
+});
+
+describe('购药订单展示规则', () => {
+  it('运输中同时包含已发货和运输中状态', () => {
+    expect(matchesDrugOrderTab({ id: 1, orderName: '阿莫西林', pharmacyName: '健康药房', status: 'PAID', logisticsStatus: 'SHIPPED', amountCent: 100 }, 'TRANSIT')).toBe(true);
+    expect(matchesDrugOrderTab({ id: 2, orderName: '维生素', pharmacyName: '健康药房', status: 'PAID', logisticsStatus: 'TO_RECEIVE', amountCent: 100 }, 'TRANSIT')).toBe(false);
+  });
+
+  it('订单名称关键词经过编码并传递给列表接口', () => {
+    expect(buildDrugOrderListPath({ patientId: 20001, keyword: '阿莫 西林', pageSize: 100 })).toContain('keyword=%E9%98%BF%E8%8E%AB+%E8%A5%BF%E6%9E%97');
   });
 });
