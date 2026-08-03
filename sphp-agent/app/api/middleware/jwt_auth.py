@@ -23,11 +23,9 @@ from starlette.responses import JSONResponse, Response
 
 from app.api.middleware.rate_limit import is_rate_limited, rate_limited_response
 from app.infrastructure.config.settings import get_settings
+from app.infrastructure.java_client import get_client
 
 logger = logging.getLogger(__name__)
-
-# Java token/parse 调用超时（秒）
-_AUTH_TIMEOUT = 10.0
 
 # 无效 token 防刷限流前缀（P1-5）：与用户限流键隔离，洪泛无效 token 按 IP 计数
 _AUTH_FAIL_KEY_PREFIX = "auth_fail"
@@ -57,8 +55,9 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         token = auth_header.removeprefix("Bearer ").strip()
         user_info = await _safe_parse_token(token, scope)
 
-        # 校验通过
-        if user_info is not None:
+        # 校验通过且 data 含 userId（P2：缺 userId 无法确认身份，按无效 token 处理，
+        # 避免 user_id=None + roles=[] 被编排层误判已鉴权）
+        if user_info is not None and user_info.get("userId") is not None:
             request.state.user_id = user_info.get("userId")
             request.state.account = user_info.get("account")
             request.state.scope = scope
@@ -71,7 +70,8 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             request.state.hospital_id = user_info.get("hospitalId")
             return await call_next(request)
 
-        # 携带 token 但校验失败 -> 始终 401（不降级，保持 D1 严格策略）。
+        # 携带 token 但校验失败，或 data 缺 userId（P2：无法确认身份）
+        # -> 始终 401（不降级，保持 D1 严格策略）。
         # AUTH_EXPIRED 需 Java token/parse 返回过期信号才能精确区分，
         # 当前统一归 AUTH_INVALID（同为 401，前端跳登录页）
         #
@@ -176,26 +176,29 @@ async def parse_token(token: str, scope: str) -> dict[str, Any] | None:
     url = f"{settings.java_base_url}{path}"
 
     try:
-        async with httpx.AsyncClient(timeout=_AUTH_TIMEOUT) as client:
-            resp = await client.get(
-                url,
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            if resp.status_code != 200:
-                return None
+        # P2：复用全局 Java 连接池（java_client.get_client），避免每请求新建
+        # httpx.AsyncClient 造成 TCP 握手开销；全局客户端超时 10s/connect 5s，
+        # 与原 _AUTH_TIMEOUT 一致，行为不变。
+        client = await get_client()
+        resp = await client.get(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if resp.status_code != 200:
+            return None
 
-            data = resp.json()
-            # Java 可能返回 "00000" 或 200；响应须为 dict，否则按无效处理
-            if not isinstance(data, dict):
-                logger.warning("token/parse 响应非对象: %s", type(data).__name__)
-                return None
-            code = str(data.get("code", ""))
-            if code not in ("00000", "200"):
-                return None
+        data = resp.json()
+        # Java 可能返回 "00000" 或 200；响应须为 dict，否则按无效处理
+        if not isinstance(data, dict):
+            logger.warning("token/parse 响应非对象: %s", type(data).__name__)
+            return None
+        code = str(data.get("code", ""))
+        if code not in ("00000", "200"):
+            return None
 
-            user_info = data.get("data")
-            # data 字段须为 dict（含 userId 等），防御非对象响应
-            return user_info if isinstance(user_info, dict) else None
+        user_info = data.get("data")
+        # data 字段须为 dict（含 userId 等），防御非对象响应
+        return user_info if isinstance(user_info, dict) else None
 
     except (httpx.HTTPError, ValueError) as e:
         # ValueError: resp.json() 解析失败（Java 返回非 JSON）

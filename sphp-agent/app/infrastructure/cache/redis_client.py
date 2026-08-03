@@ -61,12 +61,13 @@ async def set_confirm_token(
 ) -> None:
     """存储确认 token（系分 §5.5，5min TTL，一次性消费）。
 
-    Redis key 模式: confirm:{session_id}:{tool_name}:{token_id}
+    Redis key 模式: confirm:{{session_id}}:{tool_name}:{token_id}
+    （session_id 带 {} 边界定界符，P2 防冒号前缀跨会话越权）
     """
     s = get_settings()
     ttl = ttl or s.confirm_token_ttl
 
-    key = f"{CONFIRM_TOKEN_PREFIX}:{session_id}:{tool_name}:{token_id}"
+    key = f"{CONFIRM_TOKEN_PREFIX}:{_delimit_session(session_id)}:{tool_name}:{token_id}"
     value = json.dumps(
         {
             "token_id": token_id,
@@ -146,8 +147,11 @@ async def get_and_delete_confirm_token_by_token(
 
     client = get_redis()
     # Lua 脚本只用 ARGV（session/token/user_id 均为参数），numkeys=0
-    # session_id 先做 glob 转义：防止前端注入 glob 元字符越权 SCAN 其他会话
-    result = await client.eval(lua_script, 0, _escape_glob(session_id), token_id, expected_user_id)
+    # session_id 先做 glob 转义 + 边界定界（P2）：防 glob 元字符注入，
+    # 且 {} 定界符消除冒号前缀跨会话越权
+    result = await client.eval(
+        lua_script, 0, _delimit_session(session_id), token_id, expected_user_id
+    )
     if result is None:
         return None
     return cast(dict[str, Any], json.loads(result))
@@ -177,6 +181,34 @@ def _escape_glob(text: str) -> str:
     return _GLOB_META.sub(r"\\\1", text)
 
 
+def _delimit_session(session_id: str) -> str:
+    """给 session_id 加边界定界符，防冒号前缀跨会话越权（P2，✓实测复现）。
+
+    原 SCAN pattern 为 ``confirm:{session}:*``：session "abc" 会匹配
+    ``confirm:abc:def:...``（session_id 前缀为 abc 的其他会话）的 key，
+    客户端可主动构造前缀 session_id 越权读取/删除他人回执。修复：写入与
+    匹配统一把 session 包裹进 ``{...}`` 定界符：
+
+    - 写入 key: ``confirm_done:{{abc}}:...``
+    - 匹配 pattern: ``confirm_done:{{abc}}:*``（``{}`` 在 Redis glob 中为
+      字面量，不参与通配）
+
+    由于定界符紧贴 session 两侧，{abc} 只能是完整会话标识，无法再前缀
+    匹配 {abc:def}，从根上消除越权。session 自身若含 glob 元字符或 ``{}``
+    定界符则先转义，防止闭合定界或注入通配。
+
+    Args:
+        session_id: 原始 session_id（前端不可信）。
+
+    Returns:
+        str: 包裹定界符且已转义的 session，可安全拼入 key 与 SCAN pattern。
+    """
+    escaped = _GLOB_META.sub(r"\\\1", session_id)
+    # {} 为字面量但需转义 session 内的花括号，防止闭合定界符或伪造额外层级
+    escaped = escaped.replace("{", r"\{").replace("}", r"\}")
+    return "{" + escaped + "}"
+
+
 CONFIRM_DONE_PREFIX = "confirm_done"
 
 
@@ -184,6 +216,7 @@ async def set_confirm_done(
     session_id: str,
     tool_name: str,
     action_result: object,
+    user_id: str = "",
     ttl: int | None = None,
 ) -> None:
     """记录已确认并执行成功的操作（T-M3-L1，供下一轮对话引用）。
@@ -196,14 +229,16 @@ async def set_confirm_done(
         session_id: 会话 ID。
         tool_name: 已执行的 L2 工具名。
         action_result: 工具执行返回的业务数据（Java 信封内层）。
+        user_id: 操作归属用户 ID（P2 安全：写入归属，匿名传空串）。
         ttl: 回执 TTL（秒），默认 settings.confirm_done_ttl。
     """
     s = get_settings()
     ttl = ttl or s.confirm_done_ttl
 
-    key = f"{CONFIRM_DONE_PREFIX}:{session_id}:{tool_name}:{uuid.uuid4()}"
+    # session_id 带 {} 边界定界符（P2 防冒号前缀跨会话越权），与消费端一致
+    key = f"{CONFIRM_DONE_PREFIX}:{_delimit_session(session_id)}:{tool_name}:{uuid.uuid4()}"
     value = json.dumps(
-        {"tool_name": tool_name, "action_result": action_result},
+        {"tool_name": tool_name, "action_result": action_result, "user_id": user_id},
         ensure_ascii=False,
     )
 
@@ -211,21 +246,31 @@ async def set_confirm_done(
     await client.set(key, value, ex=ttl)
 
 
-async def get_and_delete_confirm_done(session_id: str) -> list[dict[str, Any]]:
-    """读取并删除某会话全部已确认操作回执（一次性消费，Lua 原子）。
+async def get_and_delete_confirm_done(
+    session_id: str, expected_user_id: str = ""
+) -> list[dict[str, Any]]:
+    """读取并删除当前用户在某会话的已确认操作回执（一次性消费，Lua 原子）。
 
     注入会话上下文后即删除——注入的 system 消息随 LangGraph checkpointer
     持久化到消息历史，后续轮次持续可见，无需重复注入。
 
+    P2 安全（跨用户读 PHI 防护）：回执 value 内写入归属 ``user_id``，
+    消费时仅删除并返回属于 ``expected_user_id`` 的记录。此前仅按 session_id
+    前缀匹配，知道 session_id 即可跨用户读取 action_result（含检查报告等
+    患者数据）；绑定 user_id 后，session_id 泄露不足以读到他人数据。
+
     Args:
         session_id: 会话 ID，匹配前缀 ``confirm_done:{session_id}:*``。
+        expected_user_id: 当前请求用户 ID（匿名传空串），与值内 user_id 比对，
+            不匹配的记录保留（留给真正归属用户，不会误删）。
 
     Returns:
-        list[dict]: 全部回执记录列表（含 tool_name / action_result）；
+        list[dict]: 属于当前用户的回执记录列表（含 tool_name / action_result）；
             无记录时返回空列表。
     """
     lua_script = """
     local session_id = ARGV[1]
+    local expected_user_id = ARGV[2]
     local pattern = 'confirm_done:' .. session_id .. ':*'
     local cursor = '0'
     local results = {}
@@ -237,8 +282,12 @@ async def get_and_delete_confirm_done(session_id: str) -> list[dict[str, Any]]:
         for i, key in ipairs(keys) do
             local v = redis.call('GET', key)
             if v ~= false then
-                redis.call('DEL', key)
-                table.insert(results, v)
+                local data = cjson.decode(v)
+                -- 归属校验（P2）：仅消费属于当前用户的回执，防止跨用户读 action_result（含 PHI）
+                if data.user_id == expected_user_id then
+                    redis.call('DEL', key)
+                    table.insert(results, v)
+                end
             end
         end
     until cursor == '0'
@@ -250,8 +299,9 @@ async def get_and_delete_confirm_done(session_id: str) -> list[dict[str, Any]]:
     """
 
     client = get_redis()
-    # session_id 先做 glob 转义：防止注入 '*' 等元字符匹配并删除全部会话回执
-    result = await client.eval(lua_script, 0, _escape_glob(session_id))
+    # session_id 先做 glob 转义 + 边界定界（P2）：防 glob 元字符注入、
+    # 防冒号前缀跨会话越权匹配
+    result = await client.eval(lua_script, 0, _delimit_session(session_id), expected_user_id)
     if result is None:
         return []
     return [json.loads(v) for v in result]

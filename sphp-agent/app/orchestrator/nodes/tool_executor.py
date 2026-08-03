@@ -90,7 +90,8 @@ async def tool_executor(state: AgentState) -> dict[str, Any]:
                 {
                     "tool_name": tool_calls[i].get("name", ""),
                     "success": False,
-                    "error": {"code": "TOOL_FAILED", "message": str(result)},
+                    # P2 脱敏：str(e) 可能含内部路径/连接串，详情仅日志
+                    "error": {"code": "TOOL_FAILED", "message": _safe_error_message(result)},
                     # 携带参数，供 SSE 层反推 action 事件（子图循环会覆盖 tool_calls）
                     "arguments": arguments,
                     "duration_ms": 0,
@@ -110,6 +111,23 @@ async def tool_executor(state: AgentState) -> dict[str, Any]:
     # 传 None（last-write-wins）正常清场，历史结果不会污染下一轮。
     previous = state.get("tool_results") or []
     return {"tool_results": previous + formatted}
+
+
+def _safe_error_message(exc: BaseException) -> str:
+    """构造对外的工具失败提示（P2 脱敏）。
+
+    ``str(exc)`` 可能含内部文件路径、连接串、SQL 等敏感细节，直接透传给
+    LLM / SSE observation 会泄露系统内部结构。因此详情仅记录到服务端日志
+    （含异常类型与信息），对外统一返回通用提示，不暴露任何内部信息。
+
+    Args:
+        exc: 工具执行抛出的异常。
+
+    Returns:
+        str: 对外脱敏后的通用错误提示。
+    """
+    logger.error("工具执行异常（详情仅日志，类型=%s）: %s", type(exc).__name__, exc)
+    return "工具执行失败，请稍后重试"
 
 
 def _classify_tool_result(result: dict[str, Any]) -> tuple[bool, dict[str, Any] | None]:
@@ -197,7 +215,8 @@ async def _execute_mcp(
         return {
             "tool_name": tool_name,
             "success": False,
-            "error": {"code": "TOOL_FAILED", "message": str(e)},
+            # P2 脱敏：str(e) 可能含内部文件路径/连接串，详情仅日志
+            "error": {"code": "TOOL_FAILED", "message": _safe_error_message(e)},
             "duration_ms": round(duration_ms),
         }
 

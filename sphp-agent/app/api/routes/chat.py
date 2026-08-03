@@ -98,8 +98,10 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
     # 注入对话上下文，使"确认后追问"保持连续。
     # Redis 故障时优雅降级：回执读取失败返回 []，不影响对话主链路
     # （与限流 fail-open、L2 转 risk_flags 的降级口径一致）
+    # P2 安全：按 user_id 归属过滤（匿名传空串），防止跨用户读回执（含 PHI）。
+    request_user_id = str(getattr(request.state, "user_id", "") or "")
     try:
-        confirmed_actions = await get_and_delete_confirm_done(session_id)
+        confirmed_actions = await get_and_delete_confirm_done(session_id, request_user_id)
     except Exception:
         logger.warning("读取 confirm_done 回执失败（Redis 不可用），降级为空列表")
         confirmed_actions = []
@@ -192,10 +194,19 @@ async def _sse_generator(
     - 结束                            -> ``event: done``（含 usage token 统计，M6-B4）
     """
     graph = _get_graph()
-    thread_id = session_id or str(uuid4())
-    config = {"configurable": {"thread_id": thread_id}}
+    # P2 归属隔离：LangGraph thread_id 与会话锁绑定 (user_id, session_id)，
+    # 防止"知道 session_id 即跨用户读/写他人会话 checkpoint 历史"。
+    # 外部 session_id 契约不变（done 事件仍返回原始 session_id），thread_key
+    # 仅用于 checkpoint 命名空间与锁键；匿名用户统一 anon 前缀。
+    user_id = initial_state.get("user_id")
+    if session_id:
+        # 前缀 user_id（匿名统一 anon），避免跨用户同名 session_id 共享会话
+        thread_key = f"{'anon' if user_id is None else user_id}:{session_id}"
+    else:
+        thread_key = str(uuid4())
+    config = {"configurable": {"thread_id": thread_key}}
 
-    logger.info("[SSE] 开始流程执行, thread_id=%s", thread_id)
+    logger.info("[SSE] 开始流程执行, thread_id=%s", thread_key)
     streamed_reply = False
     # 本轮 LLM token 用量（M6-B4 done.usage）：langgraph 首个 chunk 含
     # input_tokens，后续 chunk 只递增 output_tokens
@@ -204,7 +215,8 @@ async def _sse_generator(
     # P1-9 会话级串行锁：同 session 并发请求排队执行，防止交错读写同一
     # checkpoint 互相覆盖（checkpointer 锁 per-instance，无法跨请求协调）。
     # 锁持有期间本生成器独占该会话的图执行；不同会话互不影响。
-    lock = await _get_session_lock(thread_id)
+    # P2：锁键同样用 (user_id, session_id) 命名空间，不同用户同 session_id 不共享锁。
+    lock = await _get_session_lock(thread_key)
     lock_acquired = False
     try:
         try:
@@ -213,7 +225,7 @@ async def _sse_generator(
         except BaseException:
             # 等待锁期间被取消/客户端断开（GeneratorExit）：未持有锁，
             # 归还引用计数后向上传播，锁不会泄漏。
-            await _release_session_lock(thread_id)
+            await _release_session_lock(thread_key)
             raise
 
         try:
@@ -282,7 +294,7 @@ async def _sse_generator(
                         if content:
                             yield _sse("message", {"delta": content})
 
-            logger.info("[SSE] 流程完成, session_id=%s", thread_id)
+            logger.info("[SSE] 流程完成, thread_id=%s", thread_key)
             # 流式回复后补推医疗安全声明（不在 LLM 流中，确保前端必见）
             if streamed_reply:
                 yield _sse("message", {"delta": MEDICAL_DISCLAIMER})
@@ -292,7 +304,7 @@ async def _sse_generator(
             # 必须 return 而非 raise + finally 中 yield —— 生成器关闭（GeneratorExit
             # 传播）期间在 finally 里 yield 会抛 "generator ignored GeneratorExit"
             # RuntimeError，生产必现（客户端断连刷日志/连接清理异常）。
-            logger.warning("[SSE] 客户端断开连接, session_id=%s", thread_id)
+            logger.warning("[SSE] 客户端断开连接, thread_id=%s", thread_key)
             return
         except Exception as e:
             logger.error("[SSE] 异常: %s\n%s", e, traceback.format_exc())
@@ -304,10 +316,11 @@ async def _sse_generator(
         # P1-3：done 事件移至正常/异常兜底路径（非 finally），生成器迭代期
         # yield 是安全的；M6-B4：携带本轮 LLM token 用量（无任何 LLM chunk 时
         # usage 为 None）。客户端断开时提前 return，不执行到此处。
+        # P2：返回原始 session_id（外部契约），而非内部命名空间的 thread_key。
         _usage = {k: v for k, v in usage.items() if v} or None
         yield _sse(
             "done",
-            {"session_id": thread_id, "trace_id": trace_id, "usage": _usage},
+            {"session_id": session_id, "trace_id": trace_id, "usage": _usage},
         )
 
     finally:
@@ -316,9 +329,9 @@ async def _sse_generator(
         # 关闭期间 yield，不触发 P1-3 的 GeneratorExit 陷阱）。
         if lock_acquired:
             lock.release()
-        await _release_session_lock(thread_id)
+        await _release_session_lock(thread_key)
         # 清理段：仅日志，不 yield。
-        logger.info("[SSE] 生成器退出, session_id=%s", thread_id)
+        logger.info("[SSE] 生成器退出, thread_id=%s", thread_key)
 
 
 def _sse(event: str, payload: dict[str, Any]) -> str:
@@ -579,8 +592,9 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
 
     # M5-T4（T-M3-L1）：写入确认成功回执，供下一轮对话引用（此操作是独立
     # HTTP 请求，结果不进 graph 状态；Redis 回执 + 下轮注入保证对话连续）
+    # P2 安全：写入归属 user_id，供下一轮消费时按归属过滤。
     try:
-        await set_confirm_done(req.session_id, tool_name, result.get("data"))
+        await set_confirm_done(req.session_id, tool_name, result.get("data"), user_id)
     except Exception:
         logger.warning("写入 confirm_done 回执失败: tool=%s", tool_name)
 
