@@ -1,8 +1,9 @@
 """业务子图共享构造（系分 §5.2.1）。
 
 4 个业务子图（导诊 / 挂号 / 问诊 / 购药）共享
-``tool_caller -> safety_check -> tool_executor`` 的骨架，差异在于后续注入的
-工具集（待子图分化时在各自文件覆盖）。
+``tool_caller -> safety_check -> tool_executor`` 的骨架，差异在于各自注入的
+工具白名单（tool_names）——不同业务场景只绑定本场景的 L1/L2 工具，
+减少 LLM 误选其他业务的创建型操作，prompt 更聚焦。
 
 子图循环：tool_executor 后 route_continue 判断是否需继续调用工具。
 如 LLM 返回更多 tool_calls 则循环回 tool_caller，最多 5 轮。
@@ -10,6 +11,7 @@
 
 from typing import Any
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 
 from app.orchestrator.nodes.safety import safety_check
@@ -47,10 +49,34 @@ def route_continue(state: AgentState) -> str:
     return "end"
 
 
-def build_tool_subgraph() -> Any:
-    """构造 tool_caller -> safety -> tool_executor -> (循环/结束) 子图。"""
+def _bind_tool_caller(allowed_tools: list[str] | None):
+    """构造绑定工具白名单的 tool_caller 节点函数（闭包，兼容 LangGraph 传参）。
+
+    Args:
+        allowed_tools: 子图工具白名单；None 表示不限（绑定 scope 全量 L1/L2）。
+
+    Returns:
+        Callable: 接收 (state, config) 的异步节点函数。
+    """
+
+    async def _caller(state: AgentState, config: RunnableConfig | None = None) -> dict[str, Any]:
+        return await tool_caller(state, allowed_tools=allowed_tools)
+
+    return _caller
+
+
+def build_tool_subgraph(tool_names: list[str] | None = None) -> Any:
+    """构造 tool_caller -> safety -> tool_executor -> (循环/结束) 子图。
+
+    Args:
+        tool_names: 子图工具白名单（系分 §5.2.1 各业务场景专属工具集），
+            各业务子图文件传入各自的工具名列表；None 表示不限定。
+
+    Returns:
+        Any: 编译后的 LangGraph CompiledGraph。
+    """
     builder = StateGraph(AgentState)
-    builder.add_node("tool_caller", tool_caller)
+    builder.add_node("tool_caller", _bind_tool_caller(tool_names))
     builder.add_node("safety_check", safety_check)
     builder.add_node("tool_executor", tool_executor)
 
