@@ -534,5 +534,83 @@ declare global {
 
     /** 库存预警项 */
     type AlertItem = InventoryItem;
+
+    // ===================== 患者管理 =====================
+
+    /** 患者列表项 */
+    interface PatientListItem {
+      id: number;
+      name: string;
+      gender: 'MALE' | 'FEMALE' | 'UNKNOWN';
+      age: number;
+      lastVisitDate: string;
+    }
+
+    /** 患者列表查询参数 */
+    interface PatientListParams extends PageParams {
+      name?: string;
+    }
+
+    /** 患者详情 - 基本信息 */
+    interface PatientDetailInfo {
+      id: number;
+      name: string;
+      gender: string;
+      dateOfBirth: string;
+      phone: string;
+      emergencyContact: string;
+      allergies: AllergyInfo[];
+      medicalHistories: MedicalHistoryInfo[];
+    }
+
+    /** 就诊记录项 */
+    interface PatientVisitItem {
+      consultId: number;
+      visitDate: string;
+      doctorName: string;
+      deptName: string;
+      summary?: string;
+      status: string;
+      createdAt: string;
+    }
+
+    /** 历史处方项 */
+    interface PatientPrescriptionItem {
+      id: number;
+      consultId: number;
+      doctorName: string;
+      status: string;
+      itemCount: number;
+      issuedAt?: string;
+      createdAt: string;
+    }
+
+    /** 用药计划项 */
+    interface MedicationPlanItem {
+      id: number;
+      drugName: string;
+      dosage: string;
+      frequency: string;
+      usageMethod: string;
+      status: 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+      nextRemindAt?: string;
+      createdAt: string;
+    }
+
+    /** 随访计划项 */
+    interface FollowUpPlanItem {
+      id: number;
+      followUpType: string;
+      content: string;
+      dueAt: string;
+      status: 'PENDING_CONFIRM' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
+      createdAt: string;
+    }
+
+    /** 当前用药与随访响应 */
+    interface PatientMedicationResult {
+      medicationPlans: MedicationPlanItem[];
+      followUpPlans: FollowUpPlanItem[];
+    }
   }
 }
