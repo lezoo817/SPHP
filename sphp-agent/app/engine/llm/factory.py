@@ -11,8 +11,9 @@ Embedding 工厂已移至 app.engine.rag.embedder。
 import logging
 
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 
-from app.infrastructure.config.settings import get_settings
+from app.infrastructure.config.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +41,14 @@ def build_llm(provider: str | None = None, temperature: float | None = None) -> 
 
     return ChatOpenAI(
         model=model,
-        api_key=api_key,
+        api_key=SecretStr(api_key),
         base_url=base_url,
         temperature=temperature,
         streaming=True,
     )
 
 
-def _resolve_llm_config(settings, primary: str) -> tuple[str, str, str]:
+def _resolve_llm_config(settings: Settings, primary: str) -> tuple[str, str, str]:
     """按优先级解析可用供应商的 (api_key, base_url, model)。
 
     主供应商优先，其 API key 缺失时按 ``_FALLBACK_ORDER`` 降级到首个

@@ -4,6 +4,7 @@ Agent 工具调用此模块完成 RAG 检索，将医疗知识作为上下文注
 """
 
 import logging
+from typing import Any
 
 from app.engine.rag.vectorstore import get_vectorstore
 from app.infrastructure.config.settings import get_settings
@@ -11,7 +12,7 @@ from app.infrastructure.config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 
-async def search_knowledge(query: str, top_k: int | None = None) -> list[dict]:
+async def search_knowledge(query: str, top_k: int | None = None) -> list[dict[str, Any]]:
     """根据自然语言 query 检索最相关的知识片段。
 
     Args:
@@ -56,7 +57,7 @@ async def search_knowledge(query: str, top_k: int | None = None) -> list[dict]:
         return []
 
 
-def format_context(results: list[dict]) -> str:
+def format_context(results: list[dict[str, Any]]) -> str:
     """将检索结果拼成可直接塞进 prompt 的上下文字符串。"""
     if not results:
         return "（未检索到相关知识）"
