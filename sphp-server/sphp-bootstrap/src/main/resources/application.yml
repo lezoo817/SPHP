@@ -98,3 +98,6 @@ sphp:
   idempotency:
     success-ttl-seconds: ${dev.sphp.idempotency.success-ttl-seconds}
     processing-ttl-seconds: ${dev.sphp.idempotency.processing-ttl-seconds}
+  notification:
+    # C端用药与随访提醒扫描间隔，单位毫秒。
+    scan-interval-millis: ${dev.sphp.notification.scan-interval-millis}

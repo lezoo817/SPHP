@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * C端处方列表、详情与处方解读接口。
  */
-@RestController
+@RestController("cPrescriptionController")
 @Validated
 @RequestMapping("/c/v1")
 @RequiredArgsConstructor

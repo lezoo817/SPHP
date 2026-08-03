@@ -26,6 +26,15 @@ public final class CAuthConstant {
     /** 图形验证码挑战标识前缀 */
     public static final String CAPTCHA_CHALLENGE_PREFIX = "cap_";
 
+    /** 验证码图片宽度 */
+    public static final int CAPTCHA_WIDTH = 120;
+    /** 验证码图片高度 */
+    public static final int CAPTCHA_HEIGHT = 40;
+    /** 验证码字符数量 */
+    public static final int CAPTCHA_LENGTH = 4;
+    /** 验证码干扰线数量 */
+    public static final int CAPTCHA_LINE_COUNT = 30;
+
     /**
      * 防止常量类被实例化。
      */

@@ -9,6 +9,7 @@ import com.sphp.patient.registration.mapper.RegisteringPaymentOrderMapper;
 import com.sphp.patient.registration.mapper.RegisteringWaitlistMapper;
 import com.sphp.patient.registration.support.RegisteringSlotLockService;
 import com.sphp.patient.registration.config.RegistrationProperties;
+import com.sphp.patient.notification.mq.producer.NotificationEventProducer;
 import org.springframework.context.ApplicationEventPublisher;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,8 @@ class RegisteringServiceImplTest {
         RegistrationProperties properties = new RegistrationProperties();
         properties.setPaymentTimeout(900);
         RegisteringServiceImpl service = new RegisteringServiceImpl(dataMapper, appointmentMapper, paymentMapper,
-                slotLockService, waitlistMapper, properties, mock(ApplicationEventPublisher.class));
+                slotLockService, waitlistMapper, properties, mock(ApplicationEventPublisher.class),
+                mock(NotificationEventProducer.class));
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
         when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
         when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);

@@ -189,8 +189,10 @@ import com.sphp.admin.pharmacy.entity.DrugOrder;
 import com.sphp.admin.pharmacy.entity.DrugOrderItem;
 import com.sphp.admin.pharmacy.entity.Pharmacy;
 import com.sphp.admin.pharmacy.entity.PharmacyDrugStock;
-import com.sphp.admin.pharmacy.mapper.DrugOrderItemMapper;
-import com.sphp.admin.pharmacy.mapper.DrugOrderMapper;
+
+import com.sphp.admin.pharmacy.mapper.BDrugOrderItemMapper;
+import com.sphp.admin.pharmacy.mapper.BDrugOrderMapper;
+
 import com.sphp.admin.pharmacy.mapper.PharmacyDrugStockMapper;
 import com.sphp.admin.pharmacy.mapper.PharmacyMapper;
 import com.sphp.admin.pharmacy.service.InventoryService;

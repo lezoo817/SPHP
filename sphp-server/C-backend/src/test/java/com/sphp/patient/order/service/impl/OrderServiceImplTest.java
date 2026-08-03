@@ -12,6 +12,7 @@ import com.sphp.patient.order.service.OrderService;
 import com.sphp.patient.order.support.OrderStockLockService;
 import com.sphp.patient.order.vo.DrugOrderPageVO;
 import com.sphp.patient.registration.config.RegistrationProperties;
+import com.sphp.patient.notification.mq.producer.NotificationEventProducer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
@@ -30,5 +31,5 @@ class OrderServiceImplTest {
         DrugOrderPageVO result=service.listDrugOrders(null,"PENDING_PAYMENT",null," 阿莫西林 ",null,null);
         assertEquals(1L,result.getTotal()); assertEquals(15001L,result.getRecords().getFirst().getId()); assertEquals("阿莫西林等 2 种药品",result.getRecords().getFirst().getOrderName()); assertEquals(20,result.getPageSize());
     }
-    /** 创建购药服务测试对象。 */ private OrderService service(OrderDataMapper mapper){ RegistrationProperties properties=new RegistrationProperties(); properties.setPaymentTimeout(900); return new OrderServiceImpl(mapper,mock(DrugOrderMapper.class),mock(DrugOrderItemMapper.class),mock(DrugOrderPaymentMapper.class),mock(OrderStockLockService.class),properties,mock(ApplicationEventPublisher.class)); }
+    /** 创建购药服务测试对象。 */ private OrderService service(OrderDataMapper mapper){ RegistrationProperties properties=new RegistrationProperties(); properties.setPaymentTimeout(900); return new OrderServiceImpl(mapper,mock(DrugOrderMapper.class),mock(DrugOrderItemMapper.class),mock(DrugOrderPaymentMapper.class),mock(OrderStockLockService.class),properties,mock(ApplicationEventPublisher.class),mock(NotificationEventProducer.class)); }
 }

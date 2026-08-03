@@ -29,6 +29,8 @@ import com.sphp.patient.registration.vo.RegisteringPaymentStatusVO;
 import com.sphp.patient.registration.dto.RegisteringWaitlistCreateRequest;
 import com.sphp.patient.registration.dto.RegisteringPaymentSimulateRequest;
 import com.sphp.patient.registration.event.RegisteringAppointmentLockedEvent;
+import com.sphp.patient.notification.mq.producer.NotificationEventProducer;
+import com.sphp.patient.common.enums.NotificationTypeEnum;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -57,6 +59,7 @@ public class RegisteringServiceImpl implements RegisteringService {
     private final RegisteringWaitlistMapper waitlistMapper;
     private final RegistrationProperties registrationProperties;
     private final ApplicationEventPublisher eventPublisher;
+    private final NotificationEventProducer notificationEventProducer;
 
     /**
      * 创建挂号锁定订单并生成待支付单。
@@ -108,6 +111,9 @@ public class RegisteringServiceImpl implements RegisteringService {
             }
             // 事务提交后由监听器投递延迟消息，支付完成前自动触发超时检查。
             eventPublisher.publishEvent(RegisteringAppointmentLockedEvent.registeringOf(appointment.getId(), userId));
+            // 锁号成功后异步生成待支付通知，通知写入不会阻塞订单主事务。
+            notificationEventProducer.publishNotification("APPOINTMENT_LOCKED", appointment.getId(), userId, patientId,
+                    NotificationTypeEnum.APPOINTMENT, "挂号订单待支付", "请在规定时间内完成支付。");
             return RegisteringAppointmentCreateVO.builder()
                     .appointmentId(appointment.getId())
                     .status(appointment.getStatus())
@@ -180,6 +186,8 @@ public class RegisteringServiceImpl implements RegisteringService {
         waitlist.setPatientId(patientId); waitlist.setSlotId(request.getSlotId()); waitlist.setQueueNo(queueNo);
         waitlist.setStatus(RegisteringWaitlistStatusEnum.WAITING.name());
         if (waitlistMapper.insert(waitlist) != 1) throw systemError("候补登记失败");
+        notificationEventProducer.publishNotification("APPOINTMENT_WAITLIST_CREATED", waitlist.getId(), userId, patientId,
+                NotificationTypeEnum.APPOINTMENT, "候补登记成功", "已提交候补登记，出现可用号源时将通知您。");
         return RegisteringWaitlistCreateVO.builder().waitlistId(waitlist.getId()).slotId(waitlist.getSlotId())
                 .status(waitlist.getStatus()).queueNo(queueNo).build();
     }
@@ -208,6 +216,9 @@ public class RegisteringServiceImpl implements RegisteringService {
                 || dataMapper.registeringMarkSnapshotSold(payment.snapshotId(), now) != 1) {
             throw new CAuthException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, "支付单状态已变化");
         }
+        notificationEventProducer.publishNotification("APPOINTMENT_PAYMENT_SUCCESS", payment.appointmentId(),
+                payment.payerUserId(), payment.patientId(), NotificationTypeEnum.APPOINTMENT,
+                "挂号支付成功", "您的挂号订单已支付成功。");
         return RegisteringPaymentSuccessVO.builder().paymentId(paymentId).status(RegisteringPaymentStatusEnum.SUCCESS.name()).paidAt(now).build();
     }
 

@@ -14,6 +14,8 @@ import { matchesDrugOrderTab } from './pharmacy';
 import { hasSearchKeyword, resolveInitialDepartment } from './home-search';
 import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
 import { resolveMinePatientId } from '../models/mine-patient';
+import { isSessionTokenExpired, type SessionState } from '../models/session';
+import { buildDoctorPagePath, findDoctorById, getDoctorScheduleDates } from './doctor';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -107,5 +109,32 @@ describe('我的页面就诊人选择规则', () => {
 
   it('家属失效后回退本人', () => {
     expect(resolveMinePatientId(members, 99)).toBe(1);
+  });
+});
+
+describe('登录会话有效期规则', () => {
+  const session: SessionState = { accessToken: 'access', refreshToken: 'refresh', expiresIn: 60, user: { id: 1, account: 'patient' }, loginAt: '2026-08-03T00:00:00.000Z', accessTokenIssuedAt: '2026-08-03T00:00:00.000Z' };
+
+  it('有效令牌在过期时间前可继续访问', () => {
+    expect(isSessionTokenExpired(session, Date.parse('2026-08-03T00:00:59.000Z'))).toBe(false);
+  });
+
+  it('令牌缺失或超过 expiresIn 后视为失效', () => {
+    expect(isSessionTokenExpired(null)).toBe(true);
+    expect(isSessionTokenExpired(session, Date.parse('2026-08-03T00:01:00.000Z'))).toBe(true);
+  });
+});
+
+describe('医生个人挂号页规则', () => {
+  it('生成连续七天的真实号源日期', () => {
+    expect(getDoctorScheduleDates(new Date(2026, 7, 3)).map((item) => item.value)).toEqual(['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07', '2026-08-08', '2026-08-09']);
+  });
+
+  it('携带科室上下文进入医生个人页', () => {
+    expect(buildDoctorPagePath(11, 22)).toBe('/assistant/doctor/11?departmentId=22');
+  });
+
+  it('深链接回退查询时按医生 ID 定位资料', () => {
+    expect(findDoctorById(2, [{ id: 1, name: '甲', registrationFeeCent: 100, availableCount: 1 }, { id: 2, name: '乙', registrationFeeCent: 100, availableCount: 0, departmentId: 3 }])?.departmentId).toBe(3);
   });
 });
