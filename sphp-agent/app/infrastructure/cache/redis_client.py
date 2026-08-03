@@ -266,6 +266,10 @@ async def check_rate_limit(user_id: str, limit: int, window: int = 60) -> bool:
     Bug 5 修复：使用 Lua 脚本单次往返完成"清旧 + 计数 + 条件写入"，
     被拒绝的请求不会写入 ZADD（不会延长锁定时间）。
 
+    P1-4 修复：ZADD member 由 ``now`` 改为 ``now:<随机后缀>``。原实现
+    member=score=now，同一 tick（time.time() 分辨率内）到达的多个请求 member
+    相同，ZADD 按 member 去重合并为一条，窗口计数被低估、突发流量漏放。
+
     Args:
         user_id: 用户标识，构造 key rate_limit:{user_id}。
         limit: 窗口内允许的最大请求数。
@@ -283,7 +287,7 @@ async def check_rate_limit(user_id: str, limit: int, window: int = 60) -> bool:
     redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
     local count = redis.call('ZCARD', key)
     if count < limit then
-        redis.call('ZADD', key, now, now)
+        redis.call('ZADD', key, now, ARGV[4])
         redis.call('EXPIRE', key, window)
         return 1
     end
@@ -295,5 +299,7 @@ async def check_rate_limit(user_id: str, limit: int, window: int = 60) -> bool:
     import time
 
     now = time.time()
-    result = await client.eval(lua_script, 1, key, str(limit), str(window), str(now))
+    # 随机后缀保证同一 tick 内 member 唯一（score 仍为 now，可滑动窗口剪枝）
+    member = f"{now}:{uuid.uuid4().hex}"
+    result = await client.eval(lua_script, 1, key, str(limit), str(window), str(now), member)
     return bool(result == 1)
