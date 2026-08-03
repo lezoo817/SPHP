@@ -1,0 +1,7 @@
+import type { DrugOrder, DrugOrderDetail, PageData, PharmacyInventory } from '../typings/api'; import { request } from './request';
+/** 查询处方的院内药房库存。 */ export function getInventory(patientId:number|undefined,prescriptionId:number):Promise<PharmacyInventory[]>{return request(`/c/v1/pharmacies/inventory?patientId=${patientId||''}&prescriptionId=${prescriptionId}`,{method:'GET'});}
+/** 创建固定演示地址的购药订单。 */ export function createDrugOrder(payload:{patientId?:number;prescriptionId:number;pharmacyId:number;deliveryAddress:string},key:string):Promise<{drugOrderId:number;paymentId:number}>{return request('/c/v1/drug-orders',{method:'POST',body:payload,headers:{'X-Idempotency-Key':key}});}
+/** 查询当前就诊人的购药订单。 */ export function getDrugOrders(patientId?:number):Promise<PageData<DrugOrder>>{return request(`/c/v1/drug-orders?patientId=${patientId||''}&pageNo=1&pageSize=20`,{method:'GET'});}
+/** 查询购药订单详情。 */ export function getDrugOrder(id:number):Promise<DrugOrderDetail>{return request(`/c/v1/drug-orders/${id}`,{method:'GET'});}
+/** 取消待支付购药订单。 */ export function cancelDrugOrder(id:number,key:string):Promise<void>{return request(`/c/v1/drug-orders/${id}/cancel`,{method:'POST',headers:{'X-Idempotency-Key':key}});}
+/** 确认购药订单收货。 */ export function confirmReceipt(id:number,key:string):Promise<void>{return request(`/c/v1/drug-orders/${id}/confirm-receipt`,{method:'POST',headers:{'X-Idempotency-Key':key}});}
