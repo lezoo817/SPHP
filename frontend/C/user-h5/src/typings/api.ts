@@ -134,7 +134,7 @@ export interface Hospital { hospitalId: number; name: string; level?: string; ad
 /** 医院下的可预约科室。 */
 export interface Department { id: number; name: string; description?: string; }
 /** 医生及当天可用号源摘要。 */
-export interface Doctor { id: number; name: string; title?: string; specialty?: string; registrationFeeCent: number; availableCount: number; departmentName?: string; }
+export interface Doctor { id: number; name: string; title?: string; specialty?: string; registrationFeeCent: number; availableCount: number; departmentId?: number; departmentName?: string; }
 /** 医生预约时段。 */
 export interface AppointmentSlot { slotId: number; startTime: string; endTime: string; feeCent: number; availableCount: number; }
 /** 挂号订单列表项。 */

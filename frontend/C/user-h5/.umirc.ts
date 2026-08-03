@@ -10,6 +10,7 @@ export default defineConfig({
     { path: '/home/search', component: 'home/search' },
     { path: '/assistant', component: 'assistant/index' },
     { path: '/assistant/book', component: 'assistant/book' },
+    { path: '/assistant/doctor/:doctorId', component: 'assistant/doctor' },
     { path: '/assistant/pay/:paymentId', component: 'assistant/pay' },
     { path: '/assistant/pre-consultation/:appointmentId', component: 'assistant/pre-consultation' },
     { path: '/assistant/consultation/:consultationId', component: 'assistant/consultation' },
