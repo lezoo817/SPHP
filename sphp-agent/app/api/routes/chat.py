@@ -72,11 +72,16 @@ def _build_initial_state(
 
     Args:
         req: 前端对话请求。
-        request: FastAPI 请求（含中间件注入的 user_id / scope）。
+        request: FastAPI 请求（含中间件注入的 user_id / scope / roles 等身份）。
         token: JWT Token。
         session_id: 会话 ID。
         confirmed_actions: M5-T4（T-M3-L1）本会话此前确认成功的操作回执，
             非空时注入 messages 上下文，保证确认后追问连续。
+
+    Note:
+        M6-B1 鉴权去重：中间件已在 HTTP 层调 Java token/parse 一次，身份字段
+        （user_id / roles / dept_id / doctor_id / hospital_id）在此完整复制进
+        AgentState，auth_node 不再重复调 Java。
     """
     messages: list[dict] = [{"role": "user", "content": req.content}]
     if confirmed_actions:
@@ -100,10 +105,13 @@ def _build_initial_state(
         "intent": None,
         "user_id": getattr(request.state, "user_id", None),
         "scope": getattr(request.state, "scope", req.scope),
-        "roles": None,
-        "dept_id": None,
-        "doctor_id": None,
-        "hospital_id": (req.context or {}).get("hospital_id"),
+        # M6-B1 鉴权去重：完整复制中间件注入的 B 端身份字段，auth_node 直接消费
+        "roles": getattr(request.state, "roles", None),
+        "dept_id": getattr(request.state, "dept_id", None),
+        "doctor_id": getattr(request.state, "doctor_id", None),
+        # C 端 hospital_id 无中间件注入值（None）时退回请求 context
+        "hospital_id": getattr(request.state, "hospital_id", None)
+        or (req.context or {}).get("hospital_id"),
         "tool_calls": None,
         "tool_results": None,
         "pending_confirmations": None,
@@ -123,14 +131,14 @@ async def _sse_generator(
     推的自定义事件到不了主图 ``custom`` stream。而 tool_executor 运行在
     4 个业务子图内，因此 action/observation 事件从 ``updates`` 里的
     ``tool_calls``/``tool_results`` **重建**（子图最终 state 更新包含完整数据）。
-    事件映射：
-    - updates 含 tool_calls 字段      -> ``event: action``（工具开始，重建）
-    - updates 含 tool_results 字段    -> ``event: observation``（工具结果，重建）
-    - custom 且 type=tool_action      -> ``event: action``（预留顶层节点通道）
-    - custom 且 type=tool_observation -> ``event: observation``（预留）
+    事件映射（M6-A1 定案：仅 updates 重建，custom 通道已移除）：
+    - updates 含 tool_results 字段    -> ``event: action`` + ``event: observation``
+                                        （工具已执行，逐结果配对推送）
+    - updates 含 tool_calls 字段      -> ``event: action``（仅 tool_calls 无结果场景）
     - messages 且 msg 是 AIMessage    -> ``event: message``（回复 token）
+    - messages 含 reasoning_content   -> ``event: thought``（推理思考 token，M6-B4）
     - updates 含 reply_node 输出      -> 未流式时兜底推送完整回复
-    - 结束                            -> ``event: done``
+    - 结束                            -> ``event: done``（含 usage token 统计，M6-B4）
     """
     graph = _get_graph()
     thread_id = session_id or str(uuid4())
@@ -138,33 +146,28 @@ async def _sse_generator(
 
     logger.info("[SSE] 开始流程执行, thread_id=%s", thread_id)
     streamed_reply = False
+    # 本轮 LLM token 用量（M6-B4 done.usage）：langgraph 首个 chunk 含
+    # input_tokens，后续 chunk 只递增 output_tokens
+    usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     try:
         try:
             async for mode, chunk in graph.astream(
                 initial_state,
                 config=config,
-                stream_mode=["custom", "messages", "updates"],
+                stream_mode=["messages", "updates"],
             ):
-                if mode == "custom":
-                    if not isinstance(chunk, dict):
-                        continue
-                    ctype = chunk.get("type", "")
-                    if ctype == "tool_action":
-                        yield _sse(
-                            "action",
-                            {
-                                "tool": chunk.get("tool", ""),
-                                "arguments": chunk.get("arguments", {}),
-                            },
-                        )
-                    elif ctype == "tool_observation":
-                        result = chunk.get("result", {})
-                        yield _sse("observation", _build_observation(result))
-
-                elif mode == "messages":
+                if mode == "messages":
                     msg, meta = chunk
                     node = (meta or {}).get("langgraph_node", "")
+                    # 累积 LLM 用量（M6-B4）：对全部 LLM chunk 统计
+                    usage_meta = getattr(msg, "usage_metadata", None) or {}
+                    if usage_meta.get("input_tokens"):
+                        usage["prompt_tokens"] = usage_meta["input_tokens"]
+                    if usage_meta.get("output_tokens"):
+                        usage["completion_tokens"] += usage_meta["output_tokens"]
+                    if usage_meta.get("total_tokens"):
+                        usage["total_tokens"] = usage_meta["total_tokens"]
                     # 仅 reply_node 的 assistant token 推送给前端
                     # （intent_node / tool_caller 的 LLM 输出不推送）
                     if node == "reply_node" and getattr(msg, "type", "") in (
@@ -175,6 +178,13 @@ async def _sse_generator(
                         if delta:
                             streamed_reply = True
                             yield _sse("message", {"delta": delta})
+                        # 推理模型思考 token（系分 §5.12，M6-B4）：
+                        # 智谱 glm-4 系列流式输出在 additional_kwargs.reasoning_content
+                        reasoning = (getattr(msg, "additional_kwargs", {}) or {}).get(
+                            "reasoning_content"
+                        )
+                        if reasoning:
+                            yield _sse("thought", {"delta": reasoning})
 
                 elif mode == "updates":
                     # 子图更新里含 tool_calls / tool_results，重建 action / observation
@@ -236,7 +246,12 @@ async def _sse_generator(
 
     finally:
         # 确保 done 事件始终推送（即使异常/取消）
-        yield _sse("done", {"session_id": thread_id, "trace_id": trace_id})
+        # M6-B4：携带本轮 LLM token 用量（无任何 LLM chunk 时 usage 为 None）
+        _usage = {k: v for k, v in usage.items() if v} or None
+        yield _sse(
+            "done",
+            {"session_id": thread_id, "trace_id": trace_id, "usage": _usage},
+        )
 
 
 def _sse(event: str, payload: dict) -> str:

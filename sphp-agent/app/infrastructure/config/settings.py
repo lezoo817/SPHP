@@ -100,6 +100,8 @@ class Settings(BaseSettings):
     kb_ingest_root: str = ""  # 入库允许的根目录绝对路径，空则拒绝目录入库（防路径遍历）
 
     # ---- Agent 行为参数 ----
+    # 会话 checkpointer 后端：memory（开发/测试，进程内存）/ postgres（生产，PG 持久化）
+    checkpointer_backend: str = "memory"
     confirm_token_ttl: int = 300
     # 已确认操作回执 TTL（M5-T4 / T-M3-L1）：confirm 成功后写 Redis，
     # 下一轮对话一次性消费注入上下文，超时未消费则过期
