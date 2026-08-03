@@ -30,6 +30,10 @@
         )
     </select>
 
+    <select id="selectActivePatientName" resultType="string">
+        SELECT name FROM patient WHERE id = #{patientId} AND deleted_at IS NULL
+    </select>
+
     <select id="selectNotifications" resultMap="NotificationRecordMap">
         SELECT <include refid="NotificationColumns"/>
         FROM notification n

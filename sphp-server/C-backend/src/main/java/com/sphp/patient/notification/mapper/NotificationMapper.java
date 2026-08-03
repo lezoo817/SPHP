@@ -32,6 +32,14 @@ public interface NotificationMapper extends BaseMapper<Notification> {
     boolean hasActivePatientRelation(@Param("userId") Long userId, @Param("patientId") Long patientId);
 
     /**
+     * 查询未软删除就诊人的名称快照。
+     *
+     * @param patientId 就诊人 ID
+     * @return 就诊人名称，不存在时返回 null
+     */
+    String selectActivePatientName(@Param("patientId") Long patientId);
+
+    /**
      * 分页查询当前账号的未删除通知。
      *
      * @param userId C端用户 ID
