@@ -447,3 +447,29 @@ export async function getPatientMedications(
   const res = await request(`/api/b/admin/patients/${id}/medications`);
   return (res as API.Result<API.PatientMedicationResult>).data;
 }
+
+// ===================== 统计报表 =====================
+
+/** 运营总览 */
+export async function getStatisticsOverview(
+  params?: API.StatisticsParams,
+): Promise<API.StatisticsOverview> {
+  const res = await request('/api/b/admin/statistics/overview', { params });
+  return (res as API.Result<API.StatisticsOverview>).data;
+}
+
+/** 按科室统计 */
+export async function getDepartmentStats(
+  params?: API.StatisticsParams,
+): Promise<API.DepartmentStatItem[]> {
+  const res = await request('/api/b/admin/statistics/department', { params });
+  return (res as API.Result<API.DepartmentStatItem[]>).data;
+}
+
+/** 按日期统计 */
+export async function getDailyStats(
+  params: API.StatisticsParams,
+): Promise<API.DailyStatItem[]> {
+  const res = await request('/api/b/admin/statistics/daily', { params });
+  return (res as API.Result<API.DailyStatItem[]>).data;
+}
