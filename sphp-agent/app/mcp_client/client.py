@@ -68,7 +68,13 @@ class MCPClient:
             raise MCPClientError(f"MCP Client 连接失败: {e}") from e
 
     async def _connect_inner(self) -> None:
-        """实际连接逻辑：内存传输 + initialize 握手，失败时清理半成品资源。"""
+        """实际连接逻辑：内存传输 + initialize 握手，失败时清理半成品资源。
+
+        P2 修复：原 ``except Exception`` 不捕获 ``CancelledError``（BaseException
+        子类），连接任务被取消时会遗留半成品资源（内存流/会话未收尾）。改为
+        ``except BaseException`` 统一清理；因 ``connect()`` 已持有 ``_connect_lock``，
+        此处调用 ``_close_inner``（不再重取锁，避免 asyncio.Lock 非重入死锁）。
+        """
         try:
             from mcp import ClientSession
             from mcp.shared.memory import create_client_server_memory_streams
@@ -90,9 +96,13 @@ class MCPClient:
             # 全部就绪后才暴露，避免并发首调读到未完成握手的会话
             self._session = session
             logger.info("MCP Client 已连接（内存传输，tools/call 走 MCP 协议）")
-        except Exception:
-            # 连接失败：清理半成品资源后向上抛，由 _connect 包装为 MCPClientError
-            await self.close()
+        except BaseException:
+            # 连接失败或被取消：清理半成品资源后向上抛。
+            # 取消场景下 await 可能再次抛 CancelledError，吞掉后原样上抛。
+            try:
+                await self._close_inner()
+            except BaseException:
+                pass
             raise
 
     async def connect(self) -> None:
@@ -131,7 +141,21 @@ class MCPClient:
         return _extract_result(tool_name, result)
 
     async def close(self) -> None:
-        """关闭会话与内存流，取消 Server 任务（幂等）。"""
+        """关闭会话与内存流，取消 Server 任务（幂等）。
+
+        P2 修复：持有 ``_connect_lock`` 再关闭，避免与并发 ``connect()``
+        竞态（connect 读到 _session 刚建一半就被 close 清空，或 close 清空后
+        connect 继续回写旧引用）。真正的清理逻辑在 ``_close_inner``。
+        """
+        async with self._connect_lock:
+            await self._close_inner()
+
+    async def _close_inner(self) -> None:
+        """实际关闭逻辑（调用方须已持有 ``_connect_lock``）。
+
+        供 ``close()``（持锁）与 ``_connect_inner`` 失败清理（connect 已持锁）
+        复用，避免 asyncio.Lock 非重入导致死锁。
+        """
         session, self._session = self._session, None
         task, self._server_task = self._server_task, None
         cm, self._streams_cm = self._streams_cm, None
