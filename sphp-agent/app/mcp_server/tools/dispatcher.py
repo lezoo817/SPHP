@@ -13,9 +13,12 @@
 
 import importlib
 import inspect
+import logging
 from typing import Any, cast
 
 from app.infrastructure.java_client import reset_idempotency_context, set_idempotency_context
+
+logger = logging.getLogger(__name__)
 
 # 确认流程内部键（P2 #17）：chat_confirm 将 confirm_token 记录的幂等键注入
 # 该键，经 MCP 协议透传至此。不在任何 ToolSchema 参数中，LLM 不会伪造；
@@ -35,7 +38,13 @@ async def _wrap(
     """
     func = getattr(module, func_name)
     sig = inspect.signature(func)
-    kwargs = {k: v for k, v in arguments.items() if k in sig.parameters}
+    # P3-6：未知参数不静默丢弃——业务参数演进时暴露给日志排查（debug 级，
+    # 不改变行为：不在签名中的参数继续忽略，保持向后兼容；内部幂等键除外）。
+    known = {k for k in arguments if k in sig.parameters}
+    unknown = {k for k in arguments if k not in known and k != _IDEMPOTENCY_ARG}
+    if unknown:
+        logger.debug("工具 %s 忽略未知参数: %s", func_name, sorted(unknown))
+    kwargs = {k: arguments[k] for k in known}
     if "user_id" in sig.parameters:
         kwargs["user_id"] = user_id
 

@@ -6,6 +6,7 @@
 
 import asyncio
 import hashlib
+import importlib
 import logging
 import uuid
 from datetime import datetime
@@ -37,10 +38,9 @@ def _load_file(file_path: Path) -> list[Document]:
         logger.warning("不支持的文件格式: %s，已跳过", file_path)
         return []
 
-    # 延迟导入，避免未安装的 loader 拖垮整个模块
+    # 动态导入 Loader 类（module_path 来自 _LOADER_MAP，未安装的 loader 仅在
+    # 对应格式被请求时才 import，不影响模块导入本身）
     module_path, class_name = loader_path.rsplit(".", 1)
-    import importlib
-
     loader_cls = getattr(importlib.import_module(module_path), class_name)
 
     # TextLoader 需要指定编码

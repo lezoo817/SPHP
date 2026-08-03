@@ -16,7 +16,7 @@ async def query_pharmacy_stock(
 ) -> dict[str, Any]:
     """查询附近药店库存与价格。"""
     params = {"prescription_id": prescription_id}
-    if patient_id:
+    if patient_id is not None:
         params["patient_id"] = patient_id
     return await call_java_api(tool_name="query_pharmacy_stock", params=params, user_id=user_id)
 
@@ -34,7 +34,7 @@ async def create_drug_order(
         "pharmacy_id": pharmacy_id,
         "delivery_address": delivery_address,
     }
-    if patient_id:
+    if patient_id is not None:
         body["patient_id"] = patient_id
     return await call_java_api(tool_name="create_drug_order", body=body, user_id=user_id)
 
@@ -46,7 +46,7 @@ async def query_drug_orders(
     user_id: int | None = None,
 ) -> dict[str, Any]:
     """查询购药订单列表或详情。"""
-    if drug_order_id:
+    if drug_order_id is not None:
         return await call_java_api(
             api_name="query_drug_orders:detail",
             path_params={"drug_order_id": drug_order_id},

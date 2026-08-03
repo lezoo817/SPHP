@@ -123,7 +123,7 @@ async def recommend_care(
     技术债 T1：3 个子接口 asyncio.gather 并发（原串行 await），任一失败不影响其余。
     """
     params = {}
-    if department_id:
+    if department_id is not None:
         params["department_id"] = department_id
     results = await asyncio.gather(
         call_java_api(api_name="recommend_care:departments", params=params, user_id=user_id),

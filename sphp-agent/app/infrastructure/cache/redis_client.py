@@ -6,6 +6,7 @@
 import json
 import logging
 import re
+import time
 import uuid
 from functools import lru_cache
 from typing import Any, cast
@@ -407,7 +408,6 @@ async def check_rate_limit(user_id: str, limit: int, window: int = 60) -> bool:
 
     client = get_redis()
     key = f"rate_limit:{user_id}"
-    import time
 
     now = time.time()
     # 随机后缀保证同一 tick 内 member 唯一（score 仍为 now，可滑动窗口剪枝）
