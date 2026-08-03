@@ -101,6 +101,9 @@ class Settings(BaseSettings):
 
     # ---- Agent 行为参数 ----
     confirm_token_ttl: int = 300
+    # 已确认操作回执 TTL（M5-T4 / T-M3-L1）：confirm 成功后写 Redis，
+    # 下一轮对话一次性消费注入上下文，超时未消费则过期
+    confirm_done_ttl: int = 3600
     rate_limit_per_minute: int = 20
     memory_window_size: int = 10
     log_level: str = "INFO"

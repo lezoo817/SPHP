@@ -13,7 +13,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas.chat import ChatRequest, ConfirmRequest, ConfirmResponse
-from app.infrastructure.cache.redis_client import get_and_delete_confirm_token_by_token
+from app.infrastructure.cache.redis_client import (
+    get_and_delete_confirm_done,
+    get_and_delete_confirm_token_by_token,
+    set_confirm_done,
+)
 from app.orchestrator.graphs.main_graph import build_main_graph
 from app.orchestrator.nodes.reply import MEDICAL_DISCLAIMER
 from app.orchestrator.nodes.tool_executor import _execute_mcp
@@ -45,7 +49,10 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
     trace_id = getattr(request.state, "trace_id", "")
     # 无 session 时先生成，保证 state / done / card 会话 ID 一致（L2 确认依赖）
     session_id = req.session_id or str(uuid4())
-    initial_state = _build_initial_state(req, request, token, session_id)
+    # M5-T4（T-M3-L1）：读取本会话此前确认成功的操作回执（一次性消费），
+    # 注入对话上下文，使"确认后追问"保持连续
+    confirmed_actions = await get_and_delete_confirm_done(session_id)
+    initial_state = _build_initial_state(req, request, token, session_id, confirmed_actions)
 
     return StreamingResponse(
         _sse_generator(initial_state, session_id, trace_id),
@@ -55,11 +62,40 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
 
 
 def _build_initial_state(
-    req: ChatRequest, request: Request, token: str | None, session_id: str
+    req: ChatRequest,
+    request: Request,
+    token: str | None,
+    session_id: str,
+    confirmed_actions: list[dict] | None = None,
 ) -> AgentState:
-    """构造初始状态（不依赖外部 mutation）。"""
+    """构造初始状态（不依赖外部 mutation）。
+
+    Args:
+        req: 前端对话请求。
+        request: FastAPI 请求（含中间件注入的 user_id / scope）。
+        token: JWT Token。
+        session_id: 会话 ID。
+        confirmed_actions: M5-T4（T-M3-L1）本会话此前确认成功的操作回执，
+            非空时注入 messages 上下文，保证确认后追问连续。
+    """
+    messages: list[dict] = [{"role": "user", "content": req.content}]
+    if confirmed_actions:
+        labels = [
+            _TOOL_LABELS.get(t.get("tool_name", ""), t.get("tool_name", "操作"))
+            for t in confirmed_actions
+        ]
+        messages.insert(
+            0,
+            {
+                "role": "system",
+                "content": "本会话此前用户已确认完成以下操作："
+                + "；".join(labels)
+                + "。后续用户提及这些操作时，基于已执行结果回答，不要重复要求确认。",
+            },
+        )
+
     return {
-        "messages": [{"role": "user", "content": req.content}],
+        "messages": messages,
         "session_id": session_id,
         "intent": None,
         "user_id": getattr(request.state, "user_id", None),
@@ -346,6 +382,13 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
             data=None,
             traceId=trace_id,
         )
+
+    # M5-T4（T-M3-L1）：写入确认成功回执，供下一轮对话引用（此操作是独立
+    # HTTP 请求，结果不进 graph 状态；Redis 回执 + 下轮注入保证对话连续）
+    try:
+        await set_confirm_done(req.session_id, tool_name, result.get("data"))
+    except Exception:
+        logger.warning("写入 confirm_done 回执失败: tool=%s", tool_name)
 
     # 成功：返回 action_result + message
     return ConfirmResponse(
