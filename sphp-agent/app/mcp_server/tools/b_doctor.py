@@ -87,7 +87,7 @@ async def check_drug_interaction(
             for name in drug_names
         ],
         call_java_api(
-            api_name="query_patient_medications",
+            api_name="query_patient_history:medications",
             path_params={"patient_id": patient_id},
             user_id=user_id,
         ),
@@ -176,7 +176,7 @@ async def check_duplicate_medication(
 ) -> dict[str, Any]:
     """返回患者当前用药清单。"""
     medications = await call_java_api(
-        api_name="query_patient_medications",
+        api_name="query_patient_history:medications",
         path_params={"patient_id": patient_id},
         user_id=user_id,
     )

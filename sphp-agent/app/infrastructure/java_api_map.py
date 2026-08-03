@@ -237,12 +237,9 @@ JAVA_API_MAP: dict[str, dict[str, str]] = {
         "path": "/api/b/admin/patients/{patient_id}/prescriptions",
         "scope": "b_end",
     },
+    # 注：query_patient_medications 已并入 query_patient_history:medications（同路径），
+    # 避免契约表冗余；独立工具 check_duplicate_medication 等复用该子接口名。
     "query_patient_history:medications": {
-        "method": "GET",
-        "path": "/api/b/admin/patients/{patient_id}/medications",
-        "scope": "b_end",
-    },
-    "query_patient_medications": {
         "method": "GET",
         "path": "/api/b/admin/patients/{patient_id}/medications",
         "scope": "b_end",
