@@ -230,8 +230,12 @@ async def _sse_generator(
                 yield _sse("message", {"delta": MEDICAL_DISCLAIMER})
 
         except GeneratorExit:
+            # P1-3 客户端断开：记录后直接结束，不补推 done（无人接收）。
+            # 必须 return 而非 raise + finally 中 yield —— 生成器关闭（GeneratorExit
+            # 传播）期间在 finally 里 yield 会抛 "generator ignored GeneratorExit"
+            # RuntimeError，生产必现（客户端断连刷日志/连接清理异常）。
             logger.warning("[SSE] 客户端断开连接, session_id=%s", thread_id)
-            raise
+            return
         except Exception as e:
             logger.error("[SSE] 异常: %s\n%s", e, traceback.format_exc())
             yield _sse(
@@ -239,14 +243,19 @@ async def _sse_generator(
                 {"code": "SERVER_ERROR", "message": "服务异常，请稍后重试", "trace_id": trace_id},
             )
 
-    finally:
-        # 确保 done 事件始终推送（即使异常/取消）
-        # M6-B4：携带本轮 LLM token 用量（无任何 LLM chunk 时 usage 为 None）
+        # P1-3：done 事件移至正常/异常兜底路径（非 finally），生成器迭代期
+        # yield 是安全的；M6-B4：携带本轮 LLM token 用量（无任何 LLM chunk 时
+        # usage 为 None）。客户端断开时提前 return，不执行到此处。
         _usage = {k: v for k, v in usage.items() if v} or None
         yield _sse(
             "done",
             {"session_id": thread_id, "trace_id": trace_id, "usage": _usage},
         )
+
+    finally:
+        # 清理段：仅日志，不 yield。正常结束 / 异常兜底 / 客户端断开（return）
+        # 三条路径都安全收敛，不会在生成器关闭期间再次 yield。
+        logger.info("[SSE] 生成器退出, session_id=%s", thread_id)
 
 
 def _sse(event: str, payload: dict[str, Any]) -> str:
