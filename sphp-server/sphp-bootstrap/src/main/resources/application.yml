@@ -101,3 +101,21 @@ sphp:
   notification:
     # C端用药与随访提醒扫描间隔，单位毫秒。
     scan-interval-millis: ${dev.sphp.notification.scan-interval-millis}
+  delivery:
+    # C端模拟配送省市组合距离系数，键按省市编码字典序拼接。
+    province-coefficients:
+      beijing-guangdong: ${dev.sphp.delivery.province-coefficients.beijing-guangdong}
+      beijing-henan: ${dev.sphp.delivery.province-coefficients.beijing-henan}
+      beijing-jiangsu: ${dev.sphp.delivery.province-coefficients.beijing-jiangsu}
+      beijing-shanghai: ${dev.sphp.delivery.province-coefficients.beijing-shanghai}
+      beijing-zhejiang: ${dev.sphp.delivery.province-coefficients.beijing-zhejiang}
+      guangdong-henan: ${dev.sphp.delivery.province-coefficients.guangdong-henan}
+      guangdong-jiangsu: ${dev.sphp.delivery.province-coefficients.guangdong-jiangsu}
+      guangdong-shanghai: ${dev.sphp.delivery.province-coefficients.guangdong-shanghai}
+      guangdong-zhejiang: ${dev.sphp.delivery.province-coefficients.guangdong-zhejiang}
+      henan-jiangsu: ${dev.sphp.delivery.province-coefficients.henan-jiangsu}
+      henan-shanghai: ${dev.sphp.delivery.province-coefficients.henan-shanghai}
+      henan-zhejiang: ${dev.sphp.delivery.province-coefficients.henan-zhejiang}
+      jiangsu-shanghai: ${dev.sphp.delivery.province-coefficients.jiangsu-shanghai}
+      jiangsu-zhejiang: ${dev.sphp.delivery.province-coefficients.jiangsu-zhejiang}
+      shanghai-zhejiang: ${dev.sphp.delivery.province-coefficients.shanghai-zhejiang}

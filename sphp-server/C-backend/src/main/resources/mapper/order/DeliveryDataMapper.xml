@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sphp.patient.order.mapper.DeliveryDataMapper">
+    <select id="deliveryLockUser" resultType="java.lang.Long">
+        SELECT id FROM c_user WHERE id=#{userId} AND deleted_at IS NULL FOR UPDATE
+    </select>
+    <select id="deliveryListAddresses" resultType="com.sphp.patient.order.entity.DeliveryAddress">
+        SELECT id, user_id, receiver_name, receiver_phone, province, city, district, detail_address, is_default, created_at, updated_at, deleted_at
+        FROM c_user_delivery_address WHERE user_id=#{userId} AND deleted_at IS NULL
+        ORDER BY is_default DESC, created_at ASC, id ASC
+    </select>
+    <select id="deliverySelectAddress" resultType="com.sphp.patient.order.entity.DeliveryAddress">
+        SELECT id, user_id, receiver_name, receiver_phone, province, city, district, detail_address, is_default, created_at, updated_at, deleted_at
+        FROM c_user_delivery_address WHERE id=#{addressId} AND deleted_at IS NULL
+    </select>
+    <select id="deliveryCountAddresses" resultType="long">
+        SELECT COUNT(1) FROM c_user_delivery_address WHERE user_id=#{userId} AND deleted_at IS NULL
+    </select>
+    <update id="deliveryClearDefault">
+        UPDATE c_user_delivery_address SET is_default=false, updated_at=#{now} WHERE user_id=#{userId} AND is_default=true AND deleted_at IS NULL
+    </update>
+    <update id="deliverySetDefault">
+        UPDATE c_user_delivery_address SET is_default=true, updated_at=#{now} WHERE user_id=#{userId} AND id=#{addressId} AND deleted_at IS NULL
+    </update>
+    <update id="deliverySoftDeleteAddress">
+        UPDATE c_user_delivery_address SET deleted_at=#{now}, updated_at=#{now} WHERE user_id=#{userId} AND id=#{addressId} AND deleted_at IS NULL
+    </update>
+    <select id="deliverySelectFirstAddress" resultType="com.sphp.patient.order.entity.DeliveryAddress">
+        SELECT id, user_id, receiver_name, receiver_phone, province, city, district, detail_address, is_default, created_at, updated_at, deleted_at
+        FROM c_user_delivery_address WHERE user_id=#{userId} AND deleted_at IS NULL ORDER BY created_at ASC, id ASC LIMIT 1
+    </select>
+    <select id="deliverySelectHospitalAddress" resultType="java.lang.String">
+        SELECT address FROM hospital WHERE id=#{hospitalId} AND status='ENABLED' AND deleted_at IS NULL
+    </select>
+</mapper>
