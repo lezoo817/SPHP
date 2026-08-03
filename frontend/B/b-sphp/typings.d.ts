@@ -219,5 +219,112 @@ declare global {
       status: string;
       expireAt: string; // lockedAt + 15min
     }
+
+    // ===================== 接诊台 =====================
+
+    /** 待接诊队列项 */
+    interface QueueItem {
+      consultId: number;
+      patientId: number;
+      patientName: string;
+      patientGender: 'MALE' | 'FEMALE' | 'UNKNOWN';
+      patientAge: number;
+      aiSummary?: Record<string, any>;
+      queueNumber: number;
+      appointmentTime: string;
+      status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+    }
+
+    /** 队列查询参数 */
+    interface QueueListParams extends PageParams {
+      deptId?: number;
+      status?: string;
+    }
+
+    /** 患者详细信息 */
+    interface PatientDetail {
+      consultId: number;
+      patient: {
+        id: number;
+        name: string;
+        gender: string;
+        dateOfBirth: string;
+        phone: string;
+        emergencyContact: string;
+      };
+      allergies: AllergyInfo[];
+      medicalHistories: MedicalHistoryInfo[];
+      aiSummary?: Record<string, any>;
+      recentPrescriptions: RecentPrescription[];
+      historyRecords: HistoryRecord[];
+    }
+
+    /** 过敏史 */
+    interface AllergyInfo {
+      id: number;
+      allergen: string;
+      reaction: string;
+      severity: string;
+    }
+
+    /** 既往史 */
+    interface MedicalHistoryInfo {
+      id: number;
+      content: string;
+      occurredAt: string;
+    }
+
+    /** 近期处方摘要 */
+    interface RecentPrescription {
+      id: number;
+      status: string;
+      issuedAt: string;
+    }
+
+    /** 历史就诊记录 */
+    interface HistoryRecord {
+      date: string;
+      type: string;
+      summary: string;
+      status: string;
+    }
+
+    /** 开始接诊响应 */
+    interface ConsultStart {
+      consultId: number;
+      status: string;
+      startedAt: string;
+    }
+
+    /** 结束问诊响应 */
+    interface ConsultEnd {
+      consultId: number;
+      status: string;
+      endedAt: string;
+    }
+
+    /** 保存病历请求 */
+    interface NoteSaveReq {
+      doctorNote: string;
+    }
+
+    /** 保存病历响应 */
+    interface NoteSave {
+      consultId: number;
+      updatedAt: string;
+    }
+
+    /** 发送消息请求 */
+    interface MessageSendReq {
+      content: string;
+    }
+
+    /** 消息 VO */
+    interface MessageVO {
+      messageId: number;
+      senderType: 'PATIENT' | 'DOCTOR' | 'SYSTEM';
+      content: string;
+      createdAt: string;
+    }
   }
 }

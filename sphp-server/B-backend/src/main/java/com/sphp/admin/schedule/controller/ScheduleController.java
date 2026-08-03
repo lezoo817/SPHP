@@ -37,7 +37,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/b/admin")
-@Tag(name = "B端排班管理", description = "排班列表/创建/时段配置/发布/取消发布/锁定号源看板/手动释放")
+@Tag(name = "3-排班管理", description = "排班列表/创建/时段配置/发布/取消发布/锁定号源看板/手动释放")
 @RequiredArgsConstructor
 public class ScheduleController {
 
@@ -97,6 +97,7 @@ public class ScheduleController {
 
     @GetMapping("/slots/locked")
     @Operation(summary = "锁定号源看板", description = "分页查询 LOCKED 号源（按日期+科室+数据权限过滤，就诊人姓名脱敏，expireAt=lockedAt+15分钟）")
+    // TODO 联调依赖：数据来源于 C 端患者挂号产生的 LOCKED 快照，需等 C 端挂号流程完成后联调测试
     public Result<PageResult<LockedSlotVO>> pageLocked(
             @Parameter(description = "排班日期 yyyy-MM-dd（必填）") @RequestParam LocalDate date,
             @Parameter(description = "科室ID（仅 ADMIN 生效）") @RequestParam(required = false) Long deptId,
