@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/b/admin/drugs")
-@Tag(name = "5-药品目录", description = "药品列表/新增/编辑/删除（管理员）")
+@Tag(name = "6-药品目录", description = "药品列表/新增/编辑/删除（管理员）")
 @RequiredArgsConstructor
 public class DrugAdminController {
 

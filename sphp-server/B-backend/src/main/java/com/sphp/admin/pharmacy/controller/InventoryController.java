@@ -30,7 +30,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/b/admin/inventory")
-@Tag(name = "5-库存管理", description = "库存列表/更新/预警/释放锁定（管理员）")
+@Tag(name = "6-库存管理", description = "库存列表/更新/预警/释放锁定（管理员）")
 @RequiredArgsConstructor
 public class InventoryController {
 
