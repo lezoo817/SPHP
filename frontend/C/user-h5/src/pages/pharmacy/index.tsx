@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Package, RefreshCw, Truck } from 'lucide-react';
+import { ClipboardList, Package, PackageCheck, PackageOpen, RefreshCw, Truck } from 'lucide-react';
 import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
 import { resolveSelfPatientId } from '../../models/selection';
 import { getFamilyMembers } from '../../services/family';
 import { getPrescriptions } from '../../services/consultation';
-import { getDrugOrders } from '../../services/pharmacy';
-import type { DrugOrder, FamilyMember, Prescription } from '../../typings/api';
-import { drugOrderTabs, matchesDrugOrderTab, type DrugOrderTab } from '../../utils/pharmacy';
+import type { FamilyMember, Prescription } from '../../typings/api';
+import { drugOrderTabs, type DrugOrderTab } from '../../utils/pharmacy';
 
 /** 展示本人默认的处方和四类物流入口，并支持本页切换家人。 */
 export default function PharmacyPage() {
@@ -16,12 +15,11 @@ export default function PharmacyPage() {
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [patientId, setPatientId] = useState<number>();
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
-  const [orders, setOrders] = useState<DrugOrder[]>([]);
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const current = members.find((member) => member.patientId === patientId);
 
-  /** 加载当前页面选择就诊人的处方及订单摘要。 */
+  /** 加载当前页面选择就诊人的处方。 */
   async function load() {
     try {
       const next = await getFamilyMembers();
@@ -29,13 +27,9 @@ export default function PharmacyPage() {
       const target = patientId || resolveSelfPatientId(next);
       if (!target) return;
       if (!patientId) setPatientId(target);
-      // 首页统计需要读取当前患者全部订单，避免分页造成状态数量失真。
-      const [prescriptionPage, orderPage] = await Promise.all([
-        getPrescriptions(target),
-        getDrugOrders({ patientId: target, pageSize: 100 }),
-      ]);
+      // 物流入口不展示本地统计数，订单数据统一在独立订单页查询。
+      const prescriptionPage = await getPrescriptions(target);
       setPrescriptions(prescriptionPage.records);
-      setOrders(orderPage.records);
     } catch (error: any) {
       setNotice(error.message || '购药数据加载失败');
     }
@@ -63,11 +57,17 @@ export default function PharmacyPage() {
         <Package size={25} /><div><b>{prescription.doctorName}电子处方</b><span>已批准 · {prescription.issuedAt}</span></div><em>待购药</em>
       </button>)}
       {!prescriptions.length && <p className="empty-state">暂无可购药处方</p>}
-      <h2>我的物流</h2>
-      <section className="logistics-status-grid">
+      <section className="logistics-card">
+        <h2>我的物流</h2>
+        <div className="logistics-status-grid">
         {drugOrderTabs.map((tab) => <button className="logistics-status-card" key={tab.key} type="button" onClick={() => openOrders(tab.key)}>
-          <b>{orders.filter((order) => matchesDrugOrderTab(order, tab.key)).length}</b><span>{tab.label}</span><Truck size={18} />
+          {tab.key === 'ALL' && <ClipboardList size={27} />}
+          {tab.key === 'TRANSIT' && <Truck size={27} />}
+          {tab.key === 'TO_RECEIVE' && <PackageOpen size={27} />}
+          {tab.key === 'RECEIVED' && <PackageCheck size={27} />}
+          <span>{tab.label}</span>
         </button>)}
+        </div>
       </section>
     </section>
     {open && <Dialog title="切换就诊人" onClose={() => setOpen(false)}>
