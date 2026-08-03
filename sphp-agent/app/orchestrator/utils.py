@@ -14,5 +14,6 @@ def get_last_user_content(state: AgentState) -> str:
         return ""
     last = messages[-1]
     if isinstance(last, dict):
-        return last.get("content", "")
+        # content 可能为 None / 非字符串（OpenAI 多段内容列表），统一转 str
+        return str(last.get("content", ""))
     return getattr(last, "content", str(last))

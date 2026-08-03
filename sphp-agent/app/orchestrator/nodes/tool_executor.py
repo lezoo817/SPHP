@@ -18,7 +18,7 @@ import hashlib
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 
 from app.engine.tools.schema_registry import ToolRegistry
 from app.infrastructure.audit.logger import log_tool_call
@@ -29,7 +29,9 @@ from app.orchestrator.state import AgentState
 logger = logging.getLogger(__name__)
 
 
-async def _call_mcp_func(tool_name: str, arguments: dict, user_id: int | None) -> dict:
+async def _call_mcp_func(
+    tool_name: str, arguments: dict[str, Any], user_id: int | None
+) -> dict[str, Any]:
     """执行 MCP 工具（M6-C1：优先走 MCP Client，不可用时回退直调）。
 
     仅当 MCP Client 连接层不可用时回退直调封装函数；工具执行失败（Server 侧
@@ -44,7 +46,7 @@ async def _call_mcp_func(tool_name: str, arguments: dict, user_id: int | None) -
         return await dispatch_tool(tool_name, arguments, user_id)
 
 
-async def tool_executor(state: AgentState) -> dict:
+async def tool_executor(state: AgentState) -> dict[str, Any]:
     """执行已通过安全校验的工具调用。
 
     MCP 工具：通过 MCP Client 调用 tools/call
@@ -94,8 +96,10 @@ async def tool_executor(state: AgentState) -> dict:
                 }
             )
         else:
-            # 不可变合并：原结果 + 参数（供 SSE 层反推 action 事件）
-            formatted.append({**result, "arguments": arguments})
+            # 不可变合并：原结果 + 参数（供 SSE 层反推 action 事件）。
+            # 非 Exception 分支下 result 必为封装函数返回的 dict（BaseException
+            # 仅当任务抛出非 Exception 异常才可达，理论不发生），cast 消除联合类型
+            formatted.append({**cast(dict[str, Any], result), "arguments": arguments})
 
     # 自累积：保留子图循环前面轮次的执行结果（tool_results 无 reducer，
     # 默认 last-write-wins 会覆盖多轮 L1 结果）。
@@ -107,7 +111,9 @@ async def tool_executor(state: AgentState) -> dict:
     return {"tool_results": previous + formatted}
 
 
-async def _execute_mcp(tool_name: str, arguments: dict, state: AgentState) -> dict:
+async def _execute_mcp(
+    tool_name: str, arguments: dict[str, Any], state: AgentState
+) -> dict[str, Any]:
     """执行 MCP 工具（M6-C1：经 MCP Client tools/call，回退直调）。
 
     工具名 -> 封装函数的映射见 dispatcher._MCP_TOOL_FUNCS。
@@ -140,7 +146,9 @@ async def _execute_mcp(tool_name: str, arguments: dict, state: AgentState) -> di
         }
 
 
-async def _execute_local(tool_name: str, arguments: dict, state: AgentState) -> dict:
+async def _execute_local(
+    tool_name: str, arguments: dict[str, Any], state: AgentState
+) -> dict[str, Any]:
     """执行本地工具（pgvector 检索），不经 MCP Server。"""
     start = time.time()
 
@@ -162,12 +170,16 @@ async def _execute_local(tool_name: str, arguments: dict, state: AgentState) -> 
 
 
 def _log_audit(
-    state: AgentState, tool_name: str, arguments: dict, result: str, duration_ms: float
+    state: AgentState,
+    tool_name: str,
+    arguments: dict[str, Any],
+    result: str,
+    duration_ms: float,
 ) -> None:
     """记录审计日志。"""
     params_hash = hashlib.sha256(json.dumps(arguments, sort_keys=True).encode()).hexdigest()[:16]
     log_tool_call(
-        session_id=state.get("session_id", ""),
+        session_id=state.get("session_id") or "",
         # None（匿名）记为空串而非 "None"，保持审计一致性
         user_id=str(state.get("user_id") or ""),
         tool_name=tool_name,
@@ -178,8 +190,12 @@ def _log_audit(
 
 
 def _make_failure(
-    state: AgentState, tool_name: str, arguments: dict, code: str, message: str
-) -> dict:
+    state: AgentState,
+    tool_name: str,
+    arguments: dict[str, Any],
+    code: str,
+    message: str,
+) -> dict[str, Any]:
     """构造工具失败结果。"""
     _log_audit(state, tool_name, arguments, "failed", 0)
     return {
@@ -190,7 +206,11 @@ def _make_failure(
 
 
 async def _async_failure(
-    state: AgentState, tool_name: str, arguments: dict, code: str, message: str
-) -> dict:
+    state: AgentState,
+    tool_name: str,
+    arguments: dict[str, Any],
+    code: str,
+    message: str,
+) -> dict[str, Any]:
     """异步包装 _make_failure，兼容 asyncio.gather 签名。"""
     return _make_failure(state, tool_name, arguments, code, message)

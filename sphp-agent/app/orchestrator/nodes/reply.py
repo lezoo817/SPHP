@@ -95,7 +95,9 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
             llm_messages.append({"role": "system", "content": content})
 
         response = await llm.ainvoke(llm_messages)
-        reply_content = response.content
+        # BaseMessage.content 可为 str 或多段内容列表（OpenAI 格式），统一转 str
+        raw_content = response.content
+        reply_content = raw_content if isinstance(raw_content, str) else str(raw_content)
 
         # 强制注入医疗安全声明（所有意图）
         reply_content += MEDICAL_DISCLAIMER
@@ -135,7 +137,7 @@ def _format_risk_flags(risk_flags: list[str]) -> str | None:
     return "；".join(warnings)
 
 
-def _format_tool_results(tool_results: list[dict]) -> str:
+def _format_tool_results(tool_results: list[dict[str, Any]]) -> str:
     """格式化工具调用结果为 LLM 可读的自然语言文本。
 
     从 Java 响应信封（{code, message, data, traceId}）提取内层业务数据，

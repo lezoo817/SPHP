@@ -8,17 +8,25 @@ postgres 为 lazy import：依赖 ``langgraph-checkpoint-postgres``（pyproject 
 extra），开发环境未安装时仅在使用 postgres 后端时才报错，不影响 memory 路径。
 """
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING, Any, cast
 
 from app.infrastructure.config.settings import get_settings
+
+if TYPE_CHECKING:
+    from psycopg import AsyncConnection
+    from psycopg_pool import AsyncConnectionPool
 
 logger = logging.getLogger(__name__)
 
 # Postgres 连接池全局单例（复用于所有 AsyncPostgresSaver 实例）
-_pg_pool = None
+# 类型注解仅供 mypy（postgres 依赖为 lazy import，TYPE_CHECKING 下不触发运行时导入）
+_pg_pool: AsyncConnectionPool[AsyncConnection[dict[str, Any]]] | None = None
 
 
-def build_checkpointer():
+def build_checkpointer() -> Any:
     """返回会话 checkpointer（按 backend 配置，M6-B3）。
 
     Returns:
@@ -43,12 +51,13 @@ def build_checkpointer():
     raise ValueError(f"未知的 checkpointer_backend: {backend}（可选 memory/postgres）")
 
 
-def _build_postgres_saver():
+def _build_postgres_saver() -> Any:
     """构造 AsyncPostgresSaver（共享连接池，M6-B3）。"""
     global _pg_pool
 
     try:
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        from psycopg import AsyncConnection
         from psycopg.rows import dict_row
         from psycopg_pool import AsyncConnectionPool
     except ImportError as e:
@@ -65,11 +74,14 @@ def _build_postgres_saver():
     )
 
     if _pg_pool is None:
-        _pg_pool = AsyncConnectionPool(
+        pool = AsyncConnectionPool(
             conninfo,
             max_size=20,
             kwargs={"autocommit": True, "row_factory": dict_row, "prepare_threshold": 0},
         )
+        # row_factory 经 kwargs 传入，mypy 无法静态推断出 dict_row，
+        # 显式 cast 到 AsyncPostgresSaver 期望的池类型
+        _pg_pool = cast(AsyncConnectionPool[AsyncConnection[dict[str, Any]]], pool)
         logger.info(
             "Postgres checkpointer 连接池已创建: %s:%s/%s",
             settings.pg_host,

@@ -4,6 +4,8 @@
 绑定购药场景工具白名单：库存查询 + 购药订单下单/取消/收货。
 """
 
+from typing import Any
+
 from app.orchestrator.graphs._common import build_tool_subgraph
 
 # 购药场景工具白名单（系分 §5.2.1 购药链路）
@@ -16,6 +18,6 @@ PHARMACY_TOOLS = [
 ]
 
 
-def build_pharmacy_graph():
+def build_pharmacy_graph() -> Any:
     """构造购药子图（编译后）。"""
     return build_tool_subgraph(tool_names=PHARMACY_TOOLS)
