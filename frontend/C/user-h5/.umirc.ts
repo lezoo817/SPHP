@@ -19,6 +19,7 @@ export default defineConfig({
     { path: '/pharmacy/prescription/:prescriptionId', component: 'pharmacy/prescription' },
     { path: '/pharmacy/order/:drugOrderId', component: 'pharmacy/order' },
     { path: '/mine', component: 'mine/index' },
+    { path: '/mine/profile', component: 'mine/profile' },
     { path: '/mine/family-members', component: 'mine/family-members' },
     { path: '/mine/health-record', component: 'mine/health-record' },
   ],

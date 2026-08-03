@@ -57,6 +57,33 @@ export interface FamilyMemberPayload {
   emergencyContact?: string;
 }
 
+/** 当前登录账号本人资料。 */
+export interface Profile {
+  id: number;
+  name: string;
+  gender?: 'MALE' | 'FEMALE' | 'UNKNOWN';
+  birthday?: string;
+  phone?: string;
+  emergencyContact?: string;
+}
+
+/** 更新本人资料的可提交字段。 */
+export interface ProfileUpdatePayload {
+  name: string;
+  gender?: 'MALE' | 'FEMALE' | 'UNKNOWN';
+  birthday?: string;
+  phone?: string;
+  emergencyContact?: string;
+}
+
+/** 更新本人资料后的最小响应。 */
+export interface ProfileUpdateResult {
+  id: number;
+  name: string;
+  phone?: string;
+  updatedAt: string;
+}
+
 /** 健康档案中的最小患者资料。 */
 export interface HealthProfile {
   id: number;

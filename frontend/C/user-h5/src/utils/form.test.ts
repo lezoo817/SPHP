@@ -12,6 +12,7 @@ import { resolveSelfPatientId } from '../models/selection';
 import { buildDrugOrderListPath } from '../services/pharmacy';
 import { matchesDrugOrderTab } from './pharmacy';
 import { hasSearchKeyword, resolveInitialDepartment } from './home-search';
+import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -71,5 +72,23 @@ describe('首页科室与搜索规则', () => {
   it('空白关键词不允许发起搜索', () => {
     expect(hasSearchKeyword('   ')).toBe(false);
     expect(hasSearchKeyword('心内科')).toBe(true);
+  });
+});
+
+describe('个人资料更新规则', () => {
+  const values = { name: ' 张三 ', gender: 'MALE' as const, birthday: '2000-01-01', phone: '', emergencyContact: '' };
+
+  it('校验姓名和手机号格式', () => {
+    expect(validateProfileForm({ ...values, name: ' ' })).toBe('请填写姓名');
+    expect(validateProfileForm({ ...values, phone: '123' })).toBe('手机号格式不正确');
+  });
+
+  it('不提交空白的敏感资料字段', () => {
+    expect(buildProfileUpdatePayload(values)).toEqual({ name: '张三', gender: 'MALE', birthday: '2000-01-01' });
+  });
+
+  it('网络重试复用首次生成的幂等键', () => {
+    const first = resolveProfileIdempotencyKey();
+    expect(resolveProfileIdempotencyKey(first)).toBe(first);
   });
 });
