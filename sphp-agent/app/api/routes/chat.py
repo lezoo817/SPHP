@@ -123,11 +123,10 @@ async def _sse_generator(
     推的自定义事件到不了主图 ``custom`` stream。而 tool_executor 运行在
     4 个业务子图内，因此 action/observation 事件从 ``updates`` 里的
     ``tool_calls``/``tool_results`` **重建**（子图最终 state 更新包含完整数据）。
-    事件映射：
-    - updates 含 tool_calls 字段      -> ``event: action``（工具开始，重建）
-    - updates 含 tool_results 字段    -> ``event: observation``（工具结果，重建）
-    - custom 且 type=tool_action      -> ``event: action``（预留顶层节点通道）
-    - custom 且 type=tool_observation -> ``event: observation``（预留）
+    事件映射（M6-A1 定案：仅 updates 重建，custom 通道已移除）：
+    - updates 含 tool_results 字段    -> ``event: action`` + ``event: observation``
+                                        （工具已执行，逐结果配对推送）
+    - updates 含 tool_calls 字段      -> ``event: action``（仅 tool_calls 无结果场景）
     - messages 且 msg 是 AIMessage    -> ``event: message``（回复 token）
     - updates 含 reply_node 输出      -> 未流式时兜底推送完整回复
     - 结束                            -> ``event: done``
@@ -144,25 +143,9 @@ async def _sse_generator(
             async for mode, chunk in graph.astream(
                 initial_state,
                 config=config,
-                stream_mode=["custom", "messages", "updates"],
+                stream_mode=["messages", "updates"],
             ):
-                if mode == "custom":
-                    if not isinstance(chunk, dict):
-                        continue
-                    ctype = chunk.get("type", "")
-                    if ctype == "tool_action":
-                        yield _sse(
-                            "action",
-                            {
-                                "tool": chunk.get("tool", ""),
-                                "arguments": chunk.get("arguments", {}),
-                            },
-                        )
-                    elif ctype == "tool_observation":
-                        result = chunk.get("result", {})
-                        yield _sse("observation", _build_observation(result))
-
-                elif mode == "messages":
+                if mode == "messages":
                     msg, meta = chunk
                     node = (meta or {}).get("langgraph_node", "")
                     # 仅 reply_node 的 assistant token 推送给前端

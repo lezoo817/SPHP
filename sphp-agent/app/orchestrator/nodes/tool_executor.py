@@ -3,10 +3,10 @@
 从 engine/tools/executor.py 迁移而来，按系分要求移到编排层。
 负责区分 MCP 工具和本地工具，走不同执行路径。
 
-工具可见性（系分 §5.12）：
-    通过 ``get_stream_writer()`` 推送 ``tool_action`` / ``tool_observation``
-    自定义事件，SSE 层在 ``astream(stream_mode=["custom", ...])`` 中接收，
-    映射为 ``event: action`` / ``event: observation`` 推送给前端。
+工具可见性（系分 §5.12，M6-A1 定案）：
+    action/observation 事件由 SSE 层从子图最终 state 的 ``tool_results`` 字段
+    重建（langgraph 1.2.9 子图内 custom 事件不传播到主图），本节点不推送
+    自定义事件，仅返回 ``tool_results`` 供 SSE 层消费。
 """
 
 import asyncio
@@ -14,8 +14,6 @@ import hashlib
 import json
 import time
 from typing import Any
-
-from langgraph.config import get_stream_writer
 
 from app.engine.tools.schema_registry import ToolRegistry
 from app.infrastructure.audit.logger import log_tool_call
@@ -112,8 +110,8 @@ async def tool_executor(state: AgentState) -> dict:
     MCP 工具：通过 MCP Client 调用 tools/call
     本地工具：直接执行，跳过 MCP 层
 
-    每个工具调用前后推送 tool_action / tool_observation 事件，
-    多个独立工具调用使用 asyncio.gather() 并发执行。
+    多个独立工具调用使用 asyncio.gather() 并发执行；action/observation
+    事件由 SSE 层从 tool_results 反推重建（M6-A1 定案）。
     """
     tool_calls = state.get("tool_calls") or []
     if not tool_calls:
@@ -121,15 +119,10 @@ async def tool_executor(state: AgentState) -> dict:
         # 子图循环上一轮已获取的查询结果，保证 reply 能基于真实数据生成
         return {}
 
-    writer = get_stream_writer()
-
     tasks = []
     for tc in tool_calls:
         tool_name = tc.get("name", "")
         arguments = tc.get("arguments", {})
-        # 推送 action 事件（工具调用开始）
-        writer({"type": "tool_action", "tool": tool_name, "arguments": arguments})
-
         # 未注册工具：直接生成失败结果，不抛异常
         if ToolRegistry.get_tool(tool_name) is None:
             tasks.append(
@@ -163,8 +156,6 @@ async def tool_executor(state: AgentState) -> dict:
         else:
             # 不可变合并：原结果 + 参数（供 SSE 层反推 action 事件）
             formatted.append({**result, "arguments": arguments})
-        # 推送 observation 事件（工具返回结果）
-        writer({"type": "tool_observation", "result": formatted[-1]})
 
     # 自累积：保留子图循环前面轮次的执行结果（tool_results 无 reducer，
     # 默认 last-write-wins 会覆盖多轮 L1 结果）。
