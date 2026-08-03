@@ -4,6 +4,7 @@ Agent 工具调用此模块完成 RAG 检索，将医疗知识作为上下文注
 """
 
 import logging
+import math
 from typing import Any
 
 from app.engine.rag.vectorstore import get_vectorstore
@@ -48,8 +49,19 @@ async def search_knowledge(
 
         formatted = []
         for doc, score in results:
+            # P1-8：NaN 距离分数直接过滤。embedding 向量含 NaN 时 PGVector 返回
+            # 的相似度可能为 NaN，而 ``min(1.0, float('nan'))`` 返回 1.0
+            # （NaN 与任何数比较恒 False），NaN 会被钳制为 1.0 置顶污染检索
+            # 结果，把无关片段当最相关知识注入 LLM。此处先判 NaN 再钳制。
+            try:
+                raw = float(score)
+            except (TypeError, ValueError):
+                continue
+            if math.isnan(raw):
+                logger.warning("知识检索跳过 NaN 距离分数（embedding 含 NaN）")
+                continue
             # 余弦分数截断到 [0, 1]（bge-m3 未 unit-norm 时可能略越界）
-            normalized = max(0.0, min(1.0, round(float(score), 4)))
+            normalized = max(0.0, min(1.0, round(raw, 4)))
             if normalized < min_score:
                 continue
             formatted.append(_format_result(doc, normalized))

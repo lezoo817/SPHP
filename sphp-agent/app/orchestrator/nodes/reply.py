@@ -17,9 +17,6 @@ logger = logging.getLogger(__name__)
 # 医疗安全声明（强制注入所有回复末尾）
 MEDICAL_DISCLAIMER = "\n\n---\n⚠️ **AI 建议仅供参考，不作为诊断依据。如有疑问请咨询专业医生。**"
 
-# 工具结果注入 LLM 的最大字符数，超过则截断
-MAX_DATA_CHARS = 2000
-
 # 回复生成系统提示词
 REPLY_SYSTEM_PROMPT = """你是一个医疗健康助手，正在为用户提供服务。
 
@@ -150,6 +147,8 @@ def _format_tool_results(tool_results: list[dict[str, Any]]) -> str:
         str: 含真实业务数据的文本摘要。
     """
     summaries = []
+    # 截断阈值入 settings（P3-5），避免硬编码；循环外取一次避免重复读配置
+    max_chars = get_settings().max_data_chars
     for result in tool_results:
         tool_name = result.get("tool_name", "未知工具")
         success = result.get("success", False)
@@ -165,8 +164,8 @@ def _format_tool_results(tool_results: list[dict[str, Any]]) -> str:
                 text = json.dumps(payload, ensure_ascii=False)
             except (TypeError, ValueError):
                 text = str(payload)
-            if len(text) > MAX_DATA_CHARS:
-                text = text[:MAX_DATA_CHARS] + "...(截断)"
+            if len(text) > max_chars:
+                text = text[:max_chars] + "...(截断)"
             summaries.append(f"✓ {tool_name}: {text}")
         else:
             error_msg = result.get("error", {}).get("message", "未知错误")

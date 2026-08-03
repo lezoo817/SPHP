@@ -4,9 +4,11 @@
 替代原 backend/client.py，扁平化到 infrastructure 层根目录。
 """
 
+import asyncio
 import json
 import logging
 import uuid
+from contextvars import ContextVar, Token
 from typing import Any, cast
 
 import httpx
@@ -20,6 +22,38 @@ logger = logging.getLogger(__name__)
 
 # 全局异步客户端（连接池）
 _client: httpx.AsyncClient | None = None
+
+# P2 健壮性：瞬时故障（连接超时/拒绝、网关 5xx）指数退避重试
+_MAX_RETRIES = 3  # 含首次尝试，共至多 3 次请求
+_RETRY_BACKOFF = 0.3  # 退避基数（秒）：0.3 / 0.6 / 1.2
+# 网关 5xx（上游抖动 / 网关错误）为瞬时故障，可安全重试
+_GATEWAY_RETRYABLE = {502, 503, 504}
+# 写入型方法：依赖 X-Idempotency-Key 去重，重试须复用同一键防重复执行业务
+_WRITE_METHODS = {"POST", "PUT", "PATCH"}
+
+# P2 #17：确认流程幂等键贯穿。L2 确认执行（chat_confirm）经 MCP 链路最终
+# 到 call_java_api，Server 侧与工具封装函数不在同一 asyncio 任务，无法直接
+# 传参；改用 ContextVar——dispatcher._wrap 剥离调用参数中的内部键后设置，
+# 同一任务栈内封装函数的 call_java_api 读取，执行完恢复。Agent 自主调用
+# （context 为空）行为与原来一致（调用内生成唯一键）。
+_IDEMPOTENCY_CONTEXT: ContextVar[str | None] = ContextVar("idempotency_key", default=None)
+
+
+def set_idempotency_context(key: str) -> Token[str | None]:
+    """设置当前任务栈的幂等键，返回恢复句柄（dispatcher._wrap 使用）。"""
+    return _IDEMPOTENCY_CONTEXT.set(key)
+
+
+def reset_idempotency_context(token: Token[str | None]) -> None:
+    """恢复调用前幂等键上下文（dispatcher._wrap 使用）。"""
+    _IDEMPOTENCY_CONTEXT.reset(token)
+
+
+class _RetryableJavaError(Exception):
+    """瞬时故障（连接层超时/拒绝、网关 5xx），可安全重试。
+
+    重试耗尽后由 call_java_api 捕获并返回统一失败信封。
+    """
 
 
 async def get_client() -> httpx.AsyncClient:
@@ -44,6 +78,87 @@ async def close_client() -> None:
         _client = None
 
 
+async def _do_request(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    params: dict[str, Any] | None,
+    body: dict[str, Any] | None,
+    headers: dict[str, str],
+) -> dict[str, Any]:
+    """发起单次 Java HTTP 请求并解析响应（供重试循环调用）。
+
+    与旧 call_java_api 的请求段逻辑等价，仅把"瞬时故障"分离为异常上抛，
+    由重试循环决定是否重试；其余失败仍返回 ``success: False`` 信封。
+
+    Args:
+        client: 全局连接池客户端。
+        method: HTTP 方法（GET/POST/PUT/PATCH/DELETE，已大写）。
+        url: 完整请求 URL。
+        params: URL 查询参数。
+        body: JSON 请求体。
+        headers: 请求头（含 X-User-Id / X-Idempotency-Key）。
+
+    Returns:
+        dict: 成功或确定失败的 Java 响应 dict（调用方直接返回）。
+
+    Raises:
+        _RetryableJavaError: 瞬时故障（连接超时/拒绝、网关 5xx），
+            由 call_java_api 按指数退避重试。
+    """
+    try:
+        resp = await client.request(method, url, params=params, json=body, headers=headers)
+    except httpx.ConnectTimeout as e:
+        logger.error("Java API connect timeout: %s %s", method, url)
+        raise _RetryableJavaError from e
+    except httpx.ConnectError as e:
+        logger.error("Java API connect error: %s %s - %s", method, url, e)
+        raise _RetryableJavaError from e
+    except httpx.HTTPError as e:
+        # 读超时等其他 HTTP 层错误：写操作 Java 可能已提交，不自动重试
+        # （依靠 X-Idempotency-Key + 用户重试兜底），直接返回失败信封。
+        logger.error("Java API error: %s %s - %s", method, url, e)
+        return {
+            "success": False,
+            "error": {"code": "JAVA_5XX", "message": "服务异常，请稍后重试", "http_status": 0},
+        }
+
+    if resp.status_code >= 400:
+        # 解析 Java 错误响应（系分 §5.3.2 三层错误传播）
+        try:
+            error_data = resp.json()
+        except Exception:
+            error_data = {}
+
+        # 网关 5xx 为瞬时故障，可安全重试（GET 幂等 / 写入靠幂等键去重）
+        if resp.status_code in _GATEWAY_RETRYABLE:
+            logger.error("Java API gateway %d: %s %s", resp.status_code, method, url)
+            raise _RetryableJavaError(f"gateway {resp.status_code}")
+
+        return {
+            "success": False,
+            "error": {
+                "code": error_data.get("code", f"JAVA_{resp.status_code}"),
+                "message": error_data.get("message", "服务异常，请稍后重试"),
+                "detail": error_data.get("detail", ""),
+                "http_status": resp.status_code,
+            },
+        }
+
+    try:
+        return cast(dict[str, Any], resp.json())
+    except json.JSONDecodeError:
+        logger.error("Java API 响应非 JSON: %s %s", method, url)
+        return {
+            "success": False,
+            "error": {
+                "code": "JAVA_PARSE_ERROR",
+                "message": "服务响应格式异常，请稍后重试",
+                "http_status": resp.status_code,
+            },
+        }
+
+
 async def call_java_api(
     method: str = "",
     path: str = "",
@@ -51,11 +166,10 @@ async def call_java_api(
     tool_name: str | None = None,
     api_name: str | None = None,
     path_params: dict[str, Any] | None = None,
-    arguments: dict[str, Any] | None = None,
     params: dict[str, Any] | None = None,
     body: dict[str, Any] | None = None,
     user_id: int | None = None,
-    scope: str = "c_end",
+    idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     """调用 Java REST API（系分 §6.4）。
 
@@ -65,20 +179,28 @@ async def call_java_api(
        （工具文件改传 tool_name，Java 接口变化只改契约表）
     3. api_name + path_params 查表：供聚合接口内部调用具体子接口
 
+    P2 健壮性（2026-08-03）：
+        - **瞬时故障重试**：连接超时/连接拒绝/网关 5xx（502/503/504）按指数
+          退避重试至多 3 次，缓解 Java 瞬时抖动直接失败（原实现单次请求）。
+        - **幂等键复用**：幂等键在本次调用内生成一次，重试全程复用同一键，
+          Java 侧按 ``X-Idempotency-Key`` 去重——网络重试不会重复执行业务
+          （挂号锁定、购药下单等 L2 写操作）。调用方也可显式传入复用键
+          （同一业务多次调用共用），如 confirm 流程按 confirm_token 派生。
+
     Args:
         method: HTTP 方法（GET/POST/PUT/PATCH/DELETE）
         path: API 路径（如 /api/c/v1/departments）
         tool_name: 工具名（查契约表确定 API 路径，method/path 为空时使用）
         api_name: 语义接口名（查契约表，path 含 {param} 时与 path_params 配合）
         path_params: 路径参数 {参数名: 值}，替换契约表 path 中的 {param}
-        arguments: 工具参数（保留参数，暂不用于路径推导）
         params: URL 查询参数
         body: JSON 请求体
         user_id: 用户ID（注入 X-User-Id Header 做数据隔离）
-        scope: c_end / b_end（决定 API 前缀；契约表条目有自己的 scope 时优先）
+        idempotency_key: 幂等键（P2）。重试同一业务操作时传入复用同一键；
+            None 时本次调用生成唯一键并在重试间复用。
 
     Returns:
-        正常返回 Java 响应 dict；失败（超时 / 非 2xx / 非 JSON）返回含
+        正常返回 Java 响应 dict；失败（重试耗尽 / 非 2xx / 非 JSON）返回含
         ``error`` 字段的 dict，不抛异常。
     """
     settings = get_settings()
@@ -104,58 +226,38 @@ async def call_java_api(
     if user_id is not None:
         headers["X-User-Id"] = str(user_id)
 
-    # 创建型操作生成幂等键
-    if method.upper() in ("POST", "PUT", "PATCH"):
-        headers["X-Idempotency-Key"] = str(uuid.uuid4())
-
-    try:
-        resp = await client.request(
-            method.upper(),
-            url,
-            params=params,
-            json=body,
-            headers=headers,
+    method_upper = method.upper()
+    # 幂等键：优先级 显式参数 > 当前任务栈确认流程键 > 本调用生成一次；
+    # 重试循环全程复用同一键，保证 Java 侧去重，网络重试不重复执行业务。
+    if method_upper in _WRITE_METHODS:
+        headers["X-Idempotency-Key"] = (
+            idempotency_key or _IDEMPOTENCY_CONTEXT.get() or str(uuid.uuid4())
         )
 
-        if resp.status_code >= 400:
-            # 解析 Java 错误响应（系分 §5.3.2 三层错误传播）
-            try:
-                error_data = resp.json()
-            except Exception:
-                error_data = {}
-
-            return {
-                "success": False,
-                "error": {
-                    "code": error_data.get("code", f"JAVA_{resp.status_code}"),
-                    "message": error_data.get("message", "服务异常，请稍后重试"),
-                    "detail": error_data.get("detail", ""),
-                    "http_status": resp.status_code,
-                },
-            }
-
+    # 重试循环：仅 _RetryableJavaError（瞬时故障）触发重试，其余失败直接返回
+    attempt = 0
+    while True:
         try:
-            return cast(dict[str, Any], resp.json())
-        except json.JSONDecodeError:
-            logger.error("Java API 响应非 JSON: %s %s", method, path)
-            return {
-                "success": False,
-                "error": {
-                    "code": "JAVA_PARSE_ERROR",
-                    "message": "服务响应格式异常，请稍后重试",
-                    "http_status": resp.status_code,
-                },
-            }
-
-    except httpx.ConnectTimeout:
-        logger.error("Java API connect timeout: %s %s", method, path)
-        return {
-            "success": False,
-            "error": {"code": "JAVA_TIMEOUT", "message": "系统繁忙，请稍后重试", "http_status": 0},
-        }
-    except httpx.HTTPError as e:
-        logger.error("Java API error: %s %s - %s", method, path, e)
-        return {
-            "success": False,
-            "error": {"code": "JAVA_5XX", "message": "服务异常，请稍后重试", "http_status": 0},
-        }
+            return await _do_request(client, method_upper, url, params, body, headers)
+        except _RetryableJavaError:
+            attempt += 1
+            if attempt >= _MAX_RETRIES:
+                logger.error("Java 调用重试耗尽（%d 次）: %s %s", attempt, method_upper, path)
+                return {
+                    "success": False,
+                    "error": {
+                        "code": "JAVA_TIMEOUT",
+                        "message": "系统繁忙，请稍后重试",
+                        "http_status": 0,
+                    },
+                }
+            delay = _RETRY_BACKOFF * (2 ** (attempt - 1))
+            logger.warning(
+                "Java 调用瞬时故障，%.1fs 后重试（%d/%d）: %s %s",
+                delay,
+                attempt + 1,
+                _MAX_RETRIES,
+                method_upper,
+                path,
+            )
+            await asyncio.sleep(delay)

@@ -14,7 +14,7 @@ async def query_prescriptions(
     prescription_id: int | None = None, user_id: int | None = None
 ) -> dict[str, Any]:
     """查询处方列表或详情。"""
-    if prescription_id:
+    if prescription_id is not None:
         return await call_java_api(
             api_name="query_prescriptions:detail",
             path_params={"prescription_id": prescription_id},

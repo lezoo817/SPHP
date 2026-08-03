@@ -7,10 +7,14 @@
 因此使用绝对路径：sphp-agent/.env，保证任意工作目录下都能读取。
 """
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 # sphp-agent/.env（本文件位于 app/infrastructure/config/，向上 4 级）
 _ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
@@ -27,10 +31,14 @@ class Settings(BaseSettings):
 
     # ---- 应用 ----
     app_name: str = "智愈先锋 AI Agent 服务"
+    # 应用版本号（供 /health 与 OpenAPI 引用，避免多处理硬编码）
+    app_version: str = "2.0.0"
     debug: bool = False
     # 无 token 时降级为匿名（仅开发环境设为 true，生产必须 false）
     allow_anonymous: bool = False
-    agent_host: str = "0.0.0.0"
+    # 监听地址：默认回环（P3-5 安全默认，避免开发环境误暴露到局域网）；
+    # 生产部署需在 .env 覆盖为 0.0.0.0 供外部访问
+    agent_host: str = "127.0.0.1"
     agent_port: int = 8081
     # CORS 允许的前端来源（生产由 .env 的 CORS_ORIGINS 覆盖）
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
@@ -97,7 +105,6 @@ class Settings(BaseSettings):
     kb_top_k: int = 5
     # 检索结果相关度阈值：低于该值的结果不返回（cosine score 0~1，越高越相关）
     kb_min_score: float = 0.3
-    kb_ingest_root: str = ""  # 入库允许的根目录绝对路径，空则拒绝目录入库（防路径遍历）
 
     # ---- Agent 行为参数 ----
     # 会话 checkpointer 后端：memory（开发/测试，进程内存）/ postgres（生产，PG 持久化）
@@ -108,13 +115,11 @@ class Settings(BaseSettings):
     confirm_done_ttl: int = 3600
     rate_limit_per_minute: int = 20
     memory_window_size: int = 10
+    # 工具结果注入 LLM 的最大字符数（reply._format_tool_results 截断，防上下文膨胀）
+    max_data_chars: int = 2000
+    # 子图工具调用最大迭代次数（graphs._common.route_continue，防 LLM 无限循环）
+    max_tool_iterations: int = 5
     log_level: str = "INFO"
-    mcp_transport: str = "stdio"
-
-    # ---- LangSmith（可选追踪）----
-    langsmith_tracing: bool = False
-    langsmith_api_key: str = ""
-    langsmith_endpoint: str = "https://api.smith.langchain.com"
 
     def llm_config(self, provider: str) -> tuple[str, str, str]:
         """返回 (api_key, base_url, model)。"""
@@ -126,6 +131,23 @@ class Settings(BaseSettings):
         if provider not in configs:
             raise ValueError(f"未知的 LLM 供应商: {provider}")
         return configs[provider]
+
+    @model_validator(mode="after")
+    def _enforce_safe_config(self) -> "Settings":
+        """安全（P1-10）：DEBUG 与 ALLOW_ANONYMOUS 不可同时开启。
+
+        双开会让服务完全无鉴权（DEBUG 跳过 knowledge 写鉴权 + 匿名放行全部
+        端点），生产环境误配即裸奔。检测到双开时强制关闭匿名（降级），
+        并记录 ERROR 警示；开发环境需匿名时请保持 DEBUG=False。
+        """
+        if self.debug and self.allow_anonymous:
+            logger.error(
+                "安全配置冲突：DEBUG=True 与 ALLOW_ANONYMOUS=true 同时开启"
+                "（将跳过全部鉴权），已强制 ALLOW_ANONYMOUS=false 降级。"
+                "生产环境必须 DEBUG=False / ALLOW_ANONYMOUS=false。"
+            )
+            self.allow_anonymous = False
+        return self
 
 
 @lru_cache

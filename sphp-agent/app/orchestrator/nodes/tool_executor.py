@@ -23,7 +23,11 @@ from typing import Any, cast
 from app.engine.tools.schema_registry import ToolRegistry
 from app.infrastructure.audit.logger import log_tool_call
 from app.mcp_client.client import MCPClientError, get_mcp_client
-from app.mcp_server.tools.dispatcher import dispatch_tool, is_registered
+from app.mcp_server.tools.dispatcher import (
+    _IDEMPOTENCY_ARG,
+    dispatch_tool,
+    is_registered,
+)
 from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -35,7 +39,7 @@ async def _call_mcp_func(
     """执行 MCP 工具（M6-C1：优先走 MCP Client，不可用时回退直调）。
 
     仅当 MCP Client 连接层不可用时回退直调封装函数；工具执行失败（Server 侧
-    异常）以普通异常上抛，由 _execute_mcp 捕获为 TOOL_FAILED，不触发回退，
+    异常）以普通异常上抛，由 execute_mcp_tool 捕获为 TOOL_FAILED，不触发回退，
     避免同一工具被执行两次。
     """
     try:
@@ -77,7 +81,7 @@ async def tool_executor(state: AgentState) -> dict[str, Any]:
         if ToolRegistry.is_local(tool_name):
             tasks.append(_execute_local(tool_name, arguments, state))
         else:
-            tasks.append(_execute_mcp(tool_name, arguments, state))
+            tasks.append(execute_mcp_tool(tool_name, arguments, state))
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -90,9 +94,11 @@ async def tool_executor(state: AgentState) -> dict[str, Any]:
                 {
                     "tool_name": tool_calls[i].get("name", ""),
                     "success": False,
-                    "error": {"code": "TOOL_FAILED", "message": str(result)},
+                    # P2 脱敏：str(e) 可能含内部路径/连接串，详情仅日志
+                    "error": {"code": "TOOL_FAILED", "message": _safe_error_message(result)},
                     # 携带参数，供 SSE 层反推 action 事件（子图循环会覆盖 tool_calls）
                     "arguments": arguments,
+                    "duration_ms": 0,
                 }
             )
         else:
@@ -111,38 +117,161 @@ async def tool_executor(state: AgentState) -> dict[str, Any]:
     return {"tool_results": previous + formatted}
 
 
-async def _execute_mcp(
-    tool_name: str, arguments: dict[str, Any], state: AgentState
+def _safe_error_message(exc: BaseException) -> str:
+    """构造对外的工具失败提示（P2 脱敏）。
+
+    ``str(exc)`` 可能含内部文件路径、连接串、SQL 等敏感细节，直接透传给
+    LLM / SSE observation 会泄露系统内部结构。因此详情仅记录到服务端日志
+    （含异常类型与信息），对外统一返回通用提示，不暴露任何内部信息。
+
+    Args:
+        exc: 工具执行抛出的异常。
+
+    Returns:
+        str: 对外脱敏后的通用错误提示。
+    """
+    logger.error("工具执行异常（详情仅日志，类型=%s）: %s", type(exc).__name__, exc)
+    return "工具执行失败，请稍后重试"
+
+
+def _classify_tool_result(result: dict[str, Any]) -> tuple[bool, dict[str, Any] | None]:
+    """判断工具返回是否失败，返回 ``(是否失败, error)``（P1-1）。
+
+    封装函数直连 call_java_api，返回两种结构：
+
+    - Java 统一信封 ``{code, message, data, traceId}``：``code != "00000"``
+      视为业务失败（如 DEPT_NOT_FOUND / JAVA_404）；
+    - call_java_api 包装的连接/超时/解析失败 ``{success: False, error: {...}}``
+      （HTTP 5xx / 超时 / 非 JSON 响应）。
+
+    成功（含无信封字段的裸 dict，保持兼容）返回 ``(False, None)``；失败返回
+    ``(True, {"code": ..., "message": ...})``。
+
+    Args:
+        result: 封装函数返回的 dict。
+
+    Returns:
+        (是否失败, error)；error 为 None 表示成功。
+    """
+    # call_java_api 包装的连接/超时/解析失败
+    if result.get("success") is False:
+        err = result.get("error") or {}
+        return True, {
+            "code": err.get("code", "TOOL_FAILED"),
+            "message": err.get("message", "工具调用失败"),
+        }
+    # Java 统一信封业务失败（code 存在且非成功码 "00000"）
+    code = result.get("code")
+    if code is not None and code != "00000":
+        return True, {
+            "code": str(code),
+            "message": result.get("message") or "业务处理失败",
+        }
+    return False, None
+
+
+async def execute_mcp_tool(
+    tool_name: str,
+    arguments: dict[str, Any],
+    state: AgentState,
+    *,
+    confirm_method: str = "none",
+    trigger: str = "agent",
+    idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     """执行 MCP 工具（M6-C1：经 MCP Client tools/call，回退直调）。
 
+    **编排层公共入口**（P3-4）：tool_executor 图内调用，且供接入层
+    ``chat_confirm``（L2 人工确认执行）跨模块复用——L2 执行是独立 HTTP
+    请求，不进 graph 状态，直接调用本函数执行对应工具并写审计回执。
+
     工具名 -> 封装函数的映射见 dispatcher._MCP_TOOL_FUNCS。
     执行异常统一捕获为 TOOL_FAILED，不影响其余并发工具。
+
+    Args:
+        tool_name: 工具名。
+        arguments: 工具参数。
+        state: 图状态。
+        confirm_method: L2 确认方式（click/none），供审计溯源。
+        trigger: 触发来源（manual=人工确认执行 / agent=LLM 自主调用）。
+        idempotency_key: P2 #17 幂等键。L2 确认执行（chat_confirm）传入
+            confirm_token 记录的幂等键，经 ``__idempotency_key__`` 内部键
+            透传 MCP 链路，Java 侧按 X-Idempotency-Key 去重——确认操作
+            失败重试不重复执行业务（挂号/购药等）。Agent 自主调用为 None。
     """
     start = time.time()
     user_id = state.get("user_id")
 
     if not is_registered(tool_name):
         duration_ms = (time.time() - start) * 1000
-        _log_audit(state, tool_name, arguments, "failed", duration_ms)
+        _log_audit(
+            state,
+            tool_name,
+            arguments,
+            "failed",
+            duration_ms,
+            confirm_method=confirm_method,
+            trigger=trigger,
+        )
         return {
             "tool_name": tool_name,
             "success": False,
             "error": {"code": "UNKNOWN_TOOL", "message": f"未知的 MCP 工具: {tool_name}"},
+            # P1 契约对齐：携带执行耗时供 SSE observation.duration_ms
+            "duration_ms": round(duration_ms),
         }
 
     try:
-        result = await _call_mcp_func(tool_name, arguments, user_id)
+        # P2 #17：确认流程幂等键经内部键透传（_wrap 剥离并注入 ContextVar）；
+        # 注入到副本，不改动原 arguments（审计 params_hash 保持业务参数）
+        exec_args = arguments
+        if idempotency_key:
+            exec_args = {**arguments, _IDEMPOTENCY_ARG: idempotency_key}
+        result = await _call_mcp_func(tool_name, exec_args, user_id)
         duration_ms = (time.time() - start) * 1000
-        _log_audit(state, tool_name, arguments, "success", duration_ms)
-        return {"tool_name": tool_name, "success": True, "data": result}
+        # 安全（P1-1）：校验 Java 信封 / call_java_api 失败包装，避免 5xx 或
+        # 业务失败（code != "00000"）被伪装为 success=True，否则 confirm 会回
+        # "操作成功"、审计误记 success，直接误导用户与运营。
+        failed, error = _classify_tool_result(result)
+        _log_audit(
+            state,
+            tool_name,
+            arguments,
+            "failed" if failed else "success",
+            duration_ms,
+            confirm_method=confirm_method,
+            trigger=trigger,
+        )
+        if failed:
+            return {
+                "tool_name": tool_name,
+                "success": False,
+                "error": cast(dict[str, Any], error),
+                "duration_ms": round(duration_ms),
+            }
+        return {
+            "tool_name": tool_name,
+            "success": True,
+            "data": result,
+            "duration_ms": round(duration_ms),
+        }
     except Exception as e:
         duration_ms = (time.time() - start) * 1000
-        _log_audit(state, tool_name, arguments, "failed", duration_ms)
+        _log_audit(
+            state,
+            tool_name,
+            arguments,
+            "failed",
+            duration_ms,
+            confirm_method=confirm_method,
+            trigger=trigger,
+        )
         return {
             "tool_name": tool_name,
             "success": False,
-            "error": {"code": "TOOL_FAILED", "message": str(e)},
+            # P2 脱敏：str(e) 可能含内部文件路径/连接串，详情仅日志
+            "error": {"code": "TOOL_FAILED", "message": _safe_error_message(e)},
+            "duration_ms": round(duration_ms),
         }
 
 
@@ -159,13 +288,20 @@ async def _execute_local(
         results = await search_knowledge(query=query)
         duration_ms = (time.time() - start) * 1000
         _log_audit(state, tool_name, arguments, "success", duration_ms)
-        return {"tool_name": tool_name, "success": True, "data": {"results": results}}
+        return {
+            "tool_name": tool_name,
+            "success": True,
+            "data": {"results": results},
+            "duration_ms": round(duration_ms),
+        }
 
-    _log_audit(state, tool_name, arguments, "failed", 0)
+    duration_ms = (time.time() - start) * 1000
+    _log_audit(state, tool_name, arguments, "failed", duration_ms)
     return {
         "tool_name": tool_name,
         "success": False,
         "error": {"code": "UNKNOWN_TOOL", "message": f"未知的本地工具: {tool_name}"},
+        "duration_ms": round(duration_ms),
     }
 
 
@@ -175,8 +311,14 @@ def _log_audit(
     arguments: dict[str, Any],
     result: str,
     duration_ms: float,
+    confirm_method: str = "none",
+    trigger: str = "agent",
 ) -> None:
-    """记录审计日志。"""
+    """记录审计日志。
+
+    P2：confirm_method / trigger 由调用方透传真实来源——L2 确认执行路径
+    （chat_confirm）传 click/manual，Agent 自主调用保持默认 none/agent。
+    """
     params_hash = hashlib.sha256(json.dumps(arguments, sort_keys=True).encode()).hexdigest()[:16]
     log_tool_call(
         session_id=state.get("session_id") or "",
@@ -186,6 +328,8 @@ def _log_audit(
         params_hash=params_hash,
         result=result,
         duration_ms=duration_ms,
+        confirm_method=confirm_method,
+        trigger=trigger,
     )
 
 
@@ -202,6 +346,7 @@ def _make_failure(
         "tool_name": tool_name,
         "success": False,
         "error": {"code": code, "message": message},
+        "duration_ms": 0,
     }
 
 

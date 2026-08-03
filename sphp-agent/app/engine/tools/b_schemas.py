@@ -117,13 +117,15 @@ def _register_prescription_check_tools() -> None:
     ToolRegistry.register(
         ToolSchema(
             name="check_allergy_risk",
-            description="查询患者过敏史记录。对应患者过敏记录。",
+            description=(
+                "查询患者完整过敏史记录（按患者过滤，非按药查询）。"
+                "药敏判断由编排层 LLM 基于返回记录生成。"
+            ),
             parameters={
                 "properties": {
-                    "drug_name": {"type": "string", "description": "药品名称"},
                     "patient_id": {"type": "integer", "description": "患者ID"},
                 },
-                "required": ["drug_name", "patient_id"],
+                "required": ["patient_id"],
             },
             scope=ToolScope.B_END,
             security_level=SecurityLevel.L1,
@@ -134,13 +136,15 @@ def _register_prescription_check_tools() -> None:
     ToolRegistry.register(
         ToolSchema(
             name="check_duplicate_medication",
-            description="查询患者当前用药清单。仅返回数据，重复判断由编排层 LLM 生成。",
+            description=(
+                "查询患者当前用药清单（按患者过滤，非按药查询）。"
+                "仅返回数据，重复用药判断由编排层 LLM 生成。"
+            ),
             parameters={
                 "properties": {
-                    "drug_name": {"type": "string", "description": "药品名称"},
                     "patient_id": {"type": "integer", "description": "患者ID"},
                 },
-                "required": ["drug_name", "patient_id"],
+                "required": ["patient_id"],
             },
             scope=ToolScope.B_END,
             security_level=SecurityLevel.L1,

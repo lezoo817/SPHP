@@ -3,6 +3,7 @@
 前端直连 Agent 对话端点（SSE 流式）+ L2 确认回调。
 """
 
+import asyncio
 import json
 import logging
 import traceback
@@ -14,14 +15,16 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.api.schemas.chat import ChatRequest, ConfirmRequest, ConfirmResponse
+from app.api.schemas.envelope import error_response
 from app.infrastructure.cache.redis_client import (
+    delete_confirm_token_by_token,
     get_and_delete_confirm_done,
-    get_and_delete_confirm_token_by_token,
+    get_confirm_token_by_token,
     set_confirm_done,
 )
 from app.orchestrator.graphs.main_graph import build_main_graph
 from app.orchestrator.nodes.reply import MEDICAL_DISCLAIMER
-from app.orchestrator.nodes.tool_executor import _execute_mcp
+from app.orchestrator.nodes.tool_executor import execute_mcp_tool
 from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -30,6 +33,49 @@ router = APIRouter()
 
 # 全局主图实例（编译后的 CompiledGraph）
 _main_graph = None
+
+# P1-9 会话级并发锁：同 session 的并发对话请求串行化。
+# 主图 checkpointer 锁 per-instance（memory: MemorySaver 线程锁 / postgres:
+# 表级读写），无法跨请求协调同 thread_id 的并发。两个并发请求 astream 同一个
+# thread_id 会交错读写同一 checkpoint，后写覆盖先写，state 互相污染。
+# 此处按 session_id 维护 asyncio.Lock，先到者持有锁、后者排队，从接入层
+# 保证同会话串行；不同会话互不影响。
+#
+# 引用计数防字典无限增长：refcount 在请求进入临界区前 +1、释放会话锁后 -1。
+# 计数非 0（含排队等待锁的请求）时不移除条目，避免"排队中的 B 被移除锁后，
+# 新请求 C 新建锁而不等待 B"破坏串行性。
+_session_locks: dict[str, asyncio.Lock] = {}
+_session_refcounts: dict[str, int] = {}
+_session_lock_guard = asyncio.Lock()
+
+
+async def _get_session_lock(session_id: str) -> asyncio.Lock:
+    """获取指定会话的串行化锁（不存在则创建，P1-9）。
+
+    Args:
+        session_id: 会话 ID，同会话共享同一把锁。
+
+    Returns:
+        asyncio.Lock: 会话级锁，调用方需 ``async with`` 包裹图执行，
+            并在结束后调用 ``_release_session_lock`` 归还引用。
+    """
+    async with _session_lock_guard:
+        lock = _session_locks.get(session_id)
+        if lock is None:
+            lock = _session_locks[session_id] = asyncio.Lock()
+        _session_refcounts[session_id] = _session_refcounts.get(session_id, 0) + 1
+        return lock
+
+
+async def _release_session_lock(session_id: str) -> None:
+    """归还会话锁引用，引用归零时移除条目（防字典无限增长，P1-9）。"""
+    async with _session_lock_guard:
+        remaining = _session_refcounts.get(session_id, 0) - 1
+        if remaining <= 0:
+            _session_locks.pop(session_id, None)
+            _session_refcounts.pop(session_id, None)
+        else:
+            _session_refcounts[session_id] = remaining
 
 
 def _get_graph() -> Any:
@@ -54,8 +100,10 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
     # 注入对话上下文，使"确认后追问"保持连续。
     # Redis 故障时优雅降级：回执读取失败返回 []，不影响对话主链路
     # （与限流 fail-open、L2 转 risk_flags 的降级口径一致）
+    # P2 安全：按 user_id 归属过滤（匿名传空串），防止跨用户读回执（含 PHI）。
+    request_user_id = str(getattr(request.state, "user_id", "") or "")
     try:
-        confirmed_actions = await get_and_delete_confirm_done(session_id)
+        confirmed_actions = await get_and_delete_confirm_done(session_id, request_user_id)
     except Exception:
         logger.warning("读取 confirm_done 回执失败（Redis 不可用），降级为空列表")
         confirmed_actions = []
@@ -83,7 +131,7 @@ def _build_initial_state(
         token: JWT Token。
         session_id: 会话 ID。
         confirmed_actions: M5-T4（T-M3-L1）本会话此前确认成功的操作回执，
-            非空时注入 messages 上下文，保证确认后追问连续。
+            非空时注入 messages 上下文（含操作结果摘要），保证确认后追问连续。
 
     Note:
         M6-B1 鉴权去重：中间件已在 HTTP 层调 Java token/parse 一次，身份字段
@@ -92,17 +140,13 @@ def _build_initial_state(
     """
     messages: list[dict[str, Any]] = [{"role": "user", "content": req.content}]
     if confirmed_actions:
-        labels = [
-            _TOOL_LABELS.get(t.get("tool_name", ""), t.get("tool_name", "操作"))
-            for t in confirmed_actions
-        ]
+        # P2：注入操作结果摘要（操作名 + 成功提示 + 关键业务 ID），
+        # 支持"我的挂号单号是多少"式追问，而非仅有操作名标签
         messages.insert(
             0,
             {
                 "role": "system",
-                "content": "本会话此前用户已确认完成以下操作："
-                + "；".join(labels)
-                + "。后续用户提及这些操作时，基于已执行结果回答，不要重复要求确认。",
+                "content": _build_confirmed_actions_system(confirmed_actions),
             },
         )
 
@@ -129,35 +173,147 @@ def _build_initial_state(
     }
 
 
+def _handle_message_chunk(
+    msg: Any,
+    meta: dict[str, Any] | None,
+    usage: dict[str, int],
+) -> tuple[list[tuple[str, dict[str, Any]]], bool]:
+    """messages 分支处理：累积 LLM 用量，返回（事件列表, 是否推送回复文本）。
+
+    ⚠️ 仅 reply_node 的 assistant token 推送给前端（intent_node / tool_caller
+    的 LLM 输出不推送）；推理模型思考 token（reasoning_content）单独作为
+    ``thought`` 事件推送（系分 §5.12，M6-B4）。``thought`` / ``error`` /
+    ``done.trace_id`` 是对系分 §6.2.1 事件表的**扩展**（M6-B4 / P1-3 定案），
+    前端按未知事件忽略处理。
+
+    Args:
+        msg: langgraph messages 模式下的消息对象（BaseMessage 或其 chunk）。
+        meta: 消息元数据（含 langgraph_node 节点名）。
+        usage: 本轮 LLM token 用量累计表（就地更新，M6-B4 done.usage）。
+
+    Returns:
+        tuple[list[tuple[str, dict[str, Any]]], bool]：
+            (事件列表, 是否推送了回复文本)；事件为 (event, payload) 二元组，
+            event ∈ {"message", "thought"}。
+    """
+    events: list[tuple[str, dict[str, Any]]] = []
+    streamed = False
+    node = (meta or {}).get("langgraph_node", "")
+    # 累积 LLM 用量（M6-B4）：对全部 LLM chunk 统计。
+    # P3-6：is not None 判断（0 为合法计数，勿用 if x: 误判）。
+    usage_meta = getattr(msg, "usage_metadata", None) or {}
+    if usage_meta.get("input_tokens") is not None:
+        usage["prompt_tokens"] = usage_meta["input_tokens"]
+    if usage_meta.get("output_tokens") is not None:
+        usage["completion_tokens"] += usage_meta["output_tokens"]
+    if usage_meta.get("total_tokens") is not None:
+        usage["total_tokens"] = usage_meta["total_tokens"]
+    # 仅 reply_node 的 assistant token 推送给前端（intent_node / tool_caller 不推送）
+    if node == "reply_node" and getattr(msg, "type", "") in ("ai", "AIMessageChunk"):
+        delta = getattr(msg, "content", "") or ""
+        if delta:
+            streamed = True
+            events.append(("message", {"delta": delta}))
+        # 推理模型思考 token（系分 §5.12，M6-B4）：智谱 glm-4 系列流式输出在
+        # additional_kwargs.reasoning_content
+        reasoning = (getattr(msg, "additional_kwargs", {}) or {}).get("reasoning_content")
+        if reasoning:
+            events.append(("thought", {"delta": reasoning}))
+    return events, streamed
+
+
+def _handle_updates_chunk(chunk: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """updates 分支处理：从子图更新重建 action / observation / card 事件。
+
+    子图 custom 事件不传播到主图（langgraph 1.2.9），tool_executor 运行在
+    4 个业务子图内，action/observation 从 updates 里的 tool_calls /
+    tool_results **重建**（子图最终 state 更新含完整数据，M6-A1 定案）：
+        - tool_results 非空 -> 每个结果配对推送 action + observation
+          （子图循环会覆盖 tool_calls，action 从结果反推，工具确已执行）
+        - 仅 tool_calls 无结果（理论顶层场景）-> 只推 action
+        - pending_confirmations 非空 -> 推送 L2 确认 card（系分 §6.2.2）
+
+    Args:
+        chunk: updates 模式下的一帧（node_name -> state 更新 dict）。
+
+    Returns:
+        list[tuple[str, dict[str, Any]]]：(event, payload) 事件列表，
+            event ∈ {"action", "observation", "card"}。
+    """
+    events: list[tuple[str, dict[str, Any]]] = []
+    for _node_name, node_update in chunk.items():
+        if not isinstance(node_update, dict):
+            continue
+        tool_calls = node_update.get("tool_calls") or []
+        tool_results = node_update.get("tool_results") or []
+        if tool_results:
+            # 子图循环会把 tool_calls 覆盖为空，action 无法从 tool_calls 重建，
+            # 改为从 tool_results 反推（工具确已执行）：每个结果推送 action -> observation 配对
+            for tr in tool_results:
+                events.append(("action", _build_action(tr)))
+                events.append(("observation", _build_observation(tr)))
+        elif tool_calls:
+            # 仅 tool_calls 无结果（理论顶层场景）：只推 action
+            for tc in tool_calls:
+                events.append(("action", _build_action(tc, from_call=True)))
+        # L2 操作需用户确认：推送 card 事件（系分 §6.2.2）
+        for p in node_update.get("pending_confirmations") or []:
+            events.append(("card", _build_card(p)))
+    return events
+
+
 async def _sse_generator(
     initial_state: AgentState, session_id: str | None, trace_id: str
 ) -> AsyncIterator[str]:
     """SSE 流式输出生成器（系分 §6.2.1，基于 astream 混合 stream_mode）。
 
-    ⚠️ 子图 custom 事件不传播：langgraph 1.2.9 中子图内 ``get_stream_writer()``
-    推的自定义事件到不了主图 ``custom`` stream。而 tool_executor 运行在
-    4 个业务子图内，因此 action/observation 事件从 ``updates`` 里的
-    ``tool_calls``/``tool_results`` **重建**（子图最终 state 更新包含完整数据）。
     事件映射（M6-A1 定案：仅 updates 重建，custom 通道已移除）：
     - updates 含 tool_results 字段    -> ``event: action`` + ``event: observation``
-                                        （工具已执行，逐结果配对推送）
     - updates 含 tool_calls 字段      -> ``event: action``（仅 tool_calls 无结果场景）
     - messages 且 msg 是 AIMessage    -> ``event: message``（回复 token）
     - messages 含 reasoning_content   -> ``event: thought``（推理思考 token，M6-B4）
     - updates 含 reply_node 输出      -> 未流式时兜底推送完整回复
     - 结束                            -> ``event: done``（含 usage token 统计，M6-B4）
+
+    P3 契约说明：``thought`` / ``error`` 事件与 ``done.trace_id`` 是对系分
+    §6.2.1 事件表的**扩展**（M6-B4 推理过程展示 / P1-3 异常透出 / 链路追踪），
+    前端按未知事件忽略处理，不破坏原有契约。
     """
     graph = _get_graph()
-    thread_id = session_id or str(uuid4())
-    config = {"configurable": {"thread_id": thread_id}}
+    # P2 归属隔离：LangGraph thread_id 与会话锁绑定 (user_id, session_id)，
+    # 防止"知道 session_id 即跨用户读/写他人会话 checkpoint 历史"。
+    # 外部 session_id 契约不变（done 事件仍返回原始 session_id），thread_key
+    # 仅用于 checkpoint 命名空间与锁键；匿名用户统一 anon 前缀。
+    user_id = initial_state.get("user_id")
+    if session_id:
+        # 前缀 user_id（匿名统一 anon），避免跨用户同名 session_id 共享会话
+        thread_key = f"{'anon' if user_id is None else user_id}:{session_id}"
+    else:
+        thread_key = str(uuid4())
+    config = {"configurable": {"thread_id": thread_key}}
 
-    logger.info("[SSE] 开始流程执行, thread_id=%s", thread_id)
+    logger.info("[SSE] 开始流程执行, thread_id=%s", thread_key)
     streamed_reply = False
     # 本轮 LLM token 用量（M6-B4 done.usage）：langgraph 首个 chunk 含
     # input_tokens，后续 chunk 只递增 output_tokens
     usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
+    # P1-9 会话级串行锁：同 session 并发请求排队执行，防止交错读写同一
+    # checkpoint 互相覆盖（checkpointer 锁 per-instance，无法跨请求协调）。
+    # 锁持有期间本生成器独占该会话的图执行；不同会话互不影响。
+    # P2：锁键同样用 (user_id, session_id) 命名空间，不同用户同 session_id 不共享锁。
+    lock = await _get_session_lock(thread_key)
+    lock_acquired = False
     try:
+        try:
+            await lock.acquire()
+            lock_acquired = True
+        except BaseException:
+            # 等待锁期间被取消/客户端断开（GeneratorExit）：未持有锁，
+            # 归还引用计数后向上传播，锁不会泄漏。
+            await _release_session_lock(thread_key)
+            raise
+
         try:
             async for mode, chunk in graph.astream(
                 initial_state,
@@ -166,84 +322,32 @@ async def _sse_generator(
             ):
                 if mode == "messages":
                     msg, meta = chunk
-                    node = (meta or {}).get("langgraph_node", "")
-                    # 累积 LLM 用量（M6-B4）：对全部 LLM chunk 统计
-                    usage_meta = getattr(msg, "usage_metadata", None) or {}
-                    if usage_meta.get("input_tokens"):
-                        usage["prompt_tokens"] = usage_meta["input_tokens"]
-                    if usage_meta.get("output_tokens"):
-                        usage["completion_tokens"] += usage_meta["output_tokens"]
-                    if usage_meta.get("total_tokens"):
-                        usage["total_tokens"] = usage_meta["total_tokens"]
-                    # 仅 reply_node 的 assistant token 推送给前端
-                    # （intent_node / tool_caller 的 LLM 输出不推送）
-                    if node == "reply_node" and getattr(msg, "type", "") in (
-                        "ai",
-                        "AIMessageChunk",
-                    ):
-                        delta = getattr(msg, "content", "") or ""
-                        if delta:
-                            streamed_reply = True
-                            yield _sse("message", {"delta": delta})
-                        # 推理模型思考 token（系分 §5.12，M6-B4）：
-                        # 智谱 glm-4 系列流式输出在 additional_kwargs.reasoning_content
-                        reasoning = (getattr(msg, "additional_kwargs", {}) or {}).get(
-                            "reasoning_content"
-                        )
-                        if reasoning:
-                            yield _sse("thought", {"delta": reasoning})
-
+                    events, pushed = _handle_message_chunk(msg, meta, usage)
+                    if pushed:
+                        streamed_reply = True
+                    for event, payload in events:
+                        yield _sse(event, payload)
                 elif mode == "updates":
-                    # 子图更新里含 tool_calls / tool_results，重建 action / observation
-                    for node_name, node_update in chunk.items():
-                        if not isinstance(node_update, dict):
-                            continue
-                        tool_calls = node_update.get("tool_calls") or []
-                        tool_results = node_update.get("tool_results") or []
-                        if tool_results:
-                            # 子图循环会把 tool_calls 覆盖为空，action 无法从 tool_calls
-                            # 重建，改为从 tool_results 反推（工具确已执行）：
-                            # 每个结果推送 action -> observation 配对
-                            for tr in tool_results:
-                                yield _sse(
-                                    "action",
-                                    {
-                                        "tool": tr.get("tool_name", ""),
-                                        "arguments": tr.get("arguments", {}),
-                                    },
-                                )
-                                yield _sse("observation", _build_observation(tr))
-                        elif tool_calls:
-                            # 仅 tool_calls 无结果（理论顶层场景）：只推 action
-                            for tc in tool_calls:
-                                yield _sse(
-                                    "action",
-                                    {
-                                        "tool": tc.get("name", ""),
-                                        "arguments": tc.get("arguments", {}),
-                                    },
-                                )
-
-                        # L2 操作需用户确认：推送 card 事件（系分 §6.2.2）
-                        pending_list = node_update.get("pending_confirmations") or []
-                        for p in pending_list:
-                            yield _sse("card", _build_card(p))
-
+                    for event, payload in _handle_updates_chunk(chunk):
+                        yield _sse(event, payload)
                     # reply_node 完成但未流式时，兜底推送完整回复
                     if "reply_node" in chunk and not streamed_reply:
-                        output = chunk.get("reply_node", {})
-                        content = _extract_last_content(output)
+                        content = _extract_last_content(chunk.get("reply_node", {}))
                         if content:
                             yield _sse("message", {"delta": content})
 
-            logger.info("[SSE] 流程完成, session_id=%s", thread_id)
+            logger.info("[SSE] 流程完成, thread_id=%s", thread_key)
             # 流式回复后补推医疗安全声明（不在 LLM 流中，确保前端必见）
             if streamed_reply:
                 yield _sse("message", {"delta": MEDICAL_DISCLAIMER})
 
         except GeneratorExit:
-            logger.warning("[SSE] 客户端断开连接, session_id=%s", thread_id)
-            raise
+            # P1-3 客户端断开：记录后直接结束，不补推 done（无人接收）。
+            # 必须 return 而非 raise + finally 中 yield —— 生成器关闭（GeneratorExit
+            # 传播）期间在 finally 里 yield 会抛 "generator ignored GeneratorExit"
+            # RuntimeError，生产必现（客户端断连刷日志/连接清理异常）。
+            logger.warning("[SSE] 客户端断开连接, thread_id=%s", thread_key)
+            return
         except Exception as e:
             logger.error("[SSE] 异常: %s\n%s", e, traceback.format_exc())
             yield _sse(
@@ -251,14 +355,25 @@ async def _sse_generator(
                 {"code": "SERVER_ERROR", "message": "服务异常，请稍后重试", "trace_id": trace_id},
             )
 
-    finally:
-        # 确保 done 事件始终推送（即使异常/取消）
-        # M6-B4：携带本轮 LLM token 用量（无任何 LLM chunk 时 usage 为 None）
+        # P1-3：done 事件移至正常/异常兜底路径（非 finally），生成器迭代期
+        # yield 是安全的；M6-B4：携带本轮 LLM token 用量（无任何 LLM chunk 时
+        # usage 为 None）。客户端断开时提前 return，不执行到此处。
+        # P2：返回原始 session_id（外部契约），而非内部命名空间的 thread_key。
         _usage = {k: v for k, v in usage.items() if v} or None
         yield _sse(
             "done",
-            {"session_id": thread_id, "trace_id": trace_id, "usage": _usage},
+            {"session_id": session_id, "trace_id": trace_id, "usage": _usage},
         )
+
+    finally:
+        # P1-9：释放会话锁并归还引用（正常/异常/断开三条路径均安全收敛；
+        # release 为同步方法、_release_session_lock 为 await，均不在生成器
+        # 关闭期间 yield，不触发 P1-3 的 GeneratorExit 陷阱）。
+        if lock_acquired:
+            lock.release()
+        await _release_session_lock(thread_key)
+        # 清理段：仅日志，不 yield。
+        logger.info("[SSE] 生成器退出, thread_id=%s", thread_key)
 
 
 def _sse(event: str, payload: dict[str, Any]) -> str:
@@ -266,20 +381,105 @@ def _sse(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def _build_observation(result: dict[str, Any]) -> dict[str, Any]:
-    """构建 observation 事件内容（工具执行结果，含失败原因）。"""
-    obs = {
-        "tool": result.get("tool_name", ""),
-        "success": result.get("success", False),
+def _build_action(result: dict[str, Any], *, from_call: bool = False) -> dict[str, Any]:
+    """构建 action 事件（系分 §5.12 / §6.2.1：{tool, label, arguments}）。
+
+    Args:
+        result: tool_results 项（键 tool_name）或 tool_calls 项（键 name）。
+        from_call: True 表示输入来自 tool_calls 项（用 name 读取工具名）。
+
+    Returns:
+        dict: action 事件负载，label 为工具中文标签（无映射时回退工具名）。
+    """
+    tool = result.get("name" if from_call else "tool_name", "")
+    return {
+        "tool": tool,
+        "label": _TOOL_LABELS.get(tool, tool),
+        "arguments": result.get("arguments", {}),
     }
-    if not result.get("success"):
-        error = result.get("error", {})
-        obs["error"] = error.get("message", "执行失败")
-    return obs
 
 
-# 工具中文标签（系分 §6.2.2 card title/summary 展示）
+def _build_observation(result: dict[str, Any]) -> dict[str, Any]:
+    """构建 observation 事件（系分 §5.12 / §6.2.1：{tool, status, result, summary, duration_ms}）。
+
+    从 tool_executor 的 tool_results 项重建：
+        - status: success / error（由 success 布尔映射）
+        - result: 成功时解 Java 信封后的内层业务数据（如 {"departments": [...]}），失败为 None
+        - summary: 一行摘要（成功统计条数 / 失败取错误消息）
+        - duration_ms: 工具执行耗时（tool_executor 记录，未记录时 0）
+    """
+    success = result.get("success", False)
+    data = result.get("data")
+    error = result.get("error", {})
+    return {
+        "tool": result.get("tool_name", ""),
+        "status": "success" if success else "error",
+        "result": _unwrap_envelope(data) if success else None,
+        "summary": _build_observation_summary(success, data, error),
+        "duration_ms": round(result.get("duration_ms", 0)),
+    }
+
+
+def _unwrap_envelope(data: Any) -> Any:
+    """解 Java 统一信封（{code, message, data, traceId}）取内层业务数据。
+
+    仅命中成功信封（code=00000 且有 data 键）时解一层；非信封格式
+    （本地工具结果）或业务失败码信封原样返回。与编排层
+    ``reply._format_tool_results`` 的解包呼应：消费层与 SSE 展示层各自解包。
+    """
+    if isinstance(data, dict) and data.get("code") == "00000" and "data" in data:
+        return data["data"]
+    return data
+
+
+def _build_observation_summary(success: bool, data: Any, error: dict[str, Any]) -> str:
+    """生成 observation.summary 一行摘要（前端折叠态展示）。
+
+    成功：统计返回数据中的列表条数（如"返回 3 条数据"），无列表时取 JSON 前 100 字符；
+    失败：取错误消息。
+    """
+    if not success:
+        return str(error.get("message", "执行失败"))
+    count = _first_list_count(data, depth=0)
+    if count is not None:
+        return f"返回 {count} 条数据"
+    text = json.dumps(data, ensure_ascii=False) if data is not None else "无返回数据"
+    return text[:100] + ("…" if len(text) > 100 else "")
+
+
+def _first_list_count(data: Any, depth: int) -> int | None:
+    """深度优先查找 data 内第一个 list 的长度（可命中 Java 信封内层列表）。"""
+    if isinstance(data, list):
+        return len(data)
+    if isinstance(data, dict) and depth < 2:
+        for v in data.values():
+            count = _first_list_count(v, depth + 1)
+            if count is not None:
+                return count
+    return None
+
+
+# 工具中文标签（P1 契约对齐：action.label / card.title 展示，覆盖全部 39 个工具）
 _TOOL_LABELS = {
+    # ---- C 端（30）----
+    "create_triage_assessment": "导诊评估",
+    "search_medical_knowledge": "检索医疗知识",
+    "query_departments": "查询科室",
+    "query_doctors": "查询医生",
+    "query_schedule_slots": "查询号源时段",
+    "query_appointments": "查询挂号订单",
+    "query_payment_status": "查询支付状态",
+    "query_consultations": "查询问诊记录",
+    "query_prescriptions": "查询处方",
+    "interpret_prescription": "解读处方",
+    "query_pharmacy_stock": "查询药店库存",
+    "query_drug_orders": "查询购药订单",
+    "query_health_record": "查询健康档案",
+    "query_reports": "查询检查报告",
+    "query_medication_plans": "查询用药计划",
+    "query_follow_ups": "查询随访计划",
+    "manage_notifications": "管理通知",
+    # ---- L2 确认类（card 标题，系分 §6.2.2）----
     "create_appointment": "确认挂号",
     "cancel_appointment": "确认取消挂号",
     "save_pre_consultation": "确认提交预问诊",
@@ -287,19 +487,32 @@ _TOOL_LABELS = {
     "create_drug_order": "确认创建购药订单",
     "cancel_drug_order": "确认取消购药订单",
     "confirm_drug_receipt": "确认收货",
+    "join_waitlist": "确认登记候补",
     "manage_allergy": "确认更新过敏史",
     "manage_medical_history": "确认更新既往史",
     "create_report": "确认录入检查报告",
     "update_medication_plan": "确认更新用药计划",
     "confirm_follow_up": "确认随访提醒",
-    "join_waitlist": "确认登记候补",
     "generate_draft_note": "确认保存病历草稿",
     "query_patient_history": "确认查询患者档案",
+    # ---- B 端（9）----
+    "query_drug_guide": "查询药品说明书",
+    "check_drug_interaction": "查询药品相互作用",
+    "check_contraindication": "查询药品禁忌",
+    "check_allergy_risk": "查询过敏风险",
+    "check_duplicate_medication": "查询重复用药",
+    "recommend_care": "查询号源推荐",
+    "interpret_report": "解读检查报告",
 }
 
 
 def _build_card(pending: dict[str, Any]) -> dict[str, Any]:
-    """构造 L2 确认卡片（系分 §6.2.2 card 事件）。"""
+    """构造 L2 确认卡片（系分 §6.2.2 card 事件，P1 契约对齐补 details）。
+
+    details 按 card_type 从 tool_arguments 提取确认前可得的字段（ID/主诉/动作等）。
+    名称类字段（department_name / doctor_name 等）依赖 L2 执行后回填，确认前不可得，
+    故不在此伪造；字段缺失时前端按 card_type 降级展示。
+    """
     tool_name = pending.get("tool_name", "")
     card_type = pending.get("card_type", "confirm_generic")
     title = _TOOL_LABELS.get(tool_name, "操作确认")
@@ -307,6 +520,7 @@ def _build_card(pending: dict[str, Any]) -> dict[str, Any]:
     args = pending.get("tool_arguments", {})
     key_params = [v for v in args.values() if v is not None][:3]
     summary = f"{title}（参数: {', '.join(str(v) for v in key_params)}）" if key_params else title
+    details = {k: args[k] for k in _CARD_DETAILS_FIELDS.get(card_type, ()) if k in args}
 
     return {
         "card_type": card_type,
@@ -314,8 +528,30 @@ def _build_card(pending: dict[str, Any]) -> dict[str, Any]:
         "session_id": pending.get("session_id", ""),
         "title": title,
         "summary": summary,
+        "details": details,
         "expires_at": pending.get("expires_at", ""),
     }
+
+
+# card.details 字段映射（系分 §6.2.1）：从 tool_arguments 提取确认前可得的字段。
+# 名称类字段（department_name/doctor_name 等）依赖执行后回填，确认前仅透出 ID 类参数。
+_CARD_DETAILS_FIELDS: dict[str, tuple[str, ...]] = {
+    "confirm_appointment": ("slot_id", "hospital_id", "patient_id"),
+    "confirm_cancel_appointment": ("appointment_id",),
+    "confirm_pre_consultation": ("appointment_id", "chief_complaint"),
+    "confirm_send_message": ("consultation_id", "content"),
+    "confirm_drug_order": ("prescription_id", "pharmacy_id", "delivery_address"),
+    "confirm_cancel_drug_order": ("drug_order_id",),
+    "confirm_drug_receipt": ("drug_order_id",),
+    "confirm_waitlist": ("slot_id", "patient_id"),
+    "confirm_allergy": ("allergen", "reaction", "allergy_id"),
+    "confirm_medical_history": ("content", "history_id"),
+    "confirm_report": ("report_name", "report_date"),
+    "confirm_medication_plan": ("plan_id", "action"),
+    "confirm_follow_up": ("follow_up_id", "remind_at"),
+    "confirm_draft_note": ("consultation_id",),
+    "confirm_patient_history": ("patient_id",),
+}
 
 
 def _extract_last_content(output: object) -> str:
@@ -337,8 +573,9 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     """L2 确认回调（系分 §6.2.2）。
 
     前端用户点击确认卡片后回调此端点。
-    Agent 原子消费 confirm_token（Redis 一次性 GET+DEL），校验 session/user，
-    通过后同步执行对应的 MCP 工具，返回业务执行结果。
+    Agent 读取 confirm_token 记录（Redis GET，不删除），校验 session/user，
+    执行对应的 MCP 工具；成功后才删除 token 并写回执，失败保留 token 供
+    用户重试（复用同一幂等键，Java 侧去重防重复执行业务）。
 
     Args:
         req: ConfirmRequest，含 confirm_token + session_id。
@@ -354,20 +591,21 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     if not req.confirm_token or not req.session_id:
         return _confirm_error("CONFIRM_INVALID", "令牌格式无效", trace_id)
 
-    # 原子消费 confirm_token（一次性 GET+DEL + user_id 校验）
+    # P2 #17：读取 confirm_token 记录（GET 不删）。删除推迟到工具执行成功后，
+    # 失败时保留 token 供用户重试；并发双击由幂等键 + Java 去重兜底。
     try:
-        record = await get_and_delete_confirm_token_by_token(
+        record = await get_confirm_token_by_token(
             session_id=req.session_id,
             token_id=req.confirm_token,
             expected_user_id=user_id,
         )
     except Exception:
         # Redis 不可用
-        logger.error("confirm_token 消费异常: Redis 不可用")
+        logger.error("confirm_token 读取异常: Redis 不可用")
         return _confirm_error("CONFIRM_INVALID", "操作暂时不可用，请稍后重试", trace_id)
 
     if record is None:
-        # token 不存在 / 已消费 / 已过期 / 用户不匹配
+        # token 不存在 / 已过期 / 用户不匹配
         return _confirm_error("CONFIRM_EXPIRED", "操作已超时或无效，请重新发起", trace_id)
 
     # session 校验（record 里的 session 应与请求一致）
@@ -377,7 +615,11 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     # 执行对应的 L2 工具（匿名请求无 user_id，用 getattr 兜底）
     tool_name = record.get("tool_name", "")
     arguments = record.get("tool_arguments", {})
-    # _execute_mcp 只消费 user_id/scope/session_id，无需完整 AgentState，
+    # P2 #17：复用 confirm_token 记录的幂等键——同一确认操作（含失败重试）
+    # Java 侧按 X-Idempotency-Key 去重，防止"已提交但响应超时 -> 重试 ->
+    # 重复执行业务"（挂号锁定/购药下单等写操作）。
+    idempotency_key = record.get("idempotency_key")
+    # execute_mcp_tool 只消费 user_id/scope/session_id，无需完整 AgentState，
     # cast 表明这是按需构造的部分状态
     state = cast(
         AgentState,
@@ -387,19 +629,42 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
             "session_id": req.session_id,
         },
     )
-    result = await _execute_mcp(tool_name, arguments, state)
+    # P2 审计溯源：人工点击确认触发的 L2 工具执行，审计标记
+    # confirm_method=click / trigger=manual，区别于 Agent 自主调用
+    result = await execute_mcp_tool(
+        tool_name,
+        arguments,
+        state,
+        confirm_method="click",
+        trigger="manual",
+        idempotency_key=idempotency_key,
+    )
 
     if not result.get("success"):
         error = result.get("error", {})
+        # P2 #17：执行失败保留 confirm_token（不删），用户可携带原卡片重试，
+        # 复用同一幂等键，Java 去重不重复执行业务。
         # TOOL_FAILED 系分 §6.1 错误码表标注为 500
         return _confirm_error(
             "TOOL_FAILED", error.get("message", "操作执行失败"), trace_id, status_code=500
         )
 
+    # P2 #17：执行成功后删除 confirm_token（一次性语义收敛到此处），
+    # 用户无法再用已成功的卡片重复操作。
+    try:
+        await delete_confirm_token_by_token(
+            session_id=req.session_id,
+            token_id=req.confirm_token,
+            expected_user_id=user_id,
+        )
+    except Exception:
+        logger.warning("删除 confirm_token 失败: token=%s", req.confirm_token)
+
     # M5-T4（T-M3-L1）：写入确认成功回执，供下一轮对话引用（此操作是独立
     # HTTP 请求，结果不进 graph 状态；Redis 回执 + 下轮注入保证对话连续）
+    # P2 安全：写入归属 user_id，供下一轮消费时按归属过滤。
     try:
-        await set_confirm_done(req.session_id, tool_name, result.get("data"))
+        await set_confirm_done(req.session_id, tool_name, result.get("data"), user_id)
     except Exception:
         logger.warning("写入 confirm_done 回执失败: tool=%s", tool_name)
 
@@ -431,10 +696,7 @@ def _confirm_error(code: str, message: str, trace_id: str, status_code: int = 40
     Returns:
         JSONResponse: 对应状态码 + 统一信封。
     """
-    return JSONResponse(
-        status_code=status_code,
-        content={"code": code, "message": message, "data": None, "traceId": trace_id},
-    )
+    return error_response(code, message, trace_id, status_code)
 
 
 def _success_message(tool_name: str) -> str:
@@ -457,3 +719,71 @@ def _success_message(tool_name: str) -> str:
         "query_patient_history": "患者档案已查询",
     }
     return messages.get(tool_name, "操作成功")
+
+
+# 已确认操作结果摘要（P2）：action_result 中提取的关键业务 ID 字段
+_RESULT_ID_KEYS = (
+    "order_id",
+    "appointment_id",
+    "drug_order_id",
+    "report_id",
+    "record_id",
+    "plan_id",
+    "consultation_id",
+)
+_ID_KEY_LABELS = {
+    "order_id": "单号",
+    "appointment_id": "单号",
+    "drug_order_id": "单号",
+    "report_id": "报告编号",
+    "record_id": "记录编号",
+    "plan_id": "计划编号",
+    "consultation_id": "记录编号",
+}
+
+
+def _extract_result_brief(data: Any) -> str:
+    """从 action_result 提取一行关键摘要（如"单号 999"），无则返回空串。
+
+    仅提取 ID 类字段（含一层包裹结构），避免把完整嵌套数据（如检查报告
+    详情等 PHI 内容）整体注入下一轮 LLM 上下文；业务 ID 已足够支撑
+    "我的挂号单号是多少"式追问。
+    """
+    if not isinstance(data, dict):
+        return ""
+    # 直接层 + 一层包裹（Java 信封 data / 通用包装）两处找 ID 字段
+    layers: list[dict[str, Any]] = [data]
+    layers.extend(v for v in data.values() if isinstance(v, dict))
+    for layer in layers:
+        for k, v in layer.items():
+            if k in _RESULT_ID_KEYS and v not in (None, ""):
+                return f"{_ID_KEY_LABELS.get(k, k)} {v}"
+    return ""
+
+
+def _summarize_confirmed_action(action: dict[str, Any]) -> str:
+    """生成单条已确认操作的摘要：操作名（操作结果，关键 ID）。
+
+    Args:
+        action: confirm_done 回执记录（tool_name / action_result）。
+
+    Returns:
+        str: 供注入 system 上下文的一行摘要。
+    """
+    tool_name = action.get("tool_name", "")
+    label = _TOOL_LABELS.get(tool_name, tool_name or "操作")
+    result_msg = _success_message(tool_name)
+    brief = _extract_result_brief(action.get("action_result"))
+    if brief:
+        return f"{label}（{result_msg}，{brief}）"
+    return f"{label}（{result_msg}）"
+
+
+def _build_confirmed_actions_system(confirmed_actions: list[dict[str, Any]]) -> str:
+    """构造已确认操作注入的 system 内容（P2：含操作结果摘要）。"""
+    summaries = [_summarize_confirmed_action(t) for t in confirmed_actions]
+    return (
+        "本会话此前用户已确认完成以下操作："
+        + "；".join(summaries)
+        + "。后续用户提及这些操作时，基于已执行结果回答，不要重复要求确认。"
+    )

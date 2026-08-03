@@ -7,6 +7,7 @@ MCP 工具：query_health_record, manage_allergy, manage_medical_history,
 接口路径统一由 java_api_map 契约表解析。
 """
 
+import asyncio
 from typing import Any
 
 from app.infrastructure.java_client import call_java_api
@@ -17,7 +18,7 @@ async def query_health_record(
 ) -> dict[str, Any]:
     """查询健康档案（含过敏史、既往史）。"""
     params = {}
-    if patient_id:
+    if patient_id is not None:
         params["patient_id"] = patient_id
     return await call_java_api(tool_name="query_health_record", params=params, user_id=user_id)
 
@@ -32,7 +33,7 @@ async def manage_allergy(
     body = {"allergen": allergen}
     if reaction:
         body["reaction"] = reaction
-    if allergy_id:
+    if allergy_id is not None:
         return await call_java_api(
             api_name="manage_allergy:update",
             path_params={"allergy_id": allergy_id},
@@ -52,7 +53,7 @@ async def manage_medical_history(
     body = {"content": content}
     if occurred_at:
         body["occurred_at"] = occurred_at
-    if history_id:
+    if history_id is not None:
         return await call_java_api(
             api_name="manage_medical_history:update",
             path_params={"history_id": history_id},
@@ -63,18 +64,23 @@ async def manage_medical_history(
 
 
 async def query_reports(report_id: int | None = None, user_id: int | None = None) -> dict[str, Any]:
-    """查询检查报告列表或详情（带 report_id 时包含指标解读）。"""
-    if report_id:
-        # 查详情 + 指标解读（两个独立接口）
-        detail = await call_java_api(
-            api_name="query_reports:detail",
-            path_params={"report_id": report_id},
-            user_id=user_id,
-        )
-        interpretation = await call_java_api(
-            api_name="query_reports:interpretation",
-            path_params={"report_id": report_id},
-            user_id=user_id,
+    """查询检查报告列表或详情（带 report_id 时并行查详情+指标解读）。
+
+    P2 优化：详情与指标解读是两个独立 Java 接口，原实现串行 await 延迟翻倍；
+    现用 asyncio.gather 并发执行，总耗时收敛为较慢一方。
+    """
+    if report_id is not None:
+        detail, interpretation = await asyncio.gather(
+            call_java_api(
+                api_name="query_reports:detail",
+                path_params={"report_id": report_id},
+                user_id=user_id,
+            ),
+            call_java_api(
+                api_name="query_reports:interpretation",
+                path_params={"report_id": report_id},
+                user_id=user_id,
+            ),
         )
         return {"detail": detail, "interpretation": interpretation}
     return await call_java_api(api_name="query_reports:list", user_id=user_id)
@@ -93,7 +99,7 @@ async def create_report(
         "report_date": report_date,
         "indicators": indicators,
     }
-    if patient_id:
+    if patient_id is not None:
         body["patient_id"] = patient_id
     return await call_java_api(tool_name="create_report", body=body, user_id=user_id)
 

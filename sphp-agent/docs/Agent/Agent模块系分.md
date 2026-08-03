@@ -1489,86 +1489,7 @@ Agent 使用 LangGraph 的 `astream_events` API 获取流式输出，在路由�
 
 **SSE 事件格式：**
 
-`event: message`（LLM 正常输出，逐 token 流式）：
-
-```
-event: message
-data: {"delta":"您好"}
-
-event: message
-data: {"delta":"，我是"}
-
-event: message
-data: {"delta":"智愈先锋"}
-```
-
-`event: thought`（LLM 推理过程，逐 token 流式，仅推理模型触发）：
-
-```
-event: thought
-data: {"delta":"患者提到头痛和发烧三天，"}
-
-event: thought
-data: {"delta":"我需要先查询科室列表来确定推荐..."}
-```
-
-`event: action`（工具调用开始，一次性事件）：
-
-```
-event: action
-data: {
-  "tool": "query_departments",
-  "label": "查询科室列表",
-  "arguments": {"hospital_id": 1, "keyword": "神经"}
-}
-```
-
-`event: observation`（工具调用结束，一次性事件）：
-
-```
-event: observation
-data: {
-  "tool": "query_departments",
-  "status": "success",
-  "result": {"departments": [{"id": 1, "name": "神经内科"}, ...]},
-  "summary": "找到3个相关科室",
-  "duration_ms": 120
-}
-```
-
-`event: card`（L2 确认卡片）：
-
-```
-event: card
-data: {
-  "card_type": "confirm_appointment",
-  "confirm_token": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "session_id": "sess_abc123",
-  "title": "确认挂号",
-  "summary": "张医生 · 神经内科 · 8月1日上午 · ¥50",
-  "expires_at": "2026-07-30T10:05:00+08:00"
-}
-```
-
-`event: error`：
-
-```
-event: error
-data: {
-  "code": "AUTH_EXPIRED",
-  "message": "登录已过期，请重新登录"
-}
-```
-
-`event: done`：
-
-```
-event: done
-data: {
-  "session_id": "sess_abc123",
-  "usage": {"prompt_tokens": 520, "completion_tokens": 128}
-}
-```
+各事件（message / thought / action / observation / card / error / done）的**字段定义、示例与 card_type 枚举以 §6.2.1 为准**（字段均已统一：`action.label`、`observation.status/result/summary/duration_ms`、`card.details`、`error.trace_id`、`done.usage`）。本节仅约定事件时序与前端行为：`message` 逐 token 流式、`thought` 折叠展示、`action`→`observation` 配对合并为一张"调用工具"卡片（loading → 结果）、`card` 触发确认、`done` 收尾。
 
 **前端渲染示意：**
 
@@ -1893,12 +1814,17 @@ data: {
 | `confirm_send_message` | send_consultation_message | message_preview（消息预览前 50 字） |
 | `confirm_drug_order` | create_drug_order | pharmacy_name, drug_list（药品清单数组）, total_cent |
 | `confirm_cancel_drug_order` | cancel_drug_order | drug_order_id, total_cent |
+| `confirm_drug_receipt` | confirm_drug_receipt | drug_order_id |
+| `confirm_waitlist` | join_waitlist | slot_id, patient_id |
 | `confirm_allergy` | manage_allergy | allergy_name（过敏原名称）, action（`add` / `update`） |
 | `confirm_medical_history` | manage_medical_history | condition_name（病史名称）, action（`add` / `update`） |
 | `confirm_report` | create_report | report_type（报告类型）, report_date（报告日期） |
 | `confirm_medication_plan` | update_medication_plan | plan_name, action（`PAUSE` / `RESUME` / `COMPLETE`） |
 | `confirm_follow_up` | confirm_follow_up | follow_up_type, scheduled_time（提醒时间） |
 | `confirm_draft_note` | generate_draft_note | patient_name, note_preview（草稿摘要） |
+| `confirm_patient_history` | query_patient_history | patient_id |
+
+> **注**：details 为**结构化详情，字段因 card_type 而异**；其中名称类字段（如 `department_name` / `doctor_name` / `plan_name`）依赖 L2 确认执行后回填，Agent 在生成卡片（执行前）仅透出工具参数中可得的 ID/动作类字段，缺失字段前端按 card_type 降级展示。
 
 **⑥ error——错误事件**
 
@@ -1917,13 +1843,14 @@ data: {"code": "TOOL_FAILED", "message": "号源已被抢完，请选择其他�
 
 ```
 event: done
-data: {"session_id": "sess_abc123", "trace_id": "trc_xyz789"}
+data: {"session_id": "sess_abc123", "trace_id": "trc_xyz789", "usage": {"prompt_tokens": 520, "completion_tokens": 128}}
 ```
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | session_id | string | 当前会话 ID，前端应保存用于后续对话 |
 | trace_id | string | 全链路追踪 ID |
+| usage | object | 本轮 LLM token 用量（`prompt_tokens` / `completion_tokens` / `total_tokens`），无 LLM 调用时为 null |
 
 > **注**：ReAct 过程对用户可见——`action` 和 `observation` 事件让用户看到"调了什么工具、传了什么参数、返回了什么结果"；`thought` 事件（推理模型独有）展示 LLM 内部推理。`message` 事件出现在 `action` 之前的内容属于思考意图，出现在最后一个 `observation` 之后的内容属于最终回复。前端通过 `action`→`observation` 的时序配对，在 UI 中合并为一张"调用工具"卡片。详见 §5.12 事件映射表。
 

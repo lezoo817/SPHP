@@ -19,6 +19,7 @@ from typing import Any
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 
+from app.api.schemas.envelope import error_response, success_response
 from app.engine.rag.ingest import ingest_file
 from app.engine.rag.search import search_knowledge
 from app.infrastructure.config.settings import get_settings
@@ -38,8 +39,9 @@ _CATEGORIES = {"patient_edu", "clinical_ref"}
 def _require_auth(request: Request, *, admin_only: bool = False) -> JSONResponse | None:
     """校验登录；admin_only=True 时额外校验 B 端 ADMIN 角色（M5-T3）。
 
-    debug 模式跳过鉴权便于本地测试；生产模式要求 user_id 非空，
-    入库（admin_only）还需 request.state.roles 含 "ADMIN"。
+    debug 模式仅跳过登录校验（user_id）便于本地测试检索；写操作
+    （admin_only=True）仍校验 ADMIN 角色，防止未授权投毒 RAG（NP-2）。
+    生产模式要求 user_id 非空，入库还需 request.state.roles 含 "ADMIN"。
 
     Args:
         request: FastAPI 请求，roles 由 JWT 中间件从 B 端 token/parse 注入。
@@ -49,10 +51,11 @@ def _require_auth(request: Request, *, admin_only: bool = False) -> JSONResponse
         JSONResponse | None: 鉴权失败返回统一信封错误响应；通过返回 None。
     """
     settings = get_settings()
-    if settings.debug:
-        return None
-    if getattr(request.state, "user_id", None) is None:
-        return _error(request, 401, "AUTH_INVALID", "未授权：请先登录")
+    # debug 模式仅跳过登录校验（user_id）便于本地测试检索；
+    # 写操作（admin_only）仍校验 ADMIN 角色，防止未授权投毒 RAG（NP-2）
+    if not settings.debug:
+        if getattr(request.state, "user_id", None) is None:
+            return _error(request, 401, "AUTH_INVALID", "未授权：请先登录")
     if admin_only:
         roles = getattr(request.state, "roles", []) or []
         if "ADMIN" not in roles:
@@ -99,6 +102,18 @@ async def ingest(
         return _error(request, 400, "INVALID_REQUEST", "标题 title 不能为空")
     if category is not None and category not in _CATEGORIES:
         return _error(request, 400, "INVALID_REQUEST", f"不支持的分类: {category}")
+
+    # P2：先校验声明大小再读取——原实现先 `await file.read()` 全量进内存再判
+    # 上限，恶意大文件（如数 GB）会先打满内存再被拒。multipart 的
+    # UploadFile.size 由 Starlette 按 Content-Length 填充，先判可零成本拒绝；
+    # read 后仍保留实际大小兜底校验（声明与实测不符时）。
+    if file.size is not None and file.size > _MAX_UPLOAD_BYTES:
+        return _error(
+            request,
+            400,
+            "INVALID_REQUEST",
+            f"文件过大，上限 {_MAX_UPLOAD_BYTES // 1024 // 1024}MB",
+        )
 
     content = await file.read()
     if len(content) > _MAX_UPLOAD_BYTES:
@@ -193,10 +208,7 @@ def _envelope(trace_id: str, data: dict[str, Any]) -> JSONResponse:
     Returns:
         JSONResponse: 200 + {code, message, data, traceId}。
     """
-    return JSONResponse(
-        status_code=200,
-        content={"code": "00000", "message": "success", "data": data, "traceId": trace_id},
-    )
+    return success_response(data, trace_id)
 
 
 def _error(request: Request, status_code: int, code: str, message: str) -> JSONResponse:
@@ -211,12 +223,4 @@ def _error(request: Request, status_code: int, code: str, message: str) -> JSONR
     Returns:
         JSONResponse: 对应状态码 + {code, message, data, traceId}。
     """
-    return JSONResponse(
-        status_code=status_code,
-        content={
-            "code": code,
-            "message": message,
-            "data": None,
-            "traceId": getattr(request.state, "trace_id", ""),
-        },
-    )
+    return error_response(code, message, getattr(request.state, "trace_id", ""), status_code)

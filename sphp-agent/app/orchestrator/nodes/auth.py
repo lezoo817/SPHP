@@ -48,8 +48,12 @@ async def auth_node(state: AgentState) -> dict[str, Any]:
     """
     scope = state.get("scope", "c_end")
 
-    # 中间件已注入身份（user_id 或 roles 非空）-> 直接放行
-    if state.get("user_id") is not None or state.get("roles") is not None:
+    # 中间件已注入身份（user_id 非空）-> 直接放行。
+    # P2 修复：原条件 ``user_id is not None or roles is not None`` 中 roles 恒被
+    # ``_build_initial_state`` 设为 []（含匿名路径），``[] is not None`` 恒为真，
+    # 导致 Java data 缺 userId 的 token（user_id=None, roles=[]）也被判"已鉴权"
+    # 直接放行。现显式要求 user_id 非空才算已鉴权，缺 userId 走下方兜底/匿名降级。
+    if state.get("user_id") is not None:
         return {}
 
     jwt_token = state.get("jwt_token")
