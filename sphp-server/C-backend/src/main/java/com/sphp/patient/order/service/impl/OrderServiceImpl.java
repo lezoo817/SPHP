@@ -28,6 +28,7 @@ import com.sphp.patient.order.mapper.OrderPrescriptionRecord;
 import com.sphp.patient.order.mapper.OrderStockRecord;
 import com.sphp.patient.order.mapper.OrderTraceRecord;
 import com.sphp.patient.order.service.OrderService;
+import com.sphp.patient.order.service.DeliveryService;
 import com.sphp.patient.order.support.OrderStockLockService;
 import com.sphp.patient.order.vo.DrugOrderCancelVO;
 import com.sphp.patient.order.vo.DrugOrderCreateVO;
@@ -64,6 +65,7 @@ public class OrderServiceImpl implements OrderService {
     private final RegistrationProperties registrationProperties;
     private final ApplicationEventPublisher eventPublisher;
     private final NotificationEventProducer notificationEventProducer;
+    private final DeliveryService deliveryService;
 
     /** 查询当前账号可访问处方的院内药房库存。 */
     @Override
@@ -77,6 +79,8 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(rollbackFor = Exception.class)
     public DrugOrderCreateVO createDrugOrder(DrugOrderCreateRequest request) {
         OrderPrescriptionRecord prescription = requireAccessibleApprovedPrescription(request.getPatientId(), request.getPrescriptionId());
+        // 下单只接受地址簿快照或旧版文本，避免客户端伪造已保存地址的归属。
+        String deliveryAddress = deliveryService.deliveryResolveOrderAddress(request.getAddressId(), request.getDeliveryAddress());
         List<OrderStockRecord> stocks = orderDataMapper.selectOrderStocks(request.getPharmacyId(), request.getPrescriptionId());
         List<OrderPrescriptionItemRecord> prescriptionItems = orderDataMapper.selectOrderPrescriptionItems(request.getPrescriptionId());
         if (stocks.size() != prescriptionItems.size() || stocks.isEmpty()) {
@@ -87,7 +91,7 @@ public class OrderServiceImpl implements OrderService {
         if (!pharmacyEligible) {
             throw notFound("药房不存在、已停用或库存不足");
         }
-        return stockLockService.executeWithStockLocks(stocks, () -> createLockedDrugOrder(request, prescription, stocks));
+        return stockLockService.executeWithStockLocks(stocks, () -> createLockedDrugOrder(request, prescription, stocks, deliveryAddress));
     }
 
     /** 分页查询当前账号指定就诊人的购药订单。 */
@@ -191,7 +195,7 @@ public class OrderServiceImpl implements OrderService {
 
     /** 在库存锁内条件扣减并创建订单、明细和支付单。 */
     private DrugOrderCreateVO createLockedDrugOrder(DrugOrderCreateRequest request, OrderPrescriptionRecord prescription,
-                                                     List<OrderStockRecord> stocks) {
+                                                     List<OrderStockRecord> stocks, String deliveryAddress) {
         OffsetDateTime now = OffsetDateTime.now();
         for (OrderStockRecord stock : stocks) {
             if (orderDataMapper.lockOrderStock(stock.pharmacyId(), stock.drugId(), stock.quantity(), now) != 1) {
@@ -202,7 +206,7 @@ public class OrderServiceImpl implements OrderService {
         OffsetDateTime expireAt = now.plusSeconds(Math.max(registrationProperties.getPaymentTimeout(), 1));
         DrugOrder order = new DrugOrder();
         order.setPatientId(prescription.patientId()); order.setPrescriptionId(prescription.id()); order.setPharmacyId(request.getPharmacyId());
-        order.setPharmacyNameSnapshot(stocks.getFirst().pharmacyName()); order.setDeliveryMethod("COURIER"); order.setDeliveryAddress(request.getDeliveryAddress());
+        order.setPharmacyNameSnapshot(stocks.getFirst().pharmacyName()); order.setDeliveryMethod("COURIER"); order.setDeliveryAddress(deliveryAddress);
         order.setStatus(DrugOrderStatusEnum.PENDING_PAYMENT.name()); order.setLogisticsStatus(DrugOrderLogisticsStatusEnum.PENDING_SHIPMENT.name());
         order.setAmountCent(amountCent); order.setExpireAt(expireAt);
         if (drugOrderMapper.insert(order) != 1) throw systemError("购药订单创建失败");
