@@ -48,27 +48,4 @@ async def create_triage_assessment(
 
     logger.info("导诊评估请求: hospital_id=%s, symptom_len=%d", hospital_id, len(symptom))
 
-    return await call_java_api(
-        method="POST",
-        path="/api/c/v1/triage/assessments",
-        body=body,
-        user_id=user_id,
-        scope="c_end",
-    )
-
-
-def register(server):
-    """注册导诊工具到 MCP Server（系分 §4.5）。
-
-    Args:
-        server: MCP Server实例
-
-    注册的工具：
-    - create_triage_assessment: 创建导诊评估
-
-    注意：当前MCP SDK版本不直接支持装饰器注册，
-    工具函数通过tool_caller节点显式调用。
-    """
-    # 当前版本：工具函数已实现，由编排层直接调用
-    # MCP工具注册将在SDK版本稳定后完善
-    logger.info("导诊工具函数已就绪: create_triage_assessment")
+    return await call_java_api(tool_name="create_triage_assessment", body=body, user_id=user_id)

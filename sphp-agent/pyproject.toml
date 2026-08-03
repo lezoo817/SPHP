@@ -64,6 +64,12 @@ select = ["E", "F", "I", "N", "W", "UP"]
 # MCP 工具封装为声明式 Schema，description 较长以利于 LLM 理解，放宽行长
 "app/mcp_server/tools/*.py" = ["E501"]
 
+[tool.pytest.ini_options]
+# 集成测试标记（依赖外部服务如 Redis/PG，可单独跳过）
+markers = [
+    "integration: 依赖真实外部服务（Redis/PG），本地就绪时运行",
+]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true

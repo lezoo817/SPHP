@@ -36,7 +36,6 @@ async def auth_node(state: AgentState) -> dict[str, Any]:
     Returns:
         dict: 部分状态更新，包含以下字段：
             - user_id: 用户唯一标识（C端/B端通用）
-            - account: 用户账号（C端/B端通用）
             - roles: 用户角色列表（仅B端，如 ["ADMIN", "DOCTOR"]）
             - dept_id: 所属科室ID（仅B端）
             - doctor_id: 关联医生ID（仅B端医生角色）
@@ -53,7 +52,6 @@ async def auth_node(state: AgentState) -> dict[str, Any]:
         logger.warning("JWT token缺失，降级为匿名用户")
         return {
             "user_id": None,
-            "account": "anonymous",
         }
 
     try:
@@ -64,13 +62,11 @@ async def auth_node(state: AgentState) -> dict[str, Any]:
             logger.warning("JWT validation failed for scope=%s，降级为匿名用户", scope)
             return {
                 "user_id": None,
-                "account": "anonymous",
             }
 
         # 构造返回的状态更新
         result: dict[str, Any] = {
             "user_id": user_info.get("userId"),
-            "account": user_info.get("account"),
         }
 
         # B端场景：额外写入角色和科室信息
@@ -99,5 +95,4 @@ async def auth_node(state: AgentState) -> dict[str, Any]:
         logger.error("鉴权节点异常: %s，降级为匿名用户", str(e))
         return {
             "user_id": None,
-            "account": "anonymous",
         }

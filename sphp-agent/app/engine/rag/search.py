@@ -20,25 +20,40 @@ async def search_knowledge(query: str, top_k: int | None = None) -> list[dict]:
 
     Returns:
         [{"content": "...", "source": "...", "score": 0.87}, ...]
-        按相似度降序排列。
+        按相关度降序排列，已过滤低于 ``kb_min_score`` 的低质量结果。
+        检索失败（embedding / 连接异常）时降级返回空列表，不抛异常，
+        由上游节点 / 端点决定如何兜底。
+
+    Raises:
+        无：异常在内部捕获并记录日志。
     """
-    k = top_k or get_settings().kb_top_k
-    store = get_vectorstore()
+    try:
+        k = top_k or get_settings().kb_top_k
+        min_score = get_settings().kb_min_score
+        store = get_vectorstore()
 
-    results = await store.asimilarity_search_with_relevance_scores(query, k=k)
+        results = await store.asimilarity_search_with_relevance_scores(query, k=k)
 
-    formatted = []
-    for doc, score in results:
-        formatted.append(
-            {
-                "content": doc.page_content,
-                "source": doc.metadata.get("source_file", doc.metadata.get("source", "未知")),
-                "score": round(score, 4),
-            }
-        )
+        formatted = []
+        for doc, score in results:
+            # 余弦分数截断到 [0, 1]（bge-m3 未 unit-norm 时可能略越界）
+            normalized = max(0.0, min(1.0, round(float(score), 4)))
+            if normalized < min_score:
+                continue
+            formatted.append(
+                {
+                    "content": doc.page_content,
+                    "source": doc.metadata.get("source_file", doc.metadata.get("source", "未知")),
+                    "score": normalized,
+                }
+            )
 
-    logger.info("知识检索: query=%r, 命中 %d 条", query, len(formatted))
-    return formatted
+        logger.info("知识检索: query=%r, 命中 %d 条", query, len(formatted))
+        return formatted
+    except Exception as e:
+        # 知识库不可用不应阻塞对话：降级为空列表，由上游兜底
+        logger.warning("知识检索失败，降级为空: %s", e)
+        return []
 
 
 def format_context(results: list[dict]) -> str:

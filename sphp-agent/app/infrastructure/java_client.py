@@ -13,6 +13,9 @@ import httpx
 
 from app.infrastructure.config.settings import get_settings
 
+# 接口契约表（Java 接口变化时改此表，见 java_api_map.py）
+from app.infrastructure.java_api_map import resolve_api
+
 logger = logging.getLogger(__name__)
 
 # 全局异步客户端（连接池）
@@ -46,6 +49,8 @@ async def call_java_api(
     path: str = "",
     *,
     tool_name: str | None = None,
+    api_name: str | None = None,
+    path_params: dict | None = None,
     arguments: dict | None = None,
     params: dict | None = None,
     body: dict | None = None,
@@ -54,19 +59,23 @@ async def call_java_api(
 ) -> dict[str, Any]:
     """调用 Java REST API（系分 §6.4）。
 
-    支持两种调用方式：
-    1. 显式指定 method + path + params/body（MCP Server 工具直接调用）
-    2. 传入 tool_name + arguments（由编排层 tool_executor 调用，需查表确定 API 路径）
+    支持三种调用方式：
+    1. 显式指定 method + path + params/body（兼容旧调用）
+    2. tool_name 查表：从 ``java_api_map`` 契约表解析 method/path/scope
+       （工具文件改传 tool_name，Java 接口变化只改契约表）
+    3. api_name + path_params 查表：供聚合接口内部调用具体子接口
 
     Args:
         method: HTTP 方法（GET/POST/PUT/PATCH/DELETE）
         path: API 路径（如 /api/c/v1/departments）
-        tool_name: 工具名（用于查表确定 API 路径，当 method/path 为空时使用）
-        arguments: 工具参数（当使用 tool_name 时传入）
+        tool_name: 工具名（查契约表确定 API 路径，method/path 为空时使用）
+        api_name: 语义接口名（查契约表，path 含 {param} 时与 path_params 配合）
+        path_params: 路径参数 {参数名: 值}，替换契约表 path 中的 {param}
+        arguments: 工具参数（保留参数，暂不用于路径推导）
         params: URL 查询参数
         body: JSON 请求体
         user_id: 用户ID（注入 X-User-Id Header 做数据隔离）
-        scope: c_end / b_end（决定 API 前缀）
+        scope: c_end / b_end（决定 API 前缀；契约表条目有自己的 scope 时优先）
 
     Returns:
         正常返回 Java 响应 dict；失败（超时 / 非 2xx / 非 JSON）返回含
@@ -75,10 +84,19 @@ async def call_java_api(
     settings = get_settings()
     client = await get_client()
 
-    # 如果传了 tool_name 但没传 method/path，从参数推导
-    # 当前实现：MCP Server 工具文件直接传 method+path
-    if not method and tool_name:
-        raise NotImplementedError(f"tool_name 分发未实现，请显式传入 method + path: {tool_name}")
+    # 方式 2/3：从契约表解析 method/path（scope 由契约表保证，前缀统一走 java_base_url）
+    if tool_name or api_name:
+        api = api_name or tool_name or ""
+        try:
+            resolved_method, resolved_path, _resolved_scope = resolve_api(api, path_params)
+        except KeyError as e:
+            logger.error("接口契约解析失败: %s", e)
+            return {
+                "success": False,
+                "error": {"code": "API_CONTRACT_ERROR", "message": f"接口未定义: {api}"},
+            }
+        method = method or resolved_method
+        path = resolved_path
 
     url = f"{settings.java_base_url}{path}"
 

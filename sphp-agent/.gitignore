@@ -35,3 +35,10 @@ doc/
 # Log files
 *.log
 
+# 本地联调模拟脚本（不入库：mock Java 服务 + 联调测试）
+mock_java_server.py
+test_live_tools.py
+agent_run.log
+agent_8091.log
+mock_java.log
+

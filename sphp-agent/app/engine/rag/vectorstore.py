@@ -14,10 +14,15 @@ from app.infrastructure.config.settings import get_settings
 
 @lru_cache
 def _connection_string() -> str:
-    """拼装 SQLAlchemy 连接串（psycopg3 驱动）。"""
+    """拼装 SQLAlchemy 连接串（psycopg3 驱动）。
+
+    密码需 URL 编码，否则含 @ : / 等特殊字符时连接串解析失败。
+    """
+    from urllib.parse import quote_plus
+
     s = get_settings()
     return (
-        f"postgresql+psycopg://{s.pg_user}:{s.pg_password}"
+        f"postgresql+psycopg://{quote_plus(s.pg_user)}:{quote_plus(s.pg_password)}"
         f"@{s.pg_host}:{s.pg_port}/{s.pg_database}"
     )
 
@@ -35,4 +40,5 @@ def get_vectorstore() -> PGVector:
         collection_name=get_settings().kb_collection,
         connection=_connection_string(),
         use_jsonb=True,
+        async_mode=True,
     )
