@@ -6,6 +6,7 @@
 
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
@@ -46,7 +47,7 @@ def _require_auth(request: Request, *, admin_only: bool = False) -> None:
 
 
 @router.post("/ingest/file")
-async def ingest_single_file(request: Request, file: UploadFile = File(...)) -> dict:
+async def ingest_single_file(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
     """上传单个文件入库（支持 .txt / .md / .pdf / .csv），需 B 端 ADMIN 角色。"""
     _require_auth(request, admin_only=True)
 
@@ -74,7 +75,7 @@ async def ingest_single_file(request: Request, file: UploadFile = File(...)) -> 
 
 
 @router.post("/ingest/directory")
-async def ingest_dir(request: Request, path: str = Form(...)) -> dict:
+async def ingest_dir(request: Request, path: str = Form(...)) -> dict[str, Any]:
     """指定服务器本地目录批量入库（需 B 端 ADMIN 角色）。
 
     路径须在 ``KB_INGEST_ROOT`` 配置的根目录内，防止路径遍历。
@@ -99,7 +100,7 @@ async def ingest_dir(request: Request, path: str = Form(...)) -> dict:
 
 
 @router.get("/search")
-async def search(request: Request, q: str, top_k: int = 5) -> dict:
+async def search(request: Request, q: str, top_k: int = 5) -> dict[str, Any]:
     """检索测试：输入问题，返回最相关的知识片段。"""
     _require_auth(request)
 

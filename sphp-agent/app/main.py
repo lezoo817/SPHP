@@ -4,7 +4,9 @@ FastAPI + MCP Server 启动 + lifespan 管理。
 """
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +20,7 @@ APP_VERSION = "2.0.0"
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """应用生命周期管理（系分 §4.5 启动序列）。
 
     1. 加载配置
@@ -95,7 +97,7 @@ async def lifespan(app: FastAPI):
     logger.info("Agent shutdown complete")
 
 
-async def health() -> dict:
+async def health() -> dict[str, Any]:
     """健康检查端点（系分 §4.5）。检查 PG / Redis / LLM 连通性。"""
     checks = {
         "pg": await _check_pg(),
