@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sphp.patient.notification.mapper.NotificationMapper">
+
+    <resultMap id="NotificationRecordMap" type="com.sphp.patient.notification.mapper.NotificationRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="patientId" column="patient_id"/>
+        <result property="patientName" column="patient_name"/>
+        <result property="type" column="type"/>
+        <result property="title" column="title"/>
+        <result property="content" column="content"/>
+        <result property="readAt" column="read_at"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="NotificationColumns">
+        n.id, n.user_id, n.patient_id, n.patient_name_snapshot AS patient_name,
+        n.type, n.title, n.content, n.read_at, n.created_at
+    </sql>
+
+    <select id="existsActivePatient" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM patient WHERE id = #{patientId} AND deleted_at IS NULL)
+    </select>
+
+    <select id="hasActivePatientRelation" resultType="boolean">
+        SELECT EXISTS(
+            SELECT 1 FROM patient_user_relation
+            WHERE user_id = #{userId} AND patient_id = #{patientId} AND deleted_at IS NULL
+        )
+    </select>
+
+    <select id="selectNotifications" resultMap="NotificationRecordMap">
+        SELECT <include refid="NotificationColumns"/>
+        FROM notification n
+        WHERE n.user_id = #{userId}
+          AND n.deleted_at IS NULL
+          <if test="patientId != null">AND n.patient_id = #{patientId}</if>
+          <if test="read != null">
+              AND <choose><when test="read">n.read_at IS NOT NULL</when><otherwise>n.read_at IS NULL</otherwise></choose>
+          </if>
+        ORDER BY n.created_at DESC, n.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countNotifications" resultType="long">
+        SELECT COUNT(1)
+        FROM notification n
+        WHERE n.user_id = #{userId}
+          AND n.deleted_at IS NULL
+          <if test="patientId != null">AND n.patient_id = #{patientId}</if>
+          <if test="read != null">
+              AND <choose><when test="read">n.read_at IS NOT NULL</when><otherwise>n.read_at IS NULL</otherwise></choose>
+          </if>
+    </select>
+
+</mapper>
