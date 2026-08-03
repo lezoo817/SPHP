@@ -42,6 +42,12 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
     EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        """请求入口：校验 Bearer JWT 并注入身份到 request.state。
+
+        豁免路径直接放行；无 token 走匿名降级或 401；携带 token 但校验失败
+        走 IP 防刷限流（P1-5）后统一 401。校验通过时注入
+        user_id / scope / roles / dept_id / doctor_id / hospital_id。
+        """
         if request.url.path in self.EXEMPT_PATHS:
             return await call_next(request)
 

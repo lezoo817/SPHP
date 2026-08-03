@@ -82,6 +82,14 @@ class ToolRegistry:
 
     @classmethod
     def get_tool(cls, tool_name: str) -> ToolSchema | None:
+        """按工具名获取 Schema 定义；未注册时返回 None。
+
+        Args:
+            tool_name: 工具唯一标识（与 MCP 分发映射一致）。
+
+        Returns:
+            ToolSchema | None: 已注册返回 Schema，否则 None。
+        """
         return cls._tools.get(tool_name)
 
     @classmethod

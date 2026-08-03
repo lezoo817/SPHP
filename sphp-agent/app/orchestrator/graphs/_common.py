@@ -60,6 +60,15 @@ def _bind_tool_caller(allowed_tools: list[str] | None) -> Any:
     """
 
     async def _caller(state: AgentState, config: RunnableConfig | None = None) -> dict[str, Any]:
+        """子图入口节点：以绑定白名单调用 tool_caller（闭包兼容 LangGraph 传参）。
+
+        Args:
+            state: 图状态。
+            config: LangGraph 运行时配置（子图执行时传入，此处透传未用）。
+
+        Returns:
+            dict: tool_caller 的状态更新。
+        """
         return await tool_caller(state, allowed_tools=allowed_tools)
 
     return _caller

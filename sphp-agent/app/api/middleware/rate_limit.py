@@ -65,6 +65,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        """请求入口：按 user_id（回退 IP）限流，超限返回 429 统一信封。
+
+        豁免路径（/health /docs 等）直接放行；限流键优先取 JWT 中间件注入
+        的 user_id，匿名请求回退客户端 IP；Redis 不可用时由
+        ``is_rate_limited`` 降级进程内计数（P1-4）。
+        """
         if request.url.path in self.EXEMPT_PATHS:
             return await call_next(request)
 
