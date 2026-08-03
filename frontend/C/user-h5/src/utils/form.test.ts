@@ -16,6 +16,7 @@ import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, validateProfil
 import { resolveMinePatientId } from '../models/mine-patient';
 import { isSessionTokenExpired, type SessionState } from '../models/session';
 import { buildDoctorPagePath, findDoctorById, getDoctorScheduleDates } from './doctor';
+import { buildAppointmentsPath } from '../services/registration';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -53,6 +54,11 @@ describe('挂号资源展示规则', () => {
 
   it('按关键词筛选医院名称', () => {
     expect(filterHospitals([{ name: '省人民医院' }, { name: '市中医院' }], '人民')).toEqual([{ name: '省人民医院' }]);
+  });
+
+  it('未指定订单状态时不传递空状态参数', () => {
+    expect(buildAppointmentsPath(1)).toBe('/c/v1/appointments?pageNo=1&pageSize=20&patientId=1');
+    expect(buildAppointmentsPath(1, 'UNPAID')).toContain('status=UNPAID');
   });
 });
 
