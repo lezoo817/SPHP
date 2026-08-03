@@ -97,7 +97,6 @@ class Settings(BaseSettings):
     kb_top_k: int = 5
     # 检索结果相关度阈值：低于该值的结果不返回（cosine score 0~1，越高越相关）
     kb_min_score: float = 0.3
-    kb_ingest_root: str = ""  # 入库允许的根目录绝对路径，空则拒绝目录入库（防路径遍历）
 
     # ---- Agent 行为参数 ----
     # 会话 checkpointer 后端：memory（开发/测试，进程内存）/ postgres（生产，PG 持久化）
@@ -109,12 +108,6 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 20
     memory_window_size: int = 10
     log_level: str = "INFO"
-    mcp_transport: str = "stdio"
-
-    # ---- LangSmith（可选追踪）----
-    langsmith_tracing: bool = False
-    langsmith_api_key: str = ""
-    langsmith_endpoint: str = "https://api.smith.langchain.com"
 
     def llm_config(self, provider: str) -> tuple[str, str, str]:
         """返回 (api_key, base_url, model)。"""

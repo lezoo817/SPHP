@@ -51,11 +51,11 @@ async def call_java_api(
     tool_name: str | None = None,
     api_name: str | None = None,
     path_params: dict[str, Any] | None = None,
-    arguments: dict[str, Any] | None = None,
     params: dict[str, Any] | None = None,
     body: dict[str, Any] | None = None,
     user_id: int | None = None,
     scope: str = "c_end",
+    idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     """调用 Java REST API（系分 §6.4）。
 
@@ -71,11 +71,12 @@ async def call_java_api(
         tool_name: 工具名（查契约表确定 API 路径，method/path 为空时使用）
         api_name: 语义接口名（查契约表，path 含 {param} 时与 path_params 配合）
         path_params: 路径参数 {参数名: 值}，替换契约表 path 中的 {param}
-        arguments: 工具参数（保留参数，暂不用于路径推导）
         params: URL 查询参数
         body: JSON 请求体
         user_id: 用户ID（注入 X-User-Id Header 做数据隔离）
         scope: c_end / b_end（决定 API 前缀；契约表条目有自己的 scope 时优先）
+        idempotency_key: 幂等键（技术债 T2 预留）。重试同一业务操作时传入复用
+            同一键，Java 侧按此去重；None 时每次请求生成唯一键（当前无重试路径）。
 
     Returns:
         正常返回 Java 响应 dict；失败（超时 / 非 2xx / 非 JSON）返回含
@@ -104,9 +105,10 @@ async def call_java_api(
     if user_id is not None:
         headers["X-User-Id"] = str(user_id)
 
-    # 创建型操作生成幂等键
+    # 创建型操作生成幂等键：调用方可显式传入复用键（重试同操作时去重），
+    # 未传时每次请求生成唯一键
     if method.upper() in ("POST", "PUT", "PATCH"):
-        headers["X-Idempotency-Key"] = str(uuid.uuid4())
+        headers["X-Idempotency-Key"] = idempotency_key or str(uuid.uuid4())
 
     try:
         resp = await client.request(
