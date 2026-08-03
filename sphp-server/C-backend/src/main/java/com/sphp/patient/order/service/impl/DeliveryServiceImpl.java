@@ -4,14 +4,23 @@ import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.common.constant.DeliveryConstant;
 import com.sphp.patient.common.enums.DeliveryProvinceEnum;
+import com.sphp.patient.common.enums.DeliverySortEnum;
+import com.sphp.patient.order.config.DeliveryProperties;
 import com.sphp.patient.order.dto.DeliveryAddressCreateRequest;
 import com.sphp.patient.order.dto.DeliveryAddressUpdateRequest;
 import com.sphp.patient.order.entity.DeliveryAddress;
 import com.sphp.patient.order.mapper.DeliveryAddressMapper;
 import com.sphp.patient.order.mapper.DeliveryDataMapper;
+import com.sphp.patient.order.mapper.OrderDataMapper;
+import com.sphp.patient.order.mapper.OrderPharmacyStockRecord;
+import com.sphp.patient.order.mapper.OrderPrescriptionItemRecord;
+import com.sphp.patient.order.mapper.OrderPrescriptionRecord;
 import com.sphp.patient.order.service.DeliveryService;
+import com.sphp.patient.order.support.DeliverySimulationCalculator;
+import com.sphp.patient.order.support.DeliverySimulationResult;
 import com.sphp.patient.order.vo.DeliveryAddressDeleteVO;
 import com.sphp.patient.order.vo.DeliveryAddressVO;
+import com.sphp.patient.order.vo.DeliveryPharmacyRecommendationVO;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,6 +29,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * C端收货地址服务实现。
@@ -30,6 +42,9 @@ public class DeliveryServiceImpl implements DeliveryService {
 
     private final DeliveryAddressMapper deliveryAddressMapper;
     private final DeliveryDataMapper deliveryDataMapper;
+    private final OrderDataMapper orderDataMapper;
+    private final DeliveryProperties deliveryProperties;
+    private final DeliverySimulationCalculator deliverySimulationCalculator;
 
     /** {@inheritDoc} */
     @Override
@@ -131,6 +146,34 @@ public class DeliveryServiceImpl implements DeliveryService {
         return snapshot;
     }
 
+    /** {@inheritDoc} */
+    @Override
+    public List<DeliveryPharmacyRecommendationVO> deliveryRecommendPharmacies(Long patientId, Long prescriptionId, Long addressId, String sort) {
+        Long userId = deliveryCurrentUserId();
+        OrderPrescriptionRecord prescription = deliveryRequireAccessibleApprovedPrescription(userId, patientId, prescriptionId);
+        DeliveryAddress address = deliveryRequireOwnedAddress(addressId, userId);
+        String hospitalAddress = deliveryDataMapper.deliverySelectHospitalAddress(prescription.hospitalId());
+        DeliveryProvinceEnum hospitalProvince = DeliveryProvinceEnum.resolveFromAddress(hospitalAddress);
+        if (hospitalProvince == null) {
+            // 医院地址未声明省市时拒绝生成虚假推荐，等待基础医院数据修正。
+            throw deliverySystemError("医院地址缺少配送省市信息");
+        }
+        DeliveryProvinceEnum userProvince = DeliveryProvinceEnum.valueOf(address.getProvince());
+        double coefficient = deliveryProperties.deliveryProvinceCoefficient(userProvince, hospitalProvince);
+        DeliverySortEnum sortEnum = deliveryResolveSort(sort);
+        Map<Long, Integer> quantities = new LinkedHashMap<>();
+        for (OrderPrescriptionItemRecord item : orderDataMapper.selectOrderPrescriptionItems(prescriptionId)) {
+            quantities.put(item.drugId(), item.quantity());
+        }
+        Map<Long, List<OrderPharmacyStockRecord>> pharmacyStocks = new LinkedHashMap<>();
+        for (OrderPharmacyStockRecord stock : orderDataMapper.selectOrderPharmacyInventory(prescriptionId, prescription.hospitalId())) {
+            pharmacyStocks.computeIfAbsent(stock.pharmacyId(), ignored -> new java.util.ArrayList<>()).add(stock);
+        }
+        List<DeliveryRecommendationCandidate> candidates = pharmacyStocks.values().stream()
+                .map(stocks -> deliveryBuildRecommendationCandidate(address, hospitalProvince, coefficient, quantities, stocks)).toList();
+        return deliverySortCandidates(candidates, sortEnum).stream().map(candidate -> deliveryToRecommendationVo(candidate, candidates)).toList();
+    }
+
     /**
      * 获取当前 C端登录用户 ID。
      *
@@ -221,6 +264,147 @@ public class DeliveryServiceImpl implements DeliveryService {
                 .receiverPhone(address.getReceiverPhone()).province(address.getProvince()).provinceName(province.getDisplayName())
                 .city(address.getCity()).district(address.getDistrict()).detailAddress(address.getDetailAddress())
                 .isDefault(address.getIsDefault()).createdAt(address.getCreatedAt()).updatedAt(address.getUpdatedAt()).build();
+    }
+
+    /**
+     * 校验当前账号可访问且状态为已批准的处方。
+     *
+     * @param userId 当前用户 ID
+     * @param requestedPatientId 可选就诊人 ID
+     * @param prescriptionId 处方 ID
+     * @return 已校验处方投影
+     */
+    private OrderPrescriptionRecord deliveryRequireAccessibleApprovedPrescription(Long userId, Long requestedPatientId, Long prescriptionId) {
+        OrderPrescriptionRecord prescription = orderDataMapper.selectOrderPrescription(prescriptionId);
+        if (prescription == null || !"APPROVED".equals(prescription.status())) {
+            throw deliveryNotFound("处方不存在");
+        }
+        Long targetPatientId = requestedPatientId == null ? orderDataMapper.selectOrderSelfPatientId(userId) : requestedPatientId;
+        if (targetPatientId == null || !orderDataMapper.existsOrderActivePatient(targetPatientId)) {
+            throw deliveryNotFound("就诊人不存在");
+        }
+        if (!orderDataMapper.hasOrderActivePatientRelation(userId, targetPatientId) || !targetPatientId.equals(prescription.patientId())) {
+            throw deliveryForbidden("无权访问该处方");
+        }
+        return prescription;
+    }
+
+    /**
+     * 根据单个药房的真实库存与稳定模拟结果创建候选项。
+     *
+     * @param address 当前账号地址
+     * @param hospitalProvince 医院省市
+     * @param coefficient 跨省系数
+     * @param quantities 处方药品数量
+     * @param stocks 单个药房库存项
+     * @return 推荐候选项
+     */
+    private DeliveryRecommendationCandidate deliveryBuildRecommendationCandidate(DeliveryAddress address, DeliveryProvinceEnum hospitalProvince,
+                                                                                   double coefficient, Map<Long, Integer> quantities,
+                                                                                   List<OrderPharmacyStockRecord> stocks) {
+        OrderPharmacyStockRecord first = stocks.getFirst();
+        DeliverySimulationResult simulation = deliverySimulationCalculator.deliveryCalculate(
+                DeliveryProvinceEnum.valueOf(address.getProvince()), address.getDetailAddress(), first.hospitalId(), first.pharmacyId(),
+                hospitalProvince, coefficient);
+        int amountCent = stocks.stream().mapToInt(stock -> stock.unitPriceCent() * quantities.getOrDefault(stock.drugId(), 0)).sum();
+        List<DeliveryPharmacyRecommendationVO.Item> items = stocks.stream().map(stock -> DeliveryPharmacyRecommendationVO.Item.builder()
+                .drugId(stock.drugId()).quantity(quantities.get(stock.drugId())).availableCount(stock.availableCount())
+                .unitPriceCent(stock.unitPriceCent()).build()).toList();
+        return new DeliveryRecommendationCandidate(first, simulation, amountCent, items);
+    }
+
+    /**
+     * 根据调用方指定排序方式排列药房候选项。
+     *
+     * @param candidates 药房候选项
+     * @param sort 排序方式
+     * @return 已排序候选项
+     */
+    private List<DeliveryRecommendationCandidate> deliverySortCandidates(List<DeliveryRecommendationCandidate> candidates, DeliverySortEnum sort) {
+        Comparator<DeliveryRecommendationCandidate> comparator = switch (sort) {
+            case PRICE -> Comparator.comparingInt(DeliveryRecommendationCandidate::amountCent);
+            case DISTANCE -> Comparator.comparingLong(item -> item.simulation().distanceMeters());
+            case DELIVERY_TIME -> Comparator.comparingInt(item -> item.simulation().estimatedDeliveryMinutes());
+            case RECOMMENDED -> Comparator.comparingDouble((DeliveryRecommendationCandidate item) -> -deliveryScore(item, candidates));
+        };
+        return candidates.stream().sorted(comparator.thenComparing(item -> item.stock().pharmacyId())).toList();
+    }
+
+    /**
+     * 计算价格、距离和配送时效的综合推荐分数。
+     *
+     * @param candidate 当前候选项
+     * @param candidates 全部候选项
+     * @return 范围为零至一百的分数
+     */
+    private double deliveryScore(DeliveryRecommendationCandidate candidate, List<DeliveryRecommendationCandidate> candidates) {
+        int minAmount = candidates.stream().mapToInt(DeliveryRecommendationCandidate::amountCent).min().orElse(0);
+        int maxAmount = candidates.stream().mapToInt(DeliveryRecommendationCandidate::amountCent).max().orElse(0);
+        long minDistance = candidates.stream().mapToLong(item -> item.simulation().distanceMeters()).min().orElse(0L);
+        long maxDistance = candidates.stream().mapToLong(item -> item.simulation().distanceMeters()).max().orElse(0L);
+        int minMinutes = candidates.stream().mapToInt(item -> item.simulation().estimatedDeliveryMinutes()).min().orElse(0);
+        int maxMinutes = candidates.stream().mapToInt(item -> item.simulation().estimatedDeliveryMinutes()).max().orElse(0);
+        return 45D * deliveryNormalizeScore(candidate.amountCent(), minAmount, maxAmount)
+                + 30D * deliveryNormalizeScore(candidate.simulation().distanceMeters(), minDistance, maxDistance)
+                + 25D * deliveryNormalizeScore(candidate.simulation().estimatedDeliveryMinutes(), minMinutes, maxMinutes);
+    }
+
+    /**
+     * 将较小值归一化为较高推荐分数。
+     *
+     * @param value 当前值
+     * @param min 最小值
+     * @param max 最大值
+     * @return 零至一的归一化分数
+     */
+    private double deliveryNormalizeScore(long value, long min, long max) {
+        return min == max ? 1D : 1D - (double) (value - min) / (max - min);
+    }
+
+    /**
+     * 转换候选项为接口响应对象。
+     *
+     * @param candidate 当前候选项
+     * @param candidates 全部候选项
+     * @return 推荐响应
+     */
+    private DeliveryPharmacyRecommendationVO deliveryToRecommendationVo(DeliveryRecommendationCandidate candidate,
+                                                                          List<DeliveryRecommendationCandidate> candidates) {
+        return DeliveryPharmacyRecommendationVO.builder().pharmacyId(candidate.stock().pharmacyId()).name(candidate.stock().pharmacyName())
+                .hospitalId(candidate.stock().hospitalId()).isDefault(candidate.stock().isDefault())
+                .distanceMeters(candidate.simulation().distanceMeters()).estimatedDeliveryMinutes(candidate.simulation().estimatedDeliveryMinutes())
+                .totalAmountCent(candidate.amountCent()).score((int) Math.round(deliveryScore(candidate, candidates)))
+                .recommendReasons(List.of("处方药品均有货", "价格、距离与配送时效综合推荐"))
+                .items(candidate.items()).build();
+    }
+
+    /**
+     * 解析可选的推荐排序参数。
+     *
+     * @param sort 原始排序参数
+     * @return 有效排序枚举
+     */
+    private DeliverySortEnum deliveryResolveSort(String sort) {
+        if (sort == null || sort.isBlank()) {
+            return DeliverySortEnum.RECOMMENDED;
+        }
+        try {
+            return DeliverySortEnum.valueOf(sort.trim());
+        } catch (IllegalArgumentException exception) {
+            throw deliveryInvalidInput("sort 不在允许范围内");
+        }
+    }
+
+    /**
+     * 药房推荐计算过程中的临时候选项。
+     *
+     * @param stock 药房基础库存信息
+     * @param simulation 模拟配送结果
+     * @param amountCent 处方总价
+     * @param items 处方库存项
+     */
+    private record DeliveryRecommendationCandidate(OrderPharmacyStockRecord stock, DeliverySimulationResult simulation,
+                                                   int amountCent, List<DeliveryPharmacyRecommendationVO.Item> items) {
     }
 
     /** 创建参数错误异常。 */

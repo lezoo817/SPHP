@@ -6,6 +6,7 @@ import com.sphp.patient.order.dto.DeliveryAddressUpdateRequest;
 import com.sphp.patient.order.service.DeliveryService;
 import com.sphp.patient.order.vo.DeliveryAddressDeleteVO;
 import com.sphp.patient.order.vo.DeliveryAddressVO;
+import com.sphp.patient.order.vo.DeliveryPharmacyRecommendationVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.sphp.shared.common.constant.HeaderConstant;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -51,6 +53,25 @@ public class DeliveryController {
     @Operation(summary = "查询收货地址")
     public Result<List<DeliveryAddressVO>> deliveryListAddresses() {
         return Result.success("查询成功", deliveryService.deliveryListAddresses());
+    }
+
+    /**
+     * 基于已批准处方和当前账号收货地址推荐可配送院内药房。
+     *
+     * @param patientId 可选就诊人 ID
+     * @param prescriptionId 已批准处方 ID
+     * @param addressId 当前账号收货地址 ID
+     * @param sort 排序方式
+     * @return 药房推荐列表
+     */
+    @GetMapping("/pharmacies/recommendations")
+    @Operation(summary = "推荐有货药房")
+    public Result<List<DeliveryPharmacyRecommendationVO>> deliveryRecommendPharmacies(
+            @RequestParam(required = false) @Positive Long patientId,
+            @RequestParam @Positive Long prescriptionId,
+            @RequestParam @Positive Long addressId,
+            @RequestParam(required = false) String sort) {
+        return Result.success("查询成功", deliveryService.deliveryRecommendPharmacies(patientId, prescriptionId, addressId, sort));
     }
 
     /**

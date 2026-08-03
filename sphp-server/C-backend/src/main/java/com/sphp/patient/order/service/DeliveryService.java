@@ -4,6 +4,7 @@ import com.sphp.patient.order.dto.DeliveryAddressCreateRequest;
 import com.sphp.patient.order.dto.DeliveryAddressUpdateRequest;
 import com.sphp.patient.order.vo.DeliveryAddressDeleteVO;
 import com.sphp.patient.order.vo.DeliveryAddressVO;
+import com.sphp.patient.order.vo.DeliveryPharmacyRecommendationVO;
 
 import java.util.List;
 
@@ -60,4 +61,15 @@ public interface DeliveryService {
      * @return 可写入订单的不可变地址快照
      */
     String deliveryResolveOrderAddress(Long addressId, String legacyDeliveryAddress);
+
+    /**
+     * 基于已批准处方、当前账号地址和真实库存推荐院内药房。
+     *
+     * @param patientId 可选就诊人 ID，未传时使用本人
+     * @param prescriptionId 已批准处方 ID
+     * @param addressId 当前账号收货地址 ID
+     * @param sort 排序方式
+     * @return 药房推荐列表
+     */
+    List<DeliveryPharmacyRecommendationVO> deliveryRecommendPharmacies(Long patientId, Long prescriptionId, Long addressId, String sort);
 }

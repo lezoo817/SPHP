@@ -5,10 +5,12 @@ import com.sphp.patient.common.enums.DeliveryProvinceEnum;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import org.springframework.stereotype.Component;
 
 /**
  * 基于地址、省市和院内药房的确定性模拟配送计算器。
  */
+@Component
 public class DeliverySimulationCalculator {
 
     /**

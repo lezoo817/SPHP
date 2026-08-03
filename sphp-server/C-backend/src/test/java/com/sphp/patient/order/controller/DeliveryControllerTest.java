@@ -6,6 +6,7 @@ import com.sphp.patient.order.handler.DeliveryExceptionHandler;
 import com.sphp.patient.order.service.DeliveryService;
 import com.sphp.patient.order.vo.DeliveryAddressDeleteVO;
 import com.sphp.patient.order.vo.DeliveryAddressVO;
+import com.sphp.patient.order.vo.DeliveryPharmacyRecommendationVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import org.junit.jupiter.api.AfterEach;
@@ -49,6 +50,21 @@ class DeliveryControllerTest {
                 .andExpect(jsonPath("$.code").value("00000"))
                 .andExpect(jsonPath("$.data[0].province").value("HENAN"))
                 .andExpect(jsonPath("$.data[0].isDefault").value(true));
+    }
+
+    /** 验证药房推荐路由传递地址、处方和排序参数。 */
+    @Test
+    void deliveryRecommendPharmaciesReturnsSimulationFields() throws Exception {
+        DeliveryService service = mock(DeliveryService.class);
+        when(service.deliveryRecommendPharmacies(null, 12001L, 30001L, "RECOMMENDED"))
+                .thenReturn(List.of(DeliveryPharmacyRecommendationVO.builder().pharmacyId(14001L).name("院内药房")
+                        .distanceMeters(18_000L).estimatedDeliveryMinutes(930).totalAmountCent(7000).items(List.of()).build()));
+
+        mvc(service, mock(CIdempotencyService.class)).perform(get("/c/v1/pharmacies/recommendations")
+                        .param("prescriptionId", "12001").param("addressId", "30001").param("sort", "RECOMMENDED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].distanceMeters").value(18_000))
+                .andExpect(jsonPath("$.data[0].estimatedDeliveryMinutes").value(930));
     }
 
     /** 验证新增地址经幂等服务返回新增结果。 */
