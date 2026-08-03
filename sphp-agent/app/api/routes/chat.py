@@ -277,7 +277,7 @@ def _build_observation(result: dict[str, Any]) -> dict[str, Any]:
 
     从 tool_executor 的 tool_results 项重建：
         - status: success / error（由 success 布尔映射）
-        - result: 成功时完整返回数据，失败为 None
+        - result: 成功时解 Java 信封后的内层业务数据（如 {"departments": [...]}），失败为 None
         - summary: 一行摘要（成功统计条数 / 失败取错误消息）
         - duration_ms: 工具执行耗时（tool_executor 记录，未记录时 0）
     """
@@ -287,10 +287,22 @@ def _build_observation(result: dict[str, Any]) -> dict[str, Any]:
     return {
         "tool": result.get("tool_name", ""),
         "status": "success" if success else "error",
-        "result": data if success else None,
+        "result": _unwrap_envelope(data) if success else None,
         "summary": _build_observation_summary(success, data, error),
         "duration_ms": round(result.get("duration_ms", 0)),
     }
+
+
+def _unwrap_envelope(data: Any) -> Any:
+    """解 Java 统一信封（{code, message, data, traceId}）取内层业务数据。
+
+    仅命中成功信封（code=00000 且有 data 键）时解一层；非信封格式
+    （本地工具结果）或业务失败码信封原样返回。与编排层
+    ``reply._format_tool_results`` 的解包呼应：消费层与 SSE 展示层各自解包。
+    """
+    if isinstance(data, dict) and data.get("code") == "00000" and "data" in data:
+        return data["data"]
+    return data
 
 
 def _build_observation_summary(success: bool, data: Any, error: dict[str, Any]) -> str:
