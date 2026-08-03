@@ -14,8 +14,11 @@ public class FamilyMemberUnbindVO {
 
     /** 已解绑的就诊人 ID */
     private final Long patientId;
+
     /** 是否已完成解绑 */
     private final Boolean unbound;
+
     /** 关系停用时间 */
     private final OffsetDateTime unboundAt;
+
 }

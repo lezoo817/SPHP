@@ -16,6 +16,7 @@ public class CJwtProperties {
 
     /** C端独立 JWT 签名密钥 */
     private String secret;
+
     /** Access Token 有效期，单位为秒 */
     private long expiration;
 }

@@ -30,6 +30,10 @@ import java.util.Locale;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
+import static com.sphp.patient.common.enums.PatientRelationshipEnum.OTHER;
+import static com.sphp.patient.common.enums.PatientRelationshipEnum.SELF;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
+
 /**
  * C端家庭成员管理服务实现。
  */
@@ -68,7 +72,7 @@ public class FamilyServiceImpl implements FamilyService {
         validateCreateRequest(request);
         // 锁定 C端用户行，串行化同一账号的数量检查、身份证校验与创建操作
         if (familyMemberMapper.lockUserForFamilyMutation(userId) == null) {
-            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "当前登录状态无效");
+            throw new CAuthException(UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "当前登录状态无效");
         }
         if (familyMemberMapper.countActiveNonSelfMembers(userId) >= 5) {
             throw duplicateMember("家庭成员数量已达上限");
@@ -122,17 +126,19 @@ public class FamilyServiceImpl implements FamilyService {
     @Transactional(rollbackFor = Exception.class)
     public FamilyMemberUpdateVO updateFamilyMember(Long patientId, FamilyMemberUpdateRequest request) {
         Long userId = CUserContext.getRequired().userId();
+        // 家庭参数校验
         validateUpdateRequest(request);
         // 锁定 C端用户行，使归属校验、身份证去重和资料更新在同一临界区内完成
         if (familyMemberMapper.lockUserForFamilyMutation(userId) == null) {
-            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "当前登录状态无效");
+            throw new CAuthException(UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "当前登录状态无效");
         }
         FamilyMemberRecord existing = familyMemberMapper.selectActiveMember(userId, patientId);
         if (existing == null) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "家庭成员不存在或已解绑");
+            throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "家庭成员不存在或已解绑");
         }
-        if (PatientRelationshipEnum.SELF.getValue().equals(existing.getRelationship())) {
-            throw new CAuthException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID,
+        // 本人不可更新
+        if (SELF.getValue().equals(existing.getRelationship())) {
+            throw new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID,
                     HttpStatus.CONFLICT, "本人信息不能通过家庭成员接口更新");
         }
 
@@ -180,14 +186,14 @@ public class FamilyServiceImpl implements FamilyService {
         Long userId = CUserContext.getRequired().userId();
         // 锁定 C端用户行，确保解绑与同账号的新增、更新操作串行执行
         if (familyMemberMapper.lockUserForFamilyMutation(userId) == null) {
-            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "当前登录状态无效");
+            throw new CAuthException(UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "当前登录状态无效");
         }
         FamilyMemberRecord existing = familyMemberMapper.selectActiveMember(userId, patientId);
         if (existing == null) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "家庭成员不存在或已解绑");
+            throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "家庭成员不存在或已解绑");
         }
-        if (PatientRelationshipEnum.SELF.getValue().equals(existing.getRelationship())) {
-            throw new CAuthException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID,
+        if (SELF.getValue().equals(existing.getRelationship())) {
+            throw new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID,
                     HttpStatus.CONFLICT, "本人信息不能通过家庭成员接口解绑");
         }
 
@@ -230,10 +236,10 @@ public class FamilyServiceImpl implements FamilyService {
      */
     private String relationName(String relationship) {
         return Arrays.stream(PatientRelationshipEnum.values())
-                .filter(item -> item.getValue().equals(relationship))
-                .findFirst()
-                .map(PatientRelationshipEnum::getDisplayName)
-                .orElse(PatientRelationshipEnum.OTHER.getDisplayName());
+                .filter(item -> item.getValue().equals(relationship)) // 关系编码匹配
+                .findFirst() //
+                .map(PatientRelationshipEnum::getDisplayName) // 获取中文展示名称
+                .orElse(OTHER.getDisplayName()); // 默认为“其他”
     }
 
     /**
@@ -260,15 +266,15 @@ public class FamilyServiceImpl implements FamilyService {
      */
     private void validateCreateRequest(FamilyMemberCreateRequest request) {
         if (!isNonSelfRelation(request.getRelation())) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_PARAMETER,
+            throw new CAuthException(INVALID_PARAMETER,
                     HttpStatus.BAD_REQUEST, "家庭关系不合法或不能为本人");
         }
         if (StringUtils.hasText(request.getGender()) && !isGender(request.getGender())) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_PARAMETER,
+            throw new CAuthException(INVALID_PARAMETER,
                     HttpStatus.BAD_REQUEST, "性别编码不合法");
         }
         if (request.getBirthday() != null && request.getBirthday().isAfter(LocalDate.now())) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_PARAMETER,
+            throw new CAuthException(INVALID_PARAMETER,
                     HttpStatus.BAD_REQUEST, "出生日期不能晚于当天");
         }
     }
@@ -281,15 +287,15 @@ public class FamilyServiceImpl implements FamilyService {
      */
     private void validateUpdateRequest(FamilyMemberUpdateRequest request) {
         if (!isNonSelfRelation(request.getRelation())) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_PARAMETER,
+            throw new CAuthException(INVALID_PARAMETER,
                     HttpStatus.BAD_REQUEST, "家庭关系不合法或不能为本人");
         }
         if (request.getGender() != null && !isGender(request.getGender())) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_PARAMETER,
+            throw new CAuthException(INVALID_PARAMETER,
                     HttpStatus.BAD_REQUEST, "性别编码不合法");
         }
         if (request.getBirthday() != null && request.getBirthday().isAfter(LocalDate.now())) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_PARAMETER,
+            throw new CAuthException(INVALID_PARAMETER,
                     HttpStatus.BAD_REQUEST, "出生日期不能晚于当天");
         }
     }
@@ -350,8 +356,10 @@ public class FamilyServiceImpl implements FamilyService {
      */
     private boolean isNonSelfRelation(String relation) {
         return Arrays.stream(PatientRelationshipEnum.values())
-                .anyMatch(item -> item.getValue().equals(relation)
-                        && item != PatientRelationshipEnum.SELF);
+                .anyMatch(item -> item.getValue().equals(relation) //只要流中任意一个元素满足给定条件就立即返回
+                        && item != SELF);
+        //只要存在一个关系编码等于传入的 relation 且该枚举值不是 SELF(本人),就返回 true,
+        // 说明这是一个允许创建的非本人关系;如果遍历完所有枚举值都没有匹配项,则返回 false。
     }
 
     /**
@@ -382,7 +390,7 @@ public class FamilyServiceImpl implements FamilyService {
      * @return HTTP 409 业务异常
      */
     private CAuthException duplicateMember(String message) {
-        return new CAuthException(ErrorCodeEnum.DUPLICATE_REQUEST, HttpStatus.CONFLICT, message);
+        return new CAuthException(DUPLICATE_REQUEST, HttpStatus.CONFLICT, message);
     }
 
     /**
@@ -392,6 +400,6 @@ public class FamilyServiceImpl implements FamilyService {
      * @return HTTP 409 业务异常
      */
     private CAuthException stateConflict(String message) {
-        return new CAuthException(ErrorCodeEnum.BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT, message);
+        return new CAuthException(BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT, message);
     }
 }

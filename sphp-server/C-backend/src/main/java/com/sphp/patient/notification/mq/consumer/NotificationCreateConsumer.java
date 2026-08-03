@@ -10,6 +10,8 @@ import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
+import static com.sphp.patient.common.constant.NotificationConstant.NOTIFICATION_QUEUE;
+
 /**
  * C端站内通知创建消费者。
  */
@@ -25,9 +27,10 @@ public class NotificationCreateConsumer {
      *
      * @param event 通知创建事件
      */
-    @RabbitListener(queues = NotificationConstant.NOTIFICATION_QUEUE)
+    @RabbitListener(queues = NOTIFICATION_QUEUE)
     public void consumeNotificationCreate(NotificationCreateEvent event) {
         try {
+            // 校验消息
             validateEvent(event);
             Notification notification = new Notification();
             notification.setUserId(event.userId());

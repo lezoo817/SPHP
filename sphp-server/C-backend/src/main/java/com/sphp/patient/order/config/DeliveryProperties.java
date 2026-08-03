@@ -32,6 +32,7 @@ public class DeliveryProperties {
         if (first == second) {
             return 0D;
         }
+        // 按字典序拼接
         Double coefficient = provinceCoefficients.get(deliveryCoefficientKey(first, second));
         if (coefficient == null || coefficient <= 0D) {
             throw new IllegalStateException("缺少模拟配送省市系数配置");

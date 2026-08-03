@@ -33,6 +33,10 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import static com.sphp.patient.common.constant.DeliveryConstant.MAX_ACTIVE_ADDRESS_COUNT;
+import static com.sphp.patient.common.enums.DeliverySortEnum.RECOMMENDED;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
+
 /**
  * C端收货地址服务实现。
  */
@@ -40,29 +44,45 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class DeliveryServiceImpl implements DeliveryService {
 
+    // 收货地址数据映射
     private final DeliveryAddressMapper deliveryAddressMapper;
+    // 配送数据映射
     private final DeliveryDataMapper deliveryDataMapper;
+    // 购药订单数据映射
     private final OrderDataMapper orderDataMapper;
+    // 配送配置
     private final DeliveryProperties deliveryProperties;
+    // 配送模拟计算器
     private final DeliverySimulationCalculator deliverySimulationCalculator;
 
-    /** {@inheritDoc} */
+    /**
+     * 列出当前用户的收货地址。
+     * @return 收货地址列表。
+     */
     @Override
     public List<DeliveryAddressVO> deliveryListAddresses() {
-        return deliveryDataMapper.deliveryListAddresses(deliveryCurrentUserId()).stream().map(this::deliveryToVo).toList();
+        return deliveryDataMapper.deliveryListAddresses(deliveryCurrentUserId()).stream()
+                .map(this::deliveryToVo)
+                .toList();
     }
 
-    /** {@inheritDoc} */
+    /**
+     * 新增收货地址。
+     * @param request 新增地址请求
+     * @return 新增收货地址。
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public DeliveryAddressVO deliveryCreateAddress(DeliveryAddressCreateRequest request) {
         Long userId = deliveryCurrentUserId();
+        // 用户锁
         deliveryLockUser(userId);
-        if (deliveryDataMapper.deliveryCountAddresses(userId) >= DeliveryConstant.MAX_ACTIVE_ADDRESS_COUNT) {
+        if (deliveryDataMapper.deliveryCountAddresses(userId) >= MAX_ACTIVE_ADDRESS_COUNT) {
             throw deliveryInvalidInput("收货地址数量不能超过20条");
         }
         DeliveryAddress address = new DeliveryAddress();
         address.setUserId(userId);
+        // 收货地址
         deliveryApplyCreateRequest(address, request);
         // 首个有效地址自动成为默认地址，减少首次下单前的额外操作。
         address.setIsDefault(deliveryDataMapper.deliveryCountAddresses(userId) == 0);
@@ -72,11 +92,17 @@ public class DeliveryServiceImpl implements DeliveryService {
         return deliveryToVo(address);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * 更新收货地址。
+     * @param addressId 地址 ID
+     * @param request 更新地址请求
+     * @return 更新收货地址。
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public DeliveryAddressVO deliveryUpdateAddress(Long addressId, DeliveryAddressUpdateRequest request) {
         Long userId = deliveryCurrentUserId();
+        // 用户锁
         deliveryLockUser(userId);
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, userId);
         deliveryApplyUpdateRequest(address, request);
@@ -86,14 +112,20 @@ public class DeliveryServiceImpl implements DeliveryService {
         return deliveryToVo(address);
     }
 
-    /** {@inheritDoc} */
+    /**
+     *  删除收货地址。
+     * @param addressId 地址 ID
+     * @return 删除收货地址。
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public DeliveryAddressDeleteVO deliveryDeleteAddress(Long addressId) {
         Long userId = deliveryCurrentUserId();
+        // 用户锁
         deliveryLockUser(userId);
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, userId);
         OffsetDateTime now = OffsetDateTime.now();
+        // 软删除
         if (deliveryDataMapper.deliverySoftDeleteAddress(userId, addressId, now) != 1) {
             throw deliveryStatusConflict("收货地址状态已变化");
         }
@@ -107,11 +139,16 @@ public class DeliveryServiceImpl implements DeliveryService {
         return DeliveryAddressDeleteVO.builder().id(addressId).deletedAt(now).build();
     }
 
-    /** {@inheritDoc} */
+    /**
+     * 设置默认收货地址。
+     * @param addressId 地址 ID
+     * @return 设置默认收货地址。
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public DeliveryAddressVO deliverySetDefaultAddress(Long addressId) {
         Long userId = deliveryCurrentUserId();
+        // 用户锁
         deliveryLockUser(userId);
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, userId);
         OffsetDateTime now = OffsetDateTime.now();
@@ -125,7 +162,12 @@ public class DeliveryServiceImpl implements DeliveryService {
         return deliveryToVo(address);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * 解析订单收货地址。
+     * @param addressId 新版地址簿 ID
+     * @param legacyDeliveryAddress 旧版完整地址文本
+     * @return 解析后的收货地址。
+     */
     @Override
     public String deliveryResolveOrderAddress(Long addressId, String legacyDeliveryAddress) {
         boolean hasAddressId = addressId != null;
@@ -146,7 +188,14 @@ public class DeliveryServiceImpl implements DeliveryService {
         return snapshot;
     }
 
-    /** {@inheritDoc} */
+    /**
+     * 推荐配送 Pharmacy。
+     * @param patientId 可选就诊人 ID，未传时使用本人
+     * @param prescriptionId 已批准处方 ID
+     * @param addressId 当前账号收货地址 ID
+     * @param sort 排序方式
+     * @return 推荐配送 Pharmacy。
+     */
     @Override
     public List<DeliveryPharmacyRecommendationVO> deliveryRecommendPharmacies(Long patientId, Long prescriptionId, Long addressId, String sort) {
         Long userId = deliveryCurrentUserId();
@@ -154,21 +203,27 @@ public class DeliveryServiceImpl implements DeliveryService {
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, userId);
         String hospitalAddress = deliveryDataMapper.deliverySelectHospitalAddress(prescription.hospitalId());
         DeliveryProvinceEnum hospitalProvince = DeliveryProvinceEnum.resolveFromAddress(hospitalAddress);
+
         if (hospitalProvince == null) {
             // 医院地址未声明省市时拒绝生成虚假推荐，等待基础医院数据修正。
             throw deliverySystemError("医院地址缺少配送省市信息");
         }
+        // 用户地址
         DeliveryProvinceEnum userProvince = DeliveryProvinceEnum.valueOf(address.getProvince());
+
         double coefficient = deliveryProperties.deliveryProvinceCoefficient(userProvince, hospitalProvince);
+        // 配送省市
         DeliverySortEnum sortEnum = deliveryResolveSort(sort);
         Map<Long, Integer> quantities = new LinkedHashMap<>();
         for (OrderPrescriptionItemRecord item : orderDataMapper.selectOrderPrescriptionItems(prescriptionId)) {
             quantities.put(item.drugId(), item.quantity());
         }
+        // 库存
         Map<Long, List<OrderPharmacyStockRecord>> pharmacyStocks = new LinkedHashMap<>();
         for (OrderPharmacyStockRecord stock : orderDataMapper.selectOrderPharmacyInventory(prescriptionId, prescription.hospitalId())) {
             pharmacyStocks.computeIfAbsent(stock.pharmacyId(), ignored -> new java.util.ArrayList<>()).add(stock);
         }
+        // 候选
         List<DeliveryRecommendationCandidate> candidates = pharmacyStocks.values().stream()
                 .map(stocks -> deliveryBuildRecommendationCandidate(address, hospitalProvince, coefficient, quantities, stocks)).toList();
         return deliverySortCandidates(candidates, sortEnum).stream().map(candidate -> deliveryToRecommendationVo(candidate, candidates)).toList();
@@ -249,7 +304,7 @@ public class DeliveryServiceImpl implements DeliveryService {
      * @return 去空白后的文本或空值
      */
     private String deliveryTrimToNull(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
+        return value == null || value.isBlank() ? null : value.trim(); // 空白文本转为空值
     }
 
     /**
@@ -260,10 +315,19 @@ public class DeliveryServiceImpl implements DeliveryService {
      */
     private DeliveryAddressVO deliveryToVo(DeliveryAddress address) {
         DeliveryProvinceEnum province = DeliveryProvinceEnum.valueOf(address.getProvince());
-        return DeliveryAddressVO.builder().id(address.getId()).receiverName(address.getReceiverName())
-                .receiverPhone(address.getReceiverPhone()).province(address.getProvince()).provinceName(province.getDisplayName())
-                .city(address.getCity()).district(address.getDistrict()).detailAddress(address.getDetailAddress())
-                .isDefault(address.getIsDefault()).createdAt(address.getCreatedAt()).updatedAt(address.getUpdatedAt()).build();
+        return DeliveryAddressVO.builder()
+                .id(address.getId())
+                .receiverName(address.getReceiverName())
+                .receiverPhone(address.getReceiverPhone())
+                .province(address.getProvince())
+                .provinceName(province.getDisplayName())
+                .city(address.getCity())
+                .district(address.getDistrict())
+                .detailAddress(address.getDetailAddress())
+                .isDefault(address.getIsDefault())
+                .createdAt(address.getCreatedAt())
+                .updatedAt(address.getUpdatedAt())
+                .build();
     }
 
     /**
@@ -276,13 +340,16 @@ public class DeliveryServiceImpl implements DeliveryService {
      */
     private OrderPrescriptionRecord deliveryRequireAccessibleApprovedPrescription(Long userId, Long requestedPatientId, Long prescriptionId) {
         OrderPrescriptionRecord prescription = orderDataMapper.selectOrderPrescription(prescriptionId);
+        //若处方不存在或状态非已批准，则返回错误
         if (prescription == null || !"APPROVED".equals(prescription.status())) {
             throw deliveryNotFound("处方不存在");
         }
         Long targetPatientId = requestedPatientId == null ? orderDataMapper.selectOrderSelfPatientId(userId) : requestedPatientId;
+        //若就诊人不存在或状态非正常，则返回错误
         if (targetPatientId == null || !orderDataMapper.existsOrderActivePatient(targetPatientId)) {
             throw deliveryNotFound("就诊人不存在");
         }
+        //若当前账号与处方关联就诊人不一致，则返回错误
         if (!orderDataMapper.hasOrderActivePatientRelation(userId, targetPatientId) || !targetPatientId.equals(prescription.patientId())) {
             throw deliveryForbidden("无权访问该处方");
         }
@@ -302,14 +369,28 @@ public class DeliveryServiceImpl implements DeliveryService {
     private DeliveryRecommendationCandidate deliveryBuildRecommendationCandidate(DeliveryAddress address, DeliveryProvinceEnum hospitalProvince,
                                                                                    double coefficient, Map<Long, Integer> quantities,
                                                                                    List<OrderPharmacyStockRecord> stocks) {
+        //获取单个药房的 simulations
         OrderPharmacyStockRecord first = stocks.getFirst();
         DeliverySimulationResult simulation = deliverySimulationCalculator.deliveryCalculate(
-                DeliveryProvinceEnum.valueOf(address.getProvince()), address.getDetailAddress(), first.hospitalId(), first.pharmacyId(),
-                hospitalProvince, coefficient);
-        int amountCent = stocks.stream().mapToInt(stock -> stock.unitPriceCent() * quantities.getOrDefault(stock.drugId(), 0)).sum();
-        List<DeliveryPharmacyRecommendationVO.Item> items = stocks.stream().map(stock -> DeliveryPharmacyRecommendationVO.Item.builder()
-                .drugId(stock.drugId()).quantity(quantities.get(stock.drugId())).availableCount(stock.availableCount())
-                .unitPriceCent(stock.unitPriceCent()).build()).toList();
+                DeliveryProvinceEnum.valueOf(address.getProvince()),  // 省
+                        address.getDetailAddress(), // 详细地址
+                        first.hospitalId(),
+                        first.pharmacyId(),
+                        hospitalProvince, // 医院省市
+                        coefficient // 省系数
+        );
+        int amountCent = stocks.stream()
+                .mapToInt(stock -> stock.unitPriceCent() * quantities.getOrDefault(stock.drugId(),
+                        0))
+                .sum();
+        List<DeliveryPharmacyRecommendationVO.Item> items = stocks.stream()
+                .map(stock -> DeliveryPharmacyRecommendationVO.Item.builder()
+                        .drugId(stock.drugId())
+                        .quantity(quantities.get(stock.drugId())) // 数量
+                        .availableCount(stock.availableCount()) // 库存数量
+                        .unitPriceCent(stock.unitPriceCent()) // 单价
+                        .build())
+                .toList();
         return new DeliveryRecommendationCandidate(first, simulation, amountCent, items);
     }
 
@@ -370,12 +451,18 @@ public class DeliveryServiceImpl implements DeliveryService {
      */
     private DeliveryPharmacyRecommendationVO deliveryToRecommendationVo(DeliveryRecommendationCandidate candidate,
                                                                           List<DeliveryRecommendationCandidate> candidates) {
-        return DeliveryPharmacyRecommendationVO.builder().pharmacyId(candidate.stock().pharmacyId()).name(candidate.stock().pharmacyName())
-                .hospitalId(candidate.stock().hospitalId()).isDefault(candidate.stock().isDefault())
-                .distanceMeters(candidate.simulation().distanceMeters()).estimatedDeliveryMinutes(candidate.simulation().estimatedDeliveryMinutes())
-                .totalAmountCent(candidate.amountCent()).score((int) Math.round(deliveryScore(candidate, candidates)))
+        return DeliveryPharmacyRecommendationVO.builder()
+                .pharmacyId(candidate.stock().pharmacyId())
+                .name(candidate.stock().pharmacyName())
+                .hospitalId(candidate.stock().hospitalId())
+                .isDefault(candidate.stock().isDefault())
+                .distanceMeters(candidate.simulation().distanceMeters())
+                .estimatedDeliveryMinutes(candidate.simulation().estimatedDeliveryMinutes())
+                .totalAmountCent(candidate.amountCent())
+                .score((int) Math.round(deliveryScore(candidate, candidates)))
                 .recommendReasons(List.of("处方药品均有货", "价格、距离与配送时效综合推荐"))
-                .items(candidate.items()).build();
+                .items(candidate.items())
+                .build();
     }
 
     /**
@@ -385,11 +472,12 @@ public class DeliveryServiceImpl implements DeliveryService {
      * @return 有效排序枚举
      */
     private DeliverySortEnum deliveryResolveSort(String sort) {
+        // 未指定排序
         if (sort == null || sort.isBlank()) {
-            return DeliverySortEnum.RECOMMENDED;
+            return RECOMMENDED;
         }
         try {
-            return DeliverySortEnum.valueOf(sort.trim());
+            return DeliverySortEnum.valueOf(sort.trim()); // 排序参数
         } catch (IllegalArgumentException exception) {
             throw deliveryInvalidInput("sort 不在允许范围内");
         }
@@ -409,22 +497,22 @@ public class DeliveryServiceImpl implements DeliveryService {
 
     /** 创建参数错误异常。 */
     private CAuthException deliveryInvalidInput(String message) {
-        return new CAuthException(ErrorCodeEnum.INVALID_PARAMETER, HttpStatus.BAD_REQUEST, message);
+        return new CAuthException(INVALID_PARAMETER, HttpStatus.BAD_REQUEST, message);
     }
     /** 创建资源不存在异常。 */
     private CAuthException deliveryNotFound(String message) {
-        return new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
+        return new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
     }
     /** 创建资源越权异常。 */
     private CAuthException deliveryForbidden(String message) {
-        return new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, message);
+        return new CAuthException(UNAUTHORIZED, HttpStatus.FORBIDDEN, message);
     }
     /** 创建状态冲突异常。 */
     private CAuthException deliveryStatusConflict(String message) {
-        return new CAuthException(ErrorCodeEnum.BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT, message);
+        return new CAuthException(BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT, message);
     }
     /** 创建系统异常。 */
     private CAuthException deliverySystemError(String message) {
-        return new CAuthException(ErrorCodeEnum.SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, message);
+        return new CAuthException(SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, message);
     }
 }

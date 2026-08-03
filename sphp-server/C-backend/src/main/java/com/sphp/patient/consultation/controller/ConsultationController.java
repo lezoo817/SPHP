@@ -26,6 +26,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import static com.sphp.shared.common.constant.HeaderConstant.IDEMPOTENCY_KEY;
+
 /**
  * C端预问诊、问诊记录和文字消息接口。
  */
@@ -34,8 +36,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/c/v1")
 @RequiredArgsConstructor
 public class ConsultationController {
-
+    // C端问诊服务
     private final ConsultationService consultationService;
+    // 幂等服务
     private final CIdempotencyService idempotencyService;
 
     /**
@@ -47,7 +50,7 @@ public class ConsultationController {
      */
     @PostMapping("/consultations/pre-consultations")
     public Result<PreConsultationSaveVO> savePreConsultation(
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody PreConsultationSaveRequest request) {
         Long userId = CUserContext.getRequired().userId();
         String message = Boolean.TRUE.equals(request.getSubmit()) ? "预问诊已提交" : "预问诊草稿已保存";
@@ -103,7 +106,7 @@ public class ConsultationController {
     @PostMapping("/consultations/{consultationId}/messages")
     public Result<ConsultationMessageSendVO> sendConsultationMessage(
             @PathVariable @Positive(message = "consultationId 必须为正数") Long consultationId,
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody ConsultationMessageSendRequest request) {
         Long userId = CUserContext.getRequired().userId();
         // 路径包含问诊 ID，避免不同问诊使用相同幂等键发生结果重放。

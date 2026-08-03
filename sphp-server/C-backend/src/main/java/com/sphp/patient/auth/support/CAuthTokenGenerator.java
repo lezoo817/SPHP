@@ -6,6 +6,9 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.UUID;
 
+import static com.sphp.patient.common.constant.CAuthConstant.CAPTCHA_CHALLENGE_PREFIX;
+import static com.sphp.patient.common.constant.CAuthConstant.REFRESH_TOKEN_PREFIX;
+
 /**
  * C端认证随机标识生成器。
  */
@@ -22,7 +25,7 @@ public final class CAuthTokenGenerator {
     public static String generateRefreshToken() {
         byte[] bytes = new byte[32];
         SECURE_RANDOM.nextBytes(bytes);
-        return CAuthConstant.REFRESH_TOKEN_PREFIX
+        return REFRESH_TOKEN_PREFIX
                 + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
@@ -32,7 +35,7 @@ public final class CAuthTokenGenerator {
      * @return 带 cap_ 前缀的挑战标识
      */
     public static String generateCaptchaChallengeId() {
-        return CAuthConstant.CAPTCHA_CHALLENGE_PREFIX + UUID.randomUUID().toString().replace("-", "");
+        return CAPTCHA_CHALLENGE_PREFIX + UUID.randomUUID().toString().replace("-", "");
     }
 
     /**

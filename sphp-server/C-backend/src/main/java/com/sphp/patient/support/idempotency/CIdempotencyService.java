@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.util.function.Supplier;
 
+import static com.sphp.shared.common.enums.ErrorCodeEnum.DUPLICATE_REQUEST;
+
 /**
  * C端状态变更接口的 Redis 幂等处理服务。
  */
@@ -26,7 +28,9 @@ public class CIdempotencyService {
     private static final String PROCESSING_PREFIX = "PENDING|";
 
     private final StringRedisTemplate redisTemplate;
+    // JSON 序列化, 用于序列化缓存结果
     private final ObjectMapper objectMapper;
+    // 幂等配置
     private final CIdempotencyProperties properties;
 
     /**
@@ -45,22 +49,29 @@ public class CIdempotencyService {
     public <T> IdempotencyPayload<T> execute(Long userId, String requestPath, String idempotencyKey,
                                              Object requestBody, Class<T> dataType,
                                              Supplier<IdempotencyPayload<T>> action) {
+        // 计算请求参数摘要
         String requestHash = requestHash(requestBody);
+        // 幂等 Redis 键
         String redisKey = buildRedisKey(userId, requestPath, idempotencyKey);
+        // 幂等 Redis 值
         String processingValue = PROCESSING_PREFIX + requestHash;
 
         // 先写入短期占位，保证相同用户、路径和幂等键只有一个请求进入业务层
         Boolean locked = redisTemplate.opsForValue().setIfAbsent(
                 redisKey, processingValue, Duration.ofSeconds(properties.getProcessingTtlSeconds()));
+        // 已锁定
         if (Boolean.FALSE.equals(locked)) {
             return readCachedPayload(redisKey, requestHash, dataType);
         }
+        // 处理中
         if (locked == null) {
             throw duplicateRequest("幂等请求正在处理中");
         }
 
         try {
+            // 执行业务
             IdempotencyPayload<T> payload = action.get();
+            // 序列化可重放的请求结果
             String cachedValue = serializeCachedRecord(requestHash, payload);
             // 只缓存完整成功结果，业务异常时删除占位供客户端重新提交
             redisTemplate.opsForValue().set(
@@ -147,7 +158,7 @@ public class CIdempotencyService {
      * @return HTTP 409 业务异常
      */
     private CAuthException duplicateRequest(String message) {
-        return new CAuthException(ErrorCodeEnum.DUPLICATE_REQUEST, HttpStatus.CONFLICT, message);
+        return new CAuthException(DUPLICATE_REQUEST, HttpStatus.CONFLICT, message);
     }
 
     /**

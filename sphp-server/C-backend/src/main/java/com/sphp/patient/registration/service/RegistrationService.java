@@ -1,5 +1,6 @@
 package com.sphp.patient.registration.service;
 
+import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.registration.vo.DepartmentListVO;
 import com.sphp.patient.registration.vo.AppointmentSlotVO;
 import com.sphp.patient.registration.vo.DoctorPageVO;
@@ -26,7 +27,7 @@ public interface RegistrationService {
      * @param hospitalId 医院 ID
      * @param keyword 可选科室名称关键字
      * @return 可选科室列表
-     * @throws com.sphp.patient.auth.exception.CAuthException 医院不存在或已停用时抛出
+     * @throwsCAuthException 医院不存在或已停用时抛出
      */
     List<DepartmentListVO> listDepartments(Long hospitalId, String keyword);
 
@@ -39,7 +40,7 @@ public interface RegistrationService {
      * @param pageNo 页码，未传时使用默认页码
      * @param pageSize 页大小，未传时使用默认页大小
      * @return 医生分页数据
-     * @throws com.sphp.patient.auth.exception.CAuthException 资源不可用或医院链路不匹配时抛出
+     * @throws CAuthException 资源不可用或医院链路不匹配时抛出
      */
     DoctorPageVO listDoctors(Long hospitalId, Long departmentId, LocalDate date, Integer pageNo, Integer pageSize);
 
@@ -50,7 +51,7 @@ public interface RegistrationService {
      * @param doctorId 医生 ID
      * @param date 排班日期
      * @return 可预约时段列表，包含零余量时段
-     * @throws com.sphp.patient.auth.exception.CAuthException 日期超范围、资源不可用或医院链路不匹配时抛出
+     * @throws CAuthException 日期超范围、资源不可用或医院链路不匹配时抛出
      */
     List<AppointmentSlotVO> listDoctorSlots(Long hospitalId, Long doctorId, LocalDate date);
 }
