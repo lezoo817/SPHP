@@ -121,6 +121,10 @@ class MCPClient:
         """
         await self.connect()
         args = dict(arguments or {})
+        # 安全（P1-7）：无条件剥离 LLM 可能在工具参数中注入的 user_id，
+        # 仅注入可信源（JWT 经 tool_executor 传入）的 user_id。匿名路径
+        # user_id=None 时 args 不得携带任何 user_id，防止横向越权访问他人数据。
+        args.pop("user_id", None)
         if user_id is not None:
             args["user_id"] = user_id
         result = await self._session.call_tool(tool_name, args)
