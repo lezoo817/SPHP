@@ -327,3 +327,79 @@ export async function deleteTemplate(id: number): Promise<void> {
     method: 'DELETE',
   });
 }
+
+// ===================== 药品库存管理 =====================
+
+/** 查询药品目录（分页） */
+export async function getDrugs(
+  params: API.DrugListParams,
+): Promise<API.PageResult<API.Drug>> {
+  const res = await request('/api/b/admin/drugs', { params });
+  return (res as API.Result<API.PageResult<API.Drug>>).data;
+}
+
+/** 新增药品 */
+export async function createDrug(data: API.CreateDrugReq): Promise<void> {
+  await request('/api/b/admin/drugs', {
+    method: 'POST',
+    data,
+  });
+}
+
+/** 更新药品 */
+export async function updateDrug(
+  id: number,
+  data: Partial<API.CreateDrugReq>,
+): Promise<void> {
+  await request(`/api/b/admin/drugs/${id}`, {
+    method: 'PUT',
+    data,
+  });
+}
+
+/** 启用/停用药品 */
+export async function updateDrugStatus(
+  id: number,
+  status: 'ENABLED' | 'DISABLED',
+): Promise<void> {
+  await request(`/api/b/admin/drugs/${id}/status`, {
+    method: 'PUT',
+    data: { status },
+  });
+}
+
+/** 查询库存列表（分页） */
+export async function getInventoryList(
+  params: API.InventoryListParams,
+): Promise<API.PageResult<API.InventoryItem>> {
+  const res = await request('/api/b/admin/inventory', { params });
+  return (res as API.Result<API.PageResult<API.InventoryItem>>).data;
+}
+
+/** 更新库存 */
+export async function updateInventory(
+  id: number,
+  data: API.UpdateInventoryReq,
+): Promise<void> {
+  await request(`/api/b/admin/inventory/${id}`, {
+    method: 'PUT',
+    data,
+  });
+}
+
+/** 查询低库存预警列表 */
+export async function getInventoryAlerts(): Promise<API.InventoryItem[]> {
+  const res = await request('/api/b/admin/inventory/alerts');
+  return (res as API.Result<API.InventoryItem[]>).data;
+}
+
+/** 手动释放锁定库存（仅 ADMIN） */
+export async function unlockInventory(
+  id: number,
+  data: API.UnlockInventoryReq,
+): Promise<void> {
+  await request(`/api/b/admin/inventory/${id}/unlock`, {
+    method: 'POST',
+    data,
+  });
+}

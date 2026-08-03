@@ -468,5 +468,71 @@ declare global {
         quantity: number;
       }[];
     }
+
+    // ===================== 药品库存管理 =====================
+
+    /** 药品 */
+    interface Drug {
+      id: number;
+      name: string;
+      specification: string;
+      unit: string;
+      indication?: string;
+      manufacturer?: string;
+      approvalNumber?: string;
+      status: 'ENABLED' | 'DISABLED';
+    }
+
+    /** 药品列表查询参数 */
+    interface DrugListParams extends PageParams {
+      name?: string;
+      status?: string;
+    }
+
+    /** 新增/编辑药品请求 */
+    interface CreateDrugReq {
+      name: string;
+      specification: string;
+      unit: string;
+      indication?: string;
+      manufacturer?: string;
+      approvalNumber?: string;
+      status: 'ENABLED' | 'DISABLED';
+    }
+
+    /** 库存项 */
+    interface InventoryItem {
+      id: number;
+      drugId: number;
+      drugName: string;
+      specification: string;
+      availableCount: number;
+      lockedCount: number;
+      safetyStock: number;
+      unitPriceCent: number;
+      status: 'NORMAL' | 'LOW' | 'ALERT';
+    }
+
+    /** 库存列表查询参数 */
+    interface InventoryListParams extends PageParams {
+      pharmacyId?: number;
+      drugId?: number;
+    }
+
+    /** 更新库存请求 */
+    interface UpdateInventoryReq {
+      availableCount: number;
+      safetyStock: number;
+      unitPriceCent: number;
+    }
+
+    /** 手动释放锁定库存请求 */
+    interface UnlockInventoryReq {
+      drugOrderId: number;
+      reason: string;
+    }
+
+    /** 库存预警项 */
+    type AlertItem = InventoryItem;
   }
 }
