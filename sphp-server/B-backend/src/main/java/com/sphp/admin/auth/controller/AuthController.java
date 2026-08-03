@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/b/auth")
-@Tag(name = "B端认证", description = "登录 / 刷新令牌 / Token 解析 / 退出登录")
+@Tag(name = "1-认证", description = "登录 / 刷新令牌 / Token 解析 / 退出登录")
 @RequiredArgsConstructor
 public class AuthController {
 

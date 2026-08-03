@@ -33,6 +33,7 @@ const routes = [
       {
         path: '/consult',
         routes: [
+          { path: '/consult', redirect: '/consult/queue' },
           { path: '/consult/queue', component: 'consult/ConsultQueue' },
           { path: '/consult/detail/:id', component: 'consult/ConsultDetail' },
         ],

@@ -177,3 +177,77 @@ export async function getLockedSlots(
 export async function forceReleaseSlot(slotId: number): Promise<void> {
   await request(`/api/b/admin/slots/${slotId}/force-release`, { method: 'POST' });
 }
+
+// ===================== 接诊台 =====================
+
+/** 查询待接诊队列 */
+export async function getQueue(
+  params: API.QueueListParams,
+): Promise<API.PageResult<API.QueueItem>> {
+  const res = await request('/api/b/doctor/queue', { params });
+  return (res as API.Result<API.PageResult<API.QueueItem>>).data;
+}
+
+/** 患者详情 */
+export async function getPatientDetail(
+  consultId: number,
+): Promise<API.PatientDetail> {
+  const res = await request(`/api/b/doctor/queue/${consultId}`);
+  return (res as API.Result<API.PatientDetail>).data;
+}
+
+/** 开始接诊 */
+export async function startConsult(
+  consultId: number,
+): Promise<API.ConsultStart> {
+  const res = await request(`/api/b/doctor/consult/${consultId}/start`, {
+    method: 'POST',
+  });
+  return (res as API.Result<API.ConsultStart>).data;
+}
+
+/** 结束问诊 */
+export async function endConsult(
+  consultId: number,
+): Promise<API.ConsultEnd> {
+  const res = await request(`/api/b/doctor/consult/${consultId}/end`, {
+    method: 'POST',
+  });
+  return (res as API.Result<API.ConsultEnd>).data;
+}
+
+/** 保存病历 */
+export async function saveNote(
+  consultId: number,
+  data: API.NoteSaveReq,
+): Promise<API.NoteSave> {
+  const res = await request(`/api/b/doctor/consult/${consultId}/note`, {
+    method: 'PUT',
+    data,
+  });
+  return (res as API.Result<API.NoteSave>).data;
+}
+
+/** 查询消息历史 */
+export async function getMessages(
+  consultationId: number,
+  params?: { page?: number; size?: number },
+): Promise<API.PageResult<API.MessageVO>> {
+  const res = await request(
+    `/api/b/doctor/consult/${consultationId}/messages`,
+    { params },
+  );
+  return (res as API.Result<API.PageResult<API.MessageVO>>).data;
+}
+
+/** 发送问诊消息（B端代理） */
+export async function sendMessage(
+  consultationId: number,
+  data: API.MessageSendReq,
+): Promise<API.MessageVO> {
+  const res = await request(
+    `/api/b/doctor/consult/${consultationId}/message`,
+    { method: 'POST', data },
+  );
+  return (res as API.Result<API.MessageVO>).data;
+}
