@@ -77,16 +77,26 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         """无 token 分支：ALLOW_ANONYMOUS=true 时降级匿名，否则 401。
 
-        匿名作用域沿用请求头 ``X-Scope``（缺省 c_end），
-        不强制覆盖，避免 B 端匿名请求被错误路由到 C 端。
+        安全（NP-1）：匿名请求无 token，无法证明 B 端医生身份，强制按 C 端处理
+        （scope=c_end），忽略客户端 ``X-Scope`` 头。否则匿名用户设
+        ``X-Scope: b_end`` 即可访问全部 B 端工具（query_patient_history /
+        generate_draft_note 等）构成越权。B 端访问必须携带有效 B 端 JWT
+        （经 token/parse 校验）。
         """
         settings = get_settings()
         if not settings.allow_anonymous:
             return _unauthorized(request, "AUTH_MISSING", "缺少有效的鉴权 Token")
 
-        logger.warning("无 token 请求降级为匿名: path=%s, scope=%s", request.url.path, scope)
+        # 匿名一律 C 端，杜绝 X-Scope 伪造越权 B 端（NP-1）
+        forced_scope = "c_end"
+        logger.warning(
+            "无 token 请求降级为匿名: path=%s, 请求 scope=%s, 强制 scope=%s",
+            request.url.path,
+            scope,
+            forced_scope,
+        )
         request.state.anonymous = True
-        request.state.scope = scope
+        request.state.scope = forced_scope
         request.state.jwt_token = None
         # 不设置 user_id / account，保持 None 以区分真实用户；roles 置空无权限
         request.state.roles = []
