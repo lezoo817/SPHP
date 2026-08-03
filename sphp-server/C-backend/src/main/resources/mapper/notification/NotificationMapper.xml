@@ -69,4 +69,12 @@
           AND deleted_at IS NULL
     </update>
 
+    <insert id="insertNotificationIfAbsent" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO notification (user_id, patient_id, patient_name_snapshot, type, title, content, payload, event_id,
+                                  created_at, updated_at)
+        VALUES (#{userId}, #{patientId}, #{patientNameSnapshot}, #{type}, #{title}, #{content},
+                CAST(#{payload} AS jsonb), #{eventId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT (event_id, user_id) WHERE event_id IS NOT NULL DO NOTHING
+    </insert>
+
 </mapper>

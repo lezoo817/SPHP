@@ -77,4 +77,12 @@ public interface NotificationMapper extends BaseMapper<Notification> {
     int markNotificationRead(@Param("notificationId") Long notificationId, @Param("userId") Long userId,
                              @Param("readAt") OffsetDateTime readAt);
 
+    /**
+     * 幂等插入一条 RabbitMQ 驱动的站内通知。
+     *
+     * @param notification 待写入通知
+     * @return 实际插入行数，重复事件时为 0
+     */
+    int insertNotificationIfAbsent(Notification notification);
+
 }
