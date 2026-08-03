@@ -102,6 +102,7 @@ function buildMenuItems(roles: string[]): MenuProps['items'] {
             children: [
               { key: '/statistics/overview', label: '概览' },
               { key: '/statistics/department', label: '科室统计' },
+              { key: '/statistics/daily', label: '日报统计' },
             ],
           },
         ]

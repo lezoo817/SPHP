@@ -612,5 +612,42 @@ declare global {
       medicationPlans: MedicationPlanItem[];
       followUpPlans: FollowUpPlanItem[];
     }
+
+    // ===================== 统计报表 =====================
+
+    /** 运营总览 */
+    interface StatisticsOverview {
+      totalAppointments: number;
+      completedRate: number;
+      totalRevenueCent: number;
+      totalPrescriptions: number;
+      avgWaitTime: number;
+    }
+
+    /** 科室统计项 */
+    interface DepartmentStatItem {
+      deptId: number;
+      deptName: string;
+      appointmentCount: number;
+      consultCount: number;
+      prescriptionCount: number;
+      slotUsageRate: number;
+    }
+
+    /** 日统计项 */
+    interface DailyStatItem {
+      date: string;
+      appointmentCount: number;
+      consultCount: number;
+      prescriptionCount: number;
+      revenueCent: number;
+    }
+
+    /** 统计查询参数 */
+    interface StatisticsParams {
+      startDate?: string;
+      endDate?: string;
+      deptId?: number;
+    }
   }
 }
