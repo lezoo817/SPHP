@@ -112,6 +112,42 @@ async def tool_executor(state: AgentState) -> dict[str, Any]:
     return {"tool_results": previous + formatted}
 
 
+def _classify_tool_result(result: dict[str, Any]) -> tuple[bool, dict[str, Any] | None]:
+    """判断工具返回是否失败，返回 ``(是否失败, error)``（P1-1）。
+
+    封装函数直连 call_java_api，返回两种结构：
+
+    - Java 统一信封 ``{code, message, data, traceId}``：``code != "00000"``
+      视为业务失败（如 DEPT_NOT_FOUND / JAVA_404）；
+    - call_java_api 包装的连接/超时/解析失败 ``{success: False, error: {...}}``
+      （HTTP 5xx / 超时 / 非 JSON 响应）。
+
+    成功（含无信封字段的裸 dict，保持兼容）返回 ``(False, None)``；失败返回
+    ``(True, {"code": ..., "message": ...})``。
+
+    Args:
+        result: 封装函数返回的 dict。
+
+    Returns:
+        (是否失败, error)；error 为 None 表示成功。
+    """
+    # call_java_api 包装的连接/超时/解析失败
+    if result.get("success") is False:
+        err = result.get("error") or {}
+        return True, {
+            "code": err.get("code", "TOOL_FAILED"),
+            "message": err.get("message", "工具调用失败"),
+        }
+    # Java 统一信封业务失败（code 存在且非成功码 "00000"）
+    code = result.get("code")
+    if code is not None and code != "00000":
+        return True, {
+            "code": str(code),
+            "message": result.get("message") or "业务处理失败",
+        }
+    return False, None
+
+
 async def _execute_mcp(
     tool_name: str, arguments: dict[str, Any], state: AgentState
 ) -> dict[str, Any]:
@@ -137,7 +173,18 @@ async def _execute_mcp(
     try:
         result = await _call_mcp_func(tool_name, arguments, user_id)
         duration_ms = (time.time() - start) * 1000
-        _log_audit(state, tool_name, arguments, "success", duration_ms)
+        # 安全（P1-1）：校验 Java 信封 / call_java_api 失败包装，避免 5xx 或
+        # 业务失败（code != "00000"）被伪装为 success=True，否则 confirm 会回
+        # "操作成功"、审计误记 success，直接误导用户与运营。
+        failed, error = _classify_tool_result(result)
+        _log_audit(state, tool_name, arguments, "failed" if failed else "success", duration_ms)
+        if failed:
+            return {
+                "tool_name": tool_name,
+                "success": False,
+                "error": cast(dict[str, Any], error),
+                "duration_ms": round(duration_ms),
+            }
         return {
             "tool_name": tool_name,
             "success": True,
