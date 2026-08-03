@@ -102,6 +102,18 @@ async def ingest(
     if category is not None and category not in _CATEGORIES:
         return _error(request, 400, "INVALID_REQUEST", f"不支持的分类: {category}")
 
+    # P2：先校验声明大小再读取——原实现先 `await file.read()` 全量进内存再判
+    # 上限，恶意大文件（如数 GB）会先打满内存再被拒。multipart 的
+    # UploadFile.size 由 Starlette 按 Content-Length 填充，先判可零成本拒绝；
+    # read 后仍保留实际大小兜底校验（声明与实测不符时）。
+    if file.size is not None and file.size > _MAX_UPLOAD_BYTES:
+        return _error(
+            request,
+            400,
+            "INVALID_REQUEST",
+            f"文件过大，上限 {_MAX_UPLOAD_BYTES // 1024 // 1024}MB",
+        )
+
     content = await file.read()
     if len(content) > _MAX_UPLOAD_BYTES:
         return _error(

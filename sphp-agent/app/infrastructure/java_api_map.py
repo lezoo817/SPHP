@@ -16,6 +16,7 @@ key 为语义接口名：优先与工具同名，双路径/多接口工具用「
 类 API 统一在 ``/api/b/admin/*`` 下，doctor 专属操作在 ``/api/b/doctor/*`` 下。
 """
 
+import re
 from typing import Any
 
 # 接口名 -> 接口定义
@@ -302,6 +303,13 @@ def resolve_api(api_name: str, path_params: dict[str, Any] | None = None) -> tup
                 path = path.replace(placeholder, str(v))
             else:
                 raise KeyError(f"接口 {api_name} 的路径中不存在占位符 {placeholder}")
+
+    # P2：解析后校验未填充占位符。调用方漏传路径参数时，path 残留字面量
+    # ``{param}``，直接请求会命中错误 URL（路径拼接 {param}）。此处 fail-fast
+    # 抛 KeyError，由 call_java_api 转 API_CONTRACT_ERROR 信封。
+    missing = re.findall(r"\{[^}]+\}", path)
+    if missing:
+        raise KeyError(f"接口 {api_name} 缺少路径参数: {', '.join(sorted(set(missing)))}")
 
     return method, path, scope
 
