@@ -67,6 +67,15 @@ class DeliveryControllerTest {
                 .andExpect(jsonPath("$.data[0].estimatedDeliveryMinutes").value(930));
     }
 
+    /** 验证推荐接口缺少必填处方参数时返回统一参数错误。 */
+    @Test
+    void deliveryRecommendPharmaciesRejectsMissingPrescriptionId() throws Exception {
+        mvc(mock(DeliveryService.class), mock(CIdempotencyService.class)).perform(get("/c/v1/pharmacies/recommendations")
+                        .param("addressId", "30001"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("A0400"));
+    }
+
     /** 验证新增地址经幂等服务返回新增结果。 */
     @Test
     void deliveryCreateAddressReturnsCreatedAddress() throws Exception {
