@@ -11,6 +11,7 @@ LLM 未选工具或解析失败时降级为 ``tool_calls=[]``，由回复节点�
 """
 
 import logging
+from datetime import date
 from typing import Any
 
 from app.engine.llm.factory import build_llm
@@ -24,6 +25,8 @@ logger = logging.getLogger(__name__)
 # 工具决策系统提示词
 TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的工具调用助手。
 
+当前日期：{today}（服务器本地日期，YYYY-MM-DD）
+
 你可以使用以下工具来完成用户请求（只使用列表内的工具）：
 
 {tools_desc}
@@ -36,10 +39,18 @@ TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的工具调用助手。
      必须先执行查询、等结果返回后再调用，禁止在首次并行中编造该参数
 3. 参数严格按工具定义填写，缺失的信息先询问用户，或等上一轮工具结果返回后再决策
 4. 不要编造工具名或参数
-5. 工具调用结果会自动返回，不需要让用户等待重试
-6. 创建/修改/取消类操作（如创建挂号、取消挂号）在拿到所需参数后**直接调用对应工具**，
+5. **日期参数必须用当前日期或之后的日期**：用户说"今天"即 {today}；说"X月X日"若未给出年份，
+   默认当年，且不得早于今天。禁止编造过去日期
+6. 工具调用结果会自动返回，不需要让用户等待重试
+7. 创建/修改/取消类操作（如创建挂号、取消挂号）在拿到所需参数后**直接调用对应工具**，
    不要用自然语言反问用户"是否确认"——用户请求即代表发起授权，系统会通过确认卡片
-   让用户最终确认，你只需调用工具即可"""
+   让用户最终确认，你只需调用工具即可
+8. **完成判断（每次决策前先检查）**：
+   - 如果上一步工具结果已返回用户所需的全部信息，**停止调用工具**
+   - 如果用户请求包含创建/修改/取消操作（如"挂X的号"），查询步骤只是前置，
+     拿到所需参数后**必须继续**调用对应创建/修改/取消工具，不要提前停止
+   - 不要重复调用已执行过的工具（相同参数、相同目的）
+9. 一次只推进一个必要的查询/操作步骤，避免一次轮询所有信息"""
 
 
 def _build_tools_prompt(tools: list[dict[str, Any]]) -> str:
@@ -114,7 +125,9 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     llm_with_tools = llm.bind_tools(tools)
 
     history = truncate_messages(state.get("messages", []), get_settings().memory_window_size)
-    system_prompt = TOOL_CALLER_SYSTEM_PROMPT.format(tools_desc=_build_tools_prompt(tools))
+    system_prompt = TOOL_CALLER_SYSTEM_PROMPT.format(
+        tools_desc=_build_tools_prompt(tools), today=date.today().isoformat()
+    )
     messages = [{"role": "system", "content": system_prompt}] + history
 
     # 注入已执行工具的结果（子图循环累积了前面所有轮次，LLM 分步决策可见）
