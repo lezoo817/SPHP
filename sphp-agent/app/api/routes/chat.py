@@ -7,6 +7,7 @@ import json
 import logging
 import traceback
 from collections.abc import AsyncIterator
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Request
@@ -31,7 +32,7 @@ router = APIRouter()
 _main_graph = None
 
 
-def _get_graph():
+def _get_graph() -> Any:
     """懒加载主图（避免启动时 LangGraph 依赖未就绪）。"""
     global _main_graph
     if _main_graph is None:
@@ -72,7 +73,7 @@ def _build_initial_state(
     request: Request,
     token: str | None,
     session_id: str,
-    confirmed_actions: list[dict] | None = None,
+    confirmed_actions: list[dict[str, Any]] | None = None,
 ) -> AgentState:
     """构造初始状态（不依赖外部 mutation）。
 
@@ -89,7 +90,7 @@ def _build_initial_state(
         （user_id / roles / dept_id / doctor_id / hospital_id）在此完整复制进
         AgentState，auth_node 不再重复调 Java。
     """
-    messages: list[dict] = [{"role": "user", "content": req.content}]
+    messages: list[dict[str, Any]] = [{"role": "user", "content": req.content}]
     if confirmed_actions:
         labels = [
             _TOOL_LABELS.get(t.get("tool_name", ""), t.get("tool_name", "操作"))
@@ -260,12 +261,12 @@ async def _sse_generator(
         )
 
 
-def _sse(event: str, payload: dict) -> str:
+def _sse(event: str, payload: dict[str, Any]) -> str:
     """构造一条 SSE 事件。"""
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def _build_observation(result: dict) -> dict:
+def _build_observation(result: dict[str, Any]) -> dict[str, Any]:
     """构建 observation 事件内容（工具执行结果，含失败原因）。"""
     obs = {
         "tool": result.get("tool_name", ""),
@@ -297,7 +298,7 @@ _TOOL_LABELS = {
 }
 
 
-def _build_card(pending: dict) -> dict:
+def _build_card(pending: dict[str, Any]) -> dict[str, Any]:
     """构造 L2 确认卡片（系分 §6.2.2 card 事件）。"""
     tool_name = pending.get("tool_name", "")
     card_type = pending.get("card_type", "confirm_generic")
@@ -326,7 +327,8 @@ def _extract_last_content(output: object) -> str:
         return ""
     last = messages[-1]
     if isinstance(last, dict):
-        return last.get("content", "")
+        # content 可能为 None / 非字符串，统一转 str
+        return str(last.get("content", ""))
     return getattr(last, "content", "")
 
 
@@ -389,11 +391,16 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     # 执行对应的 L2 工具（匿名请求无 user_id，用 getattr 兜底）
     tool_name = record.get("tool_name", "")
     arguments = record.get("tool_arguments", {})
-    state: AgentState = {
-        "user_id": getattr(request.state, "user_id", None),
-        "scope": getattr(request.state, "scope", "c_end"),
-        "session_id": req.session_id,
-    }
+    # _execute_mcp 只消费 user_id/scope/session_id，无需完整 AgentState，
+    # cast 表明这是按需构造的部分状态
+    state = cast(
+        AgentState,
+        {
+            "user_id": getattr(request.state, "user_id", None),
+            "scope": getattr(request.state, "scope", "c_end"),
+            "session_id": req.session_id,
+        },
+    )
     result = await _execute_mcp(tool_name, arguments, state)
 
     if not result.get("success"):

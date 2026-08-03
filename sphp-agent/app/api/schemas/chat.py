@@ -3,7 +3,7 @@
 合并了原 request.py + response.py，集中定义对话相关的 Pydantic 模型。
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -21,7 +21,9 @@ class ChatRequest(BaseModel):
     session_id: str | None = Field(
         None, description="会话 ID；为空时 Agent 创建新会话并在首个 done 事件中返回"
     )
-    context: dict | None = Field(None, description="附加上下文，帮助 Agent 理解当前页面状态")
+    context: dict[str, Any] | None = Field(
+        None, description="附加上下文，帮助 Agent 理解当前页面状态"
+    )
 
 
 class ConfirmRequest(BaseModel):
@@ -36,5 +38,5 @@ class ConfirmResponse(BaseModel):
 
     code: str = "00000"
     message: str = "success"
-    data: dict | None = None
+    data: dict[str, Any] | None = None
     traceId: str = ""  # noqa: N815  # 对外统一信封契约，保持 camelCase
