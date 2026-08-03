@@ -173,23 +173,111 @@ def _build_initial_state(
     }
 
 
+def _handle_message_chunk(
+    msg: Any,
+    meta: dict[str, Any] | None,
+    usage: dict[str, int],
+) -> tuple[list[tuple[str, dict[str, Any]]], bool]:
+    """messages 分支处理：累积 LLM 用量，返回（事件列表, 是否推送回复文本）。
+
+    ⚠️ 仅 reply_node 的 assistant token 推送给前端（intent_node / tool_caller
+    的 LLM 输出不推送）；推理模型思考 token（reasoning_content）单独作为
+    ``thought`` 事件推送（系分 §5.12，M6-B4）。``thought`` / ``error`` /
+    ``done.trace_id`` 是对系分 §6.2.1 事件表的**扩展**（M6-B4 / P1-3 定案），
+    前端按未知事件忽略处理。
+
+    Args:
+        msg: langgraph messages 模式下的消息对象（BaseMessage 或其 chunk）。
+        meta: 消息元数据（含 langgraph_node 节点名）。
+        usage: 本轮 LLM token 用量累计表（就地更新，M6-B4 done.usage）。
+
+    Returns:
+        tuple[list[tuple[str, dict[str, Any]]], bool]：
+            (事件列表, 是否推送了回复文本)；事件为 (event, payload) 二元组，
+            event ∈ {"message", "thought"}。
+    """
+    events: list[tuple[str, dict[str, Any]]] = []
+    streamed = False
+    node = (meta or {}).get("langgraph_node", "")
+    # 累积 LLM 用量（M6-B4）：对全部 LLM chunk 统计。
+    # P3-6：is not None 判断（0 为合法计数，勿用 if x: 误判）。
+    usage_meta = getattr(msg, "usage_metadata", None) or {}
+    if usage_meta.get("input_tokens") is not None:
+        usage["prompt_tokens"] = usage_meta["input_tokens"]
+    if usage_meta.get("output_tokens") is not None:
+        usage["completion_tokens"] += usage_meta["output_tokens"]
+    if usage_meta.get("total_tokens") is not None:
+        usage["total_tokens"] = usage_meta["total_tokens"]
+    # 仅 reply_node 的 assistant token 推送给前端（intent_node / tool_caller 不推送）
+    if node == "reply_node" and getattr(msg, "type", "") in ("ai", "AIMessageChunk"):
+        delta = getattr(msg, "content", "") or ""
+        if delta:
+            streamed = True
+            events.append(("message", {"delta": delta}))
+        # 推理模型思考 token（系分 §5.12，M6-B4）：智谱 glm-4 系列流式输出在
+        # additional_kwargs.reasoning_content
+        reasoning = (getattr(msg, "additional_kwargs", {}) or {}).get("reasoning_content")
+        if reasoning:
+            events.append(("thought", {"delta": reasoning}))
+    return events, streamed
+
+
+def _handle_updates_chunk(chunk: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """updates 分支处理：从子图更新重建 action / observation / card 事件。
+
+    子图 custom 事件不传播到主图（langgraph 1.2.9），tool_executor 运行在
+    4 个业务子图内，action/observation 从 updates 里的 tool_calls /
+    tool_results **重建**（子图最终 state 更新含完整数据，M6-A1 定案）：
+        - tool_results 非空 -> 每个结果配对推送 action + observation
+          （子图循环会覆盖 tool_calls，action 从结果反推，工具确已执行）
+        - 仅 tool_calls 无结果（理论顶层场景）-> 只推 action
+        - pending_confirmations 非空 -> 推送 L2 确认 card（系分 §6.2.2）
+
+    Args:
+        chunk: updates 模式下的一帧（node_name -> state 更新 dict）。
+
+    Returns:
+        list[tuple[str, dict[str, Any]]]：(event, payload) 事件列表，
+            event ∈ {"action", "observation", "card"}。
+    """
+    events: list[tuple[str, dict[str, Any]]] = []
+    for _node_name, node_update in chunk.items():
+        if not isinstance(node_update, dict):
+            continue
+        tool_calls = node_update.get("tool_calls") or []
+        tool_results = node_update.get("tool_results") or []
+        if tool_results:
+            # 子图循环会把 tool_calls 覆盖为空，action 无法从 tool_calls 重建，
+            # 改为从 tool_results 反推（工具确已执行）：每个结果推送 action -> observation 配对
+            for tr in tool_results:
+                events.append(("action", _build_action(tr)))
+                events.append(("observation", _build_observation(tr)))
+        elif tool_calls:
+            # 仅 tool_calls 无结果（理论顶层场景）：只推 action
+            for tc in tool_calls:
+                events.append(("action", _build_action(tc, from_call=True)))
+        # L2 操作需用户确认：推送 card 事件（系分 §6.2.2）
+        for p in node_update.get("pending_confirmations") or []:
+            events.append(("card", _build_card(p)))
+    return events
+
+
 async def _sse_generator(
     initial_state: AgentState, session_id: str | None, trace_id: str
 ) -> AsyncIterator[str]:
     """SSE 流式输出生成器（系分 §6.2.1，基于 astream 混合 stream_mode）。
 
-    ⚠️ 子图 custom 事件不传播：langgraph 1.2.9 中子图内 ``get_stream_writer()``
-    推的自定义事件到不了主图 ``custom`` stream。而 tool_executor 运行在
-    4 个业务子图内，因此 action/observation 事件从 ``updates`` 里的
-    ``tool_calls``/``tool_results`` **重建**（子图最终 state 更新包含完整数据）。
     事件映射（M6-A1 定案：仅 updates 重建，custom 通道已移除）：
     - updates 含 tool_results 字段    -> ``event: action`` + ``event: observation``
-                                        （工具已执行，逐结果配对推送）
     - updates 含 tool_calls 字段      -> ``event: action``（仅 tool_calls 无结果场景）
     - messages 且 msg 是 AIMessage    -> ``event: message``（回复 token）
     - messages 含 reasoning_content   -> ``event: thought``（推理思考 token，M6-B4）
     - updates 含 reply_node 输出      -> 未流式时兜底推送完整回复
     - 结束                            -> ``event: done``（含 usage token 统计，M6-B4）
+
+    P3 契约说明：``thought`` / ``error`` 事件与 ``done.trace_id`` 是对系分
+    §6.2.1 事件表的**扩展**（M6-B4 推理过程展示 / P1-3 异常透出 / 链路追踪），
+    前端按未知事件忽略处理，不破坏原有契约。
     """
     graph = _get_graph()
     # P2 归属隔离：LangGraph thread_id 与会话锁绑定 (user_id, session_id)，
@@ -234,61 +322,17 @@ async def _sse_generator(
             ):
                 if mode == "messages":
                     msg, meta = chunk
-                    node = (meta or {}).get("langgraph_node", "")
-                    # 累积 LLM 用量（M6-B4）：对全部 LLM chunk 统计
-                    usage_meta = getattr(msg, "usage_metadata", None) or {}
-                    if usage_meta.get("input_tokens"):
-                        usage["prompt_tokens"] = usage_meta["input_tokens"]
-                    if usage_meta.get("output_tokens"):
-                        usage["completion_tokens"] += usage_meta["output_tokens"]
-                    if usage_meta.get("total_tokens"):
-                        usage["total_tokens"] = usage_meta["total_tokens"]
-                    # 仅 reply_node 的 assistant token 推送给前端
-                    # （intent_node / tool_caller 的 LLM 输出不推送）
-                    if node == "reply_node" and getattr(msg, "type", "") in (
-                        "ai",
-                        "AIMessageChunk",
-                    ):
-                        delta = getattr(msg, "content", "") or ""
-                        if delta:
-                            streamed_reply = True
-                            yield _sse("message", {"delta": delta})
-                        # 推理模型思考 token（系分 §5.12，M6-B4）：
-                        # 智谱 glm-4 系列流式输出在 additional_kwargs.reasoning_content
-                        reasoning = (getattr(msg, "additional_kwargs", {}) or {}).get(
-                            "reasoning_content"
-                        )
-                        if reasoning:
-                            yield _sse("thought", {"delta": reasoning})
-
+                    events, pushed = _handle_message_chunk(msg, meta, usage)
+                    if pushed:
+                        streamed_reply = True
+                    for event, payload in events:
+                        yield _sse(event, payload)
                 elif mode == "updates":
-                    # 子图更新里含 tool_calls / tool_results，重建 action / observation
-                    for node_name, node_update in chunk.items():
-                        if not isinstance(node_update, dict):
-                            continue
-                        tool_calls = node_update.get("tool_calls") or []
-                        tool_results = node_update.get("tool_results") or []
-                        if tool_results:
-                            # 子图循环会把 tool_calls 覆盖为空，action 无法从 tool_calls
-                            # 重建，改为从 tool_results 反推（工具确已执行）：
-                            # 每个结果推送 action -> observation 配对
-                            for tr in tool_results:
-                                yield _sse("action", _build_action(tr))
-                                yield _sse("observation", _build_observation(tr))
-                        elif tool_calls:
-                            # 仅 tool_calls 无结果（理论顶层场景）：只推 action
-                            for tc in tool_calls:
-                                yield _sse("action", _build_action(tc, from_call=True))
-
-                        # L2 操作需用户确认：推送 card 事件（系分 §6.2.2）
-                        pending_list = node_update.get("pending_confirmations") or []
-                        for p in pending_list:
-                            yield _sse("card", _build_card(p))
-
+                    for event, payload in _handle_updates_chunk(chunk):
+                        yield _sse(event, payload)
                     # reply_node 完成但未流式时，兜底推送完整回复
                     if "reply_node" in chunk and not streamed_reply:
-                        output = chunk.get("reply_node", {})
-                        content = _extract_last_content(output)
+                        content = _extract_last_content(chunk.get("reply_node", {}))
                         if content:
                             yield _sse("message", {"delta": content})
 
