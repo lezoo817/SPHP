@@ -7,6 +7,7 @@ MCP 工具：query_health_record, manage_allergy, manage_medical_history,
 接口路径统一由 java_api_map 契约表解析。
 """
 
+import asyncio
 from typing import Any
 
 from app.infrastructure.java_client import call_java_api
@@ -63,18 +64,23 @@ async def manage_medical_history(
 
 
 async def query_reports(report_id: int | None = None, user_id: int | None = None) -> dict[str, Any]:
-    """查询检查报告列表或详情（带 report_id 时包含指标解读）。"""
+    """查询检查报告列表或详情（带 report_id 时并行查详情+指标解读）。
+
+    P2 优化：详情与指标解读是两个独立 Java 接口，原实现串行 await 延迟翻倍；
+    现用 asyncio.gather 并发执行，总耗时收敛为较慢一方。
+    """
     if report_id:
-        # 查详情 + 指标解读（两个独立接口）
-        detail = await call_java_api(
-            api_name="query_reports:detail",
-            path_params={"report_id": report_id},
-            user_id=user_id,
-        )
-        interpretation = await call_java_api(
-            api_name="query_reports:interpretation",
-            path_params={"report_id": report_id},
-            user_id=user_id,
+        detail, interpretation = await asyncio.gather(
+            call_java_api(
+                api_name="query_reports:detail",
+                path_params={"report_id": report_id},
+                user_id=user_id,
+            ),
+            call_java_api(
+                api_name="query_reports:interpretation",
+                path_params={"report_id": report_id},
+                user_id=user_id,
+            ),
         )
         return {"detail": detail, "interpretation": interpretation}
     return await call_java_api(api_name="query_reports:list", user_id=user_id)
