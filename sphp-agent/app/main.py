@@ -66,6 +66,17 @@ async def lifespan(app: FastAPI):
         # MCP Server 启动失败为 fatal，始终终止进程
         raise
 
+    # 步骤 5.5：预连接 MCP Client（内存传输，M6-C1）。
+    # 在 lifespan 上下文连接，避免工具调用时在请求中间件内首次建连；
+    # 失败仅告警，工具执行自动回退直调封装函数。
+    from app.mcp_client.client import get_mcp_client
+
+    try:
+        await (await get_mcp_client()).connect()
+        logger.info("MCP Client pre-connected (in-memory transport)")
+    except Exception as e:
+        logger.warning("MCP Client 预连接失败，工具将回退直调: %s", e)
+
     yield
 
     # 优雅关闭
@@ -74,10 +85,12 @@ async def lifespan(app: FastAPI):
     # 关闭基础设施连接
     from app.infrastructure.cache.redis_client import close_redis
     from app.infrastructure.java_client import close_client
+    from app.mcp_client.client import close_mcp_client
     from app.orchestrator.checkpointer import close_checkpointer
 
     await close_client()
     await close_redis()
+    await close_mcp_client()
     await close_checkpointer()
     logger.info("Agent shutdown complete")
 
