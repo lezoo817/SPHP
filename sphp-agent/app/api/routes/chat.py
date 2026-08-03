@@ -50,8 +50,14 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
     # 无 session 时先生成，保证 state / done / card 会话 ID 一致（L2 确认依赖）
     session_id = req.session_id or str(uuid4())
     # M5-T4（T-M3-L1）：读取本会话此前确认成功的操作回执（一次性消费），
-    # 注入对话上下文，使"确认后追问"保持连续
-    confirmed_actions = await get_and_delete_confirm_done(session_id)
+    # 注入对话上下文，使"确认后追问"保持连续。
+    # Redis 故障时优雅降级：回执读取失败返回 []，不影响对话主链路
+    # （与限流 fail-open、L2 转 risk_flags 的降级口径一致）
+    try:
+        confirmed_actions = await get_and_delete_confirm_done(session_id)
+    except Exception:
+        logger.warning("读取 confirm_done 回执失败（Redis 不可用），降级为空列表")
+        confirmed_actions = []
     initial_state = _build_initial_state(req, request, token, session_id, confirmed_actions)
 
     return StreamingResponse(
