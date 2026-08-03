@@ -15,6 +15,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.api.schemas.chat import ChatRequest, ConfirmRequest, ConfirmResponse
+from app.api.schemas.envelope import error_response
 from app.infrastructure.cache.redis_client import (
     delete_confirm_token_by_token,
     get_and_delete_confirm_done,
@@ -651,10 +652,7 @@ def _confirm_error(code: str, message: str, trace_id: str, status_code: int = 40
     Returns:
         JSONResponse: 对应状态码 + 统一信封。
     """
-    return JSONResponse(
-        status_code=status_code,
-        content={"code": code, "message": message, "data": None, "traceId": trace_id},
-    )
+    return error_response(code, message, trace_id, status_code)
 
 
 def _success_message(tool_name: str) -> str:

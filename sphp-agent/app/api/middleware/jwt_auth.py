@@ -22,6 +22,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import JSONResponse, Response
 
 from app.api.middleware.rate_limit import is_rate_limited, rate_limited_response
+from app.api.schemas.envelope import error_response
 from app.infrastructure.config.settings import get_settings
 from app.infrastructure.java_client import get_client
 
@@ -139,15 +140,7 @@ def _unauthorized(request: Request, code: str, message: str) -> JSONResponse:
     Returns:
         JSONResponse: 401 + 统一信封。
     """
-    return JSONResponse(
-        status_code=401,
-        content={
-            "code": code,
-            "message": message,
-            "data": None,
-            "traceId": getattr(request.state, "trace_id", ""),
-        },
-    )
+    return error_response(code, message, getattr(request.state, "trace_id", ""), status_code=401)
 
 
 async def _safe_parse_token(token: str, scope: str) -> dict[str, Any] | None:

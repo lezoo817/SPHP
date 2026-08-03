@@ -19,6 +19,7 @@ from typing import Any
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 
+from app.api.schemas.envelope import error_response, success_response
 from app.engine.rag.ingest import ingest_file
 from app.engine.rag.search import search_knowledge
 from app.infrastructure.config.settings import get_settings
@@ -207,10 +208,7 @@ def _envelope(trace_id: str, data: dict[str, Any]) -> JSONResponse:
     Returns:
         JSONResponse: 200 + {code, message, data, traceId}。
     """
-    return JSONResponse(
-        status_code=200,
-        content={"code": "00000", "message": "success", "data": data, "traceId": trace_id},
-    )
+    return success_response(data, trace_id)
 
 
 def _error(request: Request, status_code: int, code: str, message: str) -> JSONResponse:
@@ -225,12 +223,6 @@ def _error(request: Request, status_code: int, code: str, message: str) -> JSONR
     Returns:
         JSONResponse: 对应状态码 + {code, message, data, traceId}。
     """
-    return JSONResponse(
-        status_code=status_code,
-        content={
-            "code": code,
-            "message": message,
-            "data": None,
-            "traceId": getattr(request.state, "trace_id", ""),
-        },
+    return error_response(
+        code, message, getattr(request.state, "trace_id", ""), status_code
     )

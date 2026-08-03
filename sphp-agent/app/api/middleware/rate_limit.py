@@ -14,6 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import JSONResponse, Response
 
 from app.api.middleware.memory_rate_limit import check_in_memory_rate_limit
+from app.api.schemas.envelope import error_response
 from app.infrastructure.cache.redis_client import check_rate_limit
 from app.infrastructure.config.settings import get_settings
 
@@ -48,14 +49,11 @@ async def is_rate_limited(key: str) -> bool:
 
 def rate_limited_response(request: Request) -> JSONResponse:
     """构造 429 统一信封响应（系分 §6.1，RATE_LIMITED 错误码）。"""
-    return JSONResponse(
+    return error_response(
+        "RATE_LIMITED",
+        "请求频率超过限制，请稍后再试",
+        getattr(request.state, "trace_id", ""),
         status_code=429,
-        content={
-            "code": "RATE_LIMITED",
-            "message": "请求频率超过限制，请稍后再试",
-            "data": None,
-            "traceId": getattr(request.state, "trace_id", ""),
-        },
     )
 
 
