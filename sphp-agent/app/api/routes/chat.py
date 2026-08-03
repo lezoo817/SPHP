@@ -72,11 +72,16 @@ def _build_initial_state(
 
     Args:
         req: 前端对话请求。
-        request: FastAPI 请求（含中间件注入的 user_id / scope）。
+        request: FastAPI 请求（含中间件注入的 user_id / scope / roles 等身份）。
         token: JWT Token。
         session_id: 会话 ID。
         confirmed_actions: M5-T4（T-M3-L1）本会话此前确认成功的操作回执，
             非空时注入 messages 上下文，保证确认后追问连续。
+
+    Note:
+        M6-B1 鉴权去重：中间件已在 HTTP 层调 Java token/parse 一次，身份字段
+        （user_id / roles / dept_id / doctor_id / hospital_id）在此完整复制进
+        AgentState，auth_node 不再重复调 Java。
     """
     messages: list[dict] = [{"role": "user", "content": req.content}]
     if confirmed_actions:
@@ -100,10 +105,13 @@ def _build_initial_state(
         "intent": None,
         "user_id": getattr(request.state, "user_id", None),
         "scope": getattr(request.state, "scope", req.scope),
-        "roles": None,
-        "dept_id": None,
-        "doctor_id": None,
-        "hospital_id": (req.context or {}).get("hospital_id"),
+        # M6-B1 鉴权去重：完整复制中间件注入的 B 端身份字段，auth_node 直接消费
+        "roles": getattr(request.state, "roles", None),
+        "dept_id": getattr(request.state, "dept_id", None),
+        "doctor_id": getattr(request.state, "doctor_id", None),
+        # C 端 hospital_id 无中间件注入值（None）时退回请求 context
+        "hospital_id": getattr(request.state, "hospital_id", None)
+        or (req.context or {}).get("hospital_id"),
         "tool_calls": None,
         "tool_results": None,
         "pending_confirmations": None,
