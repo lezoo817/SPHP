@@ -11,7 +11,7 @@ from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.api.schemas.chat import ChatRequest, ConfirmRequest, ConfirmResponse
 from app.infrastructure.cache.redis_client import (
@@ -333,7 +333,7 @@ def _extract_last_content(output: object) -> str:
 
 
 @router.post("/chat/confirm", response_model=ConfirmResponse)
-async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse:
+async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse | JSONResponse:
     """L2 确认回调（系分 §6.2.2）。
 
     前端用户点击确认卡片后回调此端点。
@@ -352,9 +352,7 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
 
     # 校验参数非空
     if not req.confirm_token or not req.session_id:
-        return ConfirmResponse(
-            code="CONFIRM_INVALID", message="令牌格式无效", data=None, traceId=trace_id
-        )
+        return _confirm_error("CONFIRM_INVALID", "令牌格式无效", trace_id)
 
     # 原子消费 confirm_token（一次性 GET+DEL + user_id 校验）
     try:
@@ -366,27 +364,15 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     except Exception:
         # Redis 不可用
         logger.error("confirm_token 消费异常: Redis 不可用")
-        return ConfirmResponse(
-            code="CONFIRM_INVALID",
-            message="操作暂时不可用，请稍后重试",
-            data=None,
-            traceId=trace_id,
-        )
+        return _confirm_error("CONFIRM_INVALID", "操作暂时不可用，请稍后重试", trace_id)
 
     if record is None:
         # token 不存在 / 已消费 / 已过期 / 用户不匹配
-        return ConfirmResponse(
-            code="CONFIRM_EXPIRED",
-            message="操作已超时或无效，请重新发起",
-            data=None,
-            traceId=trace_id,
-        )
+        return _confirm_error("CONFIRM_EXPIRED", "操作已超时或无效，请重新发起", trace_id)
 
     # session 校验（record 里的 session 应与请求一致）
     if record.get("session_id") != req.session_id:
-        return ConfirmResponse(
-            code="SESSION_MISMATCH", message="会话不匹配，请刷新重试", data=None, traceId=trace_id
-        )
+        return _confirm_error("SESSION_MISMATCH", "会话不匹配，请刷新重试", trace_id)
 
     # 执行对应的 L2 工具（匿名请求无 user_id，用 getattr 兜底）
     tool_name = record.get("tool_name", "")
@@ -405,11 +391,9 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
 
     if not result.get("success"):
         error = result.get("error", {})
-        return ConfirmResponse(
-            code="TOOL_FAILED",
-            message=error.get("message", "操作执行失败"),
-            data=None,
-            traceId=trace_id,
+        # TOOL_FAILED 系分 §6.1 错误码表标注为 500
+        return _confirm_error(
+            "TOOL_FAILED", error.get("message", "操作执行失败"), trace_id, status_code=500
         )
 
     # M5-T4（T-M3-L1）：写入确认成功回执，供下一轮对话引用（此操作是独立
@@ -428,6 +412,28 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
             "message": _success_message(tool_name),
         },
         traceId=trace_id,
+    )
+
+
+def _confirm_error(code: str, message: str, trace_id: str, status_code: int = 400) -> JSONResponse:
+    """构造 L2 确认回调错误响应（系分 §6.2.2 错误码表）。
+
+    错误路径返回对应 HTTP 状态码（CONFIRM_*/SESSION_MISMATCH=400，
+    TOOL_FAILED=500）+ 统一信封 {code, message, data, traceId}，
+    与 §6.1 信封契约一致。
+
+    Args:
+        code: 错误码（CONFIRM_INVALID / CONFIRM_EXPIRED / SESSION_MISMATCH / TOOL_FAILED）。
+        message: 用户可读错误提示。
+        trace_id: 链路追踪号。
+        status_code: HTTP 状态码，默认 400；工具执行失败传 500。
+
+    Returns:
+        JSONResponse: 对应状态码 + 统一信封。
+    """
+    return JSONResponse(
+        status_code=status_code,
+        content={"code": code, "message": message, "data": None, "traceId": trace_id},
     )
 
 
