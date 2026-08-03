@@ -251,3 +251,79 @@ export async function sendMessage(
   );
   return (res as API.Result<API.MessageVO>).data;
 }
+
+// ===================== 处方管理 =====================
+
+/** 查询处方列表（分页） */
+export async function getPrescriptions(
+  params: API.PrescriptionListParams,
+): Promise<API.PageResult<API.Prescription>> {
+  const res = await request('/api/b/prescriptions', { params });
+  return (res as API.Result<API.PageResult<API.Prescription>>).data;
+}
+
+/** 处方详情 */
+export async function getPrescriptionDetail(
+  id: number,
+): Promise<API.PrescriptionDetail> {
+  const res = await request(`/api/b/prescriptions/${id}`);
+  return (res as API.Result<API.PrescriptionDetail>).data;
+}
+
+/** 提交处方 */
+export async function submitPrescription(
+  data: API.PrescriptionSubmitReq,
+): Promise<API.PrescriptionSubmitResult> {
+  const res = await request('/api/b/prescriptions', {
+    method: 'POST',
+    data,
+  });
+  return (res as API.Result<API.PrescriptionSubmitResult>).data;
+}
+
+/** 查询待审核处方列表（分页） */
+export async function getPendingAudits(
+  params: API.PageParams,
+): Promise<API.PageResult<API.PendingAuditItem>> {
+  const res = await request('/api/b/prescriptions/pending-audit', { params });
+  return (res as API.Result<API.PageResult<API.PendingAuditItem>>).data;
+}
+
+/** 审核处方 */
+export async function auditPrescription(
+  id: number,
+  data: API.AuditReq,
+): Promise<void> {
+  await request(`/api/b/prescriptions/${id}/audit`, {
+    method: 'PUT',
+    data,
+  });
+}
+
+// ===================== 处方模板 =====================
+
+/** 查询处方模板列表（分页） */
+export async function getTemplates(
+  params: API.TemplateListParams,
+): Promise<API.PageResult<API.PrescriptionTemplate>> {
+  const res = await request('/api/b/prescription-templates', { params });
+  return (res as API.Result<API.PageResult<API.PrescriptionTemplate>>).data;
+}
+
+/** 保存处方模板 */
+export async function saveTemplate(
+  data: API.SaveTemplateReq,
+): Promise<API.PrescriptionTemplate> {
+  const res = await request('/api/b/prescription-templates', {
+    method: 'POST',
+    data,
+  });
+  return (res as API.Result<API.PrescriptionTemplate>).data;
+}
+
+/** 删除处方模板 */
+export async function deleteTemplate(id: number): Promise<void> {
+  await request(`/api/b/prescription-templates/${id}`, {
+    method: 'DELETE',
+  });
+}
