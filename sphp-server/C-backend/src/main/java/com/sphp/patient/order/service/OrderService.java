@@ -17,8 +17,18 @@ public interface OrderService {
     List<PharmacyInventoryVO> listPharmacyInventory(Long patientId, Long prescriptionId);
     /** 创建待支付购药订单。 */
     DrugOrderCreateVO createDrugOrder(DrugOrderCreateRequest request);
-    /** 分页查询购药订单。 */
-    DrugOrderPageVO listDrugOrders(Long patientId, String status, String logisticsStatus, Integer pageNo, Integer pageSize);
+    /**
+     * 分页查询当前账号可访问就诊人的购药订单。
+     *
+     * @param patientId 就诊人 ID
+     * @param status 订单状态
+     * @param logisticsStatus 物流状态
+     * @param keyword 订单名称模糊查询关键词
+     * @param pageNo 页码
+     * @param pageSize 每页条数
+     * @return 订单分页结果
+     */
+    DrugOrderPageVO listDrugOrders(Long patientId, String status, String logisticsStatus, String keyword, Integer pageNo, Integer pageSize);
     /** 查询购药订单详情。 */
     DrugOrderDetailVO getDrugOrderDetail(Long drugOrderId);
     /** 取消待支付购药订单。 */
