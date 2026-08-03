@@ -223,6 +223,4 @@ def _error(request: Request, status_code: int, code: str, message: str) -> JSONR
     Returns:
         JSONResponse: 对应状态码 + {code, message, data, traceId}。
     """
-    return error_response(
-        code, message, getattr(request.state, "trace_id", ""), status_code
-    )
+    return error_response(code, message, getattr(request.state, "trace_id", ""), status_code)
