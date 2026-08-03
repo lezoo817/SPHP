@@ -21,12 +21,16 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
+from app.api.middleware.rate_limit import is_rate_limited, rate_limited_response
 from app.infrastructure.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 # Java token/parse 调用超时（秒）
 _AUTH_TIMEOUT = 10.0
+
+# 无效 token 防刷限流前缀（P1-5）：与用户限流键隔离，洪泛无效 token 按 IP 计数
+_AUTH_FAIL_KEY_PREFIX = "auth_fail"
 
 
 class JWTAuthMiddleware(BaseHTTPMiddleware):
@@ -70,6 +74,14 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         # 携带 token 但校验失败 -> 始终 401（不降级，保持 D1 严格策略）。
         # AUTH_EXPIRED 需 Java token/parse 返回过期信号才能精确区分，
         # 当前统一归 AUTH_INVALID（同为 401，前端跳登录页）
+        #
+        # P1-5 防刷：无效 token 洪泛此前直接短路在此（JWT 先于 RateLimit 执行），
+        # 每请求直打 Java token/parse（DoS）且完全不受限流约束。修复：
+        # 按 IP 走防刷限流（auth_fail:{ip}），超限返回 429，不再继续调 Java。
+        # 键加 IP 前缀（业务前缀即隔离），仅针对鉴权失败请求，不影响正常用户。
+        ip = request.client.host if request.client else "anonymous"
+        if await is_rate_limited(f"{_AUTH_FAIL_KEY_PREFIX}:{ip}"):
+            return rate_limited_response(request)
         return _unauthorized(request, "AUTH_INVALID", "Token 无效或已过期")
 
     async def _handle_no_token(
