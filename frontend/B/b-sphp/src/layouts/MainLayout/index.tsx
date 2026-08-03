@@ -53,11 +53,15 @@ function buildMenuItems(roles: string[]): MenuProps['items'] {
         { key: '/schedule/locked', label: '锁定时段' },
       ],
     },
-    {
-      key: '/consult',
-      label: '接诊台',
-      icon: <TeamOutlined />,
-    },
+    ...(isAdmin
+      ? []
+      : [
+          {
+            key: '/consult',
+            label: '接诊台',
+            icon: <TeamOutlined />,
+          },
+        ]),
     {
       key: '/prescription',
       label: '处方管理',
@@ -98,6 +102,7 @@ function buildMenuItems(roles: string[]): MenuProps['items'] {
             children: [
               { key: '/statistics/overview', label: '概览' },
               { key: '/statistics/department', label: '科室统计' },
+              { key: '/statistics/daily', label: '日报统计' },
             ],
           },
         ]
@@ -115,7 +120,7 @@ export default function MainLayout() {
   const currentUser = initialState?.currentUser;
   const roles = currentUser?.roles ?? [];
 
-  // 未登录跳转登录页
+  // 未登录跳转登录页；已登录时根据角色做首次路由修正
   useEffect(() => {
     if (!authChecked) {
       setAuthChecked(true);
@@ -123,8 +128,14 @@ export default function MainLayout() {
         navigate('/login', { replace: true });
         return;
       }
+      // ADMIN 无接诊台权限，登录后默认跳转排班列表
+      const isAdmin = roles.includes('ADMIN');
+      const path = location.pathname;
+      if (isAdmin && (path === '/' || path === '/consult/queue')) {
+        navigate('/schedule/list', { replace: true });
+      }
     }
-  }, [currentUser, authChecked, navigate]);
+  }, [currentUser, authChecked, navigate, roles, location.pathname]);
 
   if (!currentUser) {
     return null; // 跳转前不渲染任何内容，避免闪烁

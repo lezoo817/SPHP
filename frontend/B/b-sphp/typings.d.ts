@@ -219,5 +219,435 @@ declare global {
       status: string;
       expireAt: string; // lockedAt + 15min
     }
+
+    // ===================== 接诊台 =====================
+
+    /** 待接诊队列项 */
+    interface QueueItem {
+      consultId: number;
+      patientId: number;
+      patientName: string;
+      patientGender: 'MALE' | 'FEMALE' | 'UNKNOWN';
+      patientAge: number;
+      aiSummary?: Record<string, any>;
+      queueNumber: number;
+      appointmentTime: string;
+      status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+    }
+
+    /** 队列查询参数 */
+    interface QueueListParams extends PageParams {
+      deptId?: number;
+      status?: string;
+    }
+
+    /** 患者详细信息 */
+    interface PatientDetail {
+      consultId: number;
+      patient: {
+        id: number;
+        name: string;
+        gender: string;
+        dateOfBirth: string;
+        phone: string;
+        emergencyContact: string;
+      };
+      allergies: AllergyInfo[];
+      medicalHistories: MedicalHistoryInfo[];
+      aiSummary?: Record<string, any>;
+      recentPrescriptions: RecentPrescription[];
+      historyRecords: HistoryRecord[];
+    }
+
+    /** 过敏史 */
+    interface AllergyInfo {
+      id: number;
+      allergen: string;
+      reaction: string;
+      severity: string;
+    }
+
+    /** 既往史 */
+    interface MedicalHistoryInfo {
+      id: number;
+      content: string;
+      occurredAt: string;
+    }
+
+    /** 近期处方摘要 */
+    interface RecentPrescription {
+      id: number;
+      status: string;
+      issuedAt: string;
+    }
+
+    /** 历史就诊记录 */
+    interface HistoryRecord {
+      date: string;
+      type: string;
+      summary: string;
+      status: string;
+    }
+
+    /** 开始接诊响应 */
+    interface ConsultStart {
+      consultId: number;
+      status: string;
+      startedAt: string;
+    }
+
+    /** 结束问诊响应 */
+    interface ConsultEnd {
+      consultId: number;
+      status: string;
+      endedAt: string;
+    }
+
+    /** 保存病历请求 */
+    interface NoteSaveReq {
+      doctorNote: string;
+    }
+
+    /** 保存病历响应 */
+    interface NoteSave {
+      consultId: number;
+      updatedAt: string;
+    }
+
+    /** 发送消息请求 */
+    interface MessageSendReq {
+      content: string;
+    }
+
+    /** 消息 VO */
+    interface MessageVO {
+      messageId: number;
+      senderType: 'PATIENT' | 'DOCTOR' | 'SYSTEM';
+      content: string;
+      createdAt: string;
+    }
+
+    // ===================== 处方管理 =====================
+
+    /** 处方列表项 */
+    interface Prescription {
+      id: number;
+      consultId: number;
+      patientId: number;
+      patientName: string;
+      doctorId: number;
+      doctorName: string;
+      deptId: number;
+      deptName: string;
+      status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+      itemCount: number;
+      issuedAt?: string;
+      createdAt: string;
+      updatedAt: string;
+    }
+
+    /** 处方明细项（列表返回） */
+    interface PrescriptionItem {
+      id: number;
+      drugId: number;
+      drugName: string;
+      dosage: string;
+      frequency: string;
+      usageMethod: string;
+      days: number;
+      quantity: number;
+    }
+
+    /** 处方详情 */
+    interface PrescriptionDetail {
+      id: number;
+      consultId: number;
+      patientId: number;
+      patientName: string;
+      doctorId: number;
+      doctorName: string;
+      deptId: number;
+      deptName: string;
+      status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+      auditRequired: boolean;
+      rejectReason?: string;
+      items: PrescriptionItem[];
+      createdAt: string;
+      updatedAt: string;
+    }
+
+    /** 处方列表查询参数 */
+    interface PrescriptionListParams extends PageParams {
+      consultId?: number;
+      patientId?: number;
+      status?: string;
+    }
+
+    /** 提交处方请求 */
+    interface PrescriptionSubmitReq {
+      consultId: number;
+      items: {
+        drugId: number;
+        dosage: string;
+        frequency: string;
+        usageMethod: string;
+        days: number;
+        quantity: number;
+      }[];
+    }
+
+    /** 提交处方结果 */
+    interface PrescriptionSubmitResult {
+      id: number;
+      status: string;
+      auditRequired: boolean;
+      riskWarnings: RiskWarning[];
+    }
+
+    /** 风险预警 */
+    interface RiskWarning {
+      level: 'WARNING' | 'ERROR';
+      rule: string;
+      message: string;
+    }
+
+    /** 审核请求 */
+    interface AuditReq {
+      action: 'APPROVED' | 'REJECTED';
+      rejectReason?: string;
+    }
+
+    /** 待审核列表项 */
+    interface PendingAuditItem {
+      id: number;
+      consultId: number;
+      patientId: number;
+      patientName: string;
+      doctorId: number;
+      doctorName: string;
+      deptId: number;
+      deptName: string;
+      itemCount: number;
+      issuedAt?: string;
+      createdAt: string;
+    }
+
+    /** 处方模板 */
+    interface PrescriptionTemplate {
+      id: number;
+      name: string;
+      deptId?: number;
+      deptName?: string;
+      items: {
+        drugId: number;
+        drugName: string;
+        dosage: string;
+        usageMethod: string;
+        days: number;
+        quantity: number;
+      }[];
+      createdAt: string;
+    }
+
+    /** 模板列表查询参数 */
+    interface TemplateListParams extends PageParams {
+      name?: string;
+      deptId?: number;
+    }
+
+    /** 保存模板请求 */
+    interface SaveTemplateReq {
+      name: string;
+      deptId?: number;
+      items: {
+        drugId: number;
+        dosage: string;
+        frequency: string;
+        usageMethod: string;
+        days: number;
+        quantity: number;
+      }[];
+    }
+
+    // ===================== 药品库存管理 =====================
+
+    /** 药品 */
+    interface Drug {
+      id: number;
+      name: string;
+      specification: string;
+      unit: string;
+      indication?: string;
+      manufacturer?: string;
+      approvalNumber?: string;
+      status: 'ENABLED' | 'DISABLED';
+    }
+
+    /** 药品列表查询参数 */
+    interface DrugListParams extends PageParams {
+      name?: string;
+      status?: string;
+    }
+
+    /** 新增/编辑药品请求 */
+    interface CreateDrugReq {
+      name: string;
+      specification: string;
+      unit: string;
+      indication?: string;
+      manufacturer?: string;
+      approvalNumber?: string;
+      status: 'ENABLED' | 'DISABLED';
+    }
+
+    /** 库存项 */
+    interface InventoryItem {
+      id: number;
+      drugId: number;
+      drugName: string;
+      specification: string;
+      availableCount: number;
+      lockedCount: number;
+      safetyStock: number;
+      unitPriceCent: number;
+      status: 'NORMAL' | 'LOW' | 'ALERT';
+    }
+
+    /** 库存列表查询参数 */
+    interface InventoryListParams extends PageParams {
+      pharmacyId?: number;
+      drugId?: number;
+    }
+
+    /** 更新库存请求 */
+    interface UpdateInventoryReq {
+      availableCount: number;
+      safetyStock: number;
+      unitPriceCent: number;
+    }
+
+    /** 手动释放锁定库存请求 */
+    interface UnlockInventoryReq {
+      drugOrderId: number;
+      reason: string;
+    }
+
+    /** 库存预警项 */
+    type AlertItem = InventoryItem;
+
+    // ===================== 患者管理 =====================
+
+    /** 患者列表项 */
+    interface PatientListItem {
+      id: number;
+      name: string;
+      gender: 'MALE' | 'FEMALE' | 'UNKNOWN';
+      age: number;
+      lastVisitDate: string;
+    }
+
+    /** 患者列表查询参数 */
+    interface PatientListParams extends PageParams {
+      name?: string;
+    }
+
+    /** 患者详情 - 基本信息 */
+    interface PatientDetailInfo {
+      id: number;
+      name: string;
+      gender: string;
+      dateOfBirth: string;
+      phone: string;
+      emergencyContact: string;
+      allergies: AllergyInfo[];
+      medicalHistories: MedicalHistoryInfo[];
+    }
+
+    /** 就诊记录项 */
+    interface PatientVisitItem {
+      consultId: number;
+      visitDate: string;
+      doctorName: string;
+      deptName: string;
+      summary?: string;
+      status: string;
+      createdAt: string;
+    }
+
+    /** 历史处方项 */
+    interface PatientPrescriptionItem {
+      id: number;
+      consultId: number;
+      doctorName: string;
+      status: string;
+      itemCount: number;
+      issuedAt?: string;
+      createdAt: string;
+    }
+
+    /** 用药计划项 */
+    interface MedicationPlanItem {
+      id: number;
+      drugName: string;
+      dosage: string;
+      frequency: string;
+      usageMethod: string;
+      status: 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+      nextRemindAt?: string;
+      createdAt: string;
+    }
+
+    /** 随访计划项 */
+    interface FollowUpPlanItem {
+      id: number;
+      followUpType: string;
+      content: string;
+      dueAt: string;
+      status: 'PENDING_CONFIRM' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
+      createdAt: string;
+    }
+
+    /** 当前用药与随访响应 */
+    interface PatientMedicationResult {
+      medicationPlans: MedicationPlanItem[];
+      followUpPlans: FollowUpPlanItem[];
+    }
+
+    // ===================== 统计报表 =====================
+
+    /** 运营总览 */
+    interface StatisticsOverview {
+      totalAppointments: number;
+      completedRate: number;
+      totalRevenueCent: number;
+      totalPrescriptions: number;
+      avgWaitTime: number;
+    }
+
+    /** 科室统计项 */
+    interface DepartmentStatItem {
+      deptId: number;
+      deptName: string;
+      appointmentCount: number;
+      consultCount: number;
+      prescriptionCount: number;
+      slotUsageRate: number;
+    }
+
+    /** 日统计项 */
+    interface DailyStatItem {
+      date: string;
+      appointmentCount: number;
+      consultCount: number;
+      prescriptionCount: number;
+      revenueCent: number;
+    }
+
+    /** 统计查询参数 */
+    interface StatisticsParams {
+      startDate?: string;
+      endDate?: string;
+      deptId?: number;
+    }
   }
 }

@@ -6,6 +6,8 @@ import com.sphp.patient.common.constant.OrderConstant;
 import com.sphp.patient.common.enums.DrugOrderLogisticsStatusEnum;
 import com.sphp.patient.common.enums.DrugOrderStatusEnum;
 import com.sphp.patient.common.enums.RegisteringPaymentStatusEnum;
+import com.sphp.patient.common.enums.NotificationTypeEnum;
+import com.sphp.patient.notification.mq.producer.NotificationEventProducer;
 import com.sphp.patient.order.dto.DrugOrderCreateRequest;
 import com.sphp.patient.order.entity.DrugOrder;
 import com.sphp.patient.order.entity.DrugOrderItem;
@@ -61,6 +63,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderStockLockService stockLockService;
     private final RegistrationProperties registrationProperties;
     private final ApplicationEventPublisher eventPublisher;
+    private final NotificationEventProducer notificationEventProducer;
 
     /** 查询当前账号可访问处方的院内药房库存。 */
     @Override
@@ -89,17 +92,19 @@ public class OrderServiceImpl implements OrderService {
 
     /** 分页查询当前账号指定就诊人的购药订单。 */
     @Override
-    public DrugOrderPageVO listDrugOrders(Long patientId, String status, String logisticsStatus, Integer pageNo, Integer pageSize) {
+    public DrugOrderPageVO listDrugOrders(Long patientId, String status, String logisticsStatus, String keyword, Integer pageNo, Integer pageSize) {
         Long targetPatientId = resolveAccessiblePatient(CUserContext.getRequired().userId(), patientId);
         validateEnum(status, DrugOrderStatusEnum.values(), "订单状态不在允许范围内");
         validateEnum(logisticsStatus, DrugOrderLogisticsStatusEnum.values(), "物流状态不在允许范围内");
         int resolvedPageNo = pageNo == null ? OrderConstant.DEFAULT_PAGE_NO : pageNo;
         int resolvedPageSize = pageSize == null ? OrderConstant.DEFAULT_PAGE_SIZE : pageSize;
         if (resolvedPageSize > OrderConstant.MAX_PAGE_SIZE) throw parameterOutOfRange("pageSize 不能超过100");
-        List<DrugOrderPageVO.Item> records = orderDataMapper.selectOrderList(targetPatientId, status, logisticsStatus,
+        // 空白关键词不参与查询，避免无意义地影响列表与总数。
+        String normalizedKeyword = keyword == null || keyword.isBlank() ? null : keyword.trim();
+        List<DrugOrderPageVO.Item> records = orderDataMapper.selectOrderList(targetPatientId, status, logisticsStatus, normalizedKeyword,
                 resolvedPageSize, (long) (resolvedPageNo - 1) * resolvedPageSize).stream().map(this::toOrderListItem).toList();
         return DrugOrderPageVO.builder().pageNo(resolvedPageNo).pageSize(resolvedPageSize)
-                .total(orderDataMapper.countOrderList(targetPatientId, status, logisticsStatus)).records(records).build();
+                .total(orderDataMapper.countOrderList(targetPatientId, status, logisticsStatus, normalizedKeyword)).records(records).build();
     }
 
     /** 查询当前账号可访问的购药订单详情。 */
@@ -160,6 +165,9 @@ public class OrderServiceImpl implements OrderService {
         }
         // 支付状态条件更新成功后才生成用药计划，重复支付不会重复创建。
         orderDataMapper.createMedicationPlans(payment.drugOrderId(), now);
+        notificationEventProducer.publishNotification("DRUG_ORDER_PAYMENT_SUCCESS", payment.drugOrderId(),
+                payment.payerUserId(), payment.patientId(), NotificationTypeEnum.DRUG_ORDER,
+                "购药支付成功", "您的购药订单已支付成功，药房将尽快处理。");
         return RegisteringPaymentSuccessVO.builder().paymentId(paymentId).status(RegisteringPaymentStatusEnum.SUCCESS.name()).paidAt(now).build();
     }
 
@@ -174,6 +182,10 @@ public class OrderServiceImpl implements OrderService {
             orderDataMapper.closePendingDrugOrderPayment(drugOrderId, now);
             OrderDetailRecord detail = orderDataMapper.selectOrderDetail(drugOrderId);
             if (detail != null) releaseOrderStocks(detail, now);
+            // 仅在待支付订单确实超时后创建通知，重复超时消息不会重复通知。
+            notificationEventProducer.publishNotification("DRUG_ORDER_TIMEOUT", timeout.drugOrderId(), timeout.payerUserId(),
+                    timeout.patientId(), NotificationTypeEnum.DRUG_ORDER, "购药订单已超时",
+                    "订单未在规定时间内支付，已自动取消。");
         }
     }
 
@@ -203,6 +215,8 @@ public class OrderServiceImpl implements OrderService {
         payment.setAmountCent(amountCent); payment.setStatus(RegisteringPaymentStatusEnum.PENDING.name()); payment.setExpireAt(expireAt);
         if (drugOrderPaymentMapper.insert(payment) != 1) throw systemError("购药支付单创建失败");
         eventPublisher.publishEvent(DrugOrderPendingEvent.of(order.getId(), order.getPatientId(), payment.getPayerUserId()));
+        notificationEventProducer.publishNotification("DRUG_ORDER_PENDING", order.getId(), payment.getPayerUserId(),
+                order.getPatientId(), NotificationTypeEnum.DRUG_ORDER, "购药订单待支付", "请在规定时间内完成支付。");
         return DrugOrderCreateVO.builder().drugOrderId(order.getId()).status(order.getStatus()).deliveryMethod(order.getDeliveryMethod())
                 .amountCent(amountCent).expireAt(expireAt).paymentId(payment.getId()).items(stocks.stream().map(stock -> DrugOrderCreateVO.Item.builder()
                         .drugId(stock.drugId()).drugName(stock.drugName()).quantity(stock.quantity()).build()).toList()).build();
@@ -251,7 +265,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /** 转换购药订单列表项。 */
-    private DrugOrderPageVO.Item toOrderListItem(OrderListRecord record) { return DrugOrderPageVO.Item.builder().id(record.id()).pharmacyName(record.pharmacyName()).status(record.status()).logisticsStatus(record.logisticsStatus()).latestLogisticsNode(record.latestLogisticsNode()).amountCent(record.amountCent()).expireAt(record.expireAt()).build(); }
+    private DrugOrderPageVO.Item toOrderListItem(OrderListRecord record) { return DrugOrderPageVO.Item.builder().id(record.id()).orderName(record.orderName()).pharmacyName(record.pharmacyName()).status(record.status()).logisticsStatus(record.logisticsStatus()).latestLogisticsNode(record.latestLogisticsNode()).amountCent(record.amountCent()).expireAt(record.expireAt()).build(); }
     /** 转换购药订单详情。 */
     private DrugOrderDetailVO toOrderDetail(OrderDetailRecord record) { return DrugOrderDetailVO.builder().id(record.id()).status(record.status())
             .pharmacy(DrugOrderDetailVO.Pharmacy.builder().id(record.pharmacyId()).name(record.pharmacyName()).build())

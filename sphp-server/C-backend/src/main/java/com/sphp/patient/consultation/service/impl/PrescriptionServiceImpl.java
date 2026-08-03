@@ -22,13 +22,18 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+import static com.sphp.patient.common.constant.PrescriptionConstant.*;
+import static com.sphp.patient.common.enums.ConsultationPrescriptionStatusEnum.APPROVED;
+import static com.sphp.patient.common.enums.PrescriptionInterpretationStatusEnum.READY;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
+
 /**
  * C端处方查询与解读服务实现。
  */
-@Service
+@Service("cPrescriptionServiceImpl")
 @RequiredArgsConstructor
 public class PrescriptionServiceImpl implements PrescriptionService {
-
+    // 处方数据访问接口
     private final PrescriptionDataMapper prescriptionDataMapper;
 
     /**
@@ -43,10 +48,11 @@ public class PrescriptionServiceImpl implements PrescriptionService {
     @Override
     public ConsultationPrescriptionPageVO prescriptionList(Long patientId, Integer pageNo, Integer pageSize) {
         Long resolvedPatientId = prescriptionResolveAccessiblePatient(CUserContext.getRequired().userId(), patientId);
-        int resolvedPageNo = pageNo == null ? PrescriptionConstant.DEFAULT_PAGE_NO : pageNo;
-        int resolvedPageSize = pageSize == null ? PrescriptionConstant.DEFAULT_PAGE_SIZE : pageSize;
-        if (resolvedPageSize > PrescriptionConstant.MAX_PAGE_SIZE) {
-            throw prescriptionBadRequest("pageSize 不能超过" + PrescriptionConstant.MAX_PAGE_SIZE);
+        //若未传页码/大小，则使用默认值
+        int resolvedPageNo = pageNo == null ? DEFAULT_PAGE_NO : pageNo;
+        int resolvedPageSize = pageSize == null ? DEFAULT_PAGE_SIZE : pageSize;
+        if (resolvedPageSize > MAX_PAGE_SIZE) {
+            throw prescriptionBadRequest("pageSize 不能超过" + MAX_PAGE_SIZE);
         }
         long offset = (long) (resolvedPageNo - 1) * resolvedPageSize;
         List<ConsultationPrescriptionPageVO.Item> records = prescriptionDataMapper
@@ -71,6 +77,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
      */
     @Override
     public ConsultationPrescriptionDetailVO prescriptionGetDetail(Long prescriptionId) {
+        // 读取处方资源并校验当前用户对所属患者的访问权限和处方展示状态
         PrescriptionResourceRecord resource = prescriptionRequireApprovedResource(prescriptionId);
         PrescriptionDetailRecord detail = prescriptionDataMapper.prescriptionSelectApprovedDetail(prescriptionId);
         if (detail == null) {
@@ -78,11 +85,11 @@ public class PrescriptionServiceImpl implements PrescriptionService {
         }
         List<ConsultationPrescriptionDetailVO.Item> items = prescriptionDataMapper.prescriptionSelectItems(prescriptionId)
                 .stream()
-                .map(this::prescriptionToDetailItem)
+                .map(this::prescriptionToDetailItem) // 转换成详情项
                 .toList();
         return ConsultationPrescriptionDetailVO.builder()
                 .id(resource.id())
-                .status(ConsultationPrescriptionStatusEnum.APPROVED.name())
+                .status(APPROVED.name())
                 .doctorName(detail.doctorName())
                 .doctor(ConsultationPrescriptionDetailVO.Doctor.builder()
                         .id(detail.doctorId())
@@ -105,9 +112,10 @@ public class PrescriptionServiceImpl implements PrescriptionService {
         prescriptionRequireApprovedResource(prescriptionId);
         PrescriptionInterpretationRecord interpretation = prescriptionDataMapper
                 .prescriptionSelectInterpretation(prescriptionId);
-        if (interpretation == null || !PrescriptionInterpretationStatusEnum.READY.name().equals(interpretation.status())
+        // 未就绪
+        if (interpretation == null || !READY.name().equals(interpretation.status())
                 || interpretation.content() == null || interpretation.content().isBlank()) {
-            throw prescriptionInterpretationNotReady();
+            throw prescriptionInterpretationNotReady(); // 未生成异常
         }
         return PrescriptionInterpretationVO.builder()
                 .prescriptionId(interpretation.prescriptionId())
@@ -125,12 +133,13 @@ public class PrescriptionServiceImpl implements PrescriptionService {
      * @throws CAuthException 处方不存在、未批准或无权访问时抛出
      */
     private PrescriptionResourceRecord prescriptionRequireApprovedResource(Long prescriptionId) {
+        // 读取处方资源并校验当前用户对所属患者的访问权限和处方展示状态
         PrescriptionResourceRecord resource = prescriptionDataMapper.prescriptionSelectResource(prescriptionId);
         if (resource == null) {
             throw prescriptionNotFound("处方不存在");
         }
         prescriptionResolveAccessiblePatient(CUserContext.getRequired().userId(), resource.patientId());
-        if (!ConsultationPrescriptionStatusEnum.APPROVED.name().equals(resource.status())) {
+        if (!APPROVED.name().equals(resource.status())) {
             // 未批准处方对患者端不可见，统一按不存在处理，避免泄漏审核状态。
             throw prescriptionNotFound("处方不存在");
         }
@@ -146,6 +155,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
      * @throws CAuthException 就诊人不存在或无权访问时抛出
      */
     private Long prescriptionResolveAccessiblePatient(Long userId, Long requestedPatientId) {
+        // 解析本人或显式就诊人并校验当前用户有效归属
         Long patientId = requestedPatientId == null
                 ? prescriptionDataMapper.prescriptionSelectSelfPatientId(userId)
                 : requestedPatientId;
@@ -169,8 +179,8 @@ public class PrescriptionServiceImpl implements PrescriptionService {
                 .id(record.id())
                 .consultationId(record.consultationId())
                 .doctorName(record.doctorName())
-                .status(ConsultationPrescriptionStatusEnum.APPROVED.name())
-                .issuedAt(record.issuedAt())
+                .status(APPROVED.name())
+                .issuedAt(record.issuedAt()) // 已批准
                 .build();
     }
 
@@ -199,7 +209,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
      * @return HTTP 404 业务异常
      */
     private CAuthException prescriptionNotFound(String message) {
-        return new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
+        return new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
     }
 
     /**
@@ -209,7 +219,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
      * @return HTTP 403 业务异常
      */
     private CAuthException prescriptionForbidden(String message) {
-        return new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, message);
+        return new CAuthException(UNAUTHORIZED, HttpStatus.FORBIDDEN, message);
     }
 
     /**
@@ -218,7 +228,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
      * @return HTTP 409 业务异常
      */
     private CAuthException prescriptionInterpretationNotReady() {
-        return new CAuthException(ErrorCodeEnum.BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT, "处方解读尚未生成");
+        return new CAuthException(BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT, "处方解读尚未生成");
     }
 
     /**
@@ -228,6 +238,6 @@ public class PrescriptionServiceImpl implements PrescriptionService {
      * @return HTTP 400 业务异常
      */
     private CAuthException prescriptionBadRequest(String message) {
-        return new CAuthException(ErrorCodeEnum.PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST, message);
+        return new CAuthException(PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST, message);
     }
 }

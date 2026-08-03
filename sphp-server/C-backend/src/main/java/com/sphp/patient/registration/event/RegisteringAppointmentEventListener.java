@@ -11,5 +11,9 @@ public class RegisteringAppointmentEventListener {
     private final RabbitTemplate rabbitTemplate;
     /** 仅在订单事务提交后投递延迟消息，避免消费者读取已回滚订单。 */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void registeringPublishLockedEvent(RegisteringAppointmentLockedEvent event) { rabbitTemplate.convertAndSend(RegisteringRabbitMqConfig.BUSINESS_EXCHANGE, RegisteringRabbitMqConfig.LOCKED_KEY, event); }
+    public void registeringPublishLockedEvent(RegisteringAppointmentLockedEvent event) {
+
+        rabbitTemplate.convertAndSend(RegisteringRabbitMqConfig.BUSINESS_EXCHANGE, RegisteringRabbitMqConfig.LOCKED_KEY, event);
+
+    }
 }

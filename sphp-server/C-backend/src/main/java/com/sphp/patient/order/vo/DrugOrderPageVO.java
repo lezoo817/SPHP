@@ -13,5 +13,5 @@ public class DrugOrderPageVO {
     /** 总记录数 */ private final long total;
     /** 订单列表 */ private final List<Item> records;
     /** 订单列表项。 */
-    @Getter @Builder public static class Item { private final Long id; private final String pharmacyName; private final String status; private final String logisticsStatus; private final String latestLogisticsNode; private final Integer amountCent; private final OffsetDateTime expireAt; }
+    @Getter @Builder public static class Item { private final Long id; private final String orderName; private final String pharmacyName; private final String status; private final String logisticsStatus; private final String latestLogisticsNode; private final Integer amountCent; private final OffsetDateTime expireAt; }
 }

@@ -51,6 +51,13 @@ import java.time.OffsetDateTime;
 import java.util.Locale;
 import java.util.List;
 
+import static com.sphp.patient.common.constant.CAuthConstant.*;
+import static com.sphp.patient.common.enums.CUserStatusEnum.ENABLED;
+import static com.sphp.patient.common.enums.PatientRelationshipEnum.SELF;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.UNAUTHORIZED;
+import static org.springframework.http.HttpStatus.*;
+
 /**
  * C端登录注册服务实现。
  */
@@ -58,22 +65,21 @@ import java.util.List;
 @RequiredArgsConstructor
 public class LoginServiceImpl implements LoginService {
 
-    /** 验证码图片宽度 */
-    private static final int CAPTCHA_WIDTH = 120;
-    /** 验证码图片高度 */
-    private static final int CAPTCHA_HEIGHT = 40;
-    /** 验证码字符数量 */
-    private static final int CAPTCHA_LENGTH = 4;
-    /** 验证码干扰线数量 */
-    private static final int CAPTCHA_LINE_COUNT = 30;
-
+    // C端认证配置
     private final CAuthProperties authProperties;
+    // JWT 配置
     private final CJwtProperties jwtProperties;
+
     private final StringRedisTemplate redisTemplate;
+    // C端用户Mapper
     private final CUserMapper cUserMapper;
+
     private final PatientMapper patientMapper;
+    // 就诊人与用户关系Mapper
     private final PatientUserRelationMapper relationMapper;
+    // Refresh TokenMapper
     private final CRefreshTokenMapper refreshTokenMapper;
+
     private final CJwtService jwtService;
 
     /**
@@ -83,6 +89,7 @@ public class LoginServiceImpl implements LoginService {
      */
     @Override
     public CaptchaVO createCaptcha() {
+        // 调用Hutool的工具类生成验证码
         LineCaptcha captcha = CaptchaUtil.createLineCaptcha(
                 CAPTCHA_WIDTH, CAPTCHA_HEIGHT, CAPTCHA_LENGTH, CAPTCHA_LINE_COUNT);
         String challengeId = CAuthTokenGenerator.generateCaptchaChallengeId();
@@ -113,6 +120,7 @@ public class LoginServiceImpl implements LoginService {
     @Transactional(rollbackFor = Exception.class)
     public RegisterVO register(RegisterRequest request) {
         String account = normalizeAccount(request.getAccount());
+        // 验证码检查
         validateAndConsumeCaptcha(request.getChallengeId(), request.getCaptchaCode());
 
         // 应用层预检查用于快速反馈，数据库唯一约束负责并发兜底
@@ -120,15 +128,15 @@ public class LoginServiceImpl implements LoginService {
                 .eq(CUser::getAccount, account)
                 .isNull(CUser::getDeletedAt));
         if (existingUser != null) {
-            throw new CAuthException(ErrorCodeEnum.ACCOUNT_ALREADY_EXISTS,
-                    HttpStatus.CONFLICT, "登录账号已存在");
+            throw new CAuthException(ACCOUNT_ALREADY_EXISTS,
+                    CONFLICT, "登录账号已存在");
         }
 
         try {
             CUser user = new CUser();
             user.setAccount(account);
             user.setPasswordHash(BCrypt.hashpw(request.getPassword(), BCrypt.gensalt()));
-            user.setStatus(CUserStatusEnum.ENABLED.getValue());
+            user.setStatus(ENABLED.getValue());
             cUserMapper.insert(user);
 
             // 注册契约不包含姓名，暂以账号作为本人就诊人的初始姓名
@@ -136,17 +144,18 @@ public class LoginServiceImpl implements LoginService {
             patient.setName(account);
             patientMapper.insert(patient);
 
+            // 创建本人默认就诊人
             PatientUserRelation relation = new PatientUserRelation();
             relation.setUserId(user.getId());
             relation.setPatientId(patient.getId());
-            relation.setRelationship(PatientRelationshipEnum.SELF.getValue());
+            relation.setRelationship(SELF.getValue());
             relation.setIsDefault(true);
             relationMapper.insert(relation);
 
             return RegisterVO.builder().userId(user.getId()).account(account).build();
         } catch (DuplicateKeyException e) {
-            throw new CAuthException(ErrorCodeEnum.ACCOUNT_ALREADY_EXISTS,
-                    HttpStatus.CONFLICT, "登录账号已存在");
+            throw new CAuthException(ACCOUNT_ALREADY_EXISTS,
+                    CONFLICT, "登录账号已存在");
         }
     }
 
@@ -162,8 +171,10 @@ public class LoginServiceImpl implements LoginService {
     public LoginVO login(LoginRequest request) {
         String account = normalizeAccount(request.getAccount());
         String failureKey = loginFailureKey(account);
+        // 登录失败检查
         checkLoginLock(failureKey);
 
+        // 应用层预检查用于快速反馈，数据库唯一约束负责并发兜底
         CUser user = cUserMapper.selectOne(Wrappers.<CUser>lambdaQuery()
                 .eq(CUser::getAccount, account)
                 .isNull(CUser::getDeletedAt));
@@ -171,13 +182,20 @@ public class LoginServiceImpl implements LoginService {
         if (user == null || !BCrypt.checkpw(request.getPassword(), user.getPasswordHash())) {
             recordLoginFailure(failureKey);
         }
-        if (!CUserStatusEnum.ENABLED.getValue().equals(user.getStatus())) {
-            throw new CAuthException(ErrorCodeEnum.ACCOUNT_DISABLED,
-                    HttpStatus.FORBIDDEN, "账号已被停用");
+        // 账号停用
+        if (user != null && !ENABLED.getValue().equals(user.getStatus())) {
+            throw new CAuthException(ACCOUNT_DISABLED,
+                    FORBIDDEN, "账号已被停用");
         }
 
+        // 登录失败重置
         redisTemplate.delete(failureKey);
-        IssuedRefreshToken refreshToken = issueRefreshToken(user.getId());
+        // 签发 Refresh Token
+        IssuedRefreshToken refreshToken = null;
+        if (user != null) {
+            refreshToken = issueRefreshToken(user.getId());
+        }
+        // 签发 Access Token
         String accessToken = jwtService.issueAccessToken(
                 user.getId(), user.getAccount(), refreshToken.tokenHash());
         return LoginVO.builder()
@@ -196,6 +214,7 @@ public class LoginServiceImpl implements LoginService {
      */
     @Override
     public TokenParseVO parseToken() {
+        // 从拦截器中获取当前用户
         CUserPrincipal principal = CUserContext.getRequired();
         return TokenParseVO.builder()
                 .userId(principal.userId())
@@ -214,41 +233,47 @@ public class LoginServiceImpl implements LoginService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public RefreshTokenVO refresh(RefreshTokenRequest request) {
+        // 校验并获取旧 Refresh Token
         String oldTokenHash = CAuthDigestUtil.sha256Hex(request.getRefreshToken());
         CRefreshToken oldToken = refreshTokenMapper.selectOne(Wrappers.<CRefreshToken>lambdaQuery()
                 .eq(CRefreshToken::getTokenHash, oldTokenHash));
+        // 刷新令牌不存在、撤销、伪造或重复消费
         if (oldToken == null || oldToken.getRevokedAt() != null) {
             throw invalidRefreshToken();
         }
         OffsetDateTime now = OffsetDateTime.now();
+        // 刷新令牌已过期
         if (!oldToken.getExpiredAt().isAfter(now)) {
-            throw new CAuthException(ErrorCodeEnum.LOGIN_EXPIRED,
+            throw new CAuthException(LOGIN_EXPIRED,
                     HttpStatus.UNAUTHORIZED, "刷新令牌已过期");
         }
 
-        String oldSessionKey = CAuthConstant.REFRESH_SESSION_KEY_PREFIX + oldTokenHash;
+        // 检查旧 Refresh Token 的会话
+        String oldSessionKey = REFRESH_SESSION_KEY_PREFIX + oldTokenHash;
         String sessionValue = redisTemplate.opsForValue().get(oldSessionKey);
+        // 旧 Refresh Token 的会话不存在或已过期
         if (!StringUtils.hasText(sessionValue)
                 || !sessionValue.equals(oldToken.getUserId() + ":" + oldToken.getId())) {
             throw invalidRefreshToken();
         }
-
+        // 检查旧 Refresh Token 的用户
         CUser user = cUserMapper.selectById(oldToken.getUserId());
         if (user == null || user.getDeletedAt() != null) {
             throw invalidRefreshToken();
         }
-        if (!CUserStatusEnum.ENABLED.getValue().equals(user.getStatus())) {
-            throw new CAuthException(ErrorCodeEnum.ACCOUNT_DISABLED,
-                    HttpStatus.FORBIDDEN, "账号已被停用");
+        //若账号状态为停用
+        if (!ENABLED.getValue().equals(user.getStatus())) {
+            throw new CAuthException(ACCOUNT_DISABLED,
+                    FORBIDDEN, "账号已被停用");
         }
 
         // 状态条件更新确保并发刷新时仅一个请求取得旧令牌消费权
         CRefreshToken revokedToken = new CRefreshToken();
         revokedToken.setRevokedAt(now);
         int updated = refreshTokenMapper.update(revokedToken, Wrappers.<CRefreshToken>lambdaUpdate()
-                .eq(CRefreshToken::getId, oldToken.getId())
-                .isNull(CRefreshToken::getRevokedAt)
-                .gt(CRefreshToken::getExpiredAt, now));
+                .eq(CRefreshToken::getId, oldToken.getId()) // id相同
+                .isNull(CRefreshToken::getRevokedAt)  // 未撤销
+                .gt(CRefreshToken::getExpiredAt, now)); // 未过期
         if (updated != 1) {
             throw invalidRefreshToken();
         }
@@ -277,16 +302,17 @@ public class LoginServiceImpl implements LoginService {
         CUserPrincipal principal = CUserContext.getRequired();
         String tokenHash = CAuthDigestUtil.sha256Hex(request.getRefreshToken());
         if (!tokenHash.equals(principal.sessionHash())) {
-            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED,
+            throw new CAuthException(UNAUTHORIZED,
                     HttpStatus.UNAUTHORIZED, "当前会话无效");
         }
-
+        // 获取当前 Refresh Token
         CRefreshToken currentToken = refreshTokenMapper.selectOne(Wrappers.<CRefreshToken>lambdaQuery()
                 .eq(CRefreshToken::getTokenHash, tokenHash)
                 .eq(CRefreshToken::getUserId, principal.userId()));
+        // Refresh Token 不存在、撤销、伪造或已过期
         if (currentToken == null || currentToken.getRevokedAt() != null
                 || !currentToken.getExpiredAt().isAfter(OffsetDateTime.now())) {
-            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED,
+            throw new CAuthException(UNAUTHORIZED,
                     HttpStatus.UNAUTHORIZED, "当前会话无效");
         }
 
@@ -299,12 +325,12 @@ public class LoginServiceImpl implements LoginService {
                 .isNull(CRefreshToken::getRevokedAt)
                 .gt(CRefreshToken::getExpiredAt, now));
         if (updated != 1) {
-            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED,
+            throw new CAuthException(UNAUTHORIZED,
                     HttpStatus.UNAUTHORIZED, "当前会话无效");
         }
 
         // 删除 Redis 会话后，与其绑定的 Access Token 立即失效
-        redisTemplate.delete(CAuthConstant.REFRESH_SESSION_KEY_PREFIX + tokenHash);
+        redisTemplate.delete(REFRESH_SESSION_KEY_PREFIX + tokenHash);
         return LogoutVO.builder().loggedOut(true).build();
     }
 
@@ -320,17 +346,20 @@ public class LoginServiceImpl implements LoginService {
     public ChangePasswordVO changePassword(ChangePasswordRequest request) {
         CUserPrincipal principal = CUserContext.getRequired();
         CUser user = cUserMapper.selectById(principal.userId());
+        // 账号状态为停用
         if (user == null || user.getDeletedAt() != null
-                || !CUserStatusEnum.ENABLED.getValue().equals(user.getStatus())) {
-            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED,
+                || !ENABLED.getValue().equals(user.getStatus())) {
+            throw new CAuthException(UNAUTHORIZED,
                     HttpStatus.UNAUTHORIZED, "当前登录状态无效");
         }
+        // 检查旧密码
         if (!BCrypt.checkpw(request.getOldPassword(), user.getPasswordHash())) {
-            throw new CAuthException(ErrorCodeEnum.PASSWORD_VALIDATION_FAILED,
+            throw new CAuthException(PASSWORD_VALIDATION_FAILED,
                     HttpStatus.BAD_REQUEST, "当前密码不正确");
         }
+        // 新密码不能与旧密码相同
         if (BCrypt.checkpw(request.getNewPassword(), user.getPasswordHash())) {
-            throw new CAuthException(ErrorCodeEnum.PASSWORD_VALIDATION_FAILED,
+            throw new CAuthException(PASSWORD_VALIDATION_FAILED,
                     HttpStatus.BAD_REQUEST, "新密码不能与当前密码相同");
         }
 
@@ -343,16 +372,18 @@ public class LoginServiceImpl implements LoginService {
                 .isNull(CUser::getDeletedAt));
         if (userUpdated != 1) {
             throw new CAuthException(ErrorCodeEnum.BUSINESS_STATUS_CONFLICT,
-                    HttpStatus.CONFLICT, "密码状态已变化，请重新登录后重试");
+                    CONFLICT, "密码状态已变化，请重新登录后重试");
         }
 
         OffsetDateTime now = OffsetDateTime.now();
+        // 获取其他刷新会话
         List<CRefreshToken> otherSessions = refreshTokenMapper.selectList(
                 Wrappers.<CRefreshToken>lambdaQuery()
-                        .eq(CRefreshToken::getUserId, principal.userId())
-                        .ne(CRefreshToken::getTokenHash, principal.sessionHash())
-                        .isNull(CRefreshToken::getRevokedAt)
-                        .gt(CRefreshToken::getExpiredAt, now));
+                        .eq(CRefreshToken::getUserId, principal.userId()) // 当前用户
+                        .ne(CRefreshToken::getTokenHash, principal.sessionHash()) // 当前会话
+                        .isNull(CRefreshToken::getRevokedAt) // 未撤销
+                        .gt(CRefreshToken::getExpiredAt, now)); // 未过期
+        // 如果有其他刷新会话，则撤销
         if (!otherSessions.isEmpty()) {
             CRefreshToken revokedToken = new CRefreshToken();
             revokedToken.setRevokedAt(now);
@@ -364,9 +395,9 @@ public class LoginServiceImpl implements LoginService {
 
             // 密码修改后立即使其他设备的 Access Token 和刷新令牌失效
             List<String> redisKeys = otherSessions.stream()
-                    .map(CRefreshToken::getTokenHash)
-                    .map(hash -> CAuthConstant.REFRESH_SESSION_KEY_PREFIX + hash)
-                    .toList();
+                    .map(CRefreshToken::getTokenHash) // 获取 Redis 键
+                    .map(hash -> REFRESH_SESSION_KEY_PREFIX + hash) // 转换成 Redis 键
+                    .toList(); // 转为列表
             redisTemplate.delete(redisKeys);
         }
         return ChangePasswordVO.builder().passwordChanged(true).build();
@@ -385,7 +416,7 @@ public class LoginServiceImpl implements LoginService {
         if (!StringUtils.hasText(captchaHash)
                 || !BCrypt.checkpw(captchaCode.toUpperCase(Locale.ROOT), captchaHash)) {
             throw new CAuthException(ErrorCodeEnum.CAPTCHA_ERROR,
-                    HttpStatus.BAD_REQUEST, "图形验证码无效或已过期");
+                    BAD_REQUEST, "图形验证码无效或已过期");
         }
     }
 
@@ -399,8 +430,8 @@ public class LoginServiceImpl implements LoginService {
     private String normalizeAccount(String rawAccount) {
         String account = rawAccount.trim();
         if (account.length() < 4 || account.length() > 32) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_PARAMETER,
-                    HttpStatus.BAD_REQUEST, "登录账号长度必须为4至32位");
+            throw new CAuthException(INVALID_PARAMETER,
+                    BAD_REQUEST, "登录账号长度必须为4至32位");
         }
         return account;
     }
@@ -413,9 +444,10 @@ public class LoginServiceImpl implements LoginService {
      */
     private void checkLoginLock(String failureKey) {
         String failureCount = redisTemplate.opsForValue().get(failureKey);
+        // 登录失败次数达到阈值
         if (StringUtils.hasText(failureCount)
                 && Long.parseLong(failureCount) >= authProperties.getLoginMaxFailures()) {
-            throw new CAuthException(ErrorCodeEnum.PASSWORD_RETRY_LIMIT_EXCEEDED,
+            throw new CAuthException(PASSWORD_RETRY_LIMIT_EXCEEDED,
                     HttpStatus.TOO_MANY_REQUESTS, "登录失败次数过多，请稍后重试");
         }
     }
@@ -431,12 +463,13 @@ public class LoginServiceImpl implements LoginService {
         if (failureCount != null && failureCount == 1L) {
             // 首次失败设置固定窗口，避免无 TTL 的失败计数长期残留
             redisTemplate.expire(failureKey, Duration.ofSeconds(authProperties.getLoginLockSeconds()));
+            //Duration 在这里是把"秒数"包装成"时间段"类型
         }
         if (failureCount != null && failureCount >= authProperties.getLoginMaxFailures()) {
-            throw new CAuthException(ErrorCodeEnum.PASSWORD_RETRY_LIMIT_EXCEEDED,
+            throw new CAuthException(PASSWORD_RETRY_LIMIT_EXCEEDED,
                     HttpStatus.TOO_MANY_REQUESTS, "登录失败次数过多，请稍后重试");
         }
-        throw new CAuthException(ErrorCodeEnum.LOGIN_FAILED,
+        throw new CAuthException(LOGIN_FAILED,
                 HttpStatus.UNAUTHORIZED, "账号或密码错误");
     }
 
@@ -457,9 +490,9 @@ public class LoginServiceImpl implements LoginService {
 
         // Redis 只保存用户和数据库令牌 ID，不保存刷新令牌原文
         redisTemplate.opsForValue().set(
-                CAuthConstant.REFRESH_SESSION_KEY_PREFIX + tokenHash,
+                REFRESH_SESSION_KEY_PREFIX + tokenHash,
                 userId + ":" + entity.getId(),
-                Duration.ofSeconds(authProperties.getRefreshTokenExpiration())
+                Duration.ofSeconds(authProperties.getRefreshTokenExpiration())//Duration 在这里是把"秒数"包装成"时间段"类型
         );
         return new IssuedRefreshToken(rawToken, tokenHash);
     }
@@ -471,7 +504,7 @@ public class LoginServiceImpl implements LoginService {
      * @return Redis 登录失败计数键
      */
     private String loginFailureKey(String account) {
-        return CAuthConstant.LOGIN_FAILURE_KEY_PREFIX + CAuthDigestUtil.sha256Hex(account);
+        return LOGIN_FAILURE_KEY_PREFIX + CAuthDigestUtil.sha256Hex(account);
     }
 
     /**
@@ -489,7 +522,7 @@ public class LoginServiceImpl implements LoginService {
      * @return HTTP 401 刷新令牌无效异常
      */
     private CAuthException invalidRefreshToken() {
-        return new CAuthException(ErrorCodeEnum.UNAUTHORIZED,
+        return new CAuthException(UNAUTHORIZED,
                 HttpStatus.UNAUTHORIZED, "刷新令牌无效或已撤销");
     }
 }

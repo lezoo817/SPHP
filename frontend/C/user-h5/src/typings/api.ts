@@ -57,6 +57,33 @@ export interface FamilyMemberPayload {
   emergencyContact?: string;
 }
 
+/** 当前登录账号本人资料。 */
+export interface Profile {
+  id: number;
+  name: string;
+  gender?: 'MALE' | 'FEMALE' | 'UNKNOWN';
+  birthday?: string;
+  phone?: string;
+  emergencyContact?: string;
+}
+
+/** 更新本人资料的可提交字段。 */
+export interface ProfileUpdatePayload {
+  name: string;
+  gender?: 'MALE' | 'FEMALE' | 'UNKNOWN';
+  birthday?: string;
+  phone?: string;
+  emergencyContact?: string;
+}
+
+/** 更新本人资料后的最小响应。 */
+export interface ProfileUpdateResult {
+  id: number;
+  name: string;
+  phone?: string;
+  updatedAt: string;
+}
+
 /** 健康档案中的最小患者资料。 */
 export interface HealthProfile {
   id: number;
@@ -107,7 +134,7 @@ export interface Hospital { hospitalId: number; name: string; level?: string; ad
 /** 医院下的可预约科室。 */
 export interface Department { id: number; name: string; description?: string; }
 /** 医生及当天可用号源摘要。 */
-export interface Doctor { id: number; name: string; title?: string; specialty?: string; registrationFeeCent: number; availableCount: number; departmentName?: string; }
+export interface Doctor { id: number; name: string; title?: string; specialty?: string; registrationFeeCent: number; availableCount: number; departmentId?: number; departmentName?: string; }
 /** 医生预约时段。 */
 export interface AppointmentSlot { slotId: number; startTime: string; endTime: string; feeCent: number; availableCount: number; }
 /** 挂号订单列表项。 */
@@ -124,3 +151,22 @@ export interface ConsultationDetail extends Consultation { doctor: { id: number;
 export interface Prescription { id: number; consultationId: number; doctorName: string; status: 'APPROVED'; issuedAt: string; }
 /** 已批准处方详情。 */
 export interface PrescriptionDetail extends Prescription { doctor: { id: number; name: string; title?: string }; items: { drugId: number; drugName: string; specification?: string; dosage?: string; frequency?: string; usage?: string; durationDays?: number }[]; }
+/** 药房处方库存。 */ export interface PharmacyInventory { pharmacyId:number; name:string; isDefault:boolean; items:{drugId:number;availableCount:number;unitPriceCent:number}[]; }
+/** 购药订单列表项。 */ export interface DrugOrder { id:number; orderName:string; pharmacyName:string; status:string; logisticsStatus?:string; latestLogisticsNode?:string; amountCent:number; expireAt?:string; }
+/** 购药订单详情。 */ export interface DrugOrderDetail extends DrugOrder { pharmacy:{id:number;name:string}; delivery?:{address:string;logisticsStatus:string;traces:{node:string;occurredAt:string}[]}; payment?:{id:number;status:string}; items:{drugId:number;drugName:string;quantity:number;unitPriceCent:number}[]; }
+/** 用药计划当前状态。 */
+export type MedicationPlanStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+/** 用药计划允许的状态变更动作。 */
+export type MedicationPlanAction = 'PAUSE' | 'RESUME' | 'COMPLETE';
+/** 当前就诊人的用药计划。 */
+export interface MedicationPlan { id: number; drugName: string; dosage: string; frequency: string; nextReminderAt?: string; status: MedicationPlanStatus; }
+/** 随访计划当前状态。 */
+export type FollowUpStatus = 'PENDING_CONFIRM' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
+/** 当前就诊人的随访计划。 */
+export interface FollowUpPlan { id: number; type: string; dueAt?: string; content: string; status: FollowUpStatus; remindAt?: string; }
+/** 站内通知类型。 */
+export type NotificationType = 'APPOINTMENT' | 'DRUG_ORDER' | 'MEDICATION_REMINDER' | 'FOLLOW_UP_REMINDER' | 'SYSTEM';
+/** 站内通知列表项。 */
+export interface NotificationItem { id: number; type: NotificationType; patientId?: number; patientName?: string; title: string; content: string; read: boolean; createdAt: string; }
+/** 标记站内通知已读后的结果。 */
+export interface NotificationReadResult { id: number; read: true; readAt?: string; }

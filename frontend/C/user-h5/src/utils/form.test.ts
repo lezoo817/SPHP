@@ -8,6 +8,17 @@ import {
   validatePassword,
 } from './form';
 import { filterHospitals, formatAmount, sortHospitals } from './medical';
+import { resolveSelfPatientId } from '../models/selection';
+import { buildDrugOrderListPath } from '../services/pharmacy';
+import { matchesDrugOrderTab } from './pharmacy';
+import { hasSearchKeyword, resolveInitialDepartment } from './home-search';
+import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
+import { resolveMinePatientId } from '../models/mine-patient';
+import { isSessionTokenExpired, type SessionState } from '../models/session';
+import { buildDoctorPagePath, findDoctorById, getDoctorScheduleDates } from './doctor';
+import { buildAppointmentsPath } from '../services/registration';
+import { buildNotificationsPath } from '../services/notification';
+import { buildHealthTodos, canConfirmFollowUp, getMedicationPlanActions, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -28,6 +39,12 @@ describe('前端表单与联调规则', () => {
   });
 });
 
+describe('就诊人默认选择', () => {
+  it('优先选择本人而非全局家属选择', () => {
+    expect(resolveSelfPatientId([{ patientId: 2, relation: 'CHILD' }, { patientId: 1, relation: 'SELF' }])).toBe(1);
+  });
+});
+
 describe('挂号资源展示规则', () => {
   it('按中文拼音排序医院名称', () => {
     expect(sortHospitals([{ name: '上海医院' }, { name: '北京医院' }]).map((item) => item.name)).toEqual(['北京医院', '上海医院']);
@@ -39,5 +56,124 @@ describe('挂号资源展示规则', () => {
 
   it('按关键词筛选医院名称', () => {
     expect(filterHospitals([{ name: '省人民医院' }, { name: '市中医院' }], '人民')).toEqual([{ name: '省人民医院' }]);
+  });
+
+  it('未指定订单状态时不传递空状态参数', () => {
+    expect(buildAppointmentsPath(1)).toBe('/c/v1/appointments?pageNo=1&pageSize=20&patientId=1');
+    expect(buildAppointmentsPath(1, 'UNPAID')).toContain('status=UNPAID');
+  });
+});
+
+describe('购药订单展示规则', () => {
+  it('运输中同时包含已发货和运输中状态', () => {
+    expect(matchesDrugOrderTab({ id: 1, orderName: '阿莫西林', pharmacyName: '健康药房', status: 'PAID', logisticsStatus: 'SHIPPED', amountCent: 100 }, 'TRANSIT')).toBe(true);
+    expect(matchesDrugOrderTab({ id: 2, orderName: '维生素', pharmacyName: '健康药房', status: 'PAID', logisticsStatus: 'TO_RECEIVE', amountCent: 100 }, 'TRANSIT')).toBe(false);
+  });
+
+  it('订单名称关键词经过编码并传递给列表接口', () => {
+    expect(buildDrugOrderListPath({ patientId: 20001, keyword: '阿莫 西林', pageSize: 100 })).toContain('keyword=%E9%98%BF%E8%8E%AB+%E8%A5%BF%E6%9E%97');
+  });
+});
+
+describe('首页科室与搜索规则', () => {
+  it('默认选择当前医院的第一个科室', () => {
+    expect(resolveInitialDepartment([{ id: 2, name: '外科' }, { id: 1, name: '内科' }])).toEqual({ id: 2, name: '外科' });
+  });
+
+  it('空白关键词不允许发起搜索', () => {
+    expect(hasSearchKeyword('   ')).toBe(false);
+    expect(hasSearchKeyword('心内科')).toBe(true);
+  });
+});
+
+describe('个人资料更新规则', () => {
+  const values = { name: ' 张三 ', gender: 'MALE' as const, birthday: '2000-01-01', phone: '', emergencyContact: '' };
+
+  it('校验姓名和手机号格式', () => {
+    expect(validateProfileForm({ ...values, name: ' ' })).toBe('请填写姓名');
+    expect(validateProfileForm({ ...values, phone: '123' })).toBe('手机号格式不正确');
+  });
+
+  it('不提交空白的敏感资料字段', () => {
+    expect(buildProfileUpdatePayload(values)).toEqual({ name: '张三', gender: 'MALE', birthday: '2000-01-01' });
+  });
+
+  it('网络重试复用首次生成的幂等键', () => {
+    const first = resolveProfileIdempotencyKey();
+    expect(resolveProfileIdempotencyKey(first)).toBe(first);
+  });
+});
+
+describe('我的页面就诊人选择规则', () => {
+  const members = [{ patientId: 1, relation: 'SELF', isDefault: true }, { patientId: 2, relation: 'PARENT' }];
+
+  it('默认优先选择本人', () => {
+    expect(resolveMinePatientId(members, undefined)).toBe(1);
+  });
+
+  it('保留仍有效的已选家属', () => {
+    expect(resolveMinePatientId(members, 2)).toBe(2);
+  });
+
+  it('家属失效后回退本人', () => {
+    expect(resolveMinePatientId(members, 99)).toBe(1);
+  });
+});
+
+describe('登录会话有效期规则', () => {
+  const session: SessionState = { accessToken: 'access', refreshToken: 'refresh', expiresIn: 60, user: { id: 1, account: 'patient' }, loginAt: '2026-08-03T00:00:00.000Z', accessTokenIssuedAt: '2026-08-03T00:00:00.000Z' };
+
+  it('有效令牌在过期时间前可继续访问', () => {
+    expect(isSessionTokenExpired(session, Date.parse('2026-08-03T00:00:59.000Z'))).toBe(false);
+  });
+
+  it('令牌缺失或超过 expiresIn 后视为失效', () => {
+    expect(isSessionTokenExpired(null)).toBe(true);
+    expect(isSessionTokenExpired(session, Date.parse('2026-08-03T00:01:00.000Z'))).toBe(true);
+  });
+});
+
+describe('医生个人挂号页规则', () => {
+  it('生成连续七天的真实号源日期', () => {
+    expect(getDoctorScheduleDates(new Date(2026, 7, 3)).map((item) => item.value)).toEqual(['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07', '2026-08-08', '2026-08-09']);
+  });
+
+  it('携带科室上下文进入医生个人页', () => {
+    expect(buildDoctorPagePath(11, 22)).toBe('/assistant/doctor/11?departmentId=22');
+  });
+
+  it('深链接回退查询时按医生 ID 定位资料', () => {
+    expect(findDoctorById(2, [{ id: 1, name: '甲', registrationFeeCent: 100, availableCount: 1 }, { id: 2, name: '乙', registrationFeeCent: 100, availableCount: 0, departmentId: 3 }])?.departmentId).toBe(3);
+  });
+});
+
+describe('健康待办、提醒与通知规则', () => {
+  it('通知列表不传递未选择的筛选参数', () => {
+    expect(buildNotificationsPath({ pageNo: 2, pageSize: 50 })).toBe('/c/v1/notifications?pageNo=2&pageSize=50');
+    expect(buildNotificationsPath({ patientId: 2, read: false })).toContain('patientId=2&read=false');
+  });
+
+  it('将后端通知类型转换为患者可读文案', () => {
+    expect(getNotificationTypeText('MEDICATION_REMINDER')).toBe('用药提醒');
+    expect(getNotificationTypeText('SYSTEM')).toBe('系统通知');
+  });
+
+  it('通知已读网络重试复用首次生成的幂等键', () => {
+    const first = resolveNotificationReadKey();
+    expect(resolveNotificationReadKey(first)).toBe(first);
+  });
+
+  it('只聚合待处理项目并按时间升序关联就诊人', () => {
+    expect(buildHealthTodos([
+      { patientId: 2, patientName: '小明', appointments: [{ id: 1, doctorName: '张医生', departmentName: '内科', startTime: '2026-08-05T10:00:00+08:00', status: 'COMPLETED', amountCent: 100 }], medicationPlans: [{ id: 2, drugName: '维生素', dosage: '1片', frequency: '每日一次', nextReminderAt: '2026-08-04T08:00:00+08:00', status: 'ACTIVE' }], followUps: [] },
+      { patientId: 1, patientName: '张三', appointments: [{ id: 3, doctorName: '李医生', departmentName: '心内科', startTime: '2026-08-03T14:30:00+08:00', status: 'PAID', amountCent: 200 }], medicationPlans: [], followUps: [{ id: 4, type: '复诊', content: '携带检查报告', dueAt: '2026-08-06T09:00:00+08:00', status: 'CANCELLED' }] },
+    ]).map((item) => [item.type, item.patientName])).toEqual([['APPOINTMENT', '张三'], ['MEDICATION', '小明']]);
+  });
+
+  it('仅按后端状态机提供用药和随访操作', () => {
+    expect(getMedicationPlanActions('ACTIVE')).toEqual(['PAUSE', 'COMPLETE']);
+    expect(getMedicationPlanActions('COMPLETED')).toEqual([]);
+    expect(canConfirmFollowUp('PENDING_CONFIRM')).toBe(true);
+    expect(canConfirmFollowUp('CONFIRMED')).toBe(false);
   });
 });

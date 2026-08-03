@@ -14,7 +14,7 @@ export function BottomTab({ onUnavailable }: { onUnavailable: () => void }) {
   const navigate = useNavigate();
   return <nav className="bottom-tab" aria-label="主导航">{tabs.map(({ label, path, icon: Icon }) => {
     const active = location.pathname.startsWith(path);
-    return <button className={active ? 'bottom-tab__item is-active' : 'bottom-tab__item'} key={path} type="button" onClick={() => ['/mine', '/home', '/assistant'].includes(path) ? navigate(path) : onUnavailable()}>
+    return <button className={active ? 'bottom-tab__item is-active' : 'bottom-tab__item'} key={path} type="button" onClick={() => ['/mine', '/home', '/assistant', '/pharmacy'].includes(path) ? navigate(path) : onUnavailable()}>
       <Icon size={25} strokeWidth={active ? 2.6 : 2} /><span>{label}</span>
     </button>;
   })}</nav>;
