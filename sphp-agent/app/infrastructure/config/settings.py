@@ -41,7 +41,8 @@ class Settings(BaseSettings):
     agent_host: str = "127.0.0.1"
     agent_port: int = 8081
     # CORS 允许的前端来源（生产由 .env 的 CORS_ORIGINS 覆盖）
-    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    # B 端前端(b-sphp, max dev 默认 8000)、C 端前端(user-h5, PORT=8001)
+    cors_origins: list[str] = ["http://localhost:8000", "http://localhost:8001"]
 
     # ---- Java 后端（系分 §9.5）----
     java_base_url: str = "http://localhost:8080"
