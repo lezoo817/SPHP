@@ -3,6 +3,7 @@
 前端直连 Agent 对话端点（SSE 流式）+ L2 确认回调。
 """
 
+import asyncio
 import json
 import logging
 import traceback
@@ -30,6 +31,49 @@ router = APIRouter()
 
 # 全局主图实例（编译后的 CompiledGraph）
 _main_graph = None
+
+# P1-9 会话级并发锁：同 session 的并发对话请求串行化。
+# 主图 checkpointer 锁 per-instance（memory: MemorySaver 线程锁 / postgres:
+# 表级读写），无法跨请求协调同 thread_id 的并发。两个并发请求 astream 同一个
+# thread_id 会交错读写同一 checkpoint，后写覆盖先写，state 互相污染。
+# 此处按 session_id 维护 asyncio.Lock，先到者持有锁、后者排队，从接入层
+# 保证同会话串行；不同会话互不影响。
+#
+# 引用计数防字典无限增长：refcount 在请求进入临界区前 +1、释放会话锁后 -1。
+# 计数非 0（含排队等待锁的请求）时不移除条目，避免"排队中的 B 被移除锁后，
+# 新请求 C 新建锁而不等待 B"破坏串行性。
+_session_locks: dict[str, asyncio.Lock] = {}
+_session_refcounts: dict[str, int] = {}
+_session_lock_guard = asyncio.Lock()
+
+
+async def _get_session_lock(session_id: str) -> asyncio.Lock:
+    """获取指定会话的串行化锁（不存在则创建，P1-9）。
+
+    Args:
+        session_id: 会话 ID，同会话共享同一把锁。
+
+    Returns:
+        asyncio.Lock: 会话级锁，调用方需 ``async with`` 包裹图执行，
+            并在结束后调用 ``_release_session_lock`` 归还引用。
+    """
+    async with _session_lock_guard:
+        lock = _session_locks.get(session_id)
+        if lock is None:
+            lock = _session_locks[session_id] = asyncio.Lock()
+        _session_refcounts[session_id] = _session_refcounts.get(session_id, 0) + 1
+        return lock
+
+
+async def _release_session_lock(session_id: str) -> None:
+    """归还会话锁引用，引用归零时移除条目（防字典无限增长，P1-9）。"""
+    async with _session_lock_guard:
+        remaining = _session_refcounts.get(session_id, 0) - 1
+        if remaining <= 0:
+            _session_locks.pop(session_id, None)
+            _session_refcounts.pop(session_id, None)
+        else:
+            _session_refcounts[session_id] = remaining
 
 
 def _get_graph() -> Any:
@@ -157,7 +201,21 @@ async def _sse_generator(
     # input_tokens，后续 chunk 只递增 output_tokens
     usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
+    # P1-9 会话级串行锁：同 session 并发请求排队执行，防止交错读写同一
+    # checkpoint 互相覆盖（checkpointer 锁 per-instance，无法跨请求协调）。
+    # 锁持有期间本生成器独占该会话的图执行；不同会话互不影响。
+    lock = await _get_session_lock(thread_id)
+    lock_acquired = False
     try:
+        try:
+            await lock.acquire()
+            lock_acquired = True
+        except BaseException:
+            # 等待锁期间被取消/客户端断开（GeneratorExit）：未持有锁，
+            # 归还引用计数后向上传播，锁不会泄漏。
+            await _release_session_lock(thread_id)
+            raise
+
         try:
             async for mode, chunk in graph.astream(
                 initial_state,
@@ -253,8 +311,13 @@ async def _sse_generator(
         )
 
     finally:
-        # 清理段：仅日志，不 yield。正常结束 / 异常兜底 / 客户端断开（return）
-        # 三条路径都安全收敛，不会在生成器关闭期间再次 yield。
+        # P1-9：释放会话锁并归还引用（正常/异常/断开三条路径均安全收敛；
+        # release 为同步方法、_release_session_lock 为 await，均不在生成器
+        # 关闭期间 yield，不触发 P1-3 的 GeneratorExit 陷阱）。
+        if lock_acquired:
+            lock.release()
+        await _release_session_lock(thread_id)
+        # 清理段：仅日志，不 yield。
         logger.info("[SSE] 生成器退出, session_id=%s", thread_id)
 
 
