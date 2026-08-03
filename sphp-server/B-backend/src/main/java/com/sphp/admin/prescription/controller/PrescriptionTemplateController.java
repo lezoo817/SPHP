@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/b")
-@Tag(name = "4-处方模板", description = "处方模板列表/创建/删除")
+@Tag(name = "5-处方模板", description = "处方模板列表/创建/删除")
 @RequiredArgsConstructor
 public class PrescriptionTemplateController {
 

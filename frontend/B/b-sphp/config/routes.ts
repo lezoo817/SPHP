@@ -82,6 +82,10 @@ const routes = [
             path: '/statistics/department',
             component: 'statistics/DepartmentStats',
           },
+          {
+            path: '/statistics/daily',
+            component: 'statistics/DailyReport',
+          },
         ],
       },
       { path: '/', redirect: '/consult/queue' },

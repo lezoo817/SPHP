@@ -468,5 +468,186 @@ declare global {
         quantity: number;
       }[];
     }
+
+    // ===================== 药品库存管理 =====================
+
+    /** 药品 */
+    interface Drug {
+      id: number;
+      name: string;
+      specification: string;
+      unit: string;
+      indication?: string;
+      manufacturer?: string;
+      approvalNumber?: string;
+      status: 'ENABLED' | 'DISABLED';
+    }
+
+    /** 药品列表查询参数 */
+    interface DrugListParams extends PageParams {
+      name?: string;
+      status?: string;
+    }
+
+    /** 新增/编辑药品请求 */
+    interface CreateDrugReq {
+      name: string;
+      specification: string;
+      unit: string;
+      indication?: string;
+      manufacturer?: string;
+      approvalNumber?: string;
+      status: 'ENABLED' | 'DISABLED';
+    }
+
+    /** 库存项 */
+    interface InventoryItem {
+      id: number;
+      drugId: number;
+      drugName: string;
+      specification: string;
+      availableCount: number;
+      lockedCount: number;
+      safetyStock: number;
+      unitPriceCent: number;
+      status: 'NORMAL' | 'LOW' | 'ALERT';
+    }
+
+    /** 库存列表查询参数 */
+    interface InventoryListParams extends PageParams {
+      pharmacyId?: number;
+      drugId?: number;
+    }
+
+    /** 更新库存请求 */
+    interface UpdateInventoryReq {
+      availableCount: number;
+      safetyStock: number;
+      unitPriceCent: number;
+    }
+
+    /** 手动释放锁定库存请求 */
+    interface UnlockInventoryReq {
+      drugOrderId: number;
+      reason: string;
+    }
+
+    /** 库存预警项 */
+    type AlertItem = InventoryItem;
+
+    // ===================== 患者管理 =====================
+
+    /** 患者列表项 */
+    interface PatientListItem {
+      id: number;
+      name: string;
+      gender: 'MALE' | 'FEMALE' | 'UNKNOWN';
+      age: number;
+      lastVisitDate: string;
+    }
+
+    /** 患者列表查询参数 */
+    interface PatientListParams extends PageParams {
+      name?: string;
+    }
+
+    /** 患者详情 - 基本信息 */
+    interface PatientDetailInfo {
+      id: number;
+      name: string;
+      gender: string;
+      dateOfBirth: string;
+      phone: string;
+      emergencyContact: string;
+      allergies: AllergyInfo[];
+      medicalHistories: MedicalHistoryInfo[];
+    }
+
+    /** 就诊记录项 */
+    interface PatientVisitItem {
+      consultId: number;
+      visitDate: string;
+      doctorName: string;
+      deptName: string;
+      summary?: string;
+      status: string;
+      createdAt: string;
+    }
+
+    /** 历史处方项 */
+    interface PatientPrescriptionItem {
+      id: number;
+      consultId: number;
+      doctorName: string;
+      status: string;
+      itemCount: number;
+      issuedAt?: string;
+      createdAt: string;
+    }
+
+    /** 用药计划项 */
+    interface MedicationPlanItem {
+      id: number;
+      drugName: string;
+      dosage: string;
+      frequency: string;
+      usageMethod: string;
+      status: 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+      nextRemindAt?: string;
+      createdAt: string;
+    }
+
+    /** 随访计划项 */
+    interface FollowUpPlanItem {
+      id: number;
+      followUpType: string;
+      content: string;
+      dueAt: string;
+      status: 'PENDING_CONFIRM' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
+      createdAt: string;
+    }
+
+    /** 当前用药与随访响应 */
+    interface PatientMedicationResult {
+      medicationPlans: MedicationPlanItem[];
+      followUpPlans: FollowUpPlanItem[];
+    }
+
+    // ===================== 统计报表 =====================
+
+    /** 运营总览 */
+    interface StatisticsOverview {
+      totalAppointments: number;
+      completedRate: number;
+      totalRevenueCent: number;
+      totalPrescriptions: number;
+      avgWaitTime: number;
+    }
+
+    /** 科室统计项 */
+    interface DepartmentStatItem {
+      deptId: number;
+      deptName: string;
+      appointmentCount: number;
+      consultCount: number;
+      prescriptionCount: number;
+      slotUsageRate: number;
+    }
+
+    /** 日统计项 */
+    interface DailyStatItem {
+      date: string;
+      appointmentCount: number;
+      consultCount: number;
+      prescriptionCount: number;
+      revenueCent: number;
+    }
+
+    /** 统计查询参数 */
+    interface StatisticsParams {
+      startDate?: string;
+      endDate?: string;
+      deptId?: number;
+    }
   }
 }
