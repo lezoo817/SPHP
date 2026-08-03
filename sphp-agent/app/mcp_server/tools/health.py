@@ -7,10 +7,14 @@ MCP 工具：query_health_record, manage_allergy, manage_medical_history,
 接口路径统一由 java_api_map 契约表解析。
 """
 
+from typing import Any
+
 from app.infrastructure.java_client import call_java_api
 
 
-async def query_health_record(patient_id: int | None = None, user_id: int | None = None) -> dict:
+async def query_health_record(
+    patient_id: int | None = None, user_id: int | None = None
+) -> dict[str, Any]:
     """查询健康档案（含过敏史、既往史）。"""
     params = {}
     if patient_id:
@@ -23,7 +27,7 @@ async def manage_allergy(
     allergy_id: int | None = None,
     reaction: str | None = None,
     user_id: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """管理过敏史记录（不带 allergy_id 新增，带 allergy_id 修改）。"""
     body = {"allergen": allergen}
     if reaction:
@@ -43,7 +47,7 @@ async def manage_medical_history(
     history_id: int | None = None,
     occurred_at: str | None = None,
     user_id: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """管理既往史记录（不带 history_id 新增，带 history_id 修改）。"""
     body = {"content": content}
     if occurred_at:
@@ -58,7 +62,7 @@ async def manage_medical_history(
     return await call_java_api(api_name="manage_medical_history:create", body=body, user_id=user_id)
 
 
-async def query_reports(report_id: int | None = None, user_id: int | None = None) -> dict:
+async def query_reports(report_id: int | None = None, user_id: int | None = None) -> dict[str, Any]:
     """查询检查报告列表或详情（带 report_id 时包含指标解读）。"""
     if report_id:
         # 查详情 + 指标解读（两个独立接口）
@@ -79,18 +83,24 @@ async def query_reports(report_id: int | None = None, user_id: int | None = None
 async def create_report(
     report_name: str,
     report_date: str,
-    indicators: list,
+    indicators: list[Any],
     patient_id: int | None = None,
     user_id: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """录入检查报告。"""
-    body = {"report_name": report_name, "report_date": report_date, "indicators": indicators}
+    body: dict[str, Any] = {
+        "report_name": report_name,
+        "report_date": report_date,
+        "indicators": indicators,
+    }
     if patient_id:
         body["patient_id"] = patient_id
     return await call_java_api(tool_name="create_report", body=body, user_id=user_id)
 
 
-async def query_medication_plans(status: str | None = None, user_id: int | None = None) -> dict:
+async def query_medication_plans(
+    status: str | None = None, user_id: int | None = None
+) -> dict[str, Any]:
     """查询用药计划列表。"""
     params = {}
     if status:
@@ -98,7 +108,9 @@ async def query_medication_plans(status: str | None = None, user_id: int | None 
     return await call_java_api(tool_name="query_medication_plans", params=params, user_id=user_id)
 
 
-async def update_medication_plan(plan_id: int, action: str, user_id: int | None = None) -> dict:
+async def update_medication_plan(
+    plan_id: int, action: str, user_id: int | None = None
+) -> dict[str, Any]:
     """暂停/恢复/完成用药计划。"""
     body = {"action": action}
     return await call_java_api(
@@ -109,7 +121,7 @@ async def update_medication_plan(plan_id: int, action: str, user_id: int | None 
     )
 
 
-async def query_follow_ups(status: str | None = None, user_id: int | None = None) -> dict:
+async def query_follow_ups(status: str | None = None, user_id: int | None = None) -> dict[str, Any]:
     """查询随访计划列表。"""
     params = {}
     if status:
@@ -119,7 +131,7 @@ async def query_follow_ups(status: str | None = None, user_id: int | None = None
 
 async def confirm_follow_up(
     follow_up_id: int, remind_at: str | None = None, user_id: int | None = None
-) -> dict:
+) -> dict[str, Any]:
     """确认随访提醒时间。"""
     body = {}
     if remind_at:

@@ -12,6 +12,7 @@ MCP 工具纯数据搬运：处理器只做协议适配，实际执行由 dispat
 import json
 import logging
 import threading
+from typing import Any
 
 from app.engine.tools.schema_registry import ToolRegistry
 from app.mcp_server.tools.dispatcher import _MCP_TOOL_FUNCS, dispatch_tool
@@ -23,7 +24,7 @@ _mcp_server = None
 _mcp_thread = None
 
 
-def _build_server():
+def _build_server() -> Any:
     """构建注册好工具处理器的 MCP Server 实例（stdio 线程与 MCP Client 共用）。
 
     mcp SDK 延迟导入：SDK 缺失时仅构建失败，不影响其他模块。
@@ -37,7 +38,7 @@ def _build_server():
     )
 
 
-async def _on_list_tools(ctx, params):
+async def _on_list_tools(ctx: Any, params: Any) -> Any:
     """tools/list 处理器：返回全部可调用的 MCP 工具（M6-C1）。
 
     以 _MCP_TOOL_FUNCS 为准与 ToolRegistry 求交，天然排除未注册的 L3/L4 工具。
@@ -55,12 +56,12 @@ async def _on_list_tools(ctx, params):
         if "type" not in input_schema:
             input_schema = {"type": "object", **input_schema}
         tools.append(
-            Tool(name=schema.name, description=schema.description, inputSchema=input_schema)
+            Tool(name=schema.name, description=schema.description, input_schema=input_schema)
         )
     return ListToolsResult(tools=tools)
 
 
-async def _on_call_tool(ctx, params):
+async def _on_call_tool(ctx: Any, params: Any) -> Any:
     """tools/call 处理器：分发到封装函数，返回 JSON 文本结果（M6-C1）。
 
     从 arguments 中弹出 MCP Client 注入的 user_id，转交给 dispatch_tool 注入封装函数。

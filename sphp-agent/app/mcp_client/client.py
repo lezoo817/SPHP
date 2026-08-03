@@ -21,7 +21,7 @@ close_mcp_client() 释放。
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 from app.mcp_server.server import _build_server
 
@@ -38,7 +38,7 @@ class MCPClient:
     def __init__(self) -> None:
         self._session: Any = None
         self._server: Any = None
-        self._server_task: asyncio.Task | None = None
+        self._server_task: asyncio.Task[Any] | None = None
         self._streams_cm: Any = None
         # 连接锁：tool_executor 并发首调（asyncio.gather）时避免多个 call_tool
         # 同时看到 _session is None 并各自建连互相覆盖
@@ -102,7 +102,9 @@ class MCPClient:
                 if self._session is None:
                     await self._connect()
 
-    async def call_tool(self, tool_name: str, arguments: dict, user_id: int | None = None) -> dict:
+    async def call_tool(
+        self, tool_name: str, arguments: dict[str, Any], user_id: int | None = None
+    ) -> dict[str, Any]:
         """经 MCP 协议调用工具，返回封装函数结果 dict。
 
         Args:
@@ -150,7 +152,7 @@ class MCPClient:
         logger.info("MCP Client 已关闭")
 
 
-def _extract_result(tool_name: str, result: Any) -> dict:
+def _extract_result(tool_name: str, result: Any) -> dict[str, Any]:
     """从 CallToolResult 提取 JSON 结果（无有效内容时抛异常）。"""
     if getattr(result, "is_error", False):
         raise RuntimeError(f"MCP 工具 {tool_name} 执行返回错误")
@@ -160,7 +162,7 @@ def _extract_result(tool_name: str, result: Any) -> dict:
     text = "".join(texts)
     if not text:
         raise RuntimeError(f"MCP 工具 {tool_name} 无返回内容")
-    return json.loads(text)
+    return cast(dict[str, Any], json.loads(text))
 
 
 # ---- 进程内单例 ----
@@ -186,7 +188,9 @@ async def get_mcp_client() -> MCPClient:
     return _client
 
 
-async def call_tool(tool_name: str, arguments: dict, user_id: int | None = None) -> dict:
+async def call_tool(
+    tool_name: str, arguments: dict[str, Any], user_id: int | None = None
+) -> dict[str, Any]:
     """便捷入口：经单例 Client 调用 MCP 工具。"""
     client = await get_mcp_client()
     return await client.call_tool(tool_name, arguments, user_id)

@@ -5,12 +5,14 @@ MCP 工具：manage_notifications
 接口路径统一由 java_api_map 契约表解析。
 """
 
+from typing import Any
+
 from app.infrastructure.java_client import call_java_api
 
 
 async def manage_notifications(
     action: str, notification_id: int | None = None, user_id: int | None = None
-) -> dict:
+) -> dict[str, Any]:
     """管理通知（action=list 查列表，action=read 标已读）。"""
     if action == "read":
         if notification_id is None:
