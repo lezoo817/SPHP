@@ -93,6 +93,7 @@ async def tool_executor(state: AgentState) -> dict[str, Any]:
                     "error": {"code": "TOOL_FAILED", "message": str(result)},
                     # 携带参数，供 SSE 层反推 action 事件（子图循环会覆盖 tool_calls）
                     "arguments": arguments,
+                    "duration_ms": 0,
                 }
             )
         else:
@@ -129,13 +130,20 @@ async def _execute_mcp(
             "tool_name": tool_name,
             "success": False,
             "error": {"code": "UNKNOWN_TOOL", "message": f"未知的 MCP 工具: {tool_name}"},
+            # P1 契约对齐：携带执行耗时供 SSE observation.duration_ms
+            "duration_ms": round(duration_ms),
         }
 
     try:
         result = await _call_mcp_func(tool_name, arguments, user_id)
         duration_ms = (time.time() - start) * 1000
         _log_audit(state, tool_name, arguments, "success", duration_ms)
-        return {"tool_name": tool_name, "success": True, "data": result}
+        return {
+            "tool_name": tool_name,
+            "success": True,
+            "data": result,
+            "duration_ms": round(duration_ms),
+        }
     except Exception as e:
         duration_ms = (time.time() - start) * 1000
         _log_audit(state, tool_name, arguments, "failed", duration_ms)
@@ -143,6 +151,7 @@ async def _execute_mcp(
             "tool_name": tool_name,
             "success": False,
             "error": {"code": "TOOL_FAILED", "message": str(e)},
+            "duration_ms": round(duration_ms),
         }
 
 
@@ -159,13 +168,20 @@ async def _execute_local(
         results = await search_knowledge(query=query)
         duration_ms = (time.time() - start) * 1000
         _log_audit(state, tool_name, arguments, "success", duration_ms)
-        return {"tool_name": tool_name, "success": True, "data": {"results": results}}
+        return {
+            "tool_name": tool_name,
+            "success": True,
+            "data": {"results": results},
+            "duration_ms": round(duration_ms),
+        }
 
-    _log_audit(state, tool_name, arguments, "failed", 0)
+    duration_ms = (time.time() - start) * 1000
+    _log_audit(state, tool_name, arguments, "failed", duration_ms)
     return {
         "tool_name": tool_name,
         "success": False,
         "error": {"code": "UNKNOWN_TOOL", "message": f"未知的本地工具: {tool_name}"},
+        "duration_ms": round(duration_ms),
     }
 
 
@@ -202,6 +218,7 @@ def _make_failure(
         "tool_name": tool_name,
         "success": False,
         "error": {"code": code, "message": message},
+        "duration_ms": 0,
     }
 
 

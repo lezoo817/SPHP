@@ -205,24 +205,12 @@ async def _sse_generator(
                             # 重建，改为从 tool_results 反推（工具确已执行）：
                             # 每个结果推送 action -> observation 配对
                             for tr in tool_results:
-                                yield _sse(
-                                    "action",
-                                    {
-                                        "tool": tr.get("tool_name", ""),
-                                        "arguments": tr.get("arguments", {}),
-                                    },
-                                )
+                                yield _sse("action", _build_action(tr))
                                 yield _sse("observation", _build_observation(tr))
                         elif tool_calls:
                             # 仅 tool_calls 无结果（理论顶层场景）：只推 action
                             for tc in tool_calls:
-                                yield _sse(
-                                    "action",
-                                    {
-                                        "tool": tc.get("name", ""),
-                                        "arguments": tc.get("arguments", {}),
-                                    },
-                                )
+                                yield _sse("action", _build_action(tc, from_call=True))
 
                         # L2 操作需用户确认：推送 card 事件（系分 §6.2.2）
                         pending_list = node_update.get("pending_confirmations") or []
@@ -266,20 +254,93 @@ def _sse(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def _build_observation(result: dict[str, Any]) -> dict[str, Any]:
-    """构建 observation 事件内容（工具执行结果，含失败原因）。"""
-    obs = {
-        "tool": result.get("tool_name", ""),
-        "success": result.get("success", False),
+def _build_action(result: dict[str, Any], *, from_call: bool = False) -> dict[str, Any]:
+    """构建 action 事件（系分 §5.12 / §6.2.1：{tool, label, arguments}）。
+
+    Args:
+        result: tool_results 项（键 tool_name）或 tool_calls 项（键 name）。
+        from_call: True 表示输入来自 tool_calls 项（用 name 读取工具名）。
+
+    Returns:
+        dict: action 事件负载，label 为工具中文标签（无映射时回退工具名）。
+    """
+    tool = result.get("name" if from_call else "tool_name", "")
+    return {
+        "tool": tool,
+        "label": _TOOL_LABELS.get(tool, tool),
+        "arguments": result.get("arguments", {}),
     }
-    if not result.get("success"):
-        error = result.get("error", {})
-        obs["error"] = error.get("message", "执行失败")
-    return obs
 
 
-# 工具中文标签（系分 §6.2.2 card title/summary 展示）
+def _build_observation(result: dict[str, Any]) -> dict[str, Any]:
+    """构建 observation 事件（系分 §5.12 / §6.2.1：{tool, status, result, summary, duration_ms}）。
+
+    从 tool_executor 的 tool_results 项重建：
+        - status: success / error（由 success 布尔映射）
+        - result: 成功时完整返回数据，失败为 None
+        - summary: 一行摘要（成功统计条数 / 失败取错误消息）
+        - duration_ms: 工具执行耗时（tool_executor 记录，未记录时 0）
+    """
+    success = result.get("success", False)
+    data = result.get("data")
+    error = result.get("error", {})
+    return {
+        "tool": result.get("tool_name", ""),
+        "status": "success" if success else "error",
+        "result": data if success else None,
+        "summary": _build_observation_summary(success, data, error),
+        "duration_ms": round(result.get("duration_ms", 0)),
+    }
+
+
+def _build_observation_summary(success: bool, data: Any, error: dict[str, Any]) -> str:
+    """生成 observation.summary 一行摘要（前端折叠态展示）。
+
+    成功：统计返回数据中的列表条数（如"返回 3 条数据"），无列表时取 JSON 前 100 字符；
+    失败：取错误消息。
+    """
+    if not success:
+        return str(error.get("message", "执行失败"))
+    count = _first_list_count(data, depth=0)
+    if count is not None:
+        return f"返回 {count} 条数据"
+    text = json.dumps(data, ensure_ascii=False) if data is not None else "无返回数据"
+    return text[:100] + ("…" if len(text) > 100 else "")
+
+
+def _first_list_count(data: Any, depth: int) -> int | None:
+    """深度优先查找 data 内第一个 list 的长度（可命中 Java 信封内层列表）。"""
+    if isinstance(data, list):
+        return len(data)
+    if isinstance(data, dict) and depth < 2:
+        for v in data.values():
+            count = _first_list_count(v, depth + 1)
+            if count is not None:
+                return count
+    return None
+
+
+# 工具中文标签（P1 契约对齐：action.label / card.title 展示，覆盖全部 39 个工具）
 _TOOL_LABELS = {
+    # ---- C 端（30）----
+    "create_triage_assessment": "导诊评估",
+    "search_medical_knowledge": "检索医疗知识",
+    "query_departments": "查询科室",
+    "query_doctors": "查询医生",
+    "query_schedule_slots": "查询号源时段",
+    "query_appointments": "查询挂号订单",
+    "query_payment_status": "查询支付状态",
+    "query_consultations": "查询问诊记录",
+    "query_prescriptions": "查询处方",
+    "interpret_prescription": "解读处方",
+    "query_pharmacy_stock": "查询药店库存",
+    "query_drug_orders": "查询购药订单",
+    "query_health_record": "查询健康档案",
+    "query_reports": "查询检查报告",
+    "query_medication_plans": "查询用药计划",
+    "query_follow_ups": "查询随访计划",
+    "manage_notifications": "管理通知",
+    # ---- L2 确认类（card 标题，系分 §6.2.2）----
     "create_appointment": "确认挂号",
     "cancel_appointment": "确认取消挂号",
     "save_pre_consultation": "确认提交预问诊",
@@ -287,19 +348,32 @@ _TOOL_LABELS = {
     "create_drug_order": "确认创建购药订单",
     "cancel_drug_order": "确认取消购药订单",
     "confirm_drug_receipt": "确认收货",
+    "join_waitlist": "确认登记候补",
     "manage_allergy": "确认更新过敏史",
     "manage_medical_history": "确认更新既往史",
     "create_report": "确认录入检查报告",
     "update_medication_plan": "确认更新用药计划",
     "confirm_follow_up": "确认随访提醒",
-    "join_waitlist": "确认登记候补",
     "generate_draft_note": "确认保存病历草稿",
     "query_patient_history": "确认查询患者档案",
+    # ---- B 端（9）----
+    "query_drug_guide": "查询药品说明书",
+    "check_drug_interaction": "查询药品相互作用",
+    "check_contraindication": "查询药品禁忌",
+    "check_allergy_risk": "查询过敏风险",
+    "check_duplicate_medication": "查询重复用药",
+    "recommend_care": "查询号源推荐",
+    "interpret_report": "解读检查报告",
 }
 
 
 def _build_card(pending: dict[str, Any]) -> dict[str, Any]:
-    """构造 L2 确认卡片（系分 §6.2.2 card 事件）。"""
+    """构造 L2 确认卡片（系分 §6.2.2 card 事件，P1 契约对齐补 details）。
+
+    details 按 card_type 从 tool_arguments 提取确认前可得的字段（ID/主诉/动作等）。
+    名称类字段（department_name / doctor_name 等）依赖 L2 执行后回填，确认前不可得，
+    故不在此伪造；字段缺失时前端按 card_type 降级展示。
+    """
     tool_name = pending.get("tool_name", "")
     card_type = pending.get("card_type", "confirm_generic")
     title = _TOOL_LABELS.get(tool_name, "操作确认")
@@ -307,6 +381,7 @@ def _build_card(pending: dict[str, Any]) -> dict[str, Any]:
     args = pending.get("tool_arguments", {})
     key_params = [v for v in args.values() if v is not None][:3]
     summary = f"{title}（参数: {', '.join(str(v) for v in key_params)}）" if key_params else title
+    details = {k: args[k] for k in _CARD_DETAILS_FIELDS.get(card_type, ()) if k in args}
 
     return {
         "card_type": card_type,
@@ -314,8 +389,30 @@ def _build_card(pending: dict[str, Any]) -> dict[str, Any]:
         "session_id": pending.get("session_id", ""),
         "title": title,
         "summary": summary,
+        "details": details,
         "expires_at": pending.get("expires_at", ""),
     }
+
+
+# card.details 字段映射（系分 §6.2.1）：从 tool_arguments 提取确认前可得的字段。
+# 名称类字段（department_name/doctor_name 等）依赖执行后回填，确认前仅透出 ID 类参数。
+_CARD_DETAILS_FIELDS: dict[str, tuple[str, ...]] = {
+    "confirm_appointment": ("slot_id", "hospital_id", "patient_id"),
+    "confirm_cancel_appointment": ("appointment_id",),
+    "confirm_pre_consultation": ("appointment_id", "chief_complaint"),
+    "confirm_send_message": ("consultation_id", "content"),
+    "confirm_drug_order": ("prescription_id", "pharmacy_id", "delivery_address"),
+    "confirm_cancel_drug_order": ("drug_order_id",),
+    "confirm_drug_receipt": ("drug_order_id",),
+    "confirm_waitlist": ("slot_id", "patient_id"),
+    "confirm_allergy": ("allergen", "reaction", "allergy_id"),
+    "confirm_medical_history": ("content", "history_id"),
+    "confirm_report": ("report_name", "report_date"),
+    "confirm_medication_plan": ("plan_id", "action"),
+    "confirm_follow_up": ("follow_up_id", "remind_at"),
+    "confirm_draft_note": ("consultation_id",),
+    "confirm_patient_history": ("patient_id",),
+}
 
 
 def _extract_last_content(output: object) -> str:
