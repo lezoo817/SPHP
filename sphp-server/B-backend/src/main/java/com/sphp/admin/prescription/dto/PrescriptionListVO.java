@@ -33,6 +33,9 @@ public class PrescriptionListVO {
     @Schema(description = "处方状态")
     private String status;
 
+    @Schema(description = "科室名称")
+    private String deptName;
+
     @Schema(description = "药品项数")
     private Integer itemCount;
 

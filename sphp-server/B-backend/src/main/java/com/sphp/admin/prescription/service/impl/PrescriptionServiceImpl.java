@@ -16,6 +16,7 @@ import com.sphp.admin.doctor.mapper.BPatientMapper;
 import com.sphp.admin.doctor.mapper.BPatientAllergyMapper;
 import com.sphp.admin.hospital.entity.Department;
 import com.sphp.admin.hospital.mapper.DepartmentMapper;
+import com.sphp.admin.prescription.dto.AuditRequest;
 import com.sphp.admin.prescription.dto.PrescriptionDetailVO;
 import com.sphp.admin.prescription.dto.PrescriptionListVO;
 import com.sphp.admin.prescription.dto.PrescriptionSubmitRequest;
@@ -65,6 +66,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
     private static final String STATUS_DRAFT = "DRAFT";
     private static final String STATUS_SUBMITTED = "SUBMITTED";
     private static final String STATUS_APPROVED = "APPROVED";
+    private static final String STATUS_REJECTED = "REJECTED";
 
     private final PrescriptionMapper prescriptionMapper;
     private final PrescriptionItemMapper prescriptionItemMapper;
@@ -311,6 +313,8 @@ public class PrescriptionServiceImpl implements PrescriptionService {
     private PrescriptionListVO toPrescriptionListVO(Prescription p) {
         Doctor doctor = doctorMapper.selectById(p.getDoctorId());
         Patient patient = patientMapper.selectById(p.getPatientId());
+        Department dept = doctor != null && doctor.getDeptId() != null
+                ? departmentMapper.selectById(doctor.getDeptId()) : null;
         long itemCount = prescriptionItemMapper.selectCount(
                 Wrappers.<PrescriptionItem>lambdaQuery()
                         .eq(PrescriptionItem::getPrescriptionId, p.getId()));
@@ -319,6 +323,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
                 .consultId(p.getConsultId())
                 .doctorName(doctor != null ? doctor.getName() : null)
                 .patientName(patient != null ? patient.getName() : null)
+                .deptName(dept != null ? dept.getName() : null)
                 .status(p.getStatus())
                 .itemCount((int) itemCount)
                 .issuedAt(p.getIssuedAt())
@@ -346,5 +351,79 @@ public class PrescriptionServiceImpl implements PrescriptionService {
         String name = drugName.toLowerCase();
         return name.contains("麻醉") || name.contains("精神") || name.contains("毒")
                 || name.contains("抗凝") || name.contains("华法林");
+    }
+
+    // ==================== 5.6.4 待审核处方列表 ====================
+
+    @Override
+    public PageResult<PrescriptionListVO> pendingAuditList(int page, int size) {
+        DataScope scope = currentUserService.getCurrentDataScope();
+        String role = scope.role();
+        if (!"ADMIN".equals(role) && !"DEPT_HEAD".equals(role)) {
+            throw new BusinessException("A0443", "无审核权限");
+        }
+
+        LambdaQueryWrapper<Prescription> wrapper = Wrappers.<Prescription>lambdaQuery()
+                .eq(Prescription::getStatus, STATUS_SUBMITTED)
+                .isNull(Prescription::getDeletedAt)
+                .apply("doctor_id IN (SELECT id FROM doctor WHERE hospital_id = {0} AND deleted_at IS NULL)",
+                        scope.hospitalId());
+        if ("DEPT_HEAD".equals(role) && scope.deptId() != null) {
+            wrapper.apply("doctor_id IN (SELECT id FROM doctor WHERE dept_id = {0} AND deleted_at IS NULL)",
+                    scope.deptId());
+        }
+        wrapper.orderByDesc(Prescription::getCreatedAt);
+
+        Page<Prescription> result = prescriptionMapper.selectPage(new Page<>(page, size), wrapper);
+        List<PrescriptionListVO> list = result.getRecords().stream()
+                .map(this::toPrescriptionListVO)
+                .toList();
+        return PageResult.of(result.getTotal(), list, page, size);
+    }
+
+    // ==================== 5.6.5 审核处方 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void audit(Long id, AuditRequest request) {
+        DataScope scope = currentUserService.getCurrentDataScope();
+        String role = scope.role();
+        if (!"ADMIN".equals(role) && !"DEPT_HEAD".equals(role)) {
+            throw new BusinessException("A0443", "无审核权限");
+        }
+
+        Prescription prescription = prescriptionMapper.selectById(id);
+        if (prescription == null || prescription.getDeletedAt() != null) {
+            throw new BusinessException("A0402", "处方不存在");
+        }
+        if (!STATUS_SUBMITTED.equals(prescription.getStatus())) {
+            throw new BusinessException("A0402", "处方状态不是待审核，无法审核");
+        }
+
+        Doctor doctor = doctorMapper.selectById(prescription.getDoctorId());
+        if (doctor == null || doctor.getDeletedAt() != null
+                || !doctor.getHospitalId().equals(scope.hospitalId())) {
+            throw new BusinessException("3020", "无权审核该处方");
+        }
+        if ("DEPT_HEAD".equals(role) && scope.deptId() != null
+                && !scope.deptId().equals(doctor.getDeptId())) {
+            throw new BusinessException("3020", "无权审核本科室以外的处方");
+        }
+
+        String action = request.getAction();
+        if ("APPROVED".equals(action)) {
+            prescription.setStatus(STATUS_APPROVED);
+            prescription.setIssuedAt(OffsetDateTime.now());
+            prescription.setAuditedAt(OffsetDateTime.now());
+        } else if ("REJECTED".equals(action)) {
+            if (request.getRejectReason() == null || request.getRejectReason().isBlank()) {
+                throw new BusinessException("A0401", "驳回时必须填写驳回原因");
+            }
+            prescription.setStatus(STATUS_REJECTED);
+            prescription.setRejectReason(request.getRejectReason().trim());
+            prescription.setAuditedAt(OffsetDateTime.now());
+        }
+        prescriptionMapper.updateById(prescription);
+        log.info("审核处方 prescriptionId={}, action={}, auditor={}", id, action, role);
     }
 }
