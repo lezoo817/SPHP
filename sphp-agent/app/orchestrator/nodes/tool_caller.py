@@ -42,7 +42,7 @@ TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的工具调用助手。
    让用户最终确认，你只需调用工具即可"""
 
 
-def _build_tools_prompt(tools: list[dict]) -> str:
+def _build_tools_prompt(tools: list[dict[str, Any]]) -> str:
     """将工具 Schema 列表格式化为 prompt 描述。"""
     lines = []
     for tool in tools:
@@ -145,7 +145,7 @@ def _extract_tool_calls(
     response: Any,
     tool_scope: ToolScope,
     allowed_tools: list[str] | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """从 LLM 响应中提取并过滤 tool_calls（只放行 L1/L2）。
 
     Args:
@@ -159,7 +159,7 @@ def _extract_tool_calls(
     """
     calls = getattr(response, "tool_calls", None) or []
     allowed_set = set(allowed_tools) if allowed_tools is not None else None
-    result: list[dict] = []
+    result: list[dict[str, Any]] = []
     for call in calls:
         # 兼容对象（langchain ToolCall）与 dict 两种格式（不同 LLM 返回不同）
         if isinstance(call, dict):

@@ -4,6 +4,8 @@
 绑定导诊场景工具白名单：导诊评估 + 科普检索 + 科室/医生查询 + 健康档案参考。
 """
 
+from typing import Any
+
 from app.orchestrator.graphs._common import build_tool_subgraph
 
 # 导诊场景工具白名单（系分 §5.2.1 导诊链路）
@@ -16,6 +18,6 @@ TRIAGE_TOOLS = [
 ]
 
 
-def build_triage_graph():
+def build_triage_graph() -> Any:
     """构造导诊子图（编译后）。"""
     return build_tool_subgraph(tool_names=TRIAGE_TOOLS)

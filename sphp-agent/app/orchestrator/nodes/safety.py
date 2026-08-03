@@ -9,6 +9,7 @@
 import logging
 import time
 import uuid
+from typing import Any
 
 from app.engine.tools.schema_registry import SecurityLevel, ToolRegistry
 from app.infrastructure.cache.redis_client import set_confirm_token
@@ -18,7 +19,7 @@ from app.orchestrator.state import AgentState
 logger = logging.getLogger(__name__)
 
 
-async def safety_check(state: AgentState) -> dict:
+async def safety_check(state: AgentState) -> dict[str, Any]:
     """检查 tool_calls 中的工具等级，L1 直接放行，L2 生成 confirm_token 存 Redis。
 
     安全护栏：Redis 不可用时**剔除**该 L2 调用（而非只打标记），确保
@@ -31,7 +32,7 @@ async def safety_check(state: AgentState) -> dict:
     risk_flags = list(state.get("risk_flags", []))
     pending_confirmations = []
     # 放行的工具调用（过滤掉 Redis 失败的 L2 / 未授权的 L3/L4）
-    allowed_calls: list[dict] = []
+    allowed_calls: list[dict[str, Any]] = []
 
     for tc in tool_calls:
         tool_name = tc.get("name", "")
@@ -84,7 +85,7 @@ async def safety_check(state: AgentState) -> dict:
             # L1 查询工具：直接放行执行
             allowed_calls.append(tc)
 
-    result: dict = {"risk_flags": risk_flags}
+    result: dict[str, Any] = {"risk_flags": risk_flags}
     # 总是回写过滤后的 tool_calls（L1 工具），让 tool_executor 立即执行
     # 同时 pending_confirmations 全量写入，供 route_safety 判断路由
     result["tool_calls"] = allowed_calls

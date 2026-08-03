@@ -5,13 +5,14 @@
 """
 
 import logging
+from typing import Any
 
 from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
 
 
-async def chitchat_node(state: AgentState) -> dict:
+async def chitchat_node(state: AgentState) -> dict[str, Any]:
     """闲聊节点：仅消费对话历史，不检索知识库。
 
     与 rag_node 的分工：RAG 检索面向医疗知识问答；闲聊（问候、感谢、

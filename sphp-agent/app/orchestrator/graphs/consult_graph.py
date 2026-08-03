@@ -4,6 +4,8 @@
 绑定问诊场景工具白名单：预问诊/问诊消息 + 处方查询解读。
 """
 
+from typing import Any
+
 from app.orchestrator.graphs._common import build_tool_subgraph
 
 # 问诊场景工具白名单（系分 §5.2.1 问诊链路）
@@ -16,6 +18,6 @@ CONSULTATION_TOOLS = [
 ]
 
 
-def build_consultation_graph():
+def build_consultation_graph() -> Any:
     """构造问诊子图（编译后）。"""
     return build_tool_subgraph(tool_names=CONSULTATION_TOOLS)
