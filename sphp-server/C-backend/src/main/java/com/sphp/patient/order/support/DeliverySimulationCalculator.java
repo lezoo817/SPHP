@@ -29,18 +29,23 @@ public class DeliverySimulationCalculator {
                                                        double provinceCoefficient) {
         String normalizedAddress = deliveryNormalizeAddress(detailAddress);
         String baseSeed = userProvince.name() + ':' + normalizedAddress + ':' + hospitalId;
+        // 偏移量
         long pharmacyDistanceOffset = deliveryPositiveHash(pharmacyId + ":distance") % 2_001L;
+        // 时效偏移量
         int pharmacyTimeOffset = (int) (deliveryPositiveHash(pharmacyId + ":time") % 16L);
 
+        // 同省
         if (userProvince == hospitalProvince) {
             long baseDistanceMeters = (5L + deliveryPositiveHash(baseSeed + ":same-distance") % 45L) * 1_000L;
             int baseDeliveryMinutes = 900 + (int) (deliveryPositiveHash(baseSeed + ":same-time") % 46L);
             return new DeliverySimulationResult(baseDistanceMeters + pharmacyDistanceOffset,
                     baseDeliveryMinutes + pharmacyTimeOffset);
         }
-
+        // 不同省
         long jitterKilometers = deliveryPositiveHash(baseSeed + ":cross-distance") % 61L - 30L;
+        // 省距离系数
         long baseDistanceMeters = Math.round((150D + provinceCoefficient * 450D + jitterKilometers) * 1_000D);
+        // 省时间系数
         int baseDeliveryMinutes = 960 + (int) Math.ceil(provinceCoefficient * 240D)
                 + (int) (deliveryPositiveHash(baseSeed + ":cross-time") % 91L);
         return new DeliverySimulationResult(baseDistanceMeters + pharmacyDistanceOffset,

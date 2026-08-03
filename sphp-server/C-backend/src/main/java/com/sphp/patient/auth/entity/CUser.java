@@ -19,9 +19,11 @@ public class CUser extends BaseDeleteDO {
     /** 唯一登录账号 */
     @TableField("account")
     private String account;
+
     /** BCrypt 密码摘要 */
     @TableField("password_hash")
     private String passwordHash;
+
     /** 账号状态 */
     @TableField("status")
     private String status;

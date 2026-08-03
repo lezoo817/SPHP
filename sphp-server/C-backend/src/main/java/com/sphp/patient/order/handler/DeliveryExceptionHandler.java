@@ -16,6 +16,10 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import static com.sphp.shared.common.constant.CommonConstant.DEFAULT_SYSTEM_ERROR_MESSAGE;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.INVALID_PARAMETER;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.SYSTEM_ERROR;
+
 /**
  * C端收货地址与模拟配送接口异常处理器。
  */
@@ -26,33 +30,37 @@ public class DeliveryExceptionHandler {
     /** 处理收货地址业务异常。 */
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<Result<Void>> deliveryHandleBusiness(BusinessException exception) {
-        return ResponseEntity.status(deliveryStatus(exception.getCode())).body(Result.error(exception.getCode(), exception.getMessage()));
+        return ResponseEntity.status(deliveryStatus(exception.getCode()))
+                .body(Result.error(exception.getCode(), exception.getMessage()));
     }
 
     /** 处理请求体参数校验失败。 */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Result<Void>> deliveryHandleValidation(MethodArgumentNotValidException exception) {
         FieldError fieldError = exception.getBindingResult().getFieldError();
-        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER,
+        return ResponseEntity.badRequest().body(Result.error(INVALID_PARAMETER,
                 fieldError == null ? "请求参数校验失败" : fieldError.getDefaultMessage()));
     }
 
     /** 处理路径和查询参数校验失败。 */
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<Result<Void>> deliveryHandleConstraint(ConstraintViolationException exception) {
-        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, "请求参数校验失败"));
+        return ResponseEntity.badRequest()
+                .body(Result.error(INVALID_PARAMETER, "请求参数校验失败"));
     }
 
     /** 处理缺少幂等键请求头。 */
     @ExceptionHandler(MissingRequestHeaderException.class)
     public ResponseEntity<Result<Void>> deliveryHandleHeader(MissingRequestHeaderException exception) {
-        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, "请求头" + exception.getHeaderName() + "不能为空"));
+        return ResponseEntity.badRequest()
+                .body(Result.error(INVALID_PARAMETER, "请求头" + exception.getHeaderName() + "不能为空"));
     }
 
     /** 处理缺少必填查询参数。 */
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<Result<Void>> deliveryHandleRequestParameter(MissingServletRequestParameterException exception) {
-        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, "请求参数" + exception.getParameterName() + "不能为空"));
+        return ResponseEntity.badRequest()
+                .body(Result.error(INVALID_PARAMETER, "请求参数" + exception.getParameterName() + "不能为空"));
     }
 
     /** 处理未预期系统异常。 */
@@ -60,7 +68,7 @@ public class DeliveryExceptionHandler {
     public ResponseEntity<Result<Void>> deliveryHandleUnknown(Exception exception) {
         log.error("C端收货地址系统异常", exception);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Result.error(ErrorCodeEnum.SYSTEM_ERROR, CommonConstant.DEFAULT_SYSTEM_ERROR_MESSAGE));
+                .body(Result.error(SYSTEM_ERROR, DEFAULT_SYSTEM_ERROR_MESSAGE));
     }
 
     /**

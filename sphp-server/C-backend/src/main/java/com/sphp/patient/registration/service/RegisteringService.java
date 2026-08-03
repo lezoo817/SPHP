@@ -1,5 +1,6 @@
 package com.sphp.patient.registration.service;
 
+import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.registration.dto.RegisteringAppointmentCreateRequest;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentDetailVO;
@@ -21,20 +22,56 @@ public interface RegisteringService {
      *
      * @param request 创建挂号请求参数
      * @return 锁号成功后的订单与支付单信息
-     * @throws com.sphp.patient.auth.exception.CAuthException 就诊人、医院链路、号源或状态不满足要求时抛出
+     * @throws CAuthException 就诊人、医院链路、号源或状态不满足要求时抛出
      */
     RegisteringAppointmentCreateVO registeringCreateAppointment(RegisteringAppointmentCreateRequest request);
 
-    /** 查询当前账号指定就诊人的挂号订单分页列表。 */
+    /**
+     *  查询当前账号可访问的挂号订单列表。
+     * @param patientId 就诊人 ID
+     * @param status 订单状态
+     * @param pageNo 页码
+     * @param pageSize 每页数量
+     * @return 挂号订单列表
+     */
     RegisteringAppointmentListVO registeringListAppointments(Long patientId, String status, Integer pageNo, Integer pageSize);
-    /** 查询当前账号可访问的挂号订单详情。 */
+
+    /**
+     * 查询挂号订单详情。
+     * @param appointmentId 挂号订单 ID
+     * @return 挂号订单详情
+     */
     RegisteringAppointmentDetailVO registeringGetAppointment(Long appointmentId);
-    /** 取消当前账号可访问的未支付挂号订单。 */
+
+
+    /**
+     * 取消挂号订单。
+     * @param appointmentId 挂号订单 ID
+     * @return 取消挂号订单结果
+     */
     RegisteringAppointmentCancelVO registeringCancelAppointment(Long appointmentId);
-    /** 创建当前账号就诊人的挂号候补登记。 */
+
+
+    /**
+     * 创建候补挂号订单。
+     * @param request 候补挂号请求参数
+     * @return 候补挂号订单信息
+     */
     RegisteringWaitlistCreateVO registeringCreateWaitlist(RegisteringWaitlistCreateRequest request);
-    /** 模拟支付当前账号的挂号支付单。 */
+
+
+    /**
+     * 模拟支付挂号订单。
+     * @param paymentId 支付单 ID
+     * @param request 模拟支付请求参数
+     * @return 模拟支付结果
+     */
     RegisteringPaymentSuccessVO registeringSimulatePayment(Long paymentId, RegisteringPaymentSimulateRequest request);
-    /** 查询当前账号的挂号支付单状态。 */
+
+    /**
+     * 查询挂号支付单状态。
+     * @param paymentId 支付单 ID
+     * @return 支付单状态
+     */
     RegisteringPaymentStatusVO registeringGetPayment(Long paymentId);
 }

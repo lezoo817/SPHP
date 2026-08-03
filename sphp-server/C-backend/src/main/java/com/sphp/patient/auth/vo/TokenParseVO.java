@@ -14,8 +14,10 @@ public class TokenParseVO {
 
     /** C端用户 ID */
     private final Long userId;
+
     /** 登录账号 */
     private final String account;
+
     /** Access Token 过期时间 */
     private final OffsetDateTime tokenExpiresAt;
 }

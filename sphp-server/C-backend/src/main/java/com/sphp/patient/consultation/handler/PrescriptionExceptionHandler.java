@@ -10,6 +10,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import static com.sphp.shared.common.enums.ErrorCodeEnum.INVALID_PARAMETER;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.SYSTEM_ERROR;
+
 /**
  * 处方查询与解读接口专用异常处理器。
  */
@@ -36,7 +39,7 @@ public class PrescriptionExceptionHandler {
      */
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<Result<Void>> prescriptionHandleValidationException(ConstraintViolationException exception) {
-        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, "请求参数错误"));
+        return ResponseEntity.badRequest().body(Result.error(INVALID_PARAMETER, "请求参数错误"));
     }
 
     /**
@@ -48,7 +51,7 @@ public class PrescriptionExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Result<Void>> prescriptionHandleSystemException(Exception exception) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Result.error(ErrorCodeEnum.SYSTEM_ERROR, "系统执行出错"));
+                .body(Result.error(SYSTEM_ERROR, "系统执行出错"));
     }
 
     /**

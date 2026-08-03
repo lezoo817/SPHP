@@ -40,8 +40,9 @@ import java.util.List;
 @RequestMapping("/c/v1")
 @RequiredArgsConstructor
 public class ProposalController {
-
+    // 健康报告、用药和随访服务
     private final ProposalService proposalService;
+    // 幂等层
     private final CIdempotencyService idempotencyService;
 
     /**

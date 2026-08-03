@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 public class DrugOrderTimeoutConsumer {
     private final OrderService orderService;
     /** 仅处理仍待支付的订单，重复消息不会重复释放库存。 */
-    @RabbitListener(queues = "cend.drug-order.timeout.queue")
-    public void consumeDrugOrderTimeout(DrugOrderPendingEvent event) { orderService.expireDrugOrder(event.businessId()); }
+    @RabbitListener(queues = "cend.drug-order.timeout.queue") // 监听超时队列
+    public void consumeDrugOrderTimeout(DrugOrderPendingEvent event) {
+        orderService.expireDrugOrder(event.businessId()); // 释放库存
+    }
 }

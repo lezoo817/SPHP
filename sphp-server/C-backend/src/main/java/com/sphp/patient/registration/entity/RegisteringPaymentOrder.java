@@ -21,18 +21,23 @@ public class RegisteringPaymentOrder extends BaseDO {
     /** 关联挂号订单 ID */
     @TableField("appointment_id")
     private Long appointmentId;
+
     /** 付款 C端用户 ID */
     @TableField("payer_user_id")
     private Long payerUserId;
+
     /** 支付金额，单位分 */
     @TableField("amount_cent")
     private Integer amountCent;
+
     /** 支付单状态 */
     @TableField("status")
     private String status;
+
     /** 支付到期时间 */
     @TableField("expire_at")
     private OffsetDateTime expireAt;
+
     /** 支付完成时间 */
     @TableField("paid_at")
     private OffsetDateTime paidAt;

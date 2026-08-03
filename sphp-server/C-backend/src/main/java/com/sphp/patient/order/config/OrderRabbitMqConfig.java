@@ -8,15 +8,59 @@ import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-/** C端购药订单超时 RabbitMQ 拓扑配置。 */
+
+import static com.sphp.patient.common.constant.OrderConstant.*;
+
+/**
+ * 订单 RabbitMQ 配置。
+ */
 @Configuration
 public class OrderRabbitMqConfig {
-    /** 声明购药待支付延迟队列。 */
-    @Bean public Queue drugOrderDelayQueue(RegistrationProperties properties) { return QueueBuilder.durable(OrderConstant.DRUG_ORDER_DELAY_QUEUE).ttl(properties.getPaymentTimeout()*1000).deadLetterExchange(OrderConstant.DLX_EXCHANGE).deadLetterRoutingKey(OrderConstant.DRUG_ORDER_TIMEOUT_ROUTING_KEY).build(); }
-    /** 声明购药超时消费者队列。 */
-    @Bean public Queue drugOrderTimeoutQueue() { return QueueBuilder.durable(OrderConstant.DRUG_ORDER_TIMEOUT_QUEUE).build(); }
-    /** 将待支付事件绑定到延迟队列。 */
-    @Bean public Binding drugOrderDelayBinding(Queue drugOrderDelayQueue) { return BindingBuilder.bind(drugOrderDelayQueue).to(new TopicExchange(OrderConstant.BUSINESS_EXCHANGE)).with(OrderConstant.DRUG_ORDER_PENDING_ROUTING_KEY); }
-    /** 将死信超时事件绑定到超时队列。 */
-    @Bean public Binding drugOrderTimeoutBinding(Queue drugOrderTimeoutQueue) { return BindingBuilder.bind(drugOrderTimeoutQueue).to(new TopicExchange(OrderConstant.DLX_EXCHANGE)).with(OrderConstant.DRUG_ORDER_TIMEOUT_ROUTING_KEY); }
+    /**
+     * 创建购药延迟队列。
+     * @param properties 挂号配置
+     * @return 购药延迟队列
+     */
+    @Bean
+    public Queue drugOrderDelayQueue(RegistrationProperties properties) {
+        return QueueBuilder.durable(DRUG_ORDER_DELAY_QUEUE) // 创建队列
+                .ttl(properties.getPaymentTimeout()*1000) // 设置队列超时时间
+                .deadLetterExchange(DLX_EXCHANGE) // 设置队列的死信交换器
+                .deadLetterRoutingKey(DRUG_ORDER_TIMEOUT_ROUTING_KEY) // 设置队列的死信路由
+                .build();
+    }
+
+    /**
+     * 创建购药超时队列。
+     * @return 购药超时队列
+     */
+    @Bean
+    public Queue drugOrderTimeoutQueue() {
+        return QueueBuilder.durable(DRUG_ORDER_TIMEOUT_QUEUE)
+                .build();
+    }
+
+    /**
+     * 创建购药延迟队列绑定关系。
+     * @param drugOrderDelayQueue 购药延迟队列
+     * @return 购药延迟队列绑定关系
+     */
+    @Bean
+    public Binding drugOrderDelayBinding(Queue drugOrderDelayQueue) {
+        return BindingBuilder.bind(drugOrderDelayQueue) // 绑定队列
+                .to(new TopicExchange(BUSINESS_EXCHANGE)) // 绑定交换器
+                .with(DRUG_ORDER_PENDING_ROUTING_KEY); // 绑定路由
+    }
+
+    /**
+     * 创建购药超时队列绑定关系。
+     * @param drugOrderTimeoutQueue 购药超时队列
+     * @return 购药超时队列绑定关系
+     */
+    @Bean
+    public Binding drugOrderTimeoutBinding(Queue drugOrderTimeoutQueue) {
+        return BindingBuilder.bind(drugOrderTimeoutQueue) // 绑定队列
+                .to(new TopicExchange(DLX_EXCHANGE)) // 绑定交换器
+                .with(DRUG_ORDER_TIMEOUT_ROUTING_KEY); // 绑定路由
+    }
 }

@@ -12,6 +12,11 @@ import java.time.OffsetDateTime;
 @Builder
 public class DeliveryAddressDeleteVO {
 
-    /** 已删除地址 ID。 */ private final Long id;
-    /** 删除时间。 */ private final OffsetDateTime deletedAt;
+    /** 已删除地址 ID。 */
+    private final Long id;
+
+    /** 删除时间。 */
+    private final OffsetDateTime deletedAt;
+
 }
+

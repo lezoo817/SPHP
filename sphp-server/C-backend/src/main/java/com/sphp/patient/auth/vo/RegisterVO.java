@@ -12,6 +12,7 @@ public class RegisterVO {
 
     /** 新建 C端用户 ID */
     private final Long userId;
+
     /** 登录账号 */
     private final String account;
 }

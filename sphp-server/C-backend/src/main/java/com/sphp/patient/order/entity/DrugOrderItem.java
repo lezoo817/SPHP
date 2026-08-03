@@ -23,21 +23,27 @@ public class DrugOrderItem {
     /** 主键 ID */
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
+
     /** 购药订单 ID */
     @TableField("drug_order_id")
     private Long drugOrderId;
+
     /** 药品 ID */
     @TableField("drug_id")
     private Long drugId;
+
     /** 下单时药品名称快照 */
     @TableField("drug_name_snapshot")
     private String drugNameSnapshot;
+
     /** 购买数量 */
     @TableField("quantity")
     private Integer quantity;
+
     /** 下单时单价，单位分 */
     @TableField("unit_price_cent")
     private Integer unitPriceCent;
+
     /** 创建时间 */
     @TableField(value = "created_at", fill = FieldFill.INSERT)
     private OffsetDateTime createdAt;

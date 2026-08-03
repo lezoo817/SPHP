@@ -23,6 +23,10 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
+import static com.sphp.patient.common.constant.CAuthConstant.BEARER_PREFIX;
+import static com.sphp.patient.common.constant.CAuthConstant.REFRESH_SESSION_KEY_PREFIX;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.UNAUTHORIZED;
+
 /**
  * C端 JWT 请求拦截器。
  */
@@ -57,16 +61,16 @@ public class CJwtInterceptor implements HandlerInterceptor {
             return false;
         }
         String authorization = request.getHeader(HeaderConstant.AUTHORIZATION);
-        if (!StringUtils.hasText(authorization) || !authorization.startsWith(CAuthConstant.BEARER_PREFIX)) {
+        if (!StringUtils.hasText(authorization) || !authorization.startsWith(BEARER_PREFIX)) {
             writeUnauthorized(response, "缺少有效的访问令牌");
             return false;
         }
         try {
             CJwtClaims claims = jwtService.parseAccessToken(
-                    authorization.substring(CAuthConstant.BEARER_PREFIX.length()).trim());
+                    authorization.substring(BEARER_PREFIX.length()).trim());
             // 会话摘要必须仍存在于 Redis，退出或改密撤销后 Access Token 立即失效
             String sessionValue = redisTemplate.opsForValue().get(
-                    CAuthConstant.REFRESH_SESSION_KEY_PREFIX + claims.sessionHash());
+                    REFRESH_SESSION_KEY_PREFIX + claims.sessionHash());
             if (!StringUtils.hasText(sessionValue) || !sessionValue.startsWith(claims.userId() + ":")) {
                 writeUnauthorized(response, "当前登录会话已失效");
                 return false;
@@ -105,6 +109,6 @@ public class CJwtInterceptor implements HandlerInterceptor {
         response.setStatus(HttpStatus.UNAUTHORIZED.value());
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        objectMapper.writeValue(response.getWriter(), Result.error(ErrorCodeEnum.UNAUTHORIZED, message));
+        objectMapper.writeValue(response.getWriter(), Result.error(UNAUTHORIZED, message));
     }
 }

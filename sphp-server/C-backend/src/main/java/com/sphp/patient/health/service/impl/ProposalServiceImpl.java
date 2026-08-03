@@ -37,17 +37,25 @@ import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.List;
 
+import static com.sphp.patient.common.constant.ProposalConstant.*;
+import static com.sphp.patient.common.enums.ProposalMedicationActionEnum.*;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
+
 /**
  * 健康报告、用药计划与随访计划服务实现。
  */
 @Service
 @RequiredArgsConstructor
 public class ProposalServiceImpl implements ProposalService {
-
+    // 就诊人数据
     private final HealthPatientMapper patientMapper;
+    // 检查报告数据
     private final ProposalReportMapper reportMapper;
+    // 检查报告指标数据
     private final ProposalReportIndicatorMapper indicatorMapper;
+    // 检查报告数据
     private final ProposalDataMapper dataMapper;
+    // 对象映射器, 用于 JSON 转换
     private final ObjectMapper objectMapper;
 
     /**
@@ -60,6 +68,7 @@ public class ProposalServiceImpl implements ProposalService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ProposalReportCreateVO proposalCreateReport(ProposalReportCreateRequest request) {
+        // 解析并检查就诊人 ID
         Long patientId = proposalResolvePatientId(request.getPatientId());
         ProposalPatientReport report = new ProposalPatientReport();
         report.setPatientId(patientId);
@@ -82,7 +91,10 @@ public class ProposalServiceImpl implements ProposalService {
                 throw proposalSystemError("报告指标录入失败");
             }
         }
-        return ProposalReportCreateVO.builder().reportId(report.getId()).status("RECORDED").build();
+        return ProposalReportCreateVO.builder()
+                .reportId(report.getId())
+                .status("RECORDED")
+                .build();
     }
 
     /**
@@ -96,10 +108,11 @@ public class ProposalServiceImpl implements ProposalService {
      */
     @Override
     public ProposalReportPageVO proposalListReports(Long patientId, Integer pageNo, Integer pageSize) {
+        // 解析并检查就诊人 ID
         Long resolvedPatientId = proposalResolvePatientId(patientId);
-        int resolvedPageNo = pageNo == null ? ProposalConstant.DEFAULT_PAGE_NO : pageNo;
-        int resolvedPageSize = pageSize == null ? ProposalConstant.DEFAULT_PAGE_SIZE : pageSize;
-        if (resolvedPageSize > ProposalConstant.MAX_PAGE_SIZE) {
+        int resolvedPageNo = pageNo == null ? DEFAULT_PAGE_NO : pageNo;
+        int resolvedPageSize = pageSize == null ? DEFAULT_PAGE_SIZE : pageSize;
+        if (resolvedPageSize > MAX_PAGE_SIZE) {
             throw proposalBadRequest("pageSize 不能超过100");
         }
 
@@ -131,6 +144,7 @@ public class ProposalServiceImpl implements ProposalService {
      */
     @Override
     public ProposalReportDetailVO proposalGetReport(Long reportId) {
+        // 解析并检查报告 ID
         ReportRecord report = proposalRequireReport(reportId);
         List<ProposalReportDetailVO.Indicator> indicators = dataMapper.proposalSelectIndicators(reportId)
                 .stream()
@@ -153,9 +167,11 @@ public class ProposalServiceImpl implements ProposalService {
      */
     @Override
     public ProposalReportInterpretationVO proposalGetReportInterpretation(Long reportId) {
+        // 解析并检查报告 ID
         ReportRecord report = proposalRequireReport(reportId);
+        //如果状态不是 READY，则返回错误
         if (!"READY".equals(report.interpretationStatus()) || report.interpretation() == null) {
-            throw new CAuthException(ErrorCodeEnum.BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT, "报告解读尚未生成");
+            throw new CAuthException(BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT, "报告解读尚未生成");
         }
         try {
             return objectMapper.readValue(report.interpretation(), ProposalReportInterpretationVO.class);
@@ -174,11 +190,13 @@ public class ProposalServiceImpl implements ProposalService {
      */
     @Override
     public List<ProposalMedicationPlanVO> proposalListMedicationPlans(Long patientId, String status) {
+        // 解析并检查就诊人 ID
         Long resolvedPatientId = proposalResolvePatientId(patientId);
+        // 检查计划状态
         proposalValidateEnumValue(status, ProposalMedicationStatusEnum.values());
         return dataMapper.proposalSelectMedications(resolvedPatientId, status)
                 .stream()
-                .map(this::proposalToMedicationVO)
+                .map(this::proposalToMedicationVO) // 转换
                 .toList();
     }
 
@@ -198,21 +216,27 @@ public class ProposalServiceImpl implements ProposalService {
         if (medication == null) {
             throw proposalNotFound("用药计划不存在");
         }
+        // 校验资源反查得到的患者可被当前账号访问
         Long patientId = proposalRequireAccessiblePatient(medication.patientId());
         OffsetDateTime now = OffsetDateTime.now();
         String targetStatus;
         OffsetDateTime nextReminderAt;
         OffsetDateTime endAt;
 
-        if (request.getAction() == ProposalMedicationActionEnum.PAUSE && "ACTIVE".equals(medication.status())) {
+        //如果当前状态是 ACTIVE 或 PAUSED，则允许暂停、恢复或完成
+        if (request.getAction() == PAUSE && "ACTIVE".equals(medication.status())) {
             targetStatus = "PAUSED";
             nextReminderAt = null;
             endAt = null;
-        } else if (request.getAction() == ProposalMedicationActionEnum.RESUME && "PAUSED".equals(medication.status())) {
+        }
+        //如果当前状态是 PAUSED，则允许恢复或完成
+        else if (request.getAction() == RESUME && "PAUSED".equals(medication.status())) {
             targetStatus = "ACTIVE";
             nextReminderAt = now;
             endAt = null;
-        } else if (request.getAction() == ProposalMedicationActionEnum.COMPLETE
+        }
+        //如果当前状态是 ACTIVE 或 PAUSED，则允许完成
+        else if (request.getAction() == COMPLETE
                 && ("ACTIVE".equals(medication.status()) || "PAUSED".equals(medication.status()))) {
             targetStatus = "COMPLETED";
             nextReminderAt = null;
@@ -246,7 +270,9 @@ public class ProposalServiceImpl implements ProposalService {
      */
     @Override
     public List<ProposalFollowUpVO> proposalListFollowUps(Long patientId, String status) {
+        // 解析并检查就诊人 ID
         Long resolvedPatientId = proposalResolvePatientId(patientId);
+        // 检查随访状态
         proposalValidateEnumValue(status, ProposalFollowUpStatusEnum.values());
         return dataMapper.proposalSelectFollowUps(resolvedPatientId, status)
                 .stream()
@@ -269,7 +295,9 @@ public class ProposalServiceImpl implements ProposalService {
         if (followUp == null) {
             throw proposalNotFound("随访计划不存在");
         }
+        // 校验资源反查得到的患者可被当前账号访问
         Long patientId = proposalRequireAccessiblePatient(followUp.patientId());
+        //如果当前状态不是待确认状态，则不允许确认
         if (!"PENDING_CONFIRM".equals(followUp.status())) {
             throw proposalConflict("当前随访计划不可确认");
         }
@@ -299,6 +327,7 @@ public class ProposalServiceImpl implements ProposalService {
         if (report == null) {
             throw proposalNotFound("检查报告不存在");
         }
+        // 校验资源反查得到的患者可被当前账号访问
         proposalRequireAccessiblePatient(report.patientId());
         return report;
     }
@@ -313,9 +342,11 @@ public class ProposalServiceImpl implements ProposalService {
     private Long proposalResolvePatientId(Long patientId) {
         Long userId = CUserContext.getRequired().userId();
         Long resolvedPatientId = patientId == null ? patientMapper.selectSelfPatientId(userId) : patientId;
+        // 检查就诊人存在
         if (resolvedPatientId == null || !patientMapper.existsActivePatient(resolvedPatientId)) {
             throw proposalNotFound("就诊人不存在或已停用");
         }
+        // 校验当前账号可访问
         if (!patientMapper.hasActivePatientRelation(userId, resolvedPatientId)) {
             throw proposalForbidden("无权访问该就诊人");
         }
@@ -330,6 +361,7 @@ public class ProposalServiceImpl implements ProposalService {
      * @throws CAuthException 患者不存在或无权访问时抛出
      */
     private Long proposalRequireAccessiblePatient(Long patientId) {
+        // 检查患者存在
         return proposalResolvePatientId(patientId);
     }
 
@@ -392,7 +424,9 @@ public class ProposalServiceImpl implements ProposalService {
      */
     private <T extends Enum<T>> void proposalValidateEnumValue(String value, T[] values) {
         if (value != null && !value.isBlank()
-                && Arrays.stream(values).noneMatch(item -> item.name().equals(value))) {
+                && Arrays.stream(values)
+                .noneMatch(item -> item.name().equals(value))//只有流中没有任何一个元素满足条件时才返回 true,只要找到一个匹配项就立刻返回 false(同样有短路特性)。
+        ) {
             throw proposalBadRequest("状态不在允许范围内");
         }
     }
@@ -404,7 +438,7 @@ public class ProposalServiceImpl implements ProposalService {
      * @return HTTP 404 业务异常
      */
     private CAuthException proposalNotFound(String message) {
-        return new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
+        return new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
     }
 
     /**
@@ -414,7 +448,7 @@ public class ProposalServiceImpl implements ProposalService {
      * @return HTTP 403 业务异常
      */
     private CAuthException proposalForbidden(String message) {
-        return new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, message);
+        return new CAuthException(UNAUTHORIZED, HttpStatus.FORBIDDEN, message);
     }
 
     /**
@@ -424,7 +458,7 @@ public class ProposalServiceImpl implements ProposalService {
      * @return HTTP 409 业务异常
      */
     private CAuthException proposalConflict(String message) {
-        return new CAuthException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, message);
+        return new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, message);
     }
 
     /**
@@ -434,7 +468,7 @@ public class ProposalServiceImpl implements ProposalService {
      * @return HTTP 400 业务异常
      */
     private CAuthException proposalBadRequest(String message) {
-        return new CAuthException(ErrorCodeEnum.PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST, message);
+        return new CAuthException(PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST, message);
     }
 
     /**
@@ -444,6 +478,6 @@ public class ProposalServiceImpl implements ProposalService {
      * @return HTTP 500 业务异常
      */
     private CAuthException proposalSystemError(String message) {
-        return new CAuthException(ErrorCodeEnum.SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, message);
+        return new CAuthException(SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, message);
     }
 }

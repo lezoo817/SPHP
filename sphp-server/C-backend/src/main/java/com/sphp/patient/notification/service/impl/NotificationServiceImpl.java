@@ -16,6 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 
+import static com.sphp.patient.common.constant.NotificationConstant.*;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
+
 /**
  * C端站内通知服务实现。
  */
@@ -38,11 +41,12 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public NotificationPageVO listNotifications(Long patientId, Boolean read, Integer pageNo, Integer pageSize) {
         Long userId = CUserContext.getRequired().userId();
+        // 校验可选就诊人存在且属于当前账号。
         validateAccessiblePatient(userId, patientId);
-        int resolvedPageNo = pageNo == null ? NotificationConstant.DEFAULT_PAGE_NO : pageNo;
-        int resolvedPageSize = pageSize == null ? NotificationConstant.DEFAULT_PAGE_SIZE : pageSize;
-        if (resolvedPageNo < 1 || resolvedPageSize < 1 || resolvedPageSize > NotificationConstant.MAX_PAGE_SIZE) {
-            throw new CAuthException(ErrorCodeEnum.PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST, "分页参数超出允许范围");
+        int resolvedPageNo = pageNo == null ? DEFAULT_PAGE_NO : pageNo;
+        int resolvedPageSize = pageSize == null ? DEFAULT_PAGE_SIZE : pageSize;
+        if (resolvedPageNo < 1 || resolvedPageSize < 1 || resolvedPageSize > MAX_PAGE_SIZE) {
+            throw new CAuthException(PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST, "分页参数超出允许范围");
         }
         List<NotificationPageVO.Item> records = notificationMapper.selectNotifications(userId, patientId, read,
                         resolvedPageSize, (long) (resolvedPageNo - 1) * resolvedPageSize)
@@ -66,7 +70,9 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional(rollbackFor = Exception.class)
     public NotificationReadVO markNotificationRead(Long notificationId) {
         Long userId = CUserContext.getRequired().userId();
+        // 校验通知存在且属于当前账号。
         NotificationRecord notification = requireOwnedNotification(userId, notificationId);
+        // 已读时间已存在则返回已读结果。
         if (notification.getReadAt() != null) {
             return toReadVO(notificationId, notification.getReadAt());
         }
@@ -75,9 +81,10 @@ public class NotificationServiceImpl implements NotificationService {
         if (notificationMapper.markNotificationRead(notificationId, userId, now) == 1) {
             return toReadVO(notificationId, now);
         }
+        // 读取通知已读时间失败则返回已读结果。
         NotificationRecord latest = requireOwnedNotification(userId, notificationId);
         if (latest.getReadAt() == null) {
-            throw new CAuthException(ErrorCodeEnum.BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT,
+            throw new CAuthException(BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT,
                     "通知状态已发生变化，请刷新后重试");
         }
         return toReadVO(notificationId, latest.getReadAt());
@@ -95,10 +102,10 @@ public class NotificationServiceImpl implements NotificationService {
             return;
         }
         if (!notificationMapper.existsActivePatient(patientId)) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "就诊人不存在或已停用");
+            throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "就诊人不存在或已停用");
         }
         if (!notificationMapper.hasActivePatientRelation(userId, patientId)) {
-            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, "无权访问该就诊人");
+            throw new CAuthException(UNAUTHORIZED, HttpStatus.FORBIDDEN, "无权访问该就诊人");
         }
     }
 
@@ -113,10 +120,10 @@ public class NotificationServiceImpl implements NotificationService {
     private NotificationRecord requireOwnedNotification(Long userId, Long notificationId) {
         NotificationRecord notification = notificationMapper.selectNotification(notificationId);
         if (notification == null) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "通知不存在");
+            throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "通知不存在");
         }
         if (!userId.equals(notification.getUserId())) {
-            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, "无权访问该通知");
+            throw new CAuthException(UNAUTHORIZED, HttpStatus.FORBIDDEN, "无权访问该通知");
         }
         return notification;
     }
@@ -148,7 +155,11 @@ public class NotificationServiceImpl implements NotificationService {
      * @return 已读响应
      */
     private NotificationReadVO toReadVO(Long notificationId, OffsetDateTime readAt) {
-        return NotificationReadVO.builder().id(notificationId).read(true).readAt(readAt).build();
+        return NotificationReadVO.builder()
+                .id(notificationId)
+                .read(true)
+                .readAt(readAt)
+                .build();
     }
 
 }

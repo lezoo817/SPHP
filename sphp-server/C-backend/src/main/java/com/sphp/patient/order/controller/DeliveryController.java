@@ -42,6 +42,7 @@ import java.util.List;
 public class DeliveryController {
 
     private final DeliveryService deliveryService;
+    // 幂等性服务
     private final CIdempotencyService idempotencyService;
 
     /**

@@ -19,6 +19,9 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.Date;
 
+import static com.sphp.patient.common.constant.CAuthConstant.*;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.UNAUTHORIZED;
+
 /**
  * C端 Access Token 签发与解析服务。
  */
@@ -44,9 +47,9 @@ public class CJwtService {
         Instant expiresAt = issuedAt.plusSeconds(properties.getExpiration());
         return Jwts.builder()
                 .subject(String.valueOf(userId))
-                .claim(CAuthConstant.ACCOUNT_CLAIM, account)
-                .claim(CAuthConstant.TOKEN_TYPE_CLAIM, CAuthConstant.ACCESS_TOKEN_TYPE)
-                .claim(CAuthConstant.SESSION_HASH_CLAIM, sessionHash)
+                .claim(ACCOUNT_CLAIM, account)
+                .claim(TOKEN_TYPE_CLAIM, ACCESS_TOKEN_TYPE)
+                .claim(SESSION_HASH_CLAIM, sessionHash)
                 .issuedAt(Date.from(issuedAt))
                 .expiration(Date.from(expiresAt))
                 .signWith(signingKey())
@@ -64,14 +67,14 @@ public class CJwtService {
         try {
             Claims claims = Jwts.parser().verifyWith(signingKey()).build()
                     .parseSignedClaims(token).getPayload();
-            if (!CAuthConstant.ACCESS_TOKEN_TYPE.equals(claims.get(CAuthConstant.TOKEN_TYPE_CLAIM, String.class))) {
+            if (!ACCESS_TOKEN_TYPE.equals(claims.get(TOKEN_TYPE_CLAIM, String.class))) {
                 throw unauthorized("令牌类型无效");
             }
             return new CJwtClaims(
                     Long.valueOf(claims.getSubject()),
-                    claims.get(CAuthConstant.ACCOUNT_CLAIM, String.class),
+                    claims.get(ACCOUNT_CLAIM, String.class),
                     OffsetDateTime.ofInstant(claims.getExpiration().toInstant(), CHINA_ZONE),
-                    claims.get(CAuthConstant.SESSION_HASH_CLAIM, String.class)
+                    claims.get(SESSION_HASH_CLAIM, String.class)
             );
         } catch (CAuthException e) {
             throw e;
@@ -96,6 +99,6 @@ public class CJwtService {
      * @return 未授权异常
      */
     private CAuthException unauthorized(String message) {
-        return new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.UNAUTHORIZED, message);
+        return new CAuthException(UNAUTHORIZED, HttpStatus.UNAUTHORIZED, message);
     }
 }

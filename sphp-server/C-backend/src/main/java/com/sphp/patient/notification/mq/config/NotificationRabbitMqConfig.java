@@ -9,6 +9,8 @@ import org.springframework.amqp.core.TopicExchange;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import static com.sphp.patient.common.constant.NotificationConstant.*;
+
 /**
  * C端站内通知 RabbitMQ 队列与绑定配置。
  */
@@ -22,7 +24,7 @@ public class NotificationRabbitMqConfig {
      */
     @Bean
     public Queue notificationQueue() {
-        return createBusinessQueue(NotificationConstant.NOTIFICATION_QUEUE);
+        return createBusinessQueue(NOTIFICATION_QUEUE);
     }
 
     /**
@@ -32,7 +34,8 @@ public class NotificationRabbitMqConfig {
      */
     @Bean
     public Queue notificationReminderQueue() {
-        return createBusinessQueue(NotificationConstant.REMINDER_QUEUE);
+
+        return createBusinessQueue(REMINDER_QUEUE);
     }
 
     /**
@@ -42,7 +45,7 @@ public class NotificationRabbitMqConfig {
      */
     @Bean
     public Queue notificationFollowUpQueue() {
-        return createBusinessQueue(NotificationConstant.FOLLOW_UP_QUEUE);
+        return createBusinessQueue(FOLLOW_UP_QUEUE);
     }
 
     /**
@@ -52,7 +55,7 @@ public class NotificationRabbitMqConfig {
      */
     @Bean
     public Queue notificationDeadLetterQueue() {
-        return QueueBuilder.durable(NotificationConstant.DEAD_LETTER_QUEUE).build();
+        return QueueBuilder.durable(DEAD_LETTER_QUEUE).build();
     }
 
     /**
@@ -63,7 +66,7 @@ public class NotificationRabbitMqConfig {
      */
     @Bean
     public Binding notificationCreateBinding(Queue notificationQueue) {
-        return bindBusinessQueue(notificationQueue, NotificationConstant.NOTIFICATION_CREATE_ROUTING_KEY);
+        return bindBusinessQueue(notificationQueue, NOTIFICATION_CREATE_ROUTING_KEY);
     }
 
     /**
@@ -74,7 +77,7 @@ public class NotificationRabbitMqConfig {
      */
     @Bean
     public Binding notificationReminderBinding(Queue notificationReminderQueue) {
-        return bindBusinessQueue(notificationReminderQueue, NotificationConstant.REMINDER_DUE_ROUTING_KEY);
+        return bindBusinessQueue(notificationReminderQueue, REMINDER_DUE_ROUTING_KEY);
     }
 
     /**
@@ -85,7 +88,7 @@ public class NotificationRabbitMqConfig {
      */
     @Bean
     public Binding notificationFollowUpBinding(Queue notificationFollowUpQueue) {
-        return bindBusinessQueue(notificationFollowUpQueue, NotificationConstant.FOLLOW_UP_DUE_ROUTING_KEY);
+        return bindBusinessQueue(notificationFollowUpQueue, FOLLOW_UP_DUE_ROUTING_KEY);
     }
 
     /**
@@ -97,8 +100,8 @@ public class NotificationRabbitMqConfig {
     @Bean
     public Binding notificationDeadLetterBinding(Queue notificationDeadLetterQueue) {
         return BindingBuilder.bind(notificationDeadLetterQueue)
-                .to(new TopicExchange(NotificationConstant.DLX_EXCHANGE))
-                .with(NotificationConstant.DEAD_LETTER_ROUTING_KEY);
+                .to(new TopicExchange(DLX_EXCHANGE))
+                .with(DEAD_LETTER_ROUTING_KEY);
     }
 
     /**
@@ -109,8 +112,8 @@ public class NotificationRabbitMqConfig {
      */
     private Queue createBusinessQueue(String queueName) {
         return QueueBuilder.durable(queueName)
-                .deadLetterExchange(NotificationConstant.DLX_EXCHANGE)
-                .deadLetterRoutingKey(NotificationConstant.DEAD_LETTER_ROUTING_KEY)
+                .deadLetterExchange(DLX_EXCHANGE)
+                .deadLetterRoutingKey(DEAD_LETTER_ROUTING_KEY)
                 .build();
     }
 
@@ -122,6 +125,6 @@ public class NotificationRabbitMqConfig {
      * @return 队列绑定
      */
     private Binding bindBusinessQueue(Queue queue, String routingKey) {
-        return BindingBuilder.bind(queue).to(new TopicExchange(NotificationConstant.BUSINESS_EXCHANGE)).with(routingKey);
+        return BindingBuilder.bind(queue).to(new TopicExchange(BUSINESS_EXCHANGE)).with(routingKey);
     }
 }
