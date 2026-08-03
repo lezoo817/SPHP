@@ -100,6 +100,8 @@ def start_mcp_server() -> None:
             """在独立线程中运行 stdio server。"""
 
             async def _run() -> None:
+                """运行 stdio server：连接输入/输出流后启动 MCP 协议循环。"""
+
                 async with stdio_server() as (read_stream, write_stream):
                     await _mcp_server.run(
                         read_stream,

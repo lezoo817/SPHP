@@ -50,7 +50,7 @@ async def create_appointment(
 ) -> dict[str, Any]:
     """创建挂号锁定订单（预扣号源）。"""
     body = {"hospital_id": hospital_id, "slot_id": slot_id}
-    if patient_id:
+    if patient_id is not None:
         body["patient_id"] = patient_id
     return await call_java_api(tool_name="create_appointment", body=body, user_id=user_id)
 
@@ -59,7 +59,7 @@ async def query_appointments(
     appointment_id: int | None = None, status: str | None = None, user_id: int | None = None
 ) -> dict[str, Any]:
     """查询挂号订单列表或详情。"""
-    if appointment_id:
+    if appointment_id is not None:
         return await call_java_api(
             api_name="query_appointments:detail",
             path_params={"appointment_id": appointment_id},
@@ -85,7 +85,7 @@ async def join_waitlist(
 ) -> dict[str, Any]:
     """号源约满时登记候补。"""
     body = {"slot_id": slot_id}
-    if patient_id:
+    if patient_id is not None:
         body["patient_id"] = patient_id
     return await call_java_api(tool_name="join_waitlist", body=body, user_id=user_id)
 

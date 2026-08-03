@@ -30,7 +30,11 @@ async def safety_check(state: AgentState) -> dict[str, Any]:
         return {}
 
     risk_flags = list(state.get("risk_flags", []))
-    pending_confirmations = []
+    # P1-2 自累积：保留子图循环前面轮次已挂起的 L2 确认（pending_confirmations
+    # 无 reducer，默认 last-write-wins 会覆盖丢失先触发的卡片）。与 tool_results
+    # 的自累积对齐（见 tool_executor）：跨轮对话由 _build_initial_state 传 None
+    # （last-write-wins）正常清场，历史卡片不会污染下一轮。
+    pending_confirmations = list(state.get("pending_confirmations") or [])
     # 放行的工具调用（过滤掉 Redis 失败的 L2 / 未授权的 L3/L4）
     allowed_calls: list[dict[str, Any]] = []
 

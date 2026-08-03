@@ -11,8 +11,30 @@ export function getDoctors(hospitalId: number, departmentId: number, date: strin
 export function getSlots(doctorId: number, hospitalId: number, date: string): Promise<AppointmentSlot[]> { return request(`/c/v1/doctors/${doctorId}/slots?hospitalId=${hospitalId}&date=${date}`, { method: 'GET' }); }
 /** 创建挂号订单。 */
 export function createAppointment(payload: { patientId?: number; hospitalId: number; slotId: number }, key: string): Promise<{ appointmentId: number; paymentId: number; amountCent: number; expireAt: string }> { return request('/c/v1/appointments', { method: 'POST', body: payload, headers: { 'X-Idempotency-Key': key } }); }
-/** 查询指定就诊人的挂号订单。 */
-export function getAppointments(patientId?: number, status?: string): Promise<PageData<Appointment>> { return request(`/c/v1/appointments?patientId=${patientId || ''}&status=${status || ''}&pageNo=1&pageSize=20`, { method: 'GET' }); }
+/**
+ * 构建挂号订单列表请求路径。
+ * @param patientId 当前就诊人 ID，可不传以查询本人订单
+ * @param status 挂号订单状态，可不传以查询全部状态
+ * @returns 不包含空状态参数的挂号订单列表路径
+ */
+export function buildAppointmentsPath(patientId?: number, status?: string, pageSize = 20): string {
+  const params = new URLSearchParams({ pageNo: '1', pageSize: String(pageSize) });
+  if (patientId !== undefined) params.set('patientId', String(patientId));
+  // 后端会校验枚举值，未筛选时不能发送空字符串 status=。
+  if (status?.trim()) params.set('status', status.trim());
+  return `/c/v1/appointments?${params.toString()}`;
+}
+
+/**
+ * 查询指定就诊人的挂号订单。
+ * @param patientId 当前就诊人 ID
+ * @param status 可选的挂号订单状态筛选
+ * @param pageSize 每位就诊人需读取的订单数量，最大为 100
+ * @returns 分页挂号订单数据
+ */
+export function getAppointments(patientId?: number, status?: string, pageSize = 20): Promise<PageData<Appointment>> {
+  return request(buildAppointmentsPath(patientId, status, pageSize), { method: 'GET' });
+}
 /** 查询挂号订单详情。 */
 export function getAppointment(appointmentId: number): Promise<AppointmentDetail> { return request(`/c/v1/appointments/${appointmentId}`, { method: 'GET' }); }
 /** 取消未支付挂号订单。 */

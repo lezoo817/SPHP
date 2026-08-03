@@ -22,7 +22,7 @@ async def query_consultations(
     consultation_id: int | None = None, status: str | None = None, user_id: int | None = None
 ) -> dict[str, Any]:
     """查询问诊记录列表或详情。"""
-    if consultation_id:
+    if consultation_id is not None:
         return await call_java_api(
             api_name="query_consultations:detail",
             path_params={"consultation_id": consultation_id},

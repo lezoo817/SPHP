@@ -13,19 +13,48 @@
 
 import importlib
 import inspect
+import logging
 from typing import Any, cast
+
+from app.infrastructure.java_client import reset_idempotency_context, set_idempotency_context
+
+logger = logging.getLogger(__name__)
+
+# 确认流程内部键（P2 #17）：chat_confirm 将 confirm_token 记录的幂等键注入
+# 该键，经 MCP 协议透传至此。不在任何 ToolSchema 参数中，LLM 不会伪造；
+# _wrap 剥离后注入 ContextVar，供同任务栈内封装函数的 call_java_api 复用，
+# 确保同一确认操作（含失败重试）Java 侧幂等去重。
+_IDEMPOTENCY_ARG = "__idempotency_key__"
 
 
 async def _wrap(
     module: Any, func_name: str, arguments: dict[str, Any], user_id: int | None
 ) -> dict[str, Any]:
-    """按参数名绑定调用 MCP 工具封装函数（忽略未知参数，注入 user_id）。"""
+    """按参数名绑定调用 MCP 工具封装函数（忽略未知参数，注入 user_id）。
+
+    P2 #17：剥离确认流程注入的 ``__idempotency_key__``（不传给业务参数），
+    若有则设置幂等键 ContextVar，使封装函数内 call_java_api 的写操作复用
+    该键；await 结束后恢复，不影响同任务后续调用。
+    """
     func = getattr(module, func_name)
     sig = inspect.signature(func)
-    kwargs = {k: v for k, v in arguments.items() if k in sig.parameters}
+    # P3-6：未知参数不静默丢弃——业务参数演进时暴露给日志排查（debug 级，
+    # 不改变行为：不在签名中的参数继续忽略，保持向后兼容；内部幂等键除外）。
+    known = {k for k in arguments if k in sig.parameters}
+    unknown = {k for k in arguments if k not in known and k != _IDEMPOTENCY_ARG}
+    if unknown:
+        logger.debug("工具 %s 忽略未知参数: %s", func_name, sorted(unknown))
+    kwargs = {k: arguments[k] for k in known}
     if "user_id" in sig.parameters:
         kwargs["user_id"] = user_id
-    return cast(dict[str, Any], await func(**kwargs))
+
+    idem_key = arguments.get(_IDEMPOTENCY_ARG)
+    token = set_idempotency_context(idem_key) if idem_key else None
+    try:
+        return cast(dict[str, Any], await func(**kwargs))
+    finally:
+        if token is not None:
+            reset_idempotency_context(token)
 
 
 # 工具名 -> 模块 import 路径（对应 mcp_server/tools/*.py）

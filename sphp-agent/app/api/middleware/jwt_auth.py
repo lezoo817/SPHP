@@ -21,12 +21,15 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
+from app.api.middleware.rate_limit import is_rate_limited, rate_limited_response
+from app.api.schemas.envelope import error_response
 from app.infrastructure.config.settings import get_settings
+from app.infrastructure.java_client import get_client
 
 logger = logging.getLogger(__name__)
 
-# Java token/parse 调用超时（秒）
-_AUTH_TIMEOUT = 10.0
+# 无效 token 防刷限流前缀（P1-5）：与用户限流键隔离，洪泛无效 token 按 IP 计数
+_AUTH_FAIL_KEY_PREFIX = "auth_fail"
 
 
 class JWTAuthMiddleware(BaseHTTPMiddleware):
@@ -40,6 +43,12 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
     EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        """请求入口：校验 Bearer JWT 并注入身份到 request.state。
+
+        豁免路径直接放行；无 token 走匿名降级或 401；携带 token 但校验失败
+        走 IP 防刷限流（P1-5）后统一 401。校验通过时注入
+        user_id / scope / roles / dept_id / doctor_id / hospital_id。
+        """
         if request.url.path in self.EXEMPT_PATHS:
             return await call_next(request)
 
@@ -53,8 +62,9 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         token = auth_header.removeprefix("Bearer ").strip()
         user_info = await _safe_parse_token(token, scope)
 
-        # 校验通过
-        if user_info is not None:
+        # 校验通过且 data 含 userId（P2：缺 userId 无法确认身份，按无效 token 处理，
+        # 避免 user_id=None + roles=[] 被编排层误判已鉴权）
+        if user_info is not None and user_info.get("userId") is not None:
             request.state.user_id = user_info.get("userId")
             request.state.account = user_info.get("account")
             request.state.scope = scope
@@ -67,9 +77,18 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             request.state.hospital_id = user_info.get("hospitalId")
             return await call_next(request)
 
-        # 携带 token 但校验失败 -> 始终 401（不降级，保持 D1 严格策略）。
+        # 携带 token 但校验失败，或 data 缺 userId（P2：无法确认身份）
+        # -> 始终 401（不降级，保持 D1 严格策略）。
         # AUTH_EXPIRED 需 Java token/parse 返回过期信号才能精确区分，
         # 当前统一归 AUTH_INVALID（同为 401，前端跳登录页）
+        #
+        # P1-5 防刷：无效 token 洪泛此前直接短路在此（JWT 先于 RateLimit 执行），
+        # 每请求直打 Java token/parse（DoS）且完全不受限流约束。修复：
+        # 按 IP 走防刷限流（auth_fail:{ip}），超限返回 429，不再继续调 Java。
+        # 键加 IP 前缀（业务前缀即隔离），仅针对鉴权失败请求，不影响正常用户。
+        ip = request.client.host if request.client else "anonymous"
+        if await is_rate_limited(f"{_AUTH_FAIL_KEY_PREFIX}:{ip}"):
+            return rate_limited_response(request)
         return _unauthorized(request, "AUTH_INVALID", "Token 无效或已过期")
 
     async def _handle_no_token(
@@ -77,16 +96,26 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         """无 token 分支：ALLOW_ANONYMOUS=true 时降级匿名，否则 401。
 
-        匿名作用域沿用请求头 ``X-Scope``（缺省 c_end），
-        不强制覆盖，避免 B 端匿名请求被错误路由到 C 端。
+        安全（NP-1）：匿名请求无 token，无法证明 B 端医生身份，强制按 C 端处理
+        （scope=c_end），忽略客户端 ``X-Scope`` 头。否则匿名用户设
+        ``X-Scope: b_end`` 即可访问全部 B 端工具（query_patient_history /
+        generate_draft_note 等）构成越权。B 端访问必须携带有效 B 端 JWT
+        （经 token/parse 校验）。
         """
         settings = get_settings()
         if not settings.allow_anonymous:
             return _unauthorized(request, "AUTH_MISSING", "缺少有效的鉴权 Token")
 
-        logger.warning("无 token 请求降级为匿名: path=%s, scope=%s", request.url.path, scope)
+        # 匿名一律 C 端，杜绝 X-Scope 伪造越权 B 端（NP-1）
+        forced_scope = "c_end"
+        logger.warning(
+            "无 token 请求降级为匿名: path=%s, 请求 scope=%s, 强制 scope=%s",
+            request.url.path,
+            scope,
+            forced_scope,
+        )
         request.state.anonymous = True
-        request.state.scope = scope
+        request.state.scope = forced_scope
         request.state.jwt_token = None
         # 不设置 user_id / account，保持 None 以区分真实用户；roles 置空无权限
         request.state.roles = []
@@ -111,15 +140,7 @@ def _unauthorized(request: Request, code: str, message: str) -> JSONResponse:
     Returns:
         JSONResponse: 401 + 统一信封。
     """
-    return JSONResponse(
-        status_code=401,
-        content={
-            "code": code,
-            "message": message,
-            "data": None,
-            "traceId": getattr(request.state, "trace_id", ""),
-        },
-    )
+    return error_response(code, message, getattr(request.state, "trace_id", ""), status_code=401)
 
 
 async def _safe_parse_token(token: str, scope: str) -> dict[str, Any] | None:
@@ -154,26 +175,29 @@ async def parse_token(token: str, scope: str) -> dict[str, Any] | None:
     url = f"{settings.java_base_url}{path}"
 
     try:
-        async with httpx.AsyncClient(timeout=_AUTH_TIMEOUT) as client:
-            resp = await client.get(
-                url,
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            if resp.status_code != 200:
-                return None
+        # P2：复用全局 Java 连接池（java_client.get_client），避免每请求新建
+        # httpx.AsyncClient 造成 TCP 握手开销；全局客户端超时 10s/connect 5s，
+        # 与原 _AUTH_TIMEOUT 一致，行为不变。
+        client = await get_client()
+        resp = await client.get(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if resp.status_code != 200:
+            return None
 
-            data = resp.json()
-            # Java 可能返回 "00000" 或 200；响应须为 dict，否则按无效处理
-            if not isinstance(data, dict):
-                logger.warning("token/parse 响应非对象: %s", type(data).__name__)
-                return None
-            code = str(data.get("code", ""))
-            if code not in ("00000", "200"):
-                return None
+        data = resp.json()
+        # Java 可能返回 "00000" 或 200；响应须为 dict，否则按无效处理
+        if not isinstance(data, dict):
+            logger.warning("token/parse 响应非对象: %s", type(data).__name__)
+            return None
+        code = str(data.get("code", ""))
+        if code not in ("00000", "200"):
+            return None
 
-            user_info = data.get("data")
-            # data 字段须为 dict（含 userId 等），防御非对象响应
-            return user_info if isinstance(user_info, dict) else None
+        user_info = data.get("data")
+        # data 字段须为 dict（含 userId 等），防御非对象响应
+        return user_info if isinstance(user_info, dict) else None
 
     except (httpx.HTTPError, ValueError) as e:
         # ValueError: resp.json() 解析失败（Java 返回非 JSON）
