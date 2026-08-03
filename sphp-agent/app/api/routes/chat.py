@@ -129,7 +129,7 @@ def _build_initial_state(
         token: JWT Token。
         session_id: 会话 ID。
         confirmed_actions: M5-T4（T-M3-L1）本会话此前确认成功的操作回执，
-            非空时注入 messages 上下文，保证确认后追问连续。
+            非空时注入 messages 上下文（含操作结果摘要），保证确认后追问连续。
 
     Note:
         M6-B1 鉴权去重：中间件已在 HTTP 层调 Java token/parse 一次，身份字段
@@ -138,17 +138,13 @@ def _build_initial_state(
     """
     messages: list[dict[str, Any]] = [{"role": "user", "content": req.content}]
     if confirmed_actions:
-        labels = [
-            _TOOL_LABELS.get(t.get("tool_name", ""), t.get("tool_name", "操作"))
-            for t in confirmed_actions
-        ]
+        # P2：注入操作结果摘要（操作名 + 成功提示 + 关键业务 ID），
+        # 支持"我的挂号单号是多少"式追问，而非仅有操作名标签
         messages.insert(
             0,
             {
                 "role": "system",
-                "content": "本会话此前用户已确认完成以下操作："
-                + "；".join(labels)
-                + "。后续用户提及这些操作时，基于已执行结果回答，不要重复要求确认。",
+                "content": _build_confirmed_actions_system(confirmed_actions),
             },
         )
 
@@ -656,3 +652,71 @@ def _success_message(tool_name: str) -> str:
         "query_patient_history": "患者档案已查询",
     }
     return messages.get(tool_name, "操作成功")
+
+
+# 已确认操作结果摘要（P2）：action_result 中提取的关键业务 ID 字段
+_RESULT_ID_KEYS = (
+    "order_id",
+    "appointment_id",
+    "drug_order_id",
+    "report_id",
+    "record_id",
+    "plan_id",
+    "consultation_id",
+)
+_ID_KEY_LABELS = {
+    "order_id": "单号",
+    "appointment_id": "单号",
+    "drug_order_id": "单号",
+    "report_id": "报告编号",
+    "record_id": "记录编号",
+    "plan_id": "计划编号",
+    "consultation_id": "记录编号",
+}
+
+
+def _extract_result_brief(data: Any) -> str:
+    """从 action_result 提取一行关键摘要（如"单号 999"），无则返回空串。
+
+    仅提取 ID 类字段（含一层包裹结构），避免把完整嵌套数据（如检查报告
+    详情等 PHI 内容）整体注入下一轮 LLM 上下文；业务 ID 已足够支撑
+    "我的挂号单号是多少"式追问。
+    """
+    if not isinstance(data, dict):
+        return ""
+    # 直接层 + 一层包裹（Java 信封 data / 通用包装）两处找 ID 字段
+    layers: list[dict[str, Any]] = [data]
+    layers.extend(v for v in data.values() if isinstance(v, dict))
+    for layer in layers:
+        for k, v in layer.items():
+            if k in _RESULT_ID_KEYS and v not in (None, ""):
+                return f"{_ID_KEY_LABELS.get(k, k)} {v}"
+    return ""
+
+
+def _summarize_confirmed_action(action: dict[str, Any]) -> str:
+    """生成单条已确认操作的摘要：操作名（操作结果，关键 ID）。
+
+    Args:
+        action: confirm_done 回执记录（tool_name / action_result）。
+
+    Returns:
+        str: 供注入 system 上下文的一行摘要。
+    """
+    tool_name = action.get("tool_name", "")
+    label = _TOOL_LABELS.get(tool_name, tool_name or "操作")
+    result_msg = _success_message(tool_name)
+    brief = _extract_result_brief(action.get("action_result"))
+    if brief:
+        return f"{label}（{result_msg}，{brief}）"
+    return f"{label}（{result_msg}）"
+
+
+def _build_confirmed_actions_system(confirmed_actions: list[dict[str, Any]]) -> str:
+    """构造已确认操作注入的 system 内容（P2：含操作结果摘要）。"""
+    summaries = [_summarize_confirmed_action(t) for t in confirmed_actions]
+    return (
+        "本会话此前用户已确认完成以下操作："
+        + "；".join(summaries)
+        + "。后续用户提及这些操作时，基于已执行结果回答，不要重复要求确认。"
+    )
