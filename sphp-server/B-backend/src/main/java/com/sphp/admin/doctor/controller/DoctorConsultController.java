@@ -2,6 +2,8 @@ package com.sphp.admin.doctor.controller;
 
 import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.doctor.dto.ConsultEndVO;
+import com.sphp.admin.doctor.dto.ConsultHistoryDetailVO;
+import com.sphp.admin.doctor.dto.ConsultHistoryVO;
 import com.sphp.admin.doctor.dto.ConsultStartVO;
 import com.sphp.admin.doctor.dto.MessageSendRequest;
 import com.sphp.admin.doctor.dto.MessageVO;
@@ -110,5 +112,22 @@ public class DoctorConsultController {
     public Result<MessageVO> sendMessage(@PathVariable Long consultationId,
                                           @Valid @RequestBody MessageSendRequest request) {
         return Result.success("发送成功", doctorConsultService.sendMessage(consultationId, request.getContent()));
+    }
+
+    // ==================== 接诊历史 ====================
+
+    @GetMapping("/consult/history")
+    @Operation(summary = "接诊历史", description = "分页查询当前医生的历史接诊记录（不含 PENDING）")
+    public Result<PageResult<ConsultHistoryVO>> history(
+            @Parameter(description = "页码，默认1") @RequestParam(defaultValue = "1") int page,
+            @Parameter(description = "每页大小，默认10") @RequestParam(defaultValue = "10") int size) {
+        return Result.success("查询成功",
+                doctorConsultService.pageHistory(page, clampSize(size)));
+    }
+
+    @GetMapping("/consult/{id}/history-detail")
+    @Operation(summary = "历史接诊详情", description = "查询历史接诊的病历全文和关联处方")
+    public Result<ConsultHistoryDetailVO> getHistoryDetail(@PathVariable Long id) {
+        return Result.success("查询成功", doctorConsultService.getHistoryDetail(id));
     }
 }

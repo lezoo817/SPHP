@@ -235,6 +235,39 @@ declare global {
       status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
     }
 
+    /** 接诊历史项 */
+    interface ConsultHistoryItem {
+      consultId: number;
+      patientId: number;
+      patientName: string;
+      patientGender: 'MALE' | 'FEMALE' | 'UNKNOWN';
+      patientDateOfBirth: string;
+      chiefComplaint?: string;
+      noteSummary?: string;
+      status: string;
+      startedAt?: string;
+      endedAt?: string;
+      createdAt: string;
+    }
+
+    /** 接诊历史详情 */
+    interface ConsultHistoryDetail {
+      consultId: number;
+      patientId: number;
+      status: string;
+      chiefComplaint?: string;
+      doctorNote?: string;
+      startedAt?: string;
+      endedAt?: string;
+      createdAt?: string;
+      prescriptions: {
+        id: number;
+        status: string;
+        itemCount: number;
+        issuedAt?: string;
+      }[];
+    }
+
     /** 队列查询参数 */
     interface QueueListParams extends PageParams {
       deptId?: number;
