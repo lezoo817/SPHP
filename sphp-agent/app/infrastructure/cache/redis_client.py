@@ -8,6 +8,7 @@ import logging
 import re
 import uuid
 from functools import lru_cache
+from typing import Any, cast
 
 import redis.asyncio as redis
 
@@ -54,7 +55,7 @@ async def set_confirm_token(
     session_id: str,
     user_id: str,
     tool_name: str,
-    tool_arguments: dict,
+    tool_arguments: dict[str, Any],
     card_type: str,
     ttl: int | None = None,
 ) -> None:
@@ -86,7 +87,7 @@ async def get_and_delete_confirm_token_by_token(
     session_id: str,
     token_id: str,
     expected_user_id: str,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """按前端回传的 confirm_token 原子消费（系分 §5.5，Lua 一次性）。
 
     /chat/confirm 只回传 session_id + confirm_token，而 Redis key 是
@@ -149,7 +150,7 @@ async def get_and_delete_confirm_token_by_token(
     result = await client.eval(lua_script, 0, _escape_glob(session_id), token_id, expected_user_id)
     if result is None:
         return None
-    return json.loads(result)
+    return cast(dict[str, Any], json.loads(result))
 
 
 # ---- 已确认操作回执（M5-T4 / T-M3-L1）----
@@ -210,7 +211,7 @@ async def set_confirm_done(
     await client.set(key, value, ex=ttl)
 
 
-async def get_and_delete_confirm_done(session_id: str) -> list[dict]:
+async def get_and_delete_confirm_done(session_id: str) -> list[dict[str, Any]]:
     """读取并删除某会话全部已确认操作回执（一次性消费，Lua 原子）。
 
     注入会话上下文后即删除——注入的 system 消息随 LangGraph checkpointer
@@ -295,4 +296,4 @@ async def check_rate_limit(user_id: str, limit: int, window: int = 60) -> bool:
 
     now = time.time()
     result = await client.eval(lua_script, 1, key, str(limit), str(window), str(now))
-    return result == 1
+    return bool(result == 1)

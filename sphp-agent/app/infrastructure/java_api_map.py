@@ -16,6 +16,8 @@ key 为语义接口名：优先与工具同名，双路径/多接口工具用「
 类 API 统一在 ``/api/b/admin/*`` 下，doctor 专属操作在 ``/api/b/doctor/*`` 下。
 """
 
+from typing import Any
+
 # 接口名 -> 接口定义
 JAVA_API_MAP: dict[str, dict[str, str]] = {
     # ---- C 端：导诊 ----
@@ -275,7 +277,7 @@ JAVA_API_MAP: dict[str, dict[str, str]] = {
 }
 
 
-def resolve_api(api_name: str, path_params: dict | None = None) -> tuple[str, str, str]:
+def resolve_api(api_name: str, path_params: dict[str, Any] | None = None) -> tuple[str, str, str]:
     """根据接口名查契约表，返回 (method, path, scope)。
 
     路径中的 ``{param}`` 占位符用 ``path_params`` 替换；缺失参数抛 KeyError。
@@ -338,7 +340,7 @@ def validate_contract() -> None:
             raise ValueError(f"接口 {name} 非法 method: {method}")
         if scope not in valid_scopes:
             raise ValueError(f"接口 {name} 非法 scope: {scope}")
-        if path.count("{") != path.count("}"):
+        if not path or path.count("{") != path.count("}"):
             raise ValueError(f"接口 {name} 的 path 占位符未配对: {path}")
 
 
