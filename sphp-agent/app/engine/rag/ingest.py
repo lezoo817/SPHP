@@ -9,7 +9,9 @@ import hashlib
 import logging
 import uuid
 from pathlib import Path
+from typing import cast
 
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.engine.rag.vectorstore import get_vectorstore
@@ -26,7 +28,7 @@ _LOADER_MAP: dict[str, str] = {
 }
 
 
-def _load_file(file_path: Path):
+def _load_file(file_path: Path) -> list[Document]:
     """根据后缀选择 Loader，返回 Document 列表。"""
     suffix = file_path.suffix.lower()
     loader_path = _LOADER_MAP.get(suffix)
@@ -41,12 +43,13 @@ def _load_file(file_path: Path):
     loader_cls = getattr(importlib.import_module(module_path), class_name)
 
     # TextLoader 需要指定编码
+    # loader_cls 动态导入为 Any，.load() 返回 Any，显式 cast 到 Document 列表
     if class_name == "TextLoader":
-        return loader_cls(str(file_path), encoding="utf-8").load()
-    return loader_cls(str(file_path)).load()
+        return cast(list[Document], loader_cls(str(file_path), encoding="utf-8").load())
+    return cast(list[Document], loader_cls(str(file_path)).load())
 
 
-def _split_documents(docs: list):
+def _split_documents(docs: list[Document]) -> list[Document]:
     """用 RecursiveCharacterTextSplitter 切分文档。"""
     s = get_settings()
     splitter = RecursiveCharacterTextSplitter(
@@ -57,7 +60,7 @@ def _split_documents(docs: list):
     return splitter.split_documents(docs)
 
 
-def _load_and_split(file_path: Path) -> tuple[list, list]:
+def _load_and_split(file_path: Path) -> tuple[list[Document], list[Document]]:
     """读盘 + 打来源标记 + 切分（同步部分，供 to_thread 调用）。"""
     docs = _load_file(file_path)
     if not docs:
@@ -67,7 +70,7 @@ def _load_and_split(file_path: Path) -> tuple[list, list]:
     return docs, _split_documents(docs)
 
 
-def _assign_deterministic_ids(chunks: list, file_name: str) -> None:
+def _assign_deterministic_ids(chunks: list[Document], file_name: str) -> None:
     """为每个 chunk 生成确定性 UUID（文件名 + 内容哈希）。
 
     PGVector 按 id 做 ``ON CONFLICT DO UPDATE`` upsert，因此同一文件重复入库时

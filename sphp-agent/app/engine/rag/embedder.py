@@ -5,6 +5,7 @@
 """
 
 from langchain_openai import OpenAIEmbeddings
+from pydantic import SecretStr
 
 from app.infrastructure.config.settings import get_settings
 
@@ -36,7 +37,7 @@ def build_embedding() -> OpenAIEmbeddings:
         # 缺失），必须禁用长度检查，让 langchain 直接传原始文本。
         return OpenAIEmbeddings(
             model=settings.dashscope_embedding_model,
-            api_key=settings.dashscope_embedding_api_key,
+            api_key=SecretStr(settings.dashscope_embedding_api_key),
             base_url=settings.dashscope_embedding_base_url,
             check_embedding_ctx_length=False,
         )
@@ -46,7 +47,7 @@ def build_embedding() -> OpenAIEmbeddings:
             raise ValueError("未配置硅基流动 API key，请在 .env 中填入 SILICONFLOW_API_KEY")
         return OpenAIEmbeddings(
             model=settings.siliconflow_embedding_model,
-            api_key=settings.siliconflow_api_key,
+            api_key=SecretStr(settings.siliconflow_api_key),
             base_url=settings.siliconflow_base_url,
         )
 
@@ -55,7 +56,7 @@ def build_embedding() -> OpenAIEmbeddings:
             raise ValueError("未配置智谱 API key，请在 .env 中填入 ZHIPU_API_KEY")
         return OpenAIEmbeddings(
             model=settings.zhipu_embedding_model,
-            api_key=settings.zhipu_api_key,
+            api_key=SecretStr(settings.zhipu_api_key),
             base_url=settings.zhipu_base_url,
         )
 
@@ -64,7 +65,7 @@ def build_embedding() -> OpenAIEmbeddings:
             raise ValueError("未配置 Embedding API key，请在 .env 中填入 EMBEDDING_API_KEY")
         return OpenAIEmbeddings(
             model=settings.embedding_model or "text-embedding-3-small",
-            api_key=settings.embedding_api_key,
+            api_key=SecretStr(settings.embedding_api_key),
             base_url=settings.embedding_base_url,
         )
 
