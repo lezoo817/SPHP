@@ -43,6 +43,14 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 
+import static com.sphp.patient.common.constant.ConsultationConstant.*;
+import static com.sphp.patient.common.enums.ConsultationMessageSenderTypeEnum.PATIENT;
+import static com.sphp.patient.common.enums.ConsultationPrescriptionStatusEnum.APPROVED;
+import static com.sphp.patient.common.enums.ConsultationStatusEnum.*;
+import static com.sphp.patient.common.enums.RegisteringAppointmentStatusEnum.PAID;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
+import static java.util.Arrays.stream;
+
 /**
  * C端问诊与处方查询服务实现。
  */
@@ -50,9 +58,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ConsultationServiceImpl implements ConsultationService {
 
+    // 数据访问接口
     private final ConsultationDataMapper consultationDataMapper;
+    // 消息数据访问接口
     private final ConsultationMessageMapper consultationMessageMapper;
+    // JSON 序列化工具
     private final ObjectMapper objectMapper;
+    // 事件发布接口
     private final ApplicationEventPublisher eventPublisher;
 
     /**
@@ -75,13 +87,15 @@ public class ConsultationServiceImpl implements ConsultationService {
         if (!patientId.equals(appointment.patientId())) {
             throw forbidden("无权使用该挂号订单创建预问诊");
         }
-        if (!RegisteringAppointmentStatusEnum.PAID.name().equals(appointment.status())) {
+        if (!PAID.name().equals(appointment.status())) {
             throw statusConflict("挂号订单未支付或当前状态不允许创建预问诊");
         }
 
         OffsetDateTime now = OffsetDateTime.now();
         ConsultationRecord existing = consultationDataMapper.selectConsultationByAppointmentForUpdate(appointment.id());
+        // 创建或更新问诊记录。
         boolean submit = Boolean.TRUE.equals(request.getSubmit());
+        // 使用 JSONB 存储附件信息，避免 JSON 字符串长度超出数据库字段限制。
         String attachmentsJson = serializeAttachments(request);
         if (existing == null) {
             ConsultationRecord record = buildConsultationRecord(request, appointment, attachmentsJson, now, submit);
@@ -89,25 +103,27 @@ public class ConsultationServiceImpl implements ConsultationService {
             if (consultationDataMapper.insertConsultationRecord(record) != 1) {
                 throw systemError("预问诊保存失败");
             }
-            return buildPreConsultationSaveResult(record);
+            return buildPreConsultationSaveResult(record);// 返回保存结果
         }
-        if (!ConsultationStatusEnum.DRAFT.name().equals(existing.getStatus())) {
+        // 若还是草稿状态，则不允许提交。
+        if (!DRAFT.name().equals(existing.getStatus())) {
             throw statusConflict("当前问诊状态不允许保存或提交预问诊");
         }
 
-        existing.setStatus(submit ? ConsultationStatusEnum.PENDING.name() : ConsultationStatusEnum.DRAFT.name());
-        existing.setChiefComplaint(request.getChiefComplaint());
-        existing.setHistoryOfPresentIllness(request.getHistoryOfPresentIllness());
-        existing.setAttachmentsJson(attachmentsJson);
+        existing.setStatus(submit ? PENDING.name() : DRAFT.name()); // 更新问诊状态
+        existing.setChiefComplaint(request.getChiefComplaint()); // 更新主诉
+        existing.setHistoryOfPresentIllness(request.getHistoryOfPresentIllness()); // 更新现病史
+        existing.setAttachmentsJson(attachmentsJson);// 更新附件
         existing.setUpdatedAt(now);
+        // 更新提交时间
         if (submit) {
             existing.setPreConsultationSubmittedAt(now);
         }
         // 使用 DRAFT 状态条件更新，防止医生接诊后的状态被旧草稿请求回写。
-        if (consultationDataMapper.updateConsultationDraft(existing, ConsultationStatusEnum.DRAFT.name()) != 1) {
+        if (consultationDataMapper.updateConsultationDraft(existing, DRAFT.name()) != 1) {
             throw statusConflict("当前问诊状态已变化，请刷新后重试");
         }
-        return buildPreConsultationSaveResult(existing);
+        return buildPreConsultationSaveResult(existing); // 返回保存结果
     }
 
     /**
@@ -122,12 +138,14 @@ public class ConsultationServiceImpl implements ConsultationService {
      */
     @Override
     public ConsultationPageVO listConsultations(Long patientId, String status, Integer pageNo, Integer pageSize) {
+        // 先检查可访问的就诊人
         Long targetPatientId = resolveAccessiblePatient(CUserContext.getRequired().userId(), patientId);
+        // 检查问诊状态
         validateConsultationStatus(status);
-        int resolvedPageNo = pageNo == null ? ConsultationConstant.DEFAULT_PAGE_NO : pageNo;
-        int resolvedPageSize = pageSize == null ? ConsultationConstant.DEFAULT_PAGE_SIZE : pageSize;
-        if (resolvedPageSize > ConsultationConstant.MAX_PAGE_SIZE) {
-            throw parameterOutOfRange("pageSize 不能超过" + ConsultationConstant.MAX_PAGE_SIZE);
+        int resolvedPageNo = pageNo == null ? DEFAULT_PAGE_NO : pageNo;
+        int resolvedPageSize = pageSize == null ? DEFAULT_PAGE_SIZE : pageSize;
+        if (resolvedPageSize > MAX_PAGE_SIZE) {
+            throw parameterOutOfRange("pageSize 不能超过" + MAX_PAGE_SIZE);
         }
         long offset = (long) (resolvedPageNo - 1) * resolvedPageSize;
         // 列表始终使用已通过归属校验的患者 ID，避免查询其他账号的问诊记录。
@@ -161,16 +179,18 @@ public class ConsultationServiceImpl implements ConsultationService {
         resolveAccessiblePatient(CUserContext.getRequired().userId(), record.patientId());
         List<ConsultationDetailVO.Message> messages = consultationDataMapper.selectConsultationMessages(consultationId)
                 .stream()
-                .map(this::toConsultationMessage)
+                .map(this::toConsultationMessage) // 转换为详情消息
                 .toList();
         return ConsultationDetailVO.builder()
                 .id(record.id())
                 .status(record.status())
+                // 医生详情
                 .doctor(ConsultationDetailVO.Doctor.builder()
                         .id(record.doctorId())
                         .name(record.doctorName())
                         .title(record.doctorTitle())
                         .build())
+                // 预问诊详情
                 .preConsultation(ConsultationDetailVO.PreConsultation.builder()
                         .chiefComplaint(record.chiefComplaint())
                         .historyOfPresentIllness(record.historyOfPresentIllness())
@@ -178,7 +198,9 @@ public class ConsultationServiceImpl implements ConsultationService {
                         .savedAt(record.savedAt())
                         .submittedAt(record.submittedAt())
                         .build())
+                // 问诊详情
                 .messages(messages)
+                // 处方详情
                 .prescriptionIds(consultationDataMapper.selectConsultationApprovedPrescriptionIds(consultationId))
                 .build();
     }
@@ -201,15 +223,18 @@ public class ConsultationServiceImpl implements ConsultationService {
         if (consultation == null) {
             throw notFound("问诊记录不存在");
         }
+        // 检查问诊状态
         resolveAccessiblePatient(userId, consultation.patientId());
-        if (!ConsultationStatusEnum.IN_PROGRESS.name().equals(consultation.status())) {
+        //若状态不是进行中，则不能发送问诊消息
+        if (!IN_PROGRESS.name().equals(consultation.status())) {
             throw messageStatusConflict(consultation.status());
         }
 
         OffsetDateTime now = OffsetDateTime.now();
+        // 创建问诊消息
         ConsultationMessage message = new ConsultationMessage();
         message.setConsultationId(consultationId);
-        message.setSenderType(ConsultationMessageSenderTypeEnum.PATIENT.name());
+        message.setSenderType(PATIENT.name());
         message.setContent(request.getContent());
         message.setCreatedAt(now);
         if (consultationMessageMapper.insert(message) != 1) {
@@ -238,17 +263,17 @@ public class ConsultationServiceImpl implements ConsultationService {
      */
     public ConsultationPrescriptionPageVO listPrescriptions(Long patientId, Integer pageNo, Integer pageSize) {
         Long targetPatientId = resolveAccessiblePatient(CUserContext.getRequired().userId(), patientId);
-        int resolvedPageNo = pageNo == null ? ConsultationConstant.DEFAULT_PAGE_NO : pageNo;
-        int resolvedPageSize = pageSize == null ? ConsultationConstant.DEFAULT_PAGE_SIZE : pageSize;
-        if (resolvedPageSize > ConsultationConstant.MAX_PAGE_SIZE) {
-            throw parameterOutOfRange("pageSize 不能超过" + ConsultationConstant.MAX_PAGE_SIZE);
+        int resolvedPageNo = pageNo == null ? DEFAULT_PAGE_NO : pageNo;
+        int resolvedPageSize = pageSize == null ? DEFAULT_PAGE_SIZE : pageSize;
+        if (resolvedPageSize > MAX_PAGE_SIZE) {
+            throw parameterOutOfRange("pageSize 不能超过" + MAX_PAGE_SIZE);
         }
         long offset = (long) (resolvedPageNo - 1) * resolvedPageSize;
         // Mapper 固定过滤 APPROVED，草稿和审核中的处方不会进入患者接口。
         List<ConsultationPrescriptionPageVO.Item> records = consultationDataMapper
-                .selectApprovedPrescriptionList(targetPatientId, resolvedPageSize, offset)
+                .selectApprovedPrescriptionList(targetPatientId, resolvedPageSize, offset) // 查询列表
                 .stream()
-                .map(this::toPrescriptionListItem)
+                .map(this::toPrescriptionListItem) // 转换为列表项
                 .toList();
         return ConsultationPrescriptionPageVO.builder()
                 .pageNo(resolvedPageNo)
@@ -273,7 +298,7 @@ public class ConsultationServiceImpl implements ConsultationService {
         }
         // 先按处方资源反查患者，避免仅凭处方 ID 读取其他账号信息。
         resolveAccessiblePatient(CUserContext.getRequired().userId(), resource.patientId());
-        if (!ConsultationPrescriptionStatusEnum.APPROVED.name().equals(resource.status())) {
+        if (!APPROVED.name().equals(resource.status())) {
             // 未批准处方对患者端不可见，统一作为不存在处理，避免泄漏审核状态。
             throw notFound("处方不存在");
         }
@@ -281,6 +306,7 @@ public class ConsultationServiceImpl implements ConsultationService {
         if (detail == null) {
             throw notFound("处方不存在");
         }
+        // 药品明细
         List<ConsultationPrescriptionDetailVO.Item> items = consultationDataMapper
                 .selectConsultationPrescriptionItems(prescriptionId)
                 .stream()
@@ -288,8 +314,9 @@ public class ConsultationServiceImpl implements ConsultationService {
                 .toList();
         return ConsultationPrescriptionDetailVO.builder()
                 .id(detail.id())
-                .status(ConsultationPrescriptionStatusEnum.APPROVED.name())
+                .status(APPROVED.name())
                 .doctorName(detail.doctorName())
+                // 医生信息
                 .doctor(ConsultationPrescriptionDetailVO.Doctor.builder()
                         .id(detail.doctorId())
                         .name(detail.doctorName())
@@ -330,8 +357,8 @@ public class ConsultationServiceImpl implements ConsultationService {
         if (status == null || status.isBlank()) {
             return;
         }
-        boolean allowed = java.util.Arrays.stream(ConsultationStatusEnum.values())
-                .anyMatch(item -> item.name().equals(status));
+        boolean allowed = stream(ConsultationStatusEnum.values())
+                .anyMatch(item -> item.name().equals(status)); // 允许的问诊状态
         if (!allowed) {
             throw parameterOutOfRange("问诊状态不在允许范围内");
         }
@@ -379,7 +406,7 @@ public class ConsultationServiceImpl implements ConsultationService {
                 .id(record.id())
                 .consultationId(record.consultationId())
                 .doctorName(record.doctorName())
-                .status(ConsultationPrescriptionStatusEnum.APPROVED.name())
+                .status(APPROVED.name()) // 已批准
                 .issuedAt(record.issuedAt())
                 .build();
     }
@@ -409,8 +436,8 @@ public class ConsultationServiceImpl implements ConsultationService {
      * @return HTTP 409 业务异常
      */
     private CAuthException messageStatusConflict(String status) {
-        if (ConsultationStatusEnum.PENDING.name().equals(status)) {
-            return new CAuthException(ErrorCodeEnum.ILLEGAL_INPUT_CONTENT, HttpStatus.CONFLICT,
+        if (PENDING.name().equals(status)) {
+            return new CAuthException(ILLEGAL_INPUT_CONTENT, HttpStatus.CONFLICT,
                     "医生尚未开始问诊，暂不能发送消息");
         }
         return statusConflict("当前问诊状态不允许发送消息");
@@ -452,10 +479,10 @@ public class ConsultationServiceImpl implements ConsultationService {
         record.setAppointmentId(appointment.id());
         record.setDoctorId(appointment.doctorId());
         record.setPatientId(appointment.patientId());
-        record.setStatus(submit ? ConsultationStatusEnum.PENDING.name() : ConsultationStatusEnum.DRAFT.name());
-        record.setChiefComplaint(request.getChiefComplaint());
-        record.setHistoryOfPresentIllness(request.getHistoryOfPresentIllness());
-        record.setAttachmentsJson(attachmentsJson);
+        record.setStatus(submit ? PENDING.name() : DRAFT.name());
+        record.setChiefComplaint(request.getChiefComplaint()); // 主诉
+        record.setHistoryOfPresentIllness(request.getHistoryOfPresentIllness()); // 现病史补充
+        record.setAttachmentsJson(attachmentsJson); // 附件
         record.setCreatedAt(now);
         record.setUpdatedAt(now);
         record.setPreConsultationSubmittedAt(submit ? now : null);
@@ -499,7 +526,7 @@ public class ConsultationServiceImpl implements ConsultationService {
      * @return HTTP 404 业务异常
      */
     private CAuthException notFound(String message) {
-        return new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
+        return new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
     }
 
     /**
@@ -509,7 +536,7 @@ public class ConsultationServiceImpl implements ConsultationService {
      * @return HTTP 403 业务异常
      */
     private CAuthException forbidden(String message) {
-        return new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, message);
+        return new CAuthException(UNAUTHORIZED, HttpStatus.FORBIDDEN, message);
     }
 
     /**
@@ -519,7 +546,7 @@ public class ConsultationServiceImpl implements ConsultationService {
      * @return HTTP 409 业务异常
      */
     private CAuthException statusConflict(String message) {
-        return new CAuthException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, message);
+        return new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, message);
     }
 
     /**
@@ -529,7 +556,7 @@ public class ConsultationServiceImpl implements ConsultationService {
      * @return HTTP 400 业务异常
      */
     private CAuthException parameterOutOfRange(String message) {
-        return new CAuthException(ErrorCodeEnum.PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST, message);
+        return new CAuthException(PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST, message);
     }
 
     /**
@@ -539,6 +566,6 @@ public class ConsultationServiceImpl implements ConsultationService {
      * @return HTTP 500 业务异常
      */
     private CAuthException systemError(String message) {
-        return new CAuthException(ErrorCodeEnum.SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, message);
+        return new CAuthException(SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, message);
     }
 }
