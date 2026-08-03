@@ -14,6 +14,7 @@ import { matchesDrugOrderTab } from './pharmacy';
 import { hasSearchKeyword, resolveInitialDepartment } from './home-search';
 import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
 import { resolveMinePatientId } from '../models/mine-patient';
+import { isSessionTokenExpired, type SessionState } from '../models/session';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -107,5 +108,18 @@ describe('我的页面就诊人选择规则', () => {
 
   it('家属失效后回退本人', () => {
     expect(resolveMinePatientId(members, 99)).toBe(1);
+  });
+});
+
+describe('登录会话有效期规则', () => {
+  const session: SessionState = { accessToken: 'access', refreshToken: 'refresh', expiresIn: 60, user: { id: 1, account: 'patient' }, loginAt: '2026-08-03T00:00:00.000Z', accessTokenIssuedAt: '2026-08-03T00:00:00.000Z' };
+
+  it('有效令牌在过期时间前可继续访问', () => {
+    expect(isSessionTokenExpired(session, Date.parse('2026-08-03T00:00:59.000Z'))).toBe(false);
+  });
+
+  it('令牌缺失或超过 expiresIn 后视为失效', () => {
+    expect(isSessionTokenExpired(null)).toBe(true);
+    expect(isSessionTokenExpired(session, Date.parse('2026-08-03T00:01:00.000Z'))).toBe(true);
   });
 });

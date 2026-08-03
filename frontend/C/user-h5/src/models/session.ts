@@ -7,6 +7,7 @@ const REMEMBERED_ACCOUNT_KEY = 'sphp_c_remembered_account';
 export interface SessionState extends TokenPair {
   user: LoginUser;
   loginAt: string;
+  accessTokenIssuedAt?: string;
 }
 
 /** 读取当前浏览器会话，服务端渲染场景返回空值。 */
@@ -24,18 +25,45 @@ export function getSession(): SessionState | null {
 
 /** 保存登录成功后的 Token 对和用户摘要。 */
 export function saveSession(data: LoginData | SessionState): void {
-  window.sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ...data, loginAt: 'loginAt' in data ? data.loginAt : new Date().toISOString() }));
+  const now = new Date().toISOString();
+  window.sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+    ...data,
+    // loginAt 用于业务演示时间，刷新令牌时不能覆盖。
+    loginAt: 'loginAt' in data ? data.loginAt : now,
+    // Access Token 签发时间用于本地判断有效期。
+    accessTokenIssuedAt: 'accessTokenIssuedAt' in data && data.accessTokenIssuedAt ? data.accessTokenIssuedAt : now,
+  }));
 }
 
 /** 使用刷新接口返回的新 Token 对覆盖旧值。 */
 export function replaceTokenPair(tokens: TokenPair): void {
   const current = getSession();
-  if (current) saveSession({ ...current, ...tokens });
+  if (current) saveSession({ ...current, ...tokens, accessTokenIssuedAt: new Date().toISOString() });
 }
 
 /** 清除会话级 Token 和登录用户信息。 */
 export function clearSession(): void {
   if (typeof window !== 'undefined') window.sessionStorage.removeItem(SESSION_KEY);
+}
+
+/**
+ * 判断当前 Access Token 是否已超过本地有效期。
+ * @param session 当前会话数据
+ * @param now 当前时间戳，测试时可传入固定值
+ * @returns Token 缺失、格式异常或过期时返回 true
+ */
+export function isSessionTokenExpired(session: SessionState | null, now = Date.now()): boolean {
+  if (!session?.accessToken || !session.refreshToken || !Number.isFinite(session.expiresIn) || session.expiresIn <= 0) return true;
+  const issuedAt = Date.parse(session.accessTokenIssuedAt || session.loginAt);
+  return !Number.isFinite(issuedAt) || issuedAt + session.expiresIn * 1000 <= now;
+}
+
+/**
+ * 清除已失效会话并跳转登录页，避免重复保留受保护页面历史记录。
+ */
+export function redirectToLogin(): void {
+  clearSession();
+  if (typeof window !== 'undefined' && window.location.pathname !== '/login') window.location.replace('/login');
 }
 
 /** 保存或清除用户主动选择记住的账号文本。 */
