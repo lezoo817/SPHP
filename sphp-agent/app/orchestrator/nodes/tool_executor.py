@@ -39,7 +39,7 @@ async def _call_mcp_func(
     """执行 MCP 工具（M6-C1：优先走 MCP Client，不可用时回退直调）。
 
     仅当 MCP Client 连接层不可用时回退直调封装函数；工具执行失败（Server 侧
-    异常）以普通异常上抛，由 _execute_mcp 捕获为 TOOL_FAILED，不触发回退，
+    异常）以普通异常上抛，由 execute_mcp_tool 捕获为 TOOL_FAILED，不触发回退，
     避免同一工具被执行两次。
     """
     try:
@@ -81,7 +81,7 @@ async def tool_executor(state: AgentState) -> dict[str, Any]:
         if ToolRegistry.is_local(tool_name):
             tasks.append(_execute_local(tool_name, arguments, state))
         else:
-            tasks.append(_execute_mcp(tool_name, arguments, state))
+            tasks.append(execute_mcp_tool(tool_name, arguments, state))
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -170,7 +170,7 @@ def _classify_tool_result(result: dict[str, Any]) -> tuple[bool, dict[str, Any] 
     return False, None
 
 
-async def _execute_mcp(
+async def execute_mcp_tool(
     tool_name: str,
     arguments: dict[str, Any],
     state: AgentState,
@@ -180,6 +180,10 @@ async def _execute_mcp(
     idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     """执行 MCP 工具（M6-C1：经 MCP Client tools/call，回退直调）。
+
+    **编排层公共入口**（P3-4）：tool_executor 图内调用，且供接入层
+    ``chat_confirm``（L2 人工确认执行）跨模块复用——L2 执行是独立 HTTP
+    请求，不进 graph 状态，直接调用本函数执行对应工具并写审计回执。
 
     工具名 -> 封装函数的映射见 dispatcher._MCP_TOOL_FUNCS。
     执行异常统一捕获为 TOOL_FAILED，不影响其余并发工具。

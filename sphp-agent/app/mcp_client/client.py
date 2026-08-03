@@ -12,7 +12,7 @@ MCP ``tools/call`` 协议消息，Server 侧 ``on_call_tool`` 处理器分发到
     - MCPClientError：Client 不可用（SDK 缺失 / 内存流或会话建立失败），
       调用方据此回退直调封装函数
     - 工具执行失败（Server 侧异常 -> JSON-RPC error / is_error=True）以普通异常
-      向上抛，由 tool_executor._execute_mcp 捕获，不触发回退（避免同工具执行两次）
+      向上抛，由 tool_executor.execute_mcp_tool 捕获，不触发回退（避免同工具执行两次）
 
 线程安全：连接为进程内单例，首次 call_tool 时惰性建立，lifespan 关闭时
 close_mcp_client() 释放。

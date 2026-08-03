@@ -24,7 +24,7 @@ from app.infrastructure.cache.redis_client import (
 )
 from app.orchestrator.graphs.main_graph import build_main_graph
 from app.orchestrator.nodes.reply import MEDICAL_DISCLAIMER
-from app.orchestrator.nodes.tool_executor import _execute_mcp
+from app.orchestrator.nodes.tool_executor import execute_mcp_tool
 from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -619,7 +619,7 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     # Java 侧按 X-Idempotency-Key 去重，防止"已提交但响应超时 -> 重试 ->
     # 重复执行业务"（挂号锁定/购药下单等写操作）。
     idempotency_key = record.get("idempotency_key")
-    # _execute_mcp 只消费 user_id/scope/session_id，无需完整 AgentState，
+    # execute_mcp_tool 只消费 user_id/scope/session_id，无需完整 AgentState，
     # cast 表明这是按需构造的部分状态
     state = cast(
         AgentState,
@@ -631,7 +631,7 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     )
     # P2 审计溯源：人工点击确认触发的 L2 工具执行，审计标记
     # confirm_method=click / trigger=manual，区别于 Agent 自主调用
-    result = await _execute_mcp(
+    result = await execute_mcp_tool(
         tool_name,
         arguments,
         state,
