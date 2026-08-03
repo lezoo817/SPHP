@@ -24,6 +24,9 @@ export default defineConfig({
     { path: '/mine/family-members', component: 'mine/family-members' },
     { path: '/mine/health-record', component: 'mine/health-record' },
     { path: '/agent', component: 'agent/index' },
+    { path: '/mine/medication-plans', component: 'mine/medication-plans' },
+    { path: '/mine/follow-ups', component: 'mine/follow-ups' },
+    { path: '/mine/notifications', component: 'mine/notifications' },
   ],
   npmClient: 'pnpm',
   // 多个异步页面共用压缩帮助函数时隔离 IIFE，避免生产构建产物命名冲突。

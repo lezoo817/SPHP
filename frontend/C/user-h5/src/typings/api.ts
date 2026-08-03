@@ -154,3 +154,19 @@ export interface PrescriptionDetail extends Prescription { doctor: { id: number;
 /** 药房处方库存。 */ export interface PharmacyInventory { pharmacyId:number; name:string; isDefault:boolean; items:{drugId:number;availableCount:number;unitPriceCent:number}[]; }
 /** 购药订单列表项。 */ export interface DrugOrder { id:number; orderName:string; pharmacyName:string; status:string; logisticsStatus?:string; latestLogisticsNode?:string; amountCent:number; expireAt?:string; }
 /** 购药订单详情。 */ export interface DrugOrderDetail extends DrugOrder { pharmacy:{id:number;name:string}; delivery?:{address:string;logisticsStatus:string;traces:{node:string;occurredAt:string}[]}; payment?:{id:number;status:string}; items:{drugId:number;drugName:string;quantity:number;unitPriceCent:number}[]; }
+/** 用药计划当前状态。 */
+export type MedicationPlanStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+/** 用药计划允许的状态变更动作。 */
+export type MedicationPlanAction = 'PAUSE' | 'RESUME' | 'COMPLETE';
+/** 当前就诊人的用药计划。 */
+export interface MedicationPlan { id: number; drugName: string; dosage: string; frequency: string; nextReminderAt?: string; status: MedicationPlanStatus; }
+/** 随访计划当前状态。 */
+export type FollowUpStatus = 'PENDING_CONFIRM' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
+/** 当前就诊人的随访计划。 */
+export interface FollowUpPlan { id: number; type: string; dueAt?: string; content: string; status: FollowUpStatus; remindAt?: string; }
+/** 站内通知类型。 */
+export type NotificationType = 'APPOINTMENT' | 'DRUG_ORDER' | 'MEDICATION_REMINDER' | 'FOLLOW_UP_REMINDER' | 'SYSTEM';
+/** 站内通知列表项。 */
+export interface NotificationItem { id: number; type: NotificationType; patientId?: number; patientName?: string; title: string; content: string; read: boolean; createdAt: string; }
+/** 标记站内通知已读后的结果。 */
+export interface NotificationReadResult { id: number; read: true; readAt?: string; }
