@@ -101,3 +101,15 @@ async function refreshSession(refreshToken: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * 同步刷新当前登录会话的 Access Token（供 Agent 流式请求复用）。
+ *
+ * Agent 直连 Python 服务，不经过 request 统一封装，因此需要在发起流式请求前
+ * 独立完成一次刷新判断。成功返回 true，会话不可用时返回 false。
+ * @param refreshToken 当前刷新令牌
+ * @returns 刷新成功且仍处于登录态时返回 true
+ */
+export async function refreshSessionSync(refreshToken: string): Promise<boolean> {
+  return refreshSession(refreshToken);
+}
