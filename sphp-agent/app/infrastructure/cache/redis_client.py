@@ -5,6 +5,7 @@
 
 import json
 import logging
+import re
 import uuid
 from functools import lru_cache
 
@@ -144,13 +145,36 @@ async def get_and_delete_confirm_token_by_token(
 
     client = get_redis()
     # Lua 脚本只用 ARGV（session/token/user_id 均为参数），numkeys=0
-    result = await client.eval(lua_script, 0, session_id, token_id, expected_user_id)
+    # session_id 先做 glob 转义：防止前端注入 glob 元字符越权 SCAN 其他会话
+    result = await client.eval(lua_script, 0, _escape_glob(session_id), token_id, expected_user_id)
     if result is None:
         return None
     return json.loads(result)
 
 
 # ---- 已确认操作回执（M5-T4 / T-M3-L1）----
+
+# Redis SCAN MATCH / KEYS 的 glob 元字符（转义符为反斜杠，与 Lua 模式的 % 不同）
+_GLOB_META = re.compile(r"([*?\[\]\\])")
+
+
+def _escape_glob(text: str) -> str:
+    """转义 Redis glob 元字符，防止 session_id 注入 SCAN 匹配（安全修复）。
+
+    Redis 的 ``SCAN MATCH`` / ``KEYS`` 使用 glob 语义，元字符为 ``*`` ``?``
+    ``[]``，转义符为反斜杠 ``\\``（注意不是 Lua 模式的 ``%``）。session_id
+    直接来自前端不可信，若不转义，传入 ``*`` 即可匹配并读取+删除全部会话的
+    确认回执（内容含工具名与操作业务数据，属患者相关数据）。合法 session_id
+    中的 ``-``/``_``/``.`` 非 glob 元字符，不会被转义，不影响正常匹配。
+
+    Args:
+        text: 原始 session_id（或任意拼接进 glob pattern 的用户输入）。
+
+    Returns:
+        str: 转义后的字符串，可安全拼入 ``SCAN MATCH`` 的 pattern。
+    """
+    return _GLOB_META.sub(r"\\\1", text)
+
 
 CONFIRM_DONE_PREFIX = "confirm_done"
 
@@ -225,7 +249,8 @@ async def get_and_delete_confirm_done(session_id: str) -> list[dict]:
     """
 
     client = get_redis()
-    result = await client.eval(lua_script, 0, session_id)
+    # session_id 先做 glob 转义：防止注入 '*' 等元字符匹配并删除全部会话回执
+    result = await client.eval(lua_script, 0, _escape_glob(session_id))
     if result is None:
         return []
     return [json.loads(v) for v in result]
