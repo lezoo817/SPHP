@@ -38,8 +38,9 @@ _CATEGORIES = {"patient_edu", "clinical_ref"}
 def _require_auth(request: Request, *, admin_only: bool = False) -> JSONResponse | None:
     """校验登录；admin_only=True 时额外校验 B 端 ADMIN 角色（M5-T3）。
 
-    debug 模式跳过鉴权便于本地测试；生产模式要求 user_id 非空，
-    入库（admin_only）还需 request.state.roles 含 "ADMIN"。
+    debug 模式仅跳过登录校验（user_id）便于本地测试检索；写操作
+    （admin_only=True）仍校验 ADMIN 角色，防止未授权投毒 RAG（NP-2）。
+    生产模式要求 user_id 非空，入库还需 request.state.roles 含 "ADMIN"。
 
     Args:
         request: FastAPI 请求，roles 由 JWT 中间件从 B 端 token/parse 注入。
@@ -49,10 +50,11 @@ def _require_auth(request: Request, *, admin_only: bool = False) -> JSONResponse
         JSONResponse | None: 鉴权失败返回统一信封错误响应；通过返回 None。
     """
     settings = get_settings()
-    if settings.debug:
-        return None
-    if getattr(request.state, "user_id", None) is None:
-        return _error(request, 401, "AUTH_INVALID", "未授权：请先登录")
+    # debug 模式仅跳过登录校验（user_id）便于本地测试检索；
+    # 写操作（admin_only）仍校验 ADMIN 角色，防止未授权投毒 RAG（NP-2）
+    if not settings.debug:
+        if getattr(request.state, "user_id", None) is None:
+            return _error(request, 401, "AUTH_INVALID", "未授权：请先登录")
     if admin_only:
         roles = getattr(request.state, "roles", []) or []
         if "ADMIN" not in roles:

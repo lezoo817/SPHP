@@ -7,10 +7,14 @@
 因此使用绝对路径：sphp-agent/.env，保证任意工作目录下都能读取。
 """
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 # sphp-agent/.env（本文件位于 app/infrastructure/config/，向上 4 级）
 _ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
@@ -119,6 +123,23 @@ class Settings(BaseSettings):
         if provider not in configs:
             raise ValueError(f"未知的 LLM 供应商: {provider}")
         return configs[provider]
+
+    @model_validator(mode="after")
+    def _enforce_safe_config(self) -> "Settings":
+        """安全（P1-10）：DEBUG 与 ALLOW_ANONYMOUS 不可同时开启。
+
+        双开会让服务完全无鉴权（DEBUG 跳过 knowledge 写鉴权 + 匿名放行全部
+        端点），生产环境误配即裸奔。检测到双开时强制关闭匿名（降级），
+        并记录 ERROR 警示；开发环境需匿名时请保持 DEBUG=False。
+        """
+        if self.debug and self.allow_anonymous:
+            logger.error(
+                "安全配置冲突：DEBUG=True 与 ALLOW_ANONYMOUS=true 同时开启"
+                "（将跳过全部鉴权），已强制 ALLOW_ANONYMOUS=false 降级。"
+                "生产环境必须 DEBUG=False / ALLOW_ANONYMOUS=false。"
+            )
+            self.allow_anonymous = False
+        return self
 
 
 @lru_cache
