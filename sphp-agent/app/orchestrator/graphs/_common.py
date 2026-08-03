@@ -49,7 +49,7 @@ def route_continue(state: AgentState) -> str:
     return "end"
 
 
-def _bind_tool_caller(allowed_tools: list[str] | None):
+def _bind_tool_caller(allowed_tools: list[str] | None) -> Any:
     """构造绑定工具白名单的 tool_caller 节点函数（闭包，兼容 LangGraph 传参）。
 
     Args:

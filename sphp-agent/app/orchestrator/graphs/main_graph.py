@@ -5,6 +5,8 @@ LangGraph StateGraph 串联标准节点：auth -> intent -> [业务子图 | qa |
 qa 路由到 rag_node 检索回答，chitchat 路由到 chitchat_node（不检索）。
 """
 
+from typing import Any
+
 from langgraph.graph import END, StateGraph
 
 from app.orchestrator.checkpointer import build_checkpointer
@@ -26,7 +28,7 @@ def route_by_intent(state: AgentState) -> str:
     业务意图路由到对应工具子图，qa 路由到 rag_node（知识检索），
     chitchat 路由到 chitchat_node（不检索，仅日常回复）。
     """
-    intent = state.get("intent", "qa")
+    intent = state.get("intent") or "qa"
     routing = {
         "triage": "triage_graph",
         "registration": "registration_graph",
@@ -38,7 +40,7 @@ def route_by_intent(state: AgentState) -> str:
     return routing.get(intent, "qa_node")
 
 
-def build_main_graph():
+def build_main_graph() -> Any:
     """构造主图。"""
     builder = StateGraph(AgentState)
 

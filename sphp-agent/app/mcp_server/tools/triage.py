@@ -5,6 +5,7 @@ MCP 工具：create_triage_assessment
 """
 
 import logging
+from typing import Any
 
 from app.infrastructure.java_client import call_java_api
 
@@ -18,7 +19,7 @@ async def create_triage_assessment(
     temperature: float | None = None,
     medical_history: str | None = None,
     user_id: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """提交症状进行导诊评估，返回紧急程度与推荐科室（系分 §5.3）。
 
     Args:

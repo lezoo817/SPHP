@@ -4,6 +4,8 @@
 保留最近 N 轮对话（一轮 = 用户消息 + AI 回复）。
 """
 
+from typing import Any
+
 
 def _is_system(msg: object) -> bool:
     """判断是否为系统消息（兼容 dict 与 BaseMessage 两种格式）。"""
@@ -14,7 +16,7 @@ def _is_system(msg: object) -> bool:
     return isinstance(msg, SystemMessage)
 
 
-def truncate_messages(messages: list, max_turns: int = 10) -> list:
+def truncate_messages(messages: list[Any], max_turns: int = 10) -> list[Any]:
     """保留最近 N 轮对话。
 
     Args:

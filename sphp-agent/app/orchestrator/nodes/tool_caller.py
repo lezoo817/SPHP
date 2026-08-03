@@ -42,7 +42,7 @@ TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的工具调用助手。
    让用户最终确认，你只需调用工具即可"""
 
 
-def _build_tools_prompt(tools: list[dict]) -> str:
+def _build_tools_prompt(tools: list[dict[str, Any]]) -> str:
     """将工具 Schema 列表格式化为 prompt 描述。"""
     lines = []
     for tool in tools:
@@ -69,9 +69,15 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     非 None 时只绑定白名单内的 L1/L2 工具，让导诊/挂号/问诊/购药各子图
     只暴露本场景工具，减少 LLM 误选其他业务创建型操作。
 
+    ⚠️ 白名单仅约束 C 端：四个业务子图的白名单（如 ``TRIAGE_TOOLS``）是 C 端
+    患者场景专属，不含任何 B 端工具名。若对 B 端 scope 也按白名单过滤，B 端
+    医生流程的全部工具会被滤空（``tool_calls=[]``，LLM 无工具可调）。因此
+    B 端保持全量绑定当前 scope 的 L1/L2 工具（M5 验收"B 端 4 场景跑通"依赖此）。
+
     Args:
         state: 当前图状态，包含 scope / messages 字段。
         allowed_tools: 子图工具白名单（工具名列表）；None 表示不限（默认全量）。
+            仅 C 端生效，B 端忽略该参数。
 
     Returns:
         dict: 部分状态更新，包含 tool_calls（LLM 选择的 L1/L2 工具列表，
@@ -89,8 +95,11 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
 
     # 取 L1+L2 工具（L3/L4 不注册；L2 由 safety_check 拦截生成确认），转 OpenAI schema
     subgraph_tools = ToolRegistry.get_tools_by_scope(tool_scope)
-    if allowed_tools is not None:
-        allowed_set = set(allowed_tools)
+    # 白名单仅约束 C 端：业务子图白名单是 C 端场景专属，B 端忽略白名单，
+    # 否则 B 端工具（query_patient_history 等 8 个）会被全部滤空不可达
+    effective_allowed = allowed_tools if tool_scope == ToolScope.C_END else None
+    if effective_allowed is not None:
+        allowed_set = set(effective_allowed)
         subgraph_tools = [t for t in subgraph_tools if t.name in allowed_set]
     tools = [
         t.to_openai_schema()
@@ -118,7 +127,7 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
 
     try:
         response = await llm_with_tools.ainvoke(messages)
-        tool_calls = _extract_tool_calls(response, tool_scope, allowed_tools)
+        tool_calls = _extract_tool_calls(response, tool_scope, effective_allowed)
         logger.info(
             "工具决策: scope=%s, 选择 %d 个工具: %s",
             scope,
@@ -136,20 +145,21 @@ def _extract_tool_calls(
     response: Any,
     tool_scope: ToolScope,
     allowed_tools: list[str] | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """从 LLM 响应中提取并过滤 tool_calls（只放行 L1/L2）。
 
     Args:
         response: LLM ainvoke 返回值（含 tool_calls 属性）。
         tool_scope: 当前服务端，用于校验工具是否存在。
         allowed_tools: 子图工具白名单；非 None 时只放行白名单内工具。
+            仅 C 端传入（B 端由调用方置 None，白名单不约束 B 端）。
 
     Returns:
         list[dict]: 过滤后的 L1/L2 工具调用列表（L3/L4 拦截）。
     """
     calls = getattr(response, "tool_calls", None) or []
     allowed_set = set(allowed_tools) if allowed_tools is not None else None
-    result: list[dict] = []
+    result: list[dict[str, Any]] = []
     for call in calls:
         # 兼容对象（langchain ToolCall）与 dict 两种格式（不同 LLM 返回不同）
         if isinstance(call, dict):

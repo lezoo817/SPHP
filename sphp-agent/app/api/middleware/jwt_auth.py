@@ -67,8 +67,10 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             request.state.hospital_id = user_info.get("hospitalId")
             return await call_next(request)
 
-        # 携带 token 但校验失败 -> 始终 401（不降级，保持 D1 严格策略）
-        return _unauthorized("Token 无效或已过期")
+        # 携带 token 但校验失败 -> 始终 401（不降级，保持 D1 严格策略）。
+        # AUTH_EXPIRED 需 Java token/parse 返回过期信号才能精确区分，
+        # 当前统一归 AUTH_INVALID（同为 401，前端跳登录页）
+        return _unauthorized(request, "AUTH_INVALID", "Token 无效或已过期")
 
     async def _handle_no_token(
         self, request: Request, call_next: RequestResponseEndpoint, scope: str
@@ -80,7 +82,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         """
         settings = get_settings()
         if not settings.allow_anonymous:
-            return _unauthorized("缺少有效的鉴权 Token")
+            return _unauthorized(request, "AUTH_MISSING", "缺少有效的鉴权 Token")
 
         logger.warning("无 token 请求降级为匿名: path=%s, scope=%s", request.url.path, scope)
         request.state.anonymous = True
@@ -94,11 +96,29 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def _unauthorized(message: str) -> JSONResponse:
-    """返回 401 JSON 响应。"""
+def _unauthorized(request: Request, code: str, message: str) -> JSONResponse:
+    """返回 401 统一信封 JSON 响应（系分 §6.1）。
+
+    错误码对齐系分 §6.1 通用错误码表：AUTH_MISSING（缺少鉴权头）/
+    AUTH_INVALID（token 无效）。信封格式 {code, message, data, traceId}，
+    与成功路径及前端统一 request 封装（按 code / traceId 解析）一致。
+
+    Args:
+        request: FastAPI 请求（从 request.state 取 trace_id 贯通链路）。
+        code: 错误码。
+        message: 用户可读的错误提示。
+
+    Returns:
+        JSONResponse: 401 + 统一信封。
+    """
     return JSONResponse(
         status_code=401,
-        content={"success": False, "error": {"code": "AUTH_FAILED", "message": message}},
+        content={
+            "code": code,
+            "message": message,
+            "data": None,
+            "traceId": getattr(request.state, "trace_id", ""),
+        },
     )
 
 

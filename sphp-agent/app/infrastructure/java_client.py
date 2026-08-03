@@ -7,7 +7,7 @@
 import json
 import logging
 import uuid
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -50,10 +50,10 @@ async def call_java_api(
     *,
     tool_name: str | None = None,
     api_name: str | None = None,
-    path_params: dict | None = None,
-    arguments: dict | None = None,
-    params: dict | None = None,
-    body: dict | None = None,
+    path_params: dict[str, Any] | None = None,
+    arguments: dict[str, Any] | None = None,
+    params: dict[str, Any] | None = None,
+    body: dict[str, Any] | None = None,
     user_id: int | None = None,
     scope: str = "c_end",
 ) -> dict[str, Any]:
@@ -135,7 +135,7 @@ async def call_java_api(
             }
 
         try:
-            return resp.json()
+            return cast(dict[str, Any], resp.json())
         except json.JSONDecodeError:
             logger.error("Java API 响应非 JSON: %s %s", method, path)
             return {

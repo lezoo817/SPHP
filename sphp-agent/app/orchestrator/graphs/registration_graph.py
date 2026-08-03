@@ -4,6 +4,8 @@
 绑定挂号场景工具白名单：科室/医生/号源查询 + 挂号创建/取消/候补 + 支付查询。
 """
 
+from typing import Any
+
 from app.orchestrator.graphs._common import build_tool_subgraph
 
 # 挂号场景工具白名单（系分 §5.2.1 挂号链路）
@@ -19,6 +21,6 @@ REGISTRATION_TOOLS = [
 ]
 
 
-def build_registration_graph():
+def build_registration_graph() -> Any:
     """构造挂号子图（编译后）。"""
     return build_tool_subgraph(tool_names=REGISTRATION_TOOLS)

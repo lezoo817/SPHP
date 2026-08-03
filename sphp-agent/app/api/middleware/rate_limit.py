@@ -41,11 +41,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             allowed = True
 
         if not allowed:
+            # 系分 §6.1 统一信封 + RATE_LIMITED 错误码（429）
             return JSONResponse(
                 status_code=429,
                 content={
-                    "success": False,
-                    "error": {"code": "RATE_LIMITED", "message": "请求频率超过限制，请稍后再试"},
+                    "code": "RATE_LIMITED",
+                    "message": "请求频率超过限制，请稍后再试",
+                    "data": None,
+                    "traceId": getattr(request.state, "trace_id", ""),
                 },
             )
 

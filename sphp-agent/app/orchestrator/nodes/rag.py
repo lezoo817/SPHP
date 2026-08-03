@@ -4,6 +4,7 @@
 """
 
 import logging
+from typing import Any
 
 from app.engine.rag.search import format_context, search_knowledge
 from app.orchestrator.state import AgentState
@@ -12,7 +13,7 @@ from app.orchestrator.utils import get_last_user_content
 logger = logging.getLogger(__name__)
 
 
-async def rag_node(state: AgentState) -> dict:
+async def rag_node(state: AgentState) -> dict[str, Any]:
     """从医疗知识库检索相关内容（系分 §5.7）。
 
     从知识库检索相关文档，写入 ``rag_context`` 供 reply_node 本次注入。

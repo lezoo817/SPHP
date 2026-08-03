@@ -7,10 +7,12 @@ MCP 工具：query_patient_history, query_drug_guide, check_drug_interaction,
 接口路径统一由 java_api_map 契约表解析。
 """
 
+from typing import Any
+
 from app.infrastructure.java_client import call_java_api
 
 
-async def query_patient_history(patient_id: int, user_id: int | None = None) -> dict:
+async def query_patient_history(patient_id: int, user_id: int | None = None) -> dict[str, Any]:
     """聚合查询患者基本信息、过敏史、既往史、就诊记录、历史处方、当前用药。"""
     # 多 API 聚合（各子接口路径由契约表解析）
     base = await call_java_api(
@@ -41,7 +43,7 @@ async def query_patient_history(patient_id: int, user_id: int | None = None) -> 
     }
 
 
-async def query_drug_guide(drug_name: str, user_id: int | None = None) -> dict:
+async def query_drug_guide(drug_name: str, user_id: int | None = None) -> dict[str, Any]:
     """查询药品说明书和用药指南。"""
     params = {"drug_name": drug_name}
     return await call_java_api(tool_name="query_drug_guide", params=params, user_id=user_id)
@@ -49,7 +51,7 @@ async def query_drug_guide(drug_name: str, user_id: int | None = None) -> dict:
 
 async def check_drug_interaction(
     drug_names: list[str], patient_id: int, user_id: int | None = None
-) -> dict:
+) -> dict[str, Any]:
     """聚合返回药品说明书 + 患者当前用药清单。
 
     逐个药品查说明书（Java 接口用单数 drug_name，与 query_drug_guide 一致），
@@ -70,7 +72,7 @@ async def check_drug_interaction(
 
 async def generate_draft_note(
     consultation_id: int, note_content: str, user_id: int | None = None
-) -> dict:
+) -> dict[str, Any]:
     """保存医生病历记录（编排层 LLM 生成草稿文本，工具负责持久化）。"""
     body = {"note_content": note_content}
     return await call_java_api(
@@ -81,7 +83,9 @@ async def generate_draft_note(
     )
 
 
-async def recommend_care(department_id: int | None = None, user_id: int | None = None) -> dict:
+async def recommend_care(
+    department_id: int | None = None, user_id: int | None = None
+) -> dict[str, Any]:
     """聚合返回科室列表、医生列表及排班号源。"""
     params = {}
     if department_id:
@@ -98,7 +102,7 @@ async def recommend_care(department_id: int | None = None, user_id: int | None =
 
 async def check_contraindication(
     drug_name: str, patient_id: int, user_id: int | None = None
-) -> dict:
+) -> dict[str, Any]:
     """聚合返回药品禁忌信息 + 患者过敏史/既往史。"""
     drug_info = await call_java_api(
         api_name="query_drug_guide", params={"drug_name": drug_name}, user_id=user_id
@@ -111,7 +115,9 @@ async def check_contraindication(
     return {"drug_info": drug_info, "patient_info": patient}
 
 
-async def check_allergy_risk(drug_name: str, patient_id: int, user_id: int | None = None) -> dict:
+async def check_allergy_risk(
+    drug_name: str, patient_id: int, user_id: int | None = None
+) -> dict[str, Any]:
     """返回患者过敏史记录。"""
     patient = await call_java_api(
         api_name="query_patient_history:base",
@@ -123,7 +129,7 @@ async def check_allergy_risk(drug_name: str, patient_id: int, user_id: int | Non
 
 async def check_duplicate_medication(
     drug_name: str, patient_id: int, user_id: int | None = None
-) -> dict:
+) -> dict[str, Any]:
     """返回患者当前用药清单。"""
     medications = await call_java_api(
         api_name="query_patient_medications",

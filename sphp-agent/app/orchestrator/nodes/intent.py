@@ -90,7 +90,9 @@ async def intent_node(state: AgentState) -> dict[str, Any]:
 
         # 调用 LLM
         response = await llm.ainvoke(prompt)
-        intent = response.content.strip().lower()
+        # content 可为 str 或多段列表，统一转 str 再清洗
+        raw = response.content
+        intent = raw.strip().lower() if isinstance(raw, str) else str(raw).strip().lower()
 
         # 验证意图标签
         if intent not in INTENT_LABELS:

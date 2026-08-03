@@ -7,10 +7,11 @@ import json
 import logging
 import traceback
 from collections.abc import AsyncIterator
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.api.schemas.chat import ChatRequest, ConfirmRequest, ConfirmResponse
 from app.infrastructure.cache.redis_client import (
@@ -31,7 +32,7 @@ router = APIRouter()
 _main_graph = None
 
 
-def _get_graph():
+def _get_graph() -> Any:
     """懒加载主图（避免启动时 LangGraph 依赖未就绪）。"""
     global _main_graph
     if _main_graph is None:
@@ -50,8 +51,14 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
     # 无 session 时先生成，保证 state / done / card 会话 ID 一致（L2 确认依赖）
     session_id = req.session_id or str(uuid4())
     # M5-T4（T-M3-L1）：读取本会话此前确认成功的操作回执（一次性消费），
-    # 注入对话上下文，使"确认后追问"保持连续
-    confirmed_actions = await get_and_delete_confirm_done(session_id)
+    # 注入对话上下文，使"确认后追问"保持连续。
+    # Redis 故障时优雅降级：回执读取失败返回 []，不影响对话主链路
+    # （与限流 fail-open、L2 转 risk_flags 的降级口径一致）
+    try:
+        confirmed_actions = await get_and_delete_confirm_done(session_id)
+    except Exception:
+        logger.warning("读取 confirm_done 回执失败（Redis 不可用），降级为空列表")
+        confirmed_actions = []
     initial_state = _build_initial_state(req, request, token, session_id, confirmed_actions)
 
     return StreamingResponse(
@@ -66,7 +73,7 @@ def _build_initial_state(
     request: Request,
     token: str | None,
     session_id: str,
-    confirmed_actions: list[dict] | None = None,
+    confirmed_actions: list[dict[str, Any]] | None = None,
 ) -> AgentState:
     """构造初始状态（不依赖外部 mutation）。
 
@@ -83,7 +90,7 @@ def _build_initial_state(
         （user_id / roles / dept_id / doctor_id / hospital_id）在此完整复制进
         AgentState，auth_node 不再重复调 Java。
     """
-    messages: list[dict] = [{"role": "user", "content": req.content}]
+    messages: list[dict[str, Any]] = [{"role": "user", "content": req.content}]
     if confirmed_actions:
         labels = [
             _TOOL_LABELS.get(t.get("tool_name", ""), t.get("tool_name", "操作"))
@@ -254,12 +261,12 @@ async def _sse_generator(
         )
 
 
-def _sse(event: str, payload: dict) -> str:
+def _sse(event: str, payload: dict[str, Any]) -> str:
     """构造一条 SSE 事件。"""
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def _build_observation(result: dict) -> dict:
+def _build_observation(result: dict[str, Any]) -> dict[str, Any]:
     """构建 observation 事件内容（工具执行结果，含失败原因）。"""
     obs = {
         "tool": result.get("tool_name", ""),
@@ -291,7 +298,7 @@ _TOOL_LABELS = {
 }
 
 
-def _build_card(pending: dict) -> dict:
+def _build_card(pending: dict[str, Any]) -> dict[str, Any]:
     """构造 L2 确认卡片（系分 §6.2.2 card 事件）。"""
     tool_name = pending.get("tool_name", "")
     card_type = pending.get("card_type", "confirm_generic")
@@ -320,12 +327,13 @@ def _extract_last_content(output: object) -> str:
         return ""
     last = messages[-1]
     if isinstance(last, dict):
-        return last.get("content", "")
+        # content 可能为 None / 非字符串，统一转 str
+        return str(last.get("content", ""))
     return getattr(last, "content", "")
 
 
 @router.post("/chat/confirm", response_model=ConfirmResponse)
-async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse:
+async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse | JSONResponse:
     """L2 确认回调（系分 §6.2.2）。
 
     前端用户点击确认卡片后回调此端点。
@@ -344,9 +352,7 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
 
     # 校验参数非空
     if not req.confirm_token or not req.session_id:
-        return ConfirmResponse(
-            code="CONFIRM_INVALID", message="令牌格式无效", data=None, traceId=trace_id
-        )
+        return _confirm_error("CONFIRM_INVALID", "令牌格式无效", trace_id)
 
     # 原子消费 confirm_token（一次性 GET+DEL + user_id 校验）
     try:
@@ -358,45 +364,36 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     except Exception:
         # Redis 不可用
         logger.error("confirm_token 消费异常: Redis 不可用")
-        return ConfirmResponse(
-            code="CONFIRM_INVALID",
-            message="操作暂时不可用，请稍后重试",
-            data=None,
-            traceId=trace_id,
-        )
+        return _confirm_error("CONFIRM_INVALID", "操作暂时不可用，请稍后重试", trace_id)
 
     if record is None:
         # token 不存在 / 已消费 / 已过期 / 用户不匹配
-        return ConfirmResponse(
-            code="CONFIRM_EXPIRED",
-            message="操作已超时或无效，请重新发起",
-            data=None,
-            traceId=trace_id,
-        )
+        return _confirm_error("CONFIRM_EXPIRED", "操作已超时或无效，请重新发起", trace_id)
 
     # session 校验（record 里的 session 应与请求一致）
     if record.get("session_id") != req.session_id:
-        return ConfirmResponse(
-            code="SESSION_MISMATCH", message="会话不匹配，请刷新重试", data=None, traceId=trace_id
-        )
+        return _confirm_error("SESSION_MISMATCH", "会话不匹配，请刷新重试", trace_id)
 
     # 执行对应的 L2 工具（匿名请求无 user_id，用 getattr 兜底）
     tool_name = record.get("tool_name", "")
     arguments = record.get("tool_arguments", {})
-    state: AgentState = {
-        "user_id": getattr(request.state, "user_id", None),
-        "scope": getattr(request.state, "scope", "c_end"),
-        "session_id": req.session_id,
-    }
+    # _execute_mcp 只消费 user_id/scope/session_id，无需完整 AgentState，
+    # cast 表明这是按需构造的部分状态
+    state = cast(
+        AgentState,
+        {
+            "user_id": getattr(request.state, "user_id", None),
+            "scope": getattr(request.state, "scope", "c_end"),
+            "session_id": req.session_id,
+        },
+    )
     result = await _execute_mcp(tool_name, arguments, state)
 
     if not result.get("success"):
         error = result.get("error", {})
-        return ConfirmResponse(
-            code="TOOL_FAILED",
-            message=error.get("message", "操作执行失败"),
-            data=None,
-            traceId=trace_id,
+        # TOOL_FAILED 系分 §6.1 错误码表标注为 500
+        return _confirm_error(
+            "TOOL_FAILED", error.get("message", "操作执行失败"), trace_id, status_code=500
         )
 
     # M5-T4（T-M3-L1）：写入确认成功回执，供下一轮对话引用（此操作是独立
@@ -415,6 +412,28 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
             "message": _success_message(tool_name),
         },
         traceId=trace_id,
+    )
+
+
+def _confirm_error(code: str, message: str, trace_id: str, status_code: int = 400) -> JSONResponse:
+    """构造 L2 确认回调错误响应（系分 §6.2.2 错误码表）。
+
+    错误路径返回对应 HTTP 状态码（CONFIRM_*/SESSION_MISMATCH=400，
+    TOOL_FAILED=500）+ 统一信封 {code, message, data, traceId}，
+    与 §6.1 信封契约一致。
+
+    Args:
+        code: 错误码（CONFIRM_INVALID / CONFIRM_EXPIRED / SESSION_MISMATCH / TOOL_FAILED）。
+        message: 用户可读错误提示。
+        trace_id: 链路追踪号。
+        status_code: HTTP 状态码，默认 400；工具执行失败传 500。
+
+    Returns:
+        JSONResponse: 对应状态码 + 统一信封。
+    """
+    return JSONResponse(
+        status_code=status_code,
+        content={"code": code, "message": message, "data": None, "traceId": trace_id},
     )
 
 
