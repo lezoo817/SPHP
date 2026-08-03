@@ -70,8 +70,12 @@ def _build_postgres_saver():
             max_size=20,
             kwargs={"autocommit": True, "row_factory": dict_row, "prepare_threshold": 0},
         )
-        logger.info("Postgres checkpointer 连接池已创建: %s:%s/%s",
-                    settings.pg_host, settings.pg_port, settings.pg_database)
+        logger.info(
+            "Postgres checkpointer 连接池已创建: %s:%s/%s",
+            settings.pg_host,
+            settings.pg_port,
+            settings.pg_database,
+        )
 
     return AsyncPostgresSaver(_pg_pool)
 
