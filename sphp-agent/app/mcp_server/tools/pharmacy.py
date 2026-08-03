@@ -6,12 +6,14 @@ MCP 工具：query_pharmacy_stock, create_drug_order, query_drug_orders,
 接口路径统一由 java_api_map 契约表解析。
 """
 
+from typing import Any
+
 from app.infrastructure.java_client import call_java_api
 
 
 async def query_pharmacy_stock(
     prescription_id: int, patient_id: int | None = None, user_id: int | None = None
-) -> dict:
+) -> dict[str, Any]:
     """查询附近药店库存与价格。"""
     params = {"prescription_id": prescription_id}
     if patient_id:
@@ -25,7 +27,7 @@ async def create_drug_order(
     delivery_address: str,
     patient_id: int | None = None,
     user_id: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """创建购药订单草稿（待付款状态）。"""
     body = {
         "prescription_id": prescription_id,
@@ -42,7 +44,7 @@ async def query_drug_orders(
     status: str | None = None,
     logistics_status: str | None = None,
     user_id: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """查询购药订单列表或详情。"""
     if drug_order_id:
         return await call_java_api(
@@ -58,7 +60,7 @@ async def query_drug_orders(
     return await call_java_api(api_name="query_drug_orders:list", params=params, user_id=user_id)
 
 
-async def cancel_drug_order(drug_order_id: int, user_id: int | None = None) -> dict:
+async def cancel_drug_order(drug_order_id: int, user_id: int | None = None) -> dict[str, Any]:
     """取消未支付购药订单。"""
     return await call_java_api(
         api_name="cancel_drug_order",
@@ -67,7 +69,7 @@ async def cancel_drug_order(drug_order_id: int, user_id: int | None = None) -> d
     )
 
 
-async def confirm_drug_receipt(drug_order_id: int, user_id: int | None = None) -> dict:
+async def confirm_drug_receipt(drug_order_id: int, user_id: int | None = None) -> dict[str, Any]:
     """确认购药收货。"""
     return await call_java_api(
         api_name="confirm_drug_receipt",

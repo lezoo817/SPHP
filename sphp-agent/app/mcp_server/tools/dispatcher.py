@@ -13,17 +13,19 @@
 
 import importlib
 import inspect
-from typing import Any
+from typing import Any, cast
 
 
-async def _wrap(module: Any, func_name: str, arguments: dict, user_id: int | None) -> dict:
+async def _wrap(
+    module: Any, func_name: str, arguments: dict[str, Any], user_id: int | None
+) -> dict[str, Any]:
     """按参数名绑定调用 MCP 工具封装函数（忽略未知参数，注入 user_id）。"""
     func = getattr(module, func_name)
     sig = inspect.signature(func)
     kwargs = {k: v for k, v in arguments.items() if k in sig.parameters}
     if "user_id" in sig.parameters:
         kwargs["user_id"] = user_id
-    return await func(**kwargs)
+    return cast(dict[str, Any], await func(**kwargs))
 
 
 # 工具名 -> 模块 import 路径（对应 mcp_server/tools/*.py）
@@ -93,7 +95,9 @@ def is_registered(tool_name: str) -> bool:
     return tool_name in _MCP_TOOL_FUNCS
 
 
-async def dispatch_tool(tool_name: str, arguments: dict, user_id: int | None = None) -> dict:
+async def dispatch_tool(
+    tool_name: str, arguments: dict[str, Any], user_id: int | None = None
+) -> dict[str, Any]:
     """直调 MCP 工具封装函数（返回封装函数的结果 dict）。
 
     Args:
