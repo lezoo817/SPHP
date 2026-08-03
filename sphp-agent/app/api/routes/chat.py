@@ -581,7 +581,11 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
             "session_id": req.session_id,
         },
     )
-    result = await _execute_mcp(tool_name, arguments, state)
+    # P2 审计溯源：人工点击确认触发的 L2 工具执行，审计标记
+    # confirm_method=click / trigger=manual，区别于 Agent 自主调用
+    result = await _execute_mcp(
+        tool_name, arguments, state, confirm_method="click", trigger="manual"
+    )
 
     if not result.get("success"):
         error = result.get("error", {})

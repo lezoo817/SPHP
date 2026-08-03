@@ -167,19 +167,39 @@ def _classify_tool_result(result: dict[str, Any]) -> tuple[bool, dict[str, Any] 
 
 
 async def _execute_mcp(
-    tool_name: str, arguments: dict[str, Any], state: AgentState
+    tool_name: str,
+    arguments: dict[str, Any],
+    state: AgentState,
+    *,
+    confirm_method: str = "none",
+    trigger: str = "agent",
 ) -> dict[str, Any]:
     """执行 MCP 工具（M6-C1：经 MCP Client tools/call，回退直调）。
 
     工具名 -> 封装函数的映射见 dispatcher._MCP_TOOL_FUNCS。
     执行异常统一捕获为 TOOL_FAILED，不影响其余并发工具。
+
+    Args:
+        tool_name: 工具名。
+        arguments: 工具参数。
+        state: 图状态。
+        confirm_method: L2 确认方式（click/none），供审计溯源。
+        trigger: 触发来源（manual=人工确认执行 / agent=LLM 自主调用）。
     """
     start = time.time()
     user_id = state.get("user_id")
 
     if not is_registered(tool_name):
         duration_ms = (time.time() - start) * 1000
-        _log_audit(state, tool_name, arguments, "failed", duration_ms)
+        _log_audit(
+            state,
+            tool_name,
+            arguments,
+            "failed",
+            duration_ms,
+            confirm_method=confirm_method,
+            trigger=trigger,
+        )
         return {
             "tool_name": tool_name,
             "success": False,
@@ -195,7 +215,15 @@ async def _execute_mcp(
         # 业务失败（code != "00000"）被伪装为 success=True，否则 confirm 会回
         # "操作成功"、审计误记 success，直接误导用户与运营。
         failed, error = _classify_tool_result(result)
-        _log_audit(state, tool_name, arguments, "failed" if failed else "success", duration_ms)
+        _log_audit(
+            state,
+            tool_name,
+            arguments,
+            "failed" if failed else "success",
+            duration_ms,
+            confirm_method=confirm_method,
+            trigger=trigger,
+        )
         if failed:
             return {
                 "tool_name": tool_name,
@@ -211,7 +239,15 @@ async def _execute_mcp(
         }
     except Exception as e:
         duration_ms = (time.time() - start) * 1000
-        _log_audit(state, tool_name, arguments, "failed", duration_ms)
+        _log_audit(
+            state,
+            tool_name,
+            arguments,
+            "failed",
+            duration_ms,
+            confirm_method=confirm_method,
+            trigger=trigger,
+        )
         return {
             "tool_name": tool_name,
             "success": False,
@@ -257,8 +293,14 @@ def _log_audit(
     arguments: dict[str, Any],
     result: str,
     duration_ms: float,
+    confirm_method: str = "none",
+    trigger: str = "agent",
 ) -> None:
-    """记录审计日志。"""
+    """记录审计日志。
+
+    P2：confirm_method / trigger 由调用方透传真实来源——L2 确认执行路径
+    （chat_confirm）传 click/manual，Agent 自主调用保持默认 none/agent。
+    """
     params_hash = hashlib.sha256(json.dumps(arguments, sort_keys=True).encode()).hexdigest()[:16]
     log_tool_call(
         session_id=state.get("session_id") or "",
@@ -268,6 +310,8 @@ def _log_audit(
         params_hash=params_hash,
         result=result,
         duration_ms=duration_ms,
+        confirm_method=confirm_method,
+        trigger=trigger,
     )
 
 
