@@ -3,8 +3,10 @@ package com.sphp.patient.family.service.impl;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
+import com.sphp.patient.family.dto.ProfileUpdateRequest;
 import com.sphp.patient.family.mapper.ProfileMapper;
 import com.sphp.patient.family.mapper.ProfileRecord;
+import com.sphp.patient.family.vo.ProfileUpdateVO;
 import com.sphp.patient.family.vo.ProfileVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +17,9 @@ import java.time.OffsetDateTime;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -64,6 +69,74 @@ class ProfileServiceImplTest {
 
         assertEquals("A0402", exception.getCode());
         assertEquals(404, exception.getHttpStatus().value());
+    }
+
+    /**
+     * 验证更新仅覆盖请求给出的字段，并在 SELF 边界内执行条件更新。
+     */
+    @Test
+    void updateProfilePreservesOptionalFieldsAndUsesSelfCondition() {
+        ProfileMapper profileMapper = mock(ProfileMapper.class);
+        ProfileServiceImpl profileService = new ProfileServiceImpl(profileMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        ProfileUpdateRequest request = new ProfileUpdateRequest();
+        request.setName("张三新名");
+        request.setPhone("13800138001");
+        when(profileMapper.selectSelfProfile(10001L)).thenReturn(profileRecord());
+        when(profileMapper.updateSelfProfile(eq(10001L), eq(20001L), eq("张三新名"), eq("MALE"),
+                eq(LocalDate.of(1990, 5, 20)), eq("13800138001"), eq("李四 13900139000"), any()))
+                .thenReturn(1);
+
+        ProfileUpdateVO result = profileService.updateProfile(request);
+
+        assertEquals(20001L, result.getId());
+        assertEquals("张三新名", result.getName());
+        assertEquals("138****8001", result.getPhone());
+        verify(profileMapper).updateSelfProfile(eq(10001L), eq(20001L), eq("张三新名"), eq("MALE"),
+                eq(LocalDate.of(1990, 5, 20)), eq("13800138001"), eq("李四 13900139000"), any());
+    }
+
+    /**
+     * 验证条件更新未命中时拒绝并发或资料状态变更。
+     */
+    @Test
+    void updateProfileRejectsConditionalUpdateMiss() {
+        ProfileMapper profileMapper = mock(ProfileMapper.class);
+        ProfileServiceImpl profileService = new ProfileServiceImpl(profileMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        ProfileUpdateRequest request = new ProfileUpdateRequest();
+        request.setName("张三新名");
+        when(profileMapper.selectSelfProfile(10001L)).thenReturn(profileRecord());
+        when(profileMapper.updateSelfProfile(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(0);
+
+        CAuthException exception = assertThrows(CAuthException.class, () -> profileService.updateProfile(request));
+
+        assertEquals("B0202", exception.getCode());
+        assertEquals(409, exception.getHttpStatus().value());
+    }
+
+    /**
+     * 验证非法性别和未来生日被业务校验拒绝。
+     */
+    @Test
+    void updateProfileRejectsInvalidGenderAndFutureBirthday() {
+        ProfileMapper profileMapper = mock(ProfileMapper.class);
+        ProfileServiceImpl profileService = new ProfileServiceImpl(profileMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        ProfileUpdateRequest invalidGender = new ProfileUpdateRequest();
+        invalidGender.setName("张三");
+        invalidGender.setGender("OTHER");
+        ProfileUpdateRequest futureBirthday = new ProfileUpdateRequest();
+        futureBirthday.setName("张三");
+        futureBirthday.setBirthday(LocalDate.now().plusDays(1));
+
+        assertEquals("A0400", assertThrows(CAuthException.class,
+                () -> profileService.updateProfile(invalidGender)).getCode());
+        assertEquals("A0400", assertThrows(CAuthException.class,
+                () -> profileService.updateProfile(futureBirthday)).getCode());
     }
 
     /**

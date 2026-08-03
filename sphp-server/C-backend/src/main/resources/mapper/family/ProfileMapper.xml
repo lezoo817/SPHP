@@ -28,4 +28,21 @@
           AND pur.deleted_at IS NULL
         LIMIT 1
     </select>
+
+    <update id="updateSelfProfile">
+        UPDATE patient p
+        SET name = #{name},
+            gender = #{gender},
+            date_of_birth = #{birthday},
+            phone_ciphertext = #{phone},
+            emergency_contact = #{emergencyContact},
+            updated_at = #{updatedAt}
+        FROM patient_user_relation pur
+        WHERE p.id = pur.patient_id
+          AND p.id = #{patientId}
+          AND p.deleted_at IS NULL
+          AND pur.user_id = #{userId}
+          AND pur.relationship = 'SELF'
+          AND pur.deleted_at IS NULL
+    </update>
 </mapper>
