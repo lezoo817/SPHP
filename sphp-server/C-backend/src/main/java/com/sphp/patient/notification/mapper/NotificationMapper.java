@@ -5,6 +5,7 @@ import com.sphp.patient.notification.entity.Notification;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -56,5 +57,24 @@ public interface NotificationMapper extends BaseMapper<Notification> {
      */
     long countNotifications(@Param("userId") Long userId, @Param("patientId") Long patientId,
                             @Param("read") Boolean read);
+
+    /**
+     * 按通知 ID 查询通知归属与已读状态。
+     *
+     * @param notificationId 通知 ID
+     * @return 通知投影，不存在或已删除时返回 null
+     */
+    NotificationRecord selectNotification(@Param("notificationId") Long notificationId);
+
+    /**
+     * 条件标记当前账号的一条未读通知为已读。
+     *
+     * @param notificationId 通知 ID
+     * @param userId C端用户 ID
+     * @param readAt 首次已读时间
+     * @return 实际更新行数
+     */
+    int markNotificationRead(@Param("notificationId") Long notificationId, @Param("userId") Long userId,
+                             @Param("readAt") OffsetDateTime readAt);
 
 }

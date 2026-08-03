@@ -54,4 +54,19 @@
           </if>
     </select>
 
+    <select id="selectNotification" resultMap="NotificationRecordMap">
+        SELECT <include refid="NotificationColumns"/>
+        FROM notification n
+        WHERE n.id = #{notificationId} AND n.deleted_at IS NULL
+    </select>
+
+    <update id="markNotificationRead">
+        UPDATE notification
+        SET read_at = #{readAt}, updated_at = #{readAt}
+        WHERE id = #{notificationId}
+          AND user_id = #{userId}
+          AND read_at IS NULL
+          AND deleted_at IS NULL
+    </update>
+
 </mapper>

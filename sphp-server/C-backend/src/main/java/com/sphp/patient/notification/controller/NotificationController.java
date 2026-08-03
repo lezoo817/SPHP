@@ -2,16 +2,26 @@ package com.sphp.patient.notification.controller;
 
 import com.sphp.patient.notification.service.NotificationService;
 import com.sphp.patient.notification.vo.NotificationPageVO;
+import com.sphp.patient.notification.vo.NotificationReadVO;
 import com.sphp.patient.auth.exception.CAuthException;
+import com.sphp.patient.auth.support.context.CUserContext;
+import com.sphp.patient.common.constant.NotificationConstant;
+import com.sphp.patient.support.idempotency.CIdempotencyService;
+import com.sphp.patient.support.idempotency.IdempotencyPayload;
+import com.sphp.shared.common.constant.HeaderConstant;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import com.sphp.shared.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,6 +37,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final CIdempotencyService idempotencyService;
 
     /**
      * 分页查询当前账号通知。
@@ -60,5 +71,29 @@ public class NotificationController {
         if ((patientId != null && patientId < 1) || (pageNo != null && pageNo < 1) || (pageSize != null && pageSize < 1)) {
             throw new CAuthException(ErrorCodeEnum.INVALID_PARAMETER, HttpStatus.BAD_REQUEST, "分页参数或就诊人ID必须为正整数");
         }
+    }
+
+    /**
+     * 标记当前账号的一条通知已读。
+     *
+     * @param notificationId 通知 ID
+     * @param idempotencyKey 客户端幂等键
+     * @return 已读结果
+     */
+    @PostMapping("/{notificationId}/read")
+    @Operation(summary = "标记通知已读")
+    public Result<NotificationReadVO> markNotificationRead(
+            @PathVariable @Positive(message = "通知ID必须为正整数") Long notificationId,
+            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
+        Long userId = CUserContext.getRequired().userId();
+        IdempotencyPayload<NotificationReadVO> payload = idempotencyService.execute(
+                userId,
+                NotificationConstant.READ_PATH_PREFIX + notificationId + "/read",
+                idempotencyKey,
+                notificationId,
+                NotificationReadVO.class,
+                () -> new IdempotencyPayload<>("通知已标记为已读", notificationService.markNotificationRead(notificationId))
+        );
+        return Result.success(payload.message(), payload.data());
     }
 }

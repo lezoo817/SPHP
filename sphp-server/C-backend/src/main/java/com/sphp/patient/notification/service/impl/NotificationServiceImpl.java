@@ -7,10 +7,13 @@ import com.sphp.patient.notification.mapper.NotificationMapper;
 import com.sphp.patient.notification.mapper.NotificationRecord;
 import com.sphp.patient.notification.service.NotificationService;
 import com.sphp.patient.notification.vo.NotificationPageVO;
+import com.sphp.patient.notification.vo.NotificationReadVO;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -53,6 +56,34 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     /**
+     * 标记当前账号的一条通知已读。
+     *
+     * @param notificationId 通知 ID
+     * @return 已读结果
+     * @throws CAuthException 通知不存在、无归属权限或状态读取异常时抛出
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public NotificationReadVO markNotificationRead(Long notificationId) {
+        Long userId = CUserContext.getRequired().userId();
+        NotificationRecord notification = requireOwnedNotification(userId, notificationId);
+        if (notification.getReadAt() != null) {
+            return toReadVO(notificationId, notification.getReadAt());
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        // 条件更新确保并发请求仅有一个写入首次已读时间。
+        if (notificationMapper.markNotificationRead(notificationId, userId, now) == 1) {
+            return toReadVO(notificationId, now);
+        }
+        NotificationRecord latest = requireOwnedNotification(userId, notificationId);
+        if (latest.getReadAt() == null) {
+            throw new CAuthException(ErrorCodeEnum.BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT,
+                    "通知状态已发生变化，请刷新后重试");
+        }
+        return toReadVO(notificationId, latest.getReadAt());
+    }
+
+    /**
      * 校验可选就诊人存在且属于当前账号。
      *
      * @param userId 当前 C端用户 ID
@@ -72,6 +103,25 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     /**
+     * 查询通知并校验它归属于当前账号。
+     *
+     * @param userId 当前 C端用户 ID
+     * @param notificationId 通知 ID
+     * @return 当前通知投影
+     * @throws CAuthException 通知不存在或归属不匹配时抛出
+     */
+    private NotificationRecord requireOwnedNotification(Long userId, Long notificationId) {
+        NotificationRecord notification = notificationMapper.selectNotification(notificationId);
+        if (notification == null) {
+            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "通知不存在");
+        }
+        if (!userId.equals(notification.getUserId())) {
+            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, "无权访问该通知");
+        }
+        return notification;
+    }
+
+    /**
      * 转换通知分页记录。
      *
      * @param record 通知查询投影
@@ -88,6 +138,17 @@ public class NotificationServiceImpl implements NotificationService {
                 .read(record.getReadAt() != null)
                 .createdAt(record.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * 组装通知已读响应。
+     *
+     * @param notificationId 通知 ID
+     * @param readAt 首次已读时间
+     * @return 已读响应
+     */
+    private NotificationReadVO toReadVO(Long notificationId, OffsetDateTime readAt) {
+        return NotificationReadVO.builder().id(notificationId).read(true).readAt(readAt).build();
     }
 
 }

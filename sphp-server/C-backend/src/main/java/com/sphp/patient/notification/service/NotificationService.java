@@ -1,6 +1,7 @@
 package com.sphp.patient.notification.service;
 
 import com.sphp.patient.notification.vo.NotificationPageVO;
+import com.sphp.patient.notification.vo.NotificationReadVO;
 
 /**
  * C端站内通知服务。
@@ -17,4 +18,12 @@ public interface NotificationService {
      * @return 通知分页数据
      */
     NotificationPageVO listNotifications(Long patientId, Boolean read, Integer pageNo, Integer pageSize);
+
+    /**
+     * 标记当前账号的一条通知已读。
+     *
+     * @param notificationId 通知 ID
+     * @return 已读结果
+     */
+    NotificationReadVO markNotificationRead(Long notificationId);
 }
