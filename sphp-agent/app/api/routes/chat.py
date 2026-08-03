@@ -136,8 +136,9 @@ async def _sse_generator(
                                         （工具已执行，逐结果配对推送）
     - updates 含 tool_calls 字段      -> ``event: action``（仅 tool_calls 无结果场景）
     - messages 且 msg 是 AIMessage    -> ``event: message``（回复 token）
+    - messages 含 reasoning_content   -> ``event: thought``（推理思考 token，M6-B4）
     - updates 含 reply_node 输出      -> 未流式时兜底推送完整回复
-    - 结束                            -> ``event: done``
+    - 结束                            -> ``event: done``（含 usage token 统计，M6-B4）
     """
     graph = _get_graph()
     thread_id = session_id or str(uuid4())
@@ -145,6 +146,9 @@ async def _sse_generator(
 
     logger.info("[SSE] 开始流程执行, thread_id=%s", thread_id)
     streamed_reply = False
+    # 本轮 LLM token 用量（M6-B4 done.usage）：langgraph 首个 chunk 含
+    # input_tokens，后续 chunk 只递增 output_tokens
+    usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     try:
         try:
@@ -156,6 +160,14 @@ async def _sse_generator(
                 if mode == "messages":
                     msg, meta = chunk
                     node = (meta or {}).get("langgraph_node", "")
+                    # 累积 LLM 用量（M6-B4）：对全部 LLM chunk 统计
+                    usage_meta = getattr(msg, "usage_metadata", None) or {}
+                    if usage_meta.get("input_tokens"):
+                        usage["prompt_tokens"] = usage_meta["input_tokens"]
+                    if usage_meta.get("output_tokens"):
+                        usage["completion_tokens"] += usage_meta["output_tokens"]
+                    if usage_meta.get("total_tokens"):
+                        usage["total_tokens"] = usage_meta["total_tokens"]
                     # 仅 reply_node 的 assistant token 推送给前端
                     # （intent_node / tool_caller 的 LLM 输出不推送）
                     if node == "reply_node" and getattr(msg, "type", "") in (
@@ -166,6 +178,13 @@ async def _sse_generator(
                         if delta:
                             streamed_reply = True
                             yield _sse("message", {"delta": delta})
+                        # 推理模型思考 token（系分 §5.12，M6-B4）：
+                        # 智谱 glm-4 系列流式输出在 additional_kwargs.reasoning_content
+                        reasoning = (getattr(msg, "additional_kwargs", {}) or {}).get(
+                            "reasoning_content"
+                        )
+                        if reasoning:
+                            yield _sse("thought", {"delta": reasoning})
 
                 elif mode == "updates":
                     # 子图更新里含 tool_calls / tool_results，重建 action / observation
@@ -227,7 +246,12 @@ async def _sse_generator(
 
     finally:
         # 确保 done 事件始终推送（即使异常/取消）
-        yield _sse("done", {"session_id": thread_id, "trace_id": trace_id})
+        # M6-B4：携带本轮 LLM token 用量（无任何 LLM chunk 时 usage 为 None）
+        _usage = {k: v for k, v in usage.items() if v} or None
+        yield _sse(
+            "done",
+            {"session_id": thread_id, "trace_id": trace_id, "usage": _usage},
+        )
 
 
 def _sse(event: str, payload: dict) -> str:
