@@ -40,6 +40,22 @@ public interface NotificationMapper extends BaseMapper<Notification> {
     String selectActivePatientName(@Param("patientId") Long patientId);
 
     /**
+     * 查询尚未生成通知的到期用药计划及有效接收账号。
+     *
+     * @param now 当前时间
+     * @return 到期用药提醒投影
+     */
+    List<NotificationReminderRecord> selectDueMedicationReminders(@Param("now") OffsetDateTime now);
+
+    /**
+     * 查询尚未生成通知的到期随访计划及有效接收账号。
+     *
+     * @param now 当前时间
+     * @return 到期随访提醒投影
+     */
+    List<NotificationReminderRecord> selectDueFollowUpReminders(@Param("now") OffsetDateTime now);
+
+    /**
      * 分页查询当前账号的未删除通知。
      *
      * @param userId C端用户 ID

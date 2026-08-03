@@ -6,6 +6,9 @@ import com.sphp.patient.notification.mq.config.NotificationRabbitMqConfig;
 import com.sphp.patient.notification.mq.consumer.NotificationCreateConsumer;
 import com.sphp.patient.notification.mq.event.NotificationCreateEvent;
 import com.sphp.patient.notification.mq.producer.NotificationEventRelay;
+import com.sphp.patient.notification.mq.producer.NotificationReminderProducer;
+import com.sphp.patient.notification.mq.scheduler.NotificationReminderScheduler;
+import com.sphp.patient.notification.mapper.NotificationReminderRecord;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.Queue;
@@ -16,6 +19,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * C端站内通知 RabbitMQ 单元测试。
@@ -72,5 +76,45 @@ class NotificationMqTest {
         assertEquals("cend.follow-up.queue", followUpQueue.getName());
         assertEquals("cend.dead-letter.queue", deadLetterQueue.getName());
         assertEquals("notification.create", binding.getRoutingKey());
+    }
+
+    /**
+     * 验证到期扫描发送确定性事件 ID 的用药与随访提醒消息。
+     */
+    @Test
+    void reminderSchedulerPublishesDueRemindersWithoutRequestContext() {
+        NotificationMapper mapper = mock(NotificationMapper.class);
+        NotificationReminderProducer producer = mock(NotificationReminderProducer.class);
+        NotificationReminderScheduler scheduler = new NotificationReminderScheduler(mapper, producer);
+        NotificationReminderRecord medication = reminderRecord(7001L, 10001L, 20001L);
+        NotificationReminderRecord followUp = reminderRecord(8001L, 10001L, 20001L);
+        when(mapper.selectDueMedicationReminders(any())).thenReturn(java.util.List.of(medication));
+        when(mapper.selectDueFollowUpReminders(any())).thenReturn(java.util.List.of(followUp));
+
+        scheduler.scanMedicationReminders();
+        scheduler.scanFollowUpReminders();
+
+        verify(producer).publishMedicationReminder(org.mockito.ArgumentMatchers.argThat(event ->
+                event.eventId().startsWith("REMINDER:7001:") && "MEDICATION_REMINDER".equals(event.type())));
+        verify(producer).publishFollowUpReminder(org.mockito.ArgumentMatchers.argThat(event ->
+                event.eventId().startsWith("FOLLOW_UP:8001:") && "FOLLOW_UP_REMINDER".equals(event.type())));
+    }
+
+    /**
+     * 创建到期提醒的查询投影。
+     *
+     * @param businessId 计划业务 ID
+     * @param userId 接收用户 ID
+     * @param patientId 就诊人 ID
+     * @return 提醒查询投影
+     */
+    private NotificationReminderRecord reminderRecord(Long businessId, Long userId, Long patientId) {
+        NotificationReminderRecord record = new NotificationReminderRecord();
+        record.setBusinessId(businessId);
+        record.setUserId(userId);
+        record.setPatientId(patientId);
+        record.setPatientName("张三");
+        record.setDueAt(java.time.OffsetDateTime.now().minusMinutes(1));
+        return record;
     }
 }
