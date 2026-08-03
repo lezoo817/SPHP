@@ -160,9 +160,13 @@ async def check_contraindication(
 
 
 async def check_allergy_risk(
-    drug_name: str, patient_id: int, user_id: int | None = None
+    patient_id: int, user_id: int | None = None
 ) -> dict[str, Any]:
-    """返回患者过敏史记录。"""
+    """返回患者完整过敏史记录（P2：移除死参数 drug_name）。
+
+    查询条件仅患者 ID——返回的是该患者全部过敏史，药敏判断由编排层
+    LLM 生成，drug_name 不参与查询，原 schema 误导 LLM 传入无用参数。
+    """
     patient = await call_java_api(
         api_name="query_patient_history:base",
         path_params={"patient_id": patient_id},
@@ -172,9 +176,13 @@ async def check_allergy_risk(
 
 
 async def check_duplicate_medication(
-    drug_name: str, patient_id: int, user_id: int | None = None
+    patient_id: int, user_id: int | None = None
 ) -> dict[str, Any]:
-    """返回患者当前用药清单。"""
+    """返回患者当前用药清单（P2：移除死参数 drug_name）。
+
+    查询条件仅患者 ID——返回该患者全部在用药品，重复判断由编排层
+    LLM 生成，drug_name 不参与查询，原 schema 误导 LLM 传入无用参数。
+    """
     medications = await call_java_api(
         api_name="query_patient_history:medications",
         path_params={"patient_id": patient_id},
