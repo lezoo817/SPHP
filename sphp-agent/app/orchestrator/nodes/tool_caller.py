@@ -141,6 +141,10 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     try:
         response = await llm_with_tools.ainvoke(messages)
         tool_calls = _extract_tool_calls(response, tool_scope, effective_allowed)
+        # 软兜底：拦截「相同参数 + 上次已成功」的重复调用（LLM 提示词收敛不可靠，
+        # 这里做确定性去重——循环问题 P3-6）。意外截断/失败的重试放行，操作型 L2
+        # 不进入 tool_results 天然豁免。
+        tool_calls = _dedupe_tool_calls(tool_calls, state.get("tool_results") or [])
         logger.info(
             "工具决策: scope=%s, 选择 %d 个工具: %s",
             scope,
@@ -152,6 +156,43 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     except Exception as e:
         logger.error("工具决策失败: %s", e)
         return {"tool_calls": []}
+
+
+def _dedupe_tool_calls(
+    tool_calls: list[dict[str, Any]], executed: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """过滤与已执行结果重复的工具调用（确定性防循环，P3-6）。
+
+    判定「重复」需同时满足：工具名相同 + 参数完全一致 + 上次执行已成功。
+    - 上次失败/超时（success=False）→ 模型自主重试合理，放行
+    - 参数不同 → 合法多步推进（换科室/换日期），放行
+    - 已执行列表为空 → 首查，放行
+
+    Args:
+        tool_calls: LLM 本轮要调用的工具列表（[{name, arguments}]）。
+        executed: 本轮对话子图循环已执行的工具结果列表（含 tool_name /
+            arguments / success 字段）。
+
+    Returns:
+        list[dict]: 过滤后的工具调用列表，重复项被剔除。
+    """
+    if not executed:
+        return tool_calls
+    deduped: list[dict[str, Any]] = []
+    for call in tool_calls:
+        name = call["name"]
+        args = call.get("arguments") or {}
+        is_dup = any(
+            prev.get("tool_name") == name
+            and (prev.get("arguments") or {}) == args
+            and prev.get("success")
+            for prev in executed
+        )
+        if is_dup:
+            logger.info("去重重复工具调用: %s %s（上次已成功）", name, args)
+        else:
+            deduped.append(call)
+    return deduped
 
 
 def _extract_tool_calls(
