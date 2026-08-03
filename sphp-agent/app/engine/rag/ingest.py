@@ -71,15 +71,21 @@ def _load_and_split(file_path: Path) -> tuple[list[Document], list[Document]]:
     return docs, _split_documents(docs)
 
 
-def _assign_deterministic_ids(chunks: list[Document], file_name: str) -> None:
-    """为每个 chunk 生成确定性 UUID（文件名 + 内容哈希）。
+def _assign_deterministic_ids(chunks: list[Document]) -> None:
+    """为每个 chunk 生成确定性 UUID（仅内容哈希）。
 
-    PGVector 按 id 做 ``ON CONFLICT DO UPDATE`` upsert，因此同一文件重复入库时
-    ID 相同会覆盖旧 chunk，而不是产生重复数据。chunk 内容变化则 ID 变化，
-    旧 chunk 不会残留。
+    PGVector 按 id 做 ``ON CONFLICT DO UPDATE`` upsert，因此同一内容重复入库时
+    ID 相同会覆盖旧 chunk，而不是产生重复数据；内容变化则 ID 变化，旧 chunk
+    不会残留。
+
+    P1-6 修复：chunk ID 只用内容哈希（原实现拼 ``file_name:content``）。HTTP
+    上传走 ``tempfile.NamedTemporaryFile``，文件名每次随机，同一文档重复提交
+    时 ID 每次都不同，upsert 永不命中 → 同文档无限累积。去掉文件名后同内容
+    必同 ID，重复提交自然去重；不同文档若切出相同 chunk 内容，本就应视为
+    同一知识片段，合并合理。
     """
     for chunk in chunks:
-        digest = hashlib.sha256(f"{file_name}:{chunk.page_content}".encode()).hexdigest()[:32]
+        digest = hashlib.sha256(chunk.page_content.encode()).hexdigest()[:32]
         chunk.id = str(uuid.UUID(hex=digest))
 
 
@@ -130,7 +136,7 @@ async def ingest_file(
         # 来源页码：PDF 等 loader 自带 page，其余格式用段落序号兜底
         chunk.metadata["source_page"] = chunk.metadata.get("page", f"第{i}段")
 
-    _assign_deterministic_ids(chunks, file_path.name)
+    _assign_deterministic_ids(chunks)
     store = get_vectorstore()
     # vectorstore 为 async_mode（仅异步 engine），必须用异步入库
     await store.aadd_documents(chunks)
