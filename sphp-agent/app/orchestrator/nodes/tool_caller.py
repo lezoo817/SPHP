@@ -143,8 +143,13 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
         tool_calls = _extract_tool_calls(response, tool_scope, effective_allowed)
         # 软兜底：拦截「相同参数 + 上次已成功」的重复调用（LLM 提示词收敛不可靠，
         # 这里做确定性去重——循环问题 P3-6）。意外截断/失败的重试放行，操作型 L2
-        # 不进入 tool_results 天然豁免。
-        tool_calls = _dedupe_tool_calls(tool_calls, state.get("tool_results") or [])
+        # 不进入 tool_results 天然豁免。M8-1：同时对比 pending_confirmations，
+        # 源头拦截子图循环第二轮重复返回同一 L2（防两张 token 互异的确认卡）。
+        tool_calls = _dedupe_tool_calls(
+            tool_calls,
+            state.get("tool_results") or [],
+            state.get("pending_confirmations") or [],
+        )
         logger.info(
             "工具决策: scope=%s, 选择 %d 个工具: %s",
             scope,
@@ -159,37 +164,56 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
 
 
 def _dedupe_tool_calls(
-    tool_calls: list[dict[str, Any]], executed: list[dict[str, Any]]
+    tool_calls: list[dict[str, Any]],
+    executed: list[dict[str, Any]],
+    pending: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """过滤与已执行结果重复的工具调用（确定性防循环，P3-6）。
+    """过滤重复工具调用（确定性防循环 P3-6 + 防重复挂起 M8-1）。
 
-    判定「重复」需同时满足：工具名相同 + 参数完全一致 + 上次执行已成功。
-    - 上次失败/超时（success=False）→ 模型自主重试合理，放行
-    - 参数不同 → 合法多步推进（换科室/换日期），放行
-    - 已执行列表为空 → 首查，放行
+    两类「重复」判定：
+    1. 与已执行结果重复（L1 防循环）：工具名相同 + 参数完全一致 + 上次执行已成功
+       - 上次失败/超时（success=False）→ 模型自主重试合理，放行
+       - 参数不同 → 合法多步推进（换科室/换日期），放行
+    2. 与待确认 L2 重复（M8-1 防重复挂起）：工具名相同 + 参数完全一致且
+       已在 ``pending_confirmations`` 中 → 剔除，不重复发起同一 L2
+       （避免子图循环第二轮 LLM 重复返回同一 L2，safety_check 又生成新
+       token，导致两张 token 互异的确认卡 → 用户双确认 = 同一业务执行两次）
 
     Args:
         tool_calls: LLM 本轮要调用的工具列表（[{name, arguments}]）。
         executed: 本轮对话子图循环已执行的工具结果列表（含 tool_name /
             arguments / success 字段）。
+        pending: 待用户确认的 L2 操作列表（safety_check 写入，含 tool_name /
+            tool_arguments 字段）。None 或空时不做 L2 去重。
 
     Returns:
         list[dict]: 过滤后的工具调用列表，重复项被剔除。
     """
-    if not executed:
+    if not executed and not pending:
         return tool_calls
+    pending = pending or []
     deduped: list[dict[str, Any]] = []
     for call in tool_calls:
         name = call["name"]
         args = call.get("arguments") or {}
-        is_dup = any(
+        # L1 防循环：与已执行成功结果重复 → 剔除
+        is_executed_dup = any(
             prev.get("tool_name") == name
             and (prev.get("arguments") or {}) == args
             and prev.get("success")
             for prev in executed
         )
-        if is_dup:
+        # M8-1 防 L2 重复挂起：相同 tool_name+args 已在 pending → 剔除
+        # （pending 项参数键为 tool_arguments，与 executed 的 arguments 区分）
+        is_pending_dup = any(
+            p.get("tool_name") == name
+            and (p.get("tool_arguments") or {}) == args
+            for p in pending
+        )
+        if is_executed_dup:
             logger.info("去重重复工具调用: %s %s（上次已成功）", name, args)
+        elif is_pending_dup:
+            logger.info("去重重复 L2 挂起: %s %s（已在 pending_confirmations）", name, args)
         else:
             deduped.append(call)
     return deduped
