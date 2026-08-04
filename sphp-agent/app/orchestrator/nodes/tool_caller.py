@@ -52,6 +52,35 @@ TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的工具调用助手。
    - 不要重复调用已执行过的工具（相同参数、相同目的）
 9. 一次只推进一个必要的查询/操作步骤，避免一次轮询所有信息"""
 
+# B 端工具决策系统提示词（M8-4）：C 端患者语义之上，追加医生身份/患者隐私/草稿边界。
+# 免责声明（"AI 建议仅供参考"）由 reply_node 全场景强制注入，此处不重复。
+B_TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的医生工作台助手，服务对象是**医生本人**（B 端）。
+
+当前日期：{today}（服务器本地日期，YYYY-MM-DD）
+
+你可以使用以下工具来完成医生请求（只使用列表内的工具）：
+
+{tools_desc}
+
+规则：
+1. 当医生请求涉及业务操作（查询/生成/检查）时，必须调用对应的工具完成，不要仅凭知识回复
+2. 无依赖的工具可一次并行调用；有依赖的工具分步调用（先查患者/用药，再基于结果做
+   相互作用/禁忌/过敏风险等检查，参数来自前置查询结果，禁止在首次并行中编造）
+3. 参数严格按工具定义填写，缺失的信息先询问医生，或等上一轮工具结果返回后再决策
+4. 不要编造工具名或参数
+5. 查询患者相关数据（过敏史/用药/档案）时，**必须携带当前接诊患者 patient_id**；
+   医生未提供时先向医生索要，禁止编造或猜测患者 ID
+6. 患者数据仅用于本次接诊决策，回复中不泄露敏感信息（脱敏展示）
+7. **草稿边界**：病历草稿（generate_draft_note）仅供医生修改确认，不可替代医生签名；
+   工具只保存草稿，医生最终确认由接诊流程人工完成
+8. 创建/修改类操作（如保存病历草稿）在拿到所需参数后**直接调用对应工具**，
+   不要用自然语言反问医生"是否确认"——医生请求即代表发起授权，系统会通过确认卡片
+   让医生最终确认，你只需调用工具即可
+9. **完成判断（每次决策前先检查）**：
+   - 如果上一步工具结果已返回医生所需的全部信息，**停止调用工具**
+   - 不要重复调用已执行过的工具（相同参数、相同目的）
+10. 一次只推进一个必要的查询/检查步骤，避免一次轮询所有信息"""
+
 
 def _build_tools_prompt(tools: list[dict[str, Any]]) -> str:
     """将工具 Schema 列表格式化为 prompt 描述。"""
@@ -103,6 +132,10 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     医生流程的全部工具会被滤空（``tool_calls=[]``，LLM 无工具可调）。因此
     B 端保持全量绑定当前 scope 的 L1/L2 工具（M5 验收"B 端 4 场景跑通"依赖此）。
 
+    M8-4 提示词分 scope：系统提示词按 ``tool_scope`` 分支（C 端患者语义 /
+    B 端医生工作台语义——医生身份、患者隐私脱敏、病历草稿不可签名等边界约束），
+    与 M8-3 B 端直达工具子图配套，避免 B 端医生被 C 端患者语义误导。
+
     Args:
         state: 当前图状态，包含 scope / messages 字段。
         allowed_tools: 子图工具白名单（工具名列表）；None 表示不限（默认全量）。
@@ -143,7 +176,15 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     llm_with_tools = llm.bind_tools(tools)
 
     history = truncate_messages(state.get("messages", []), get_settings().memory_window_size)
-    system_prompt = TOOL_CALLER_SYSTEM_PROMPT.format(
+    # M8-4：系统提示词按 scope 分支——C 端用患者语义提示词，B 端用医生工作台
+    # 提示词（医生身份/患者隐私/草稿边界），避免 B 端医生被 C 端"用户请求即授权"
+    # 的患者语义误导（如草稿不可签名、患者数据脱敏等约束缺失）
+    prompt_template = (
+        B_TOOL_CALLER_SYSTEM_PROMPT
+        if tool_scope == ToolScope.B_END
+        else TOOL_CALLER_SYSTEM_PROMPT
+    )
+    system_prompt = prompt_template.format(
         tools_desc=_build_tools_prompt(tools), today=date.today().isoformat()
     )
     messages = [{"role": "system", "content": system_prompt}] + history
