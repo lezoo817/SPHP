@@ -564,12 +564,13 @@ graph TD
 | 挂号 (registration) | 用户期望完成挂号 | 号源查询 → 创建挂号单 → 支付引导 |
 | 问诊 (consultation) | 挂号后的预问诊或处方解读 | 信息采集 → 摘要提交 → 解读 |
 | 购药 (pharmacy) | 处方后购药 | 库存查询 → 药店推荐 → 下单 |
+| 健康档案 (health) | 管理过敏史/既往史/检查报告/用药计划/随访/通知（M8-2） | 健康档案子图 10 工具白名单 |
 | 咨询 (qa) | 医疗知识问答 | RAG 检索 → 回复生成 |
 | 闲聊 (chitchat) | 非业务对话 | 直接 LLM 回复 |
 
 **B 端意图定义（M8-3）：**
 
-C 端按上表 6 类意图做 LLM 分类；**B 端（scope=b_end）不做意图分类**——
+C 端按上表 7 类意图做 LLM 分类；**B 端（scope=b_end）不做意图分类**——
 auth_node 后直接进入 B 端全量工具子图（绑定全部 9 个 B 端 L1/L2 工具）。
 
 | 场景 | 处理方式 |
@@ -577,7 +578,7 @@ auth_node 后直接进入 B 端全量工具子图（绑定全部 9 个 B 端 L1/
 | 查患者/查药/处方审核/报告解读等问诊类提问 | 直达 B 端工具子图，LLM 基于 9 工具决策（跳过意图分类，省一次 LLM 调用） |
 | 纯会话/非工具需求 | 工具子图内 LLM 不选工具 → 空 tool_calls → 结束子图 → reply_node 直接回复 |
 
-> **设计依据**：C 端 6 类意图（triage/registration/consultation/pharmacy/qa/chitchat）
+> **设计依据**：C 端 7 类意图（triage/registration/consultation/pharmacy/health/qa/chitchat）
 > 均为患者端语义，与 B 端医生流程无关。B 端若走意图分类，医生提问大概率误归
 > `qa` 分支（rag_node 只检索知识库不调工具），9 个 B 端工具全不可达。直达同时
 > 与 M5 定案一致——B 端全量绑定 9 工具、无白名单约束。
@@ -585,7 +586,7 @@ auth_node 后直接进入 B 端全量工具子图（绑定全部 9 个 B 端 L1/
 #### 5.2.1 图编排设计
 
 LangGraph 以有向图形式串联 8 个标准节点。主图负责鉴权、按 scope 分流、意图路由
-和安全校验，业务操作委托给 5 个子图处理（4 个 C 端业务子图 + 1 个 B 端直达工具子图）。
+和安全校验，业务操作委托给 6 个子图处理（5 个 C 端业务子图 + 1 个 B 端直达工具子图）。
 
 **主图结构：**
 
@@ -598,9 +599,11 @@ graph TD
     INTENT -->|"registration"| REG["④ registration_graph<br/>挂号子图"]
     INTENT -->|"consultation"| CONSULT["⑤ consultation_graph<br/>问诊子图"]
     INTENT -->|"pharmacy"| PHARM["⑥ pharmacy_graph<br/>购药子图"]
-    INTENT -->|"qa"| QA["⑦ qa_node<br/>RAG检索→LLM回复"]
-    INTENT -->|"chitchat"| CHAT["⑧ chitchat_node<br/>直接LLM回复"]
-    BTOOL --> REPLY["⑨ reply_node<br/>回复生成"]
+    INTENT -->|"health"| HEALTH["⑦ health_graph<br/>健康档案子图"]
+    INTENT -->|"qa"| QA["⑧ qa_node<br/>RAG检索→LLM回复"]
+    INTENT -->|"chitchat"| CHAT["⑨ chitchat_node<br/>直接LLM回复"]
+    BTOOL --> REPLY["⑩ reply_node<br/>回复生成"]
+    HEALTH --> REPLY
     TRIAGE --> REPLY
     REG --> REPLY
     CONSULT --> REPLY
@@ -621,6 +624,7 @@ graph TD
 | registration_graph | 子图 | 调 `query_departments` → `query_schedule_slots` → `create_appointment`（含 L2 确认） |
 | consultation_graph | 子图 | 调 `query_consultations` / `query_prescriptions` → `interpret_prescription` |
 | pharmacy_graph | 子图 | 调 `query_pharmacy_stock` → `create_drug_order`（含 L2 确认） |
+| health_graph | 子图 | **健康档案子图（M8-2，场景五）**：10 工具白名单——L1 查询（档案/报告/用药计划/随访/通知）+ L2 变更（过敏史/既往史/报告录入/用药计划更新/随访确认，含 L2 确认） |
 | qa_node | 主图节点 | 调 RAG 检索 → 注入 LLM 上下文 → 生成回复 |
 | chitchat_node | 主图节点 | 不做工具调用，直接 LLM 自由回复 |
 | reply_node | 主图节点 | 生成最终回复（LLM 生成自然语言）。SSE 流式推送由路由级 handler 统一处理（见 §5.12） |
@@ -665,6 +669,7 @@ AgentState 是图中唯一的共享状态对象，通过 LangGraph 的 `add_mess
 - registration: 用户希望挂号、预约、查看号源或候补
 - consultation: 用户进行问诊相关操作（提交预问诊、查看处方、解读处方）
 - pharmacy: 用户希望购药、查询药品库存或下单
+- health: 用户管理健康档案（过敏史/既往史查询与更新、检查报告查询/录入、用药计划查询/更新、随访查询/确认、通知管理）
 - qa: 用户询问医疗知识、健康科普问题
 - chitchat: 问候、闲聊、感谢等非业务对话
 
@@ -685,6 +690,7 @@ AgentState 是图中唯一的共享状态对象，通过 LangGraph 的 `add_mess
 | LLM 返回非预定义标签 | 默认归类为 `qa`（RAG 兜底回答） |
 | 用户消息包含"挂号/预约/号源/排班"等关键词但不属于其他意图 | 强制 `registration` |
 | 用户消息包含"买药/购药/下单/配送"等关键词但不属于其他意图 | 强制 `pharmacy` |
+| 用户消息包含"过敏史/检查报告/用药计划/随访/通知"等关键词但不属于其他意图 | 强制 `health`（M8-2 新增） |
 
 > 关键词规则作为快速通道：消息 ≤10 字且命中关键词时跳过 LLM 调用，直接路由，减少首字延迟。
 
@@ -712,6 +718,7 @@ builder.add_node("triage_graph", triage_graph.compile())
 builder.add_node("registration_graph", registration_graph.compile())
 builder.add_node("consultation_graph", consultation_graph.compile())
 builder.add_node("pharmacy_graph", pharmacy_graph.compile())
+builder.add_node("health_graph", health_graph.compile())  # M8-2 健康档案子图（场景五）
 
 # 入口
 builder.set_entry_point("auth_node")
@@ -725,6 +732,7 @@ builder.add_conditional_edges(
         "registration": "registration_graph",
         "consultation": "consultation_graph",
         "pharmacy": "pharmacy_graph",
+        "health": "health_graph",
         "qa": "qa_node",
         "chitchat": "chitchat_node",
     }
@@ -735,6 +743,7 @@ builder.add_edge("triage_graph", "reply_node")
 builder.add_edge("registration_graph", "reply_node")
 builder.add_edge("consultation_graph", "reply_node")
 builder.add_edge("pharmacy_graph", "reply_node")
+builder.add_edge("health_graph", "reply_node")
 builder.add_edge("qa_node", "reply_node")
 builder.add_edge("chitchat_node", "reply_node")
 
