@@ -6,6 +6,7 @@ import com.sphp.patient.registration.service.RegisteringService;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentDetailVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentListVO;
+import com.sphp.patient.registration.vo.RegisteringDoctorBookingStatusVO;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
@@ -31,6 +32,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * C端挂号与支付控制器接口测试。
  */
 class RegisteringControllerTest {
+
+    /**
+     * 验证医生主页可查询当前账号的重复预约状态。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void registeringGetDoctorBookingStatusReturnsAccountLevelBookedFlag() throws Exception {
+        RegisteringService registeringService = mock(RegisteringService.class);
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new RegisteringController(registeringService, mock(CIdempotencyService.class)))
+                .setControllerAdvice(new RegisteringExceptionHandler())
+                .build();
+        when(registeringService.registeringGetDoctorBookingStatus(401L))
+                .thenReturn(RegisteringDoctorBookingStatusVO.builder().doctorId(401L).booked(true).build());
+
+        mockMvc.perform(get("/c/v1/appointments/doctor-booking-status").param("doctorId", "401"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.doctorId").value(401))
+                .andExpect(jsonPath("$.data.booked").value(true));
+    }
 
     /**
      * 验证挂号订单列表返回当前科室位置。

@@ -6,6 +6,7 @@ import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentDetailVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentListVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCancelVO;
+import com.sphp.patient.registration.vo.RegisteringDoctorBookingStatusVO;
 import com.sphp.patient.registration.vo.RegisteringPaymentStatusVO;
 import com.sphp.patient.registration.vo.RegisteringPaymentSuccessVO;
 import com.sphp.patient.registration.vo.RegisteringWaitlistCreateVO;
@@ -35,6 +36,14 @@ public interface RegisteringService {
      * @return 挂号订单列表
      */
     RegisteringAppointmentListVO registeringListAppointments(Long patientId, String status, Integer pageNo, Integer pageSize);
+
+    /**
+     * 查询当前账号是否已成功预约指定医生。
+     *
+     * @param doctorId 医生 ID
+     * @return 当前账号的成功预约状态
+     */
+    RegisteringDoctorBookingStatusVO registeringGetDoctorBookingStatus(Long doctorId);
 
     /**
      * 查询挂号订单详情。

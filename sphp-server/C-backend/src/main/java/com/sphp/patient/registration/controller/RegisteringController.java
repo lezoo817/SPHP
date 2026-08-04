@@ -8,6 +8,7 @@ import com.sphp.patient.registration.dto.RegisteringWaitlistCreateRequest;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCancelVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentDetailVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentListVO;
+import com.sphp.patient.registration.vo.RegisteringDoctorBookingStatusVO;
 import com.sphp.patient.registration.vo.RegisteringPaymentStatusVO;
 import com.sphp.patient.registration.vo.RegisteringWaitlistCreateVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
@@ -86,6 +87,19 @@ public class RegisteringController {
             @RequestParam(required = false) @Positive(message = "pageNo 必须为正数") Integer pageNo,
             @RequestParam(required = false) @Positive(message = "pageSize 必须为正数") Integer pageSize) {
         return Result.success("查询成功", registeringService.registeringListAppointments(patientId, status, pageNo, pageSize));
+    }
+
+    /**
+     * 查询当前账号对指定医生的成功预约状态。
+     *
+     * @param doctorId 医生 ID
+     * @return 是否已支付或完成预约
+     */
+    @GetMapping("/appointments/doctor-booking-status")
+    @Operation(summary = "查询医生重复预约状态")
+    public Result<RegisteringDoctorBookingStatusVO> registeringGetDoctorBookingStatus(
+            @RequestParam @Positive(message = "doctorId 必须为正数") Long doctorId) {
+        return Result.success("查询成功", registeringService.registeringGetDoctorBookingStatus(doctorId));
     }
 
     /**

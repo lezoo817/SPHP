@@ -19,6 +19,7 @@ import com.sphp.patient.registration.config.RegistrationProperties;
 import com.sphp.patient.notification.mq.producer.NotificationEventProducer;
 import org.springframework.context.ApplicationEventPublisher;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
+import com.sphp.patient.registration.vo.RegisteringDoctorBookingStatusVO;
 import org.junit.jupiter.api.Test;
 import org.mindrot.jbcrypt.BCrypt;
 
@@ -39,6 +40,31 @@ import static org.mockito.Mockito.when;
  * C端挂号订单与支付服务单元测试。
  */
 class RegisteringServiceImplTest {
+
+    /**
+     * 验证预约状态查询按当前账号和医生 ID 读取已支付历史。
+     */
+    @Test
+    void registeringGetDoctorBookingStatusUsesCurrentUserAndDoctorId() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringServiceImpl service = new RegisteringServiceImpl(dataMapper,
+                mock(RegisteringAppointmentMapper.class), mock(RegisteringPaymentOrderMapper.class),
+                mock(RegisteringSlotLockService.class), mock(RegisteringWaitlistPromotionService.class),
+                mock(RegisteringWaitlistMapper.class), registrationProperties(), mock(ApplicationEventPublisher.class),
+                mock(NotificationEventProducer.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        when(dataMapper.existsRegisteringPaidDoctorAppointment(10001L, 401L)).thenReturn(true);
+
+        try {
+            RegisteringDoctorBookingStatusVO result = service.registeringGetDoctorBookingStatus(401L);
+
+            assertEquals(401L, result.getDoctorId());
+            assertEquals(true, result.isBooked());
+            verify(dataMapper).existsRegisteringPaidDoctorAppointment(10001L, 401L);
+        } finally {
+            CUserContext.clear();
+        }
+    }
 
     /**
      * 验证可访问就诊人的可用时段可锁定，并创建未支付订单和待支付支付单。

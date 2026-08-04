@@ -22,6 +22,7 @@ import com.sphp.patient.registration.support.RegisteringSlotLockService;
 import com.sphp.patient.registration.support.RegisteringWaitlistPromotionService;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentListVO;
+import com.sphp.patient.registration.vo.RegisteringDoctorBookingStatusVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentDetailVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCancelVO;
 import com.sphp.patient.registration.vo.RegisteringWaitlistCreateVO;
@@ -189,6 +190,23 @@ public class RegisteringServiceImpl implements RegisteringService {
                 .pageSize(resolvedPageSize)
                 .total(dataMapper.countRegisteringAppointments(targetPatientId, status))
                 .records(records)
+                .build();
+    }
+
+    /**
+     * 查询当前账号是否已有任意就诊人成功预约指定医生。
+     *
+     * @param doctorId 医生 ID
+     * @return 当前账号的成功预约状态
+     */
+    @Override
+    public RegisteringDoctorBookingStatusVO registeringGetDoctorBookingStatus(Long doctorId) {
+        Long userId = CUserContext.getRequired().userId();
+        // 与创建及支付链路复用同一账号维度查询，保证前端展示规则与最终拦截规则一致。
+        boolean booked = dataMapper.existsRegisteringPaidDoctorAppointment(userId, doctorId);
+        return RegisteringDoctorBookingStatusVO.builder()
+                .doctorId(doctorId)
+                .booked(booked)
                 .build();
     }
 
