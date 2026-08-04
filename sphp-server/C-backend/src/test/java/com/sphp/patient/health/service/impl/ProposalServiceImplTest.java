@@ -165,6 +165,46 @@ class ProposalServiceImplTest {
     }
 
     /**
+     * 验证病历所属就诊人不属于当前账号时拒绝跨账号读取。
+     */
+    @Test
+    void proposalGetMedicalRecordRejectsForeignPatientResource() {
+        HealthPatientMapper patientMapper = mock(HealthPatientMapper.class);
+        ProposalDataMapper dataMapper = mock(ProposalDataMapper.class);
+        when(dataMapper.proposalSelectConsultationMedicalRecord(7001L)).thenReturn(
+                new ConsultationMedicalRecordRecord(7001L, 20002L, 30001L, "张医生", "呼吸内科",
+                        "医生病历正文", OffsetDateTime.parse("2026-08-02T09:00:00+08:00"),
+                        OffsetDateTime.parse("2026-08-02T09:30:00+08:00"),
+                        OffsetDateTime.parse("2026-08-02T09:35:00+08:00")));
+        when(patientMapper.existsActivePatient(20002L)).thenReturn(true);
+        when(patientMapper.hasActivePatientRelation(10001L, 20002L)).thenReturn(false);
+        ProposalServiceImpl service = service(patientMapper, mock(ProposalReportMapper.class),
+                mock(ProposalReportIndicatorMapper.class), dataMapper);
+        setUserContext();
+
+        CAuthException exception = assertThrows(CAuthException.class,
+                () -> service.proposalGetMedicalRecord(7001L));
+
+        assertEquals("A0301", exception.getCode());
+    }
+
+    /**
+     * 验证未完成、空正文或已删除病历被 Mapper 过滤后按不存在处理。
+     */
+    @Test
+    void proposalGetMedicalRecordRejectsInvisibleRecord() {
+        ProposalDataMapper dataMapper = mock(ProposalDataMapper.class);
+        ProposalServiceImpl service = service(authorizedPatientMapper(), mock(ProposalReportMapper.class),
+                mock(ProposalReportIndicatorMapper.class), dataMapper);
+        setUserContext();
+
+        CAuthException exception = assertThrows(CAuthException.class,
+                () -> service.proposalGetMedicalRecord(7001L));
+
+        assertEquals("A0402", exception.getCode());
+    }
+
+    /**
      * 验证报告资源归属当前账号以外时拒绝访问。
      */
     @Test
