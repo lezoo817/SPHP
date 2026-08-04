@@ -109,6 +109,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
      */
     @Override
     public PrescriptionInterpretationVO prescriptionGetInterpretation(Long prescriptionId) {
+        // 读取处方资源并校验当前用户对所属患者的访问权限和处方展示状态
         prescriptionRequireApprovedResource(prescriptionId);
         PrescriptionInterpretationRecord interpretation = prescriptionDataMapper
                 .prescriptionSelectInterpretation(prescriptionId);
