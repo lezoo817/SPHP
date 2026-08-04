@@ -24,7 +24,7 @@ import { buildDeliveryAddressPath } from '../services/delivery-address';
 import { buildDeliveryAddressPayload, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
 import { getAssistantTabs, getCurrentFlowAction } from './assistant';
 import { buildReportListPath } from '../services/report';
-import { filterReportsByDate, getRecentReportRange, isReportInterpretationPending, mergeReportPages } from './report';
+import { createReportDisplayNumber, filterReportsByDate, getRecentReportRange, isReportInterpretationPending, mergeReportPages } from './report';
 import { isDuplicateDoctorAppointmentError } from './registration';
 import { buildDoctorBookingStatusPath } from '../services/registration';
 
@@ -108,6 +108,11 @@ describe('报告查询规则', () => {
   it('报告解读未准备完成时映射为等待状态', () => {
     expect(isReportInterpretationPending({ code: 'B0202', status: 409 })).toBe(true);
     expect(isReportInterpretationPending({ code: 'A0402', status: 404 })).toBe(false);
+  });
+
+  it('报告编号由完成时间戳和固定六位随机尾号组成', () => {
+    expect(createReportDisplayNumber('2026-08-04T10:00:00+08:00', 123)).toBe('1785808800000000123');
+    expect(createReportDisplayNumber(undefined, 123)).toBe('暂未提供');
   });
 });
 

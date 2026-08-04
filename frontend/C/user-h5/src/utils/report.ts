@@ -68,6 +68,20 @@ export function isReportInterpretationPending(error: unknown): boolean {
     && (('code' in error && error.code === 'B0202') || ('status' in error && error.status === 409));
 }
 
+/**
+ * 根据报告完成时间和六位随机数生成仅供前端展示的报告编号。
+ * @param completedAt 后端返回的报告完成时间
+ * @param randomValue 可选随机数，便于测试时固定编号尾部
+ * @returns 完成时间毫秒时间戳与六位随机数拼接的编号
+ */
+export function createReportDisplayNumber(completedAt?: string, randomValue = Math.floor(Math.random() * 1_000_000)): string {
+  const timestamp = completedAt ? Date.parse(completedAt) : Number.NaN;
+  // 报告详情应始终有完成时间，异常数据不生成误导性的时间戳编号。
+  if (!Number.isFinite(timestamp)) return '暂未提供';
+  const suffix = Math.max(0, Math.min(999999, Math.trunc(randomValue)));
+  return `${timestamp}${String(suffix).padStart(6, '0')}`;
+}
+
 /** 将本地日期格式化为 HTML date 输入框需要的 YYYY-MM-DD。 */
 function formatDateInput(value: Date): string {
   const year = value.getFullYear();
