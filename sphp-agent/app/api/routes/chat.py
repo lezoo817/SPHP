@@ -256,24 +256,59 @@ def _handle_message_chunk(
     return events, streamed
 
 
-def _handle_updates_chunk(chunk: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+def _call_signature(kind: str, name: str, arguments: dict[str, Any] | None) -> tuple[str, str, str]:
+    """构造工具调用签名（去重键）。
+
+    kind 区分 action / observation / card，使 action 与其配对的 observation
+    互不挡（同一工具同一参数下，action 与 observation 各推一次）；arguments
+    序列化保证同工具不同参数均推送、同工具同参数二次出现才去重。
+
+    Args:
+        kind: 事件类别（action / observation / card）。
+        name: 工具名（card 用 confirm_token 或 tool_name）。
+        arguments: 工具参数（card 用 tool_arguments），序列化为去重键组成部分。
+
+    Returns:
+        tuple[str, str, str]: 可哈希签名，入 seen 集合去重。
+    """
+    return (
+        kind,
+        name,
+        json.dumps(arguments or {}, sort_keys=True, ensure_ascii=False),
+    )
+
+
+def _handle_updates_chunk(
+    chunk: dict[str, Any], seen: set[tuple[str, str, str]] | None = None
+) -> list[tuple[str, dict[str, Any]]]:
     """updates 分支处理：从子图更新重建 action / observation / card 事件。
 
-    子图 custom 事件不传播到主图（langgraph 1.2.9），tool_executor 运行在
-    4 个业务子图内，action/observation 从 updates 里的 tool_calls /
-    tool_results **重建**（子图最终 state 更新含完整数据，M6-A1 定案）：
-        - tool_results 非空 -> 每个结果配对推送 action + observation
-          （子图循环会覆盖 tool_calls，action 从结果反推，工具确已执行）
-        - 仅 tool_calls 无结果（理论顶层场景）-> 只推 action
-        - pending_confirmations 非空 -> 推送 L2 确认 card（系分 §6.2.2）
+    subgraphs=True（方案 B 实时上报）：子图内部节点（tool_caller /
+    safety_check / tool_executor）的 updates 逐节点实时上浮到主图流，每轮
+    工具完成即推 action/observation、L2 即推 card。因 tool_results /
+    pending_confirmations 自累积（tool_executor 保留前序轮次结果）+ 子图
+    结束后主图层级再上报整体更新，同一结果会被重复上报，需 seen 签名去重。
+
+    去重粒度（kind 区分，配对事件不互相挡）：
+        - action：``("action", tool_name, arguments)``--tool_caller 已推过
+          from_call 则 tool_executor 不重复推 action（仅补 observation）
+        - observation：``("observation", tool_name, arguments)``--自累积
+          重复结果只推一次
+        - card：``("card", confirm_token or tool_name, arguments)``--
+          子图与主图层级重复上报只推一次
+
+    seen 为 None 时内部新建空集，保持单参调用兼容（现有单测无需改）。
 
     Args:
         chunk: updates 模式下的一帧（node_name -> state 更新 dict）。
+        seen: 跨帧去重签名集（_sse_generator 传入，跨子图层级累积）。
 
     Returns:
         list[tuple[str, dict[str, Any]]]：(event, payload) 事件列表，
             event ∈ {"action", "observation", "card"}。
     """
+    if seen is None:
+        seen = set()
     events: list[tuple[str, dict[str, Any]]] = []
     for _node_name, node_update in chunk.items():
         if not isinstance(node_update, dict):
@@ -281,17 +316,37 @@ def _handle_updates_chunk(chunk: dict[str, Any]) -> list[tuple[str, dict[str, An
         tool_calls = node_update.get("tool_calls") or []
         tool_results = node_update.get("tool_results") or []
         if tool_results:
-            # 子图循环会把 tool_calls 覆盖为空，action 无法从 tool_calls 重建，
-            # 改为从 tool_results 反推（工具确已执行）：每个结果推送 action -> observation 配对
             for tr in tool_results:
-                events.append(("action", _build_action(tr)))
+                tool = tr.get("tool_name", "")
+                args = tr.get("arguments", {})
+                # observation 签名去重：自累积重复结果只推一次
+                obs_sig = _call_signature("observation", tool, args)
+                if obs_sig in seen:
+                    continue
+                # action 签名去重：tool_caller 已推 from_call 则不重复推
+                action_sig = _call_signature("action", tool, args)
+                if action_sig not in seen:
+                    seen.add(action_sig)
+                    events.append(("action", _build_action(tr)))
+                seen.add(obs_sig)
                 events.append(("observation", _build_observation(tr)))
         elif tool_calls:
-            # 仅 tool_calls 无结果（理论顶层场景）：只推 action
+            # 仅 tool_calls 无结果（工具开始执行）：action 签名去重后推送
             for tc in tool_calls:
+                tool = tc.get("name", "")
+                args = tc.get("arguments", {})
+                action_sig = _call_signature("action", tool, args)
+                if action_sig in seen:
+                    continue
+                seen.add(action_sig)
                 events.append(("action", _build_action(tc, from_call=True)))
-        # L2 操作需用户确认：推送 card 事件（系分 §6.2.2）
+        # L2 操作需用户确认：card 按 confirm_token 去重（系分 §6.2.2）
         for p in node_update.get("pending_confirmations") or []:
+            card_key = p.get("confirm_token") or p.get("tool_name", "")
+            card_sig = _call_signature("card", card_key, p.get("tool_arguments", {}))
+            if card_sig in seen:
+                continue
+            seen.add(card_sig)
             events.append(("card", _build_card(p)))
     return events
 
@@ -301,13 +356,20 @@ async def _sse_generator(
 ) -> AsyncIterator[str]:
     """SSE 流式输出生成器（系分 §6.2.1，基于 astream 混合 stream_mode）。
 
-    事件映射（M6-A1 定案：仅 updates 重建，custom 通道已移除）：
-    - updates 含 tool_results 字段    -> ``event: action`` + ``event: observation``
-    - updates 含 tool_calls 字段      -> ``event: action``（仅 tool_calls 无结果场景）
+    事件映射（方案 B 实时上报：astream subgraphs=True + seen 去重）：
+    - updates（含子图内部节点）含 tool_results -> ``event: action`` + ``event: observation``
+      （action 经 seen 去重，tool_caller 已推则 tool_executor 仅补 observation）
+    - updates 含 tool_calls（无结果场景）-> ``event: action``（工具开始执行）
     - messages 且 msg 是 AIMessage    -> ``event: message``（回复 token）
     - messages 含 reasoning_content   -> ``event: thought``（推理思考 token，M6-B4）
     - updates 含 reply_node 输出      -> 未流式时兜底推送完整回复
+    - updates 含 pending_confirmations -> ``event: card``（按 confirm_token 去重）
     - 结束                            -> ``event: done``（含 usage token 统计，M6-B4）
+
+    subgraphs=True 展开子图内部节点 updates 实时上浮（langgraph 1.2.9），
+    输出三元组 ``(namespace, mode, chunk)``；namespace 不消费（解包丢弃）。
+    messages 流中子图内部 tool_caller 的 LLM token 不推送为 message--
+    _handle_message_chunk 仅认 langgraph_node == "reply_node"。
 
     P3 契约说明：``thought`` / ``error`` 事件与 ``done.trace_id`` 是对系分
     §6.2.1 事件表的**扩展**（M6-B4 推理过程展示 / P1-3 异常透出 / 链路追踪），
@@ -333,6 +395,9 @@ async def _sse_generator(
     # 本轮 LLM token 用量（M6-B4 done.usage）：langgraph 首个 chunk 含
     # input_tokens，后续 chunk 只递增 output_tokens
     usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    # subgraphs=True 去重签名集：跨帧累积，防止子图自累积 + 主图层级重复
+    # 上报导致同一工具结果/确认卡片被重复推送（方案 B 实时上报）
+    seen: set[tuple[str, str, str]] = set()
 
     # P1-9 会话级串行锁：同 session 并发请求排队执行，防止交错读写同一
     # checkpoint 互相覆盖（checkpointer 锁 per-instance，无法跨请求协调）。
@@ -351,10 +416,11 @@ async def _sse_generator(
             raise
 
         try:
-            async for mode, chunk in graph.astream(
+            async for _namespace, mode, chunk in graph.astream(
                 initial_state,
                 config=config,
                 stream_mode=["messages", "updates"],
+                subgraphs=True,
             ):
                 if mode == "messages":
                     msg, meta = chunk
@@ -366,7 +432,7 @@ async def _sse_generator(
                     for event, payload in events:
                         yield _sse(event, payload)
                 elif mode == "updates":
-                    for event, payload in _handle_updates_chunk(chunk):
+                    for event, payload in _handle_updates_chunk(chunk, seen):
                         yield _sse(event, payload)
                     # reply_node 完成但未流式时，兜底推送完整回复
                     if "reply_node" in chunk and not streamed_reply:
