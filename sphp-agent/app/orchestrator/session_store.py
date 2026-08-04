@@ -197,7 +197,7 @@ class PostgresSessionStore:
                 """
                 INSERT INTO agent_sessions
                     (user_id, session_id, scope, title, last_message, message_count)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (user_id, session_id)
                 DO UPDATE SET
                     last_message = EXCLUDED.last_message,
@@ -215,9 +215,9 @@ class PostgresSessionStore:
                 """
                 SELECT session_id, title, last_message, message_count, updated_at
                 FROM agent_sessions
-                WHERE user_id = $1 AND scope = 'c_end'
+                WHERE user_id = %s AND scope = 'c_end'
                 ORDER BY updated_at DESC
-                LIMIT $2
+                LIMIT %s
                 """,
                 (user_id, SESSION_LIST_LIMIT),
             )
@@ -247,7 +247,7 @@ class PostgresSessionStore:
             return False
         async with self._pool.connection() as conn:
             cur = await conn.execute(
-                "DELETE FROM agent_sessions WHERE user_id = $1 AND session_id = $2",
+                "DELETE FROM agent_sessions WHERE user_id = %s AND session_id = %s",
                 (user_id, session_id),
             )
             return cur.rowcount > 0

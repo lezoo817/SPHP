@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Clock, Loader, MessageSquare, Plus, Send } from 'lucide-react';
+import { ArrowLeft, Clock, Loader, MessageSquare, Plus, Send, Trash2 } from 'lucide-react';
 import { useAgentStream } from '../../hooks/useAgentStream';
-import { getSessions } from '../../services/agent';
+import { getSessions, deleteSession } from '../../services/agent';
 import { AGENT_CONTENT_MAX, AGENT_QUICK_PROMPTS, AGENT_WELCOME } from '../../constants/agent';
 import { AgentMessageBubble } from './AgentMessage';
 import { AgentThoughtPanel } from './AgentThought';
@@ -91,6 +91,23 @@ export function AgentChat({ context }: { context?: AgentChatContext }) {
     [loadSession],
   );
 
+  /** 删除一个历史会话 */
+  const handleDeleteSession = useCallback(
+    async (sessionId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!window.confirm('确定要删除这个会话吗？')) return;
+
+      try {
+        await deleteSession(sessionId);
+        // 从列表中移除
+        setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
+      } catch (err) {
+        setSessionsError((err as Error).message || '删除失败');
+      }
+    },
+    [],
+  );
+
   /** 新建会话 */
   const handleNewSession = useCallback(() => {
     setShowHistory(false);
@@ -172,21 +189,30 @@ export function AgentChat({ context }: { context?: AgentChatContext }) {
               </div>
             )}
             {sessions.map((session) => (
-              <button
-                key={session.session_id}
-                type="button"
-                className="agent-chat__history-item"
-                onClick={() => handleSelectSession(session.session_id)}
-              >
-                <div className="agent-chat__history-item-title">{session.title || '新会话'}</div>
-                <div className="agent-chat__history-item-preview">
-                  {session.last_message || '暂无消息'}
-                </div>
-                <div className="agent-chat__history-item-meta">
-                  <span className="agent-chat__history-item-count">{session.message_count}轮对话</span>
-                  <span className="agent-chat__history-item-time">{formatSessionTime(session.updated_at)}</span>
-                </div>
-              </button>
+              <div key={session.session_id} className="agent-chat__history-item">
+                <button
+                  type="button"
+                  className="agent-chat__history-item-main"
+                  onClick={() => handleSelectSession(session.session_id)}
+                >
+                  <div className="agent-chat__history-item-title">{session.title || '新会话'}</div>
+                  <div className="agent-chat__history-item-preview">
+                    {session.last_message || '暂无消息'}
+                  </div>
+                  <div className="agent-chat__history-item-meta">
+                    <span className="agent-chat__history-item-count">{session.message_count}轮对话</span>
+                    <span className="agent-chat__history-item-time">{formatSessionTime(session.updated_at)}</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  className="agent-chat__history-item-delete"
+                  onClick={(e) => void handleDeleteSession(session.session_id, e)}
+                  aria-label="删除会话"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             ))}
           </div>
         </div>

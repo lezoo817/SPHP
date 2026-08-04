@@ -14,7 +14,7 @@
  * 与 sphp-agent `app/api/routes/chat.py` 的 SSE 事件契约对齐。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { chatStream, confirmCard, getSessions, type ChatStreamHandle } from '../services/agent';
+import { chatStream, confirmCard, getSessions, getSessionMessages, type ChatStreamHandle } from '../services/agent';
 import { AGENT_TOOL_LABELS, AGENT_ERROR_TEXT } from '../constants/agent';
 import {
   clearAgentSessionId,
@@ -402,20 +402,42 @@ export function useAgentStream(): UseAgentStream {
   // 组件卸载时中断未完成的流式请求，避免内存泄漏
   useEffect(() => () => cancel(), [cancel]);
 
-  /** 加载指定历史会话：保存 session_id 并重置状态，用户发送消息时将恢复上下文。 */
+  /** 加载指定历史会话：获取历史消息并显示。 */
   const loadSession = useCallback(
     async (targetSessionId: string) => {
       // 重置当前状态
       cancel();
       setEntries([]);
       setErrorMessage('');
-      setConnection('idle');
+      setConnection('connecting');
       currentMessageIdRef.current = null;
       currentThoughtIdRef.current = null;
 
-      // 设置目标 session_id，用户发送消息时 LangGraph checkpointer 会自动恢复上下文
+      // 设置目标 session_id
       saveAgentSessionId(targetSessionId);
       setSessionId(targetSessionId);
+
+      try {
+        // 获取历史消息
+        const messages = await getSessionMessages(targetSessionId);
+
+        // 将历史消息转换为 AgentEntry 格式
+        const historyEntries: AgentEntry[] = messages.map((msg) => ({
+          kind: 'message' as const,
+          data: {
+            id: genId(msg.role === 'user' ? 'u' : 'a'),
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+            createdAt: Date.now(),
+          },
+        }));
+
+        setEntries(historyEntries);
+        setConnection('idle');
+      } catch (err) {
+        setConnection('error');
+        setErrorMessage((err as Error).message || '加载历史消息失败');
+      }
     },
     [cancel],
   );

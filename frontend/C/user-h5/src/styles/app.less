@@ -62,12 +62,15 @@ label { display: grid; gap: 8px; margin: 18px 0; color: #1e293c; font-weight: 70
 .agent-chat__history-loading span,.agent-chat__history-empty span{font-size:14px}
 .agent-chat__history-error{display:flex;align-items:center;justify-content:space-between;padding:16px;background:#fdecee;border-radius:10px;color:#b33444;font-size:14px}
 .agent-chat__history-error button{border:0;background:transparent;color:#b33444;font-weight:700;text-decoration:underline}
-.agent-chat__history-item{display:block;width:100%;padding:14px;margin-bottom:10px;border:0;border-radius:12px;background:#fff;text-align:left;box-shadow:0 2px 8px rgba(0,0,0,.04);transition:box-shadow .2s}
+.agent-chat__history-item{display:flex;align-items:stretch;width:100%;margin-bottom:10px;border-radius:12px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);transition:box-shadow .2s;overflow:hidden}
 .agent-chat__history-item:hover{box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.agent-chat__history-item-main{flex:1;min-width:0;display:block;padding:14px;border:0;background:transparent;text-align:left}
 .agent-chat__history-item-title{font-size:15px;font-weight:600;color:#1d293c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agent-chat__history-item-preview{margin-top:6px;font-size:13px;color:#756f76;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agent-chat__history-item-meta{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:12px;color:#9a9498}
 .agent-chat__history-item-count{color:#b33444}
+.agent-chat__history-item-delete{display:grid;place-items:center;padding:0 12px;border:0;background:transparent;color:#9a9498;transition:color .2s}
+.agent-chat__history-item-delete:hover{color:#b33444}
 .agent-chat__input-bar{display:flex;align-items:flex-end;gap:8px;padding:10px 14px 14px;border-top:1px solid #eee7e5;background:#fff}.agent-chat__input{flex:1;min-height:40px;max-height:120px;padding:10px 12px;border:1px solid #ddd;border-radius:10px;background:#fff;color:#172238;font-size:15px;resize:none;outline-color:#b33444;line-height:1.5}.agent-chat__send{display:grid;place-items:center;flex:0 0 auto;width:44px;height:44px;border:0;border-radius:10px;background:#b33444;color:#fff}.agent-chat__send:disabled{background:#c9b0b4}
 @media (max-width:360px){.agent-msg__bubble{max-width:84%}}
 
