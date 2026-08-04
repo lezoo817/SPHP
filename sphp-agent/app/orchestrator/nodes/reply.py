@@ -97,8 +97,13 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
             content = f"重要提示（必须在回复中如实告知用户）：{risk_warning}。语气平和，不夸大。"
             llm_messages.append({"role": "system", "content": content})
 
-        response = await llm.ainvoke(llm_messages)
-        # BaseMessage.content 可为 str 或多段内容列表（OpenAI 格式），统一转 str
+        # 流式调用：逐 token 累加。LangGraph 的 messages 流会逐 chunk 捕获
+        # 本次 LLM 输出并推送 SSE（chat.py `_handle_message_chunk` 生成 message /
+        # thought 事件），从而实现前端逐字输出；此处再拼接完整结果供节点返回。
+        response = None
+        async for chunk in llm.astream(llm_messages):
+            response = chunk if response is None else response + chunk
+        # BaseMessage.content 可能为 str 或段内容列表（OpenAI 格式），统一转 str
         raw_content = response.content
         reply_content = raw_content if isinstance(raw_content, str) else str(raw_content)
 

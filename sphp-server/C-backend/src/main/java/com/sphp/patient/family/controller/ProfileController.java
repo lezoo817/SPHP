@@ -22,6 +22,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import static com.sphp.shared.common.constant.HeaderConstant.IDEMPOTENCY_KEY;
+
 /**
  * C端当前账号本人资料接口。
  */
@@ -31,8 +33,9 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "C端个人资料", description = "查询和维护当前账号本人资料")
 @RequiredArgsConstructor
 public class ProfileController {
-
+    // 个人资料服务
     private final ProfileService profileService;
+    // 幂等服务
     private final CIdempotencyService idempotencyService;
 
     /**
@@ -56,7 +59,7 @@ public class ProfileController {
     @PutMapping
     @Operation(summary = "更新个人资料")
     public Result<ProfileUpdateVO> updateProfile(
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody ProfileUpdateRequest request) {
         Long userId = CUserContext.getRequired().userId();
         IdempotencyPayload<ProfileUpdateVO> payload = idempotencyService.execute(

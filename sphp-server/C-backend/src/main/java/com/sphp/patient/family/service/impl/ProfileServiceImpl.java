@@ -20,6 +20,8 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Arrays;
 
+import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
+
 /**
  * C端当前账号本人资料服务实现。
  */
@@ -60,6 +62,7 @@ public class ProfileServiceImpl implements ProfileService {
     @Transactional(rollbackFor = Exception.class)
     public ProfileUpdateVO updateProfile(ProfileUpdateRequest request) {
         Long userId = CUserContext.getRequired().userId();
+        // 参数校验
         validateUpdateRequest(request);
         ProfileRecord existing = requireSelfProfile(userId);
         OffsetDateTime updatedAt = OffsetDateTime.now();
@@ -73,7 +76,7 @@ public class ProfileServiceImpl implements ProfileService {
         // SQL 同时限定用户、SELF 关系与软删除状态，阻止跨账号或解绑后的资料更新
         if (profileMapper.updateSelfProfile(userId, existing.getPatientId(), request.getName().trim(), gender, birthday,
                 phone, emergencyContact, updatedAt) != 1) {
-            throw new CAuthException(ErrorCodeEnum.BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT,
+            throw new CAuthException(BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT,
                     "个人资料已发生变化，请刷新后重试");
         }
         return ProfileUpdateVO.builder()
@@ -94,7 +97,7 @@ public class ProfileServiceImpl implements ProfileService {
     private ProfileRecord requireSelfProfile(Long userId) {
         ProfileRecord profile = profileMapper.selectSelfProfile(userId);
         if (profile == null) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "本人资料不存在");
+            throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "本人资料不存在");
         }
         return profile;
     }
@@ -107,10 +110,10 @@ public class ProfileServiceImpl implements ProfileService {
      */
     private void validateUpdateRequest(ProfileUpdateRequest request) {
         if (!isGender(request.getGender())) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_PARAMETER, HttpStatus.BAD_REQUEST, "性别编码不合法");
+            throw new CAuthException(INVALID_PARAMETER, HttpStatus.BAD_REQUEST, "性别编码不合法");
         }
         if (request.getBirthday() != null && request.getBirthday().isAfter(LocalDate.now())) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_PARAMETER, HttpStatus.BAD_REQUEST, "出生日期不能晚于当天");
+            throw new CAuthException(INVALID_PARAMETER, HttpStatus.BAD_REQUEST, "出生日期不能晚于当天");
         }
     }
 

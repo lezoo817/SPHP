@@ -26,6 +26,9 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 
+import static com.sphp.patient.common.constant.RegistrationConstant.*;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
+
 /**
  * C端挂号资源查询服务实现。
  */
@@ -33,9 +36,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RegistrationServiceImpl implements RegistrationService {
 
+    // 资源查询
     private final RegistrationResourceMapper resourceMapper;
+    // 缓存
     private final StringRedisTemplate redisTemplate;
+    // 挂号配置
     private final RegistrationProperties registrationProperties;
+
 
     /**
      * 查询全部可供 C端选择的医院。
@@ -61,7 +68,7 @@ public class RegistrationServiceImpl implements RegistrationService {
     public List<DepartmentListVO> listDepartments(Long hospitalId, String keyword) {
         // 先确认医院可用，避免向客户端暴露停用医院下的科室数据。
         if (resourceMapper.selectAvailableHospital(hospitalId) == null) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "医院不存在或已停用");
+            throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "医院不存在或已停用");
         }
         // 空白关键字不参与筛选，保证与未传关键字的查询语义一致。
         String normalizedKeyword = keyword == null || keyword.isBlank() ? null : keyword.trim();
@@ -85,9 +92,9 @@ public class RegistrationServiceImpl implements RegistrationService {
     public DoctorPageVO listDoctors(Long hospitalId, Long departmentId, LocalDate date, Integer pageNo, Integer pageSize) {
         // 医院、科室分别校验，确保停用资源不会出现在 C 端挂号入口。
         validateHospitalAndDepartment(hospitalId, departmentId);
-        LocalDate queryDate = date == null ? LocalDate.now(RegistrationConstant.BUSINESS_ZONE_ID) : date;
-        int resolvedPageNo = pageNo == null ? RegistrationConstant.DEFAULT_PAGE_NO : pageNo;
-        int resolvedPageSize = pageSize == null ? RegistrationConstant.DEFAULT_PAGE_SIZE : pageSize;
+        LocalDate queryDate = date == null ? LocalDate.now(BUSINESS_ZONE_ID) : date;
+        int resolvedPageNo = pageNo == null ?DEFAULT_PAGE_NO : pageNo;
+        int resolvedPageSize = pageSize == null ? DEFAULT_PAGE_SIZE : pageSize;
         long offset = (long) (resolvedPageNo - 1) * resolvedPageSize;
 
         // 余量只汇总指定日期已发布排班的 AVAILABLE 快照，零余量医生仍需供前端展示。
@@ -116,11 +123,13 @@ public class RegistrationServiceImpl implements RegistrationService {
      */
     @Override
     public List<AppointmentSlotVO> listDoctorSlots(Long hospitalId, Long doctorId, LocalDate date) {
+        // 日期超范围
         validateSlotDate(date);
+        // 医院、医生分别校验，确保停用资源不会出现在 C 端挂号入口。
         validateDoctorHospitalLink(hospitalId, doctorId);
         // 没有发布排班时不返回草稿或取消排班的时段，避免误导预约入口。
         if (!resourceMapper.hasPublishedSchedule(doctorId, date)) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "医生当日暂无可预约排班");
+            throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "医生当日暂无可预约排班");
         }
         return resourceMapper.selectPublishedSlots(doctorId, date).stream()
                 .map(slot -> toAppointmentSlotVO(slot, date))
@@ -165,16 +174,17 @@ public class RegistrationServiceImpl implements RegistrationService {
      * @throws CAuthException 资源不存在、已停用或医院链路不匹配时抛出
      */
     private void validateHospitalAndDepartment(Long hospitalId, Long departmentId) {
+
         if (resourceMapper.selectAvailableHospital(hospitalId) == null) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "医院不存在或已停用");
+            throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "医院不存在或已停用");
         }
         DepartmentLinkRecord department = resourceMapper.selectAvailableDepartmentLink(departmentId);
         if (department == null) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "科室不存在或已停用");
+            throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "科室不存在或已停用");
         }
         // 科室必须隶属于请求医院，避免客户端用有效 ID 跨医院访问。
         if (!hospitalId.equals(department.hospitalId())) {
-            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, "科室不属于当前医院");
+            throw new CAuthException(UNAUTHORIZED, HttpStatus.FORBIDDEN, "科室不属于当前医院");
         }
     }
 
@@ -185,11 +195,14 @@ public class RegistrationServiceImpl implements RegistrationService {
      * @throws CAuthException 日期为空或超出放号窗口时抛出
      */
     private void validateSlotDate(LocalDate date) {
-        LocalDate today = LocalDate.now(RegistrationConstant.BUSINESS_ZONE_ID);
+        LocalDate today = LocalDate.now(BUSINESS_ZONE_ID);
+        // 可预约窗口
         int releaseDays = registrationProperties.getSlotReleaseDays();
+        // 可预约窗口最大值
         LocalDate latestDate = today.plusDays(Math.max(releaseDays, 1) - 1L);
+        //如果日期无效，则抛出参数错误。
         if (date == null || date.isBefore(today) || date.isAfter(latestDate)) {
-            throw new CAuthException(ErrorCodeEnum.PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST,
+            throw new CAuthException(PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST,
                     "预约日期仅支持当天至未来" + Math.max(releaseDays, 1) + "天");
         }
     }
@@ -204,11 +217,11 @@ public class RegistrationServiceImpl implements RegistrationService {
     private void validateDoctorHospitalLink(Long hospitalId, Long doctorId) {
         DoctorLinkRecord doctor = resourceMapper.selectAvailableDoctorLink(doctorId);
         if (doctor == null) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "医生不存在或已停用");
+            throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "医生不存在或已停用");
         }
         // 医生 ID 有效也必须匹配当前医院，防止跨院获取排班详情。
         if (!hospitalId.equals(doctor.hospitalId())) {
-            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, "医生不属于当前医院");
+            throw new CAuthException(UNAUTHORIZED, HttpStatus.FORBIDDEN, "医生不属于当前医院");
         }
     }
 
@@ -277,6 +290,6 @@ public class RegistrationServiceImpl implements RegistrationService {
      * @return 东八区偏移时间
      */
     private OffsetDateTime toBusinessOffsetDateTime(LocalDate date, java.time.LocalTime time) {
-        return date.atTime(time).atZone(RegistrationConstant.BUSINESS_ZONE_ID).toOffsetDateTime();
+        return date.atTime(time).atZone(BUSINESS_ZONE_ID).toOffsetDateTime();
     }
 }

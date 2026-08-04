@@ -25,6 +25,7 @@ from app.infrastructure.audit.logger import log_tool_call
 from app.mcp_client.client import MCPClientError, get_mcp_client
 from app.mcp_server.tools.dispatcher import (
     _IDEMPOTENCY_ARG,
+    _JWT_ARG,
     dispatch_tool,
     is_registered,
 )
@@ -223,10 +224,15 @@ async def execute_mcp_tool(
 
     try:
         # P2 #17：确认流程幂等键经内部键透传（_wrap 剥离并注入 ContextVar）；
-        # 注入到副本，不改动原 arguments（审计 params_hash 保持业务参数）
+        # 注入到副本，不改动原 arguments（审计 params_hash 保持业务参数）。
+        # C 端鉴权修复：同步透传用户 JWT（Authorization Bearer），使 Java
+        # 拦截器能识别当前用户身份（Java 拒绝外部 X-User-Id 头）。
         exec_args = arguments
         if idempotency_key:
             exec_args = {**arguments, _IDEMPOTENCY_ARG: idempotency_key}
+        jwt_token = state.get("jwt_token")
+        if jwt_token:
+            exec_args = {**exec_args, _JWT_ARG: jwt_token}
         result = await _call_mcp_func(tool_name, exec_args, user_id)
         duration_ms = (time.time() - start) * 1000
         # 安全（P1-1）：校验 Java 信封 / call_java_api 失败包装，避免 5xx 或

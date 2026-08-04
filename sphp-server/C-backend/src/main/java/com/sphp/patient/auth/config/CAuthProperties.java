@@ -16,10 +16,13 @@ public class CAuthProperties {
 
     /** 图形验证码有效期，单位为秒 */
     private long captchaExpiration;
+
     /** 登录失败最大次数 */
     private int loginMaxFailures;
+
     /** 登录失败锁定时间，单位为秒 */
     private long loginLockSeconds;
+
     /** Refresh Token 有效期，单位为秒 */
     private long refreshTokenExpiration;
 }

@@ -22,14 +22,17 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
+
 /**
  * C端症状导诊服务实现。
  */
 @Service
 @RequiredArgsConstructor
 public class TriageServiceImpl implements TriageService {
-
+    // 数据访问接口
     private final TriageDataMapper triageDataMapper;
+    // JSON 序列化接口
     private final ObjectMapper objectMapper;
 
     /**
@@ -43,7 +46,9 @@ public class TriageServiceImpl implements TriageService {
     @Transactional(rollbackFor = Exception.class)
     public TriageAssessmentVO triageCreateAssessment(TriageAssessmentCreateRequest request) {
         Long userId = CUserContext.getRequired().userId();
+        // 解析本人或显式就诊人并校验当前用户有效归属
         Long patientId = triageResolveAccessiblePatient(userId, request.getPatientId());
+        // 判断医院是否启用且未被软删除
         if (!triageDataMapper.triageExistsEnabledHospital(request.getHospitalId())) {
             throw triageNotFound("医院不存在或已停用");
         }
@@ -59,6 +64,7 @@ public class TriageServiceImpl implements TriageService {
                     .reason(rule.reason())
                     .build());
         }
+        // 获取最高紧急程度
         String urgency = matchedRules.isEmpty() ? TriageUrgencyEnum.LOW.name() : matchedRules.getFirst().urgency();
         List<TriageAssessmentVO.RecommendedDepartment> recommendedDepartments = List.copyOf(departmentMap.values());
 
@@ -110,7 +116,7 @@ public class TriageServiceImpl implements TriageService {
      */
     private String triageSerialize(Object source, String errorMessage) {
         try {
-            return objectMapper.writeValueAsString(source);
+            return objectMapper.writeValueAsString(source); // 将对象序列化为 JSON
         } catch (JsonProcessingException exception) {
             throw triageSystemError(errorMessage);
         }
@@ -123,7 +129,7 @@ public class TriageServiceImpl implements TriageService {
      * @return HTTP 404 业务异常
      */
     private CAuthException triageNotFound(String message) {
-        return new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
+        return new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
     }
 
     /**
@@ -133,7 +139,7 @@ public class TriageServiceImpl implements TriageService {
      * @return HTTP 403 业务异常
      */
     private CAuthException triageForbidden(String message) {
-        return new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, message);
+        return new CAuthException(UNAUTHORIZED, HttpStatus.FORBIDDEN, message);
     }
 
     /**
@@ -143,6 +149,6 @@ public class TriageServiceImpl implements TriageService {
      * @return HTTP 500 业务异常
      */
     private CAuthException triageSystemError(String message) {
-        return new CAuthException(ErrorCodeEnum.SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, message);
+        return new CAuthException(SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, message);
     }
 }

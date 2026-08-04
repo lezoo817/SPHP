@@ -30,6 +30,8 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.time.OffsetDateTime;
 
+import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
+
 /**
  * C端健康档案服务实现。
  */
@@ -37,8 +39,11 @@ import java.time.OffsetDateTime;
 @RequiredArgsConstructor
 public class HealthServiceImpl implements HealthService {
 
+    //患者健康档案
     private final HealthPatientMapper healthPatientMapper;
+    //患者过敏史
     private final PatientAllergyMapper allergyMapper;
+    //患者既往史
     private final PatientMedicalHistoryMapper historyMapper;
 
     /**
@@ -50,11 +55,13 @@ public class HealthServiceImpl implements HealthService {
      */
     @Override
     public HealthRecordVO getHealthRecord(Long patientId) {
+        // 查询当前账号可访问的就诊人
         Long targetPatientId = resolveAccessiblePatientId(patientId);
         HealthPatientProfileRecord profile = healthPatientMapper.selectActiveProfile(targetPatientId);
         if (profile == null) {
             throw notFound("就诊人不存在或已停用");
         }
+        // 查询过敏史
         List<AllergyItemVO> allergies = allergyMapper.selectList(Wrappers.<PatientAllergy>lambdaQuery()
                         .eq(PatientAllergy::getPatientId, targetPatientId)
                         .isNull(PatientAllergy::getDeletedAt)
@@ -63,6 +70,7 @@ public class HealthServiceImpl implements HealthService {
                 .stream()
                 .map(this::toAllergyItemVO)
                 .toList();
+        // 查询既往史
         List<MedicalHistoryItemVO> medicalHistories = historyMapper.selectList(
                         Wrappers.<PatientMedicalHistory>lambdaQuery()
                                 .eq(PatientMedicalHistory::getPatientId, targetPatientId)
@@ -93,6 +101,7 @@ public class HealthServiceImpl implements HealthService {
      */
     @Override
     public AllergyCreateVO createAllergy(AllergyCreateRequest request) {
+        // 查询当前账号可访问的就诊人
         Long targetPatientId = resolveAccessiblePatientId(request.getPatientId());
         PatientAllergy allergy = new PatientAllergy();
         allergy.setPatientId(targetPatientId);
@@ -100,7 +109,7 @@ public class HealthServiceImpl implements HealthService {
         allergy.setReaction(request.getReaction());
         // 插入结果必须为一条，避免数据库异常被包装为伪成功响应
         if (allergyMapper.insert(allergy) != 1) {
-            throw new CAuthException(ErrorCodeEnum.SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, "过敏史保存失败");
+            throw new CAuthException(SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, "过敏史保存失败");
         }
         return AllergyCreateVO.builder()
                 .id(allergy.getId())
@@ -125,9 +134,11 @@ public class HealthServiceImpl implements HealthService {
         if (existing == null) {
             throw notFound("过敏史不存在或已删除");
         }
+        // 查询当前账号可访问的就诊人
         Long targetPatientId = requireAccessiblePatientId(existing.getPatientId());
-
+        // 更新时间
         OffsetDateTime now = OffsetDateTime.now();
+
         PatientAllergy updated = new PatientAllergy();
         updated.setId(allergyId);
         updated.setPatientId(targetPatientId);
@@ -159,14 +170,16 @@ public class HealthServiceImpl implements HealthService {
      */
     @Override
     public MedicalHistoryCreateVO createMedicalHistory(MedicalHistoryCreateRequest request) {
+        // 查询当前账号可访问的就诊人
         Long targetPatientId = resolveAccessiblePatientId(request.getPatientId());
+
         PatientMedicalHistory history = new PatientMedicalHistory();
         history.setPatientId(targetPatientId);
         history.setContent(request.getContent());
         history.setOccurredAt(request.getOccurredAt());
         // 插入结果必须为一条，避免数据库异常被包装为伪成功响应
         if (historyMapper.insert(history) != 1) {
-            throw new CAuthException(ErrorCodeEnum.SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, "既往史保存失败");
+            throw new CAuthException(SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, "既往史保存失败");
         }
         return MedicalHistoryCreateVO.builder()
                 .id(history.getId())
@@ -191,6 +204,7 @@ public class HealthServiceImpl implements HealthService {
         if (existing == null) {
             throw notFound("既往史不存在或已删除");
         }
+        // 查询当前账号可访问的就诊人
         Long targetPatientId = requireAccessiblePatientId(existing.getPatientId());
 
         OffsetDateTime now = OffsetDateTime.now();
@@ -247,8 +261,9 @@ public class HealthServiceImpl implements HealthService {
         if (!healthPatientMapper.existsActivePatient(patientId)) {
             throw notFound("就诊人不存在或已停用");
         }
+        // 检查当前账号是否可访问该就诊人
         if (!healthPatientMapper.hasActivePatientRelation(userId, patientId)) {
-            throw new CAuthException(ErrorCodeEnum.UNAUTHORIZED, HttpStatus.FORBIDDEN, "无权访问该就诊人健康档案");
+            throw new CAuthException(UNAUTHORIZED, HttpStatus.FORBIDDEN, "无权访问该就诊人健康档案");
         }
         return patientId;
     }
@@ -288,6 +303,6 @@ public class HealthServiceImpl implements HealthService {
      * @return HTTP 404 业务异常
      */
     private CAuthException notFound(String message) {
-        return new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
+        return new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
     }
 }

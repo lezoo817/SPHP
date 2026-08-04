@@ -13,8 +13,9 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class NotificationEventProducer {
-
+    // 事件发布器
     private final ApplicationEventPublisher eventPublisher;
+    // 站内通知表
     private final NotificationMapper notificationMapper;
 
     /**

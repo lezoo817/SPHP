@@ -1,3 +1,5 @@
+import type { Appointment } from '../typings/api';
+
 /** 将后端分单位金额转换为页面展示的元金额。 */
 export function formatAmount(amountCent: number): string {
   return `${(amountCent / 100).toFixed(2)} 元`;
@@ -18,6 +20,20 @@ export function filterHospitals<T extends { name: string }>(hospitals: T[], keyw
 export function formatMedicalTime(value?: string): string {
   if (!value) return '时间待确认';
   return new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+}
+
+/**
+ * 将后端挂号订单状态转换为就诊助手使用的中文文案。
+ * @param status 后端挂号订单状态
+ * @returns 面向患者的中文状态文本
+ */
+export function getAppointmentStatusText(status: Appointment['status']): string {
+  return ({
+    UNPAID: '待支付',
+    PAID: '支付完成',
+    COMPLETED: '就诊完成',
+    CANCELLED: '支付取消',
+  } as Record<Appointment['status'], string>)[status];
 }
 
 /** 计算支付到期时间剩余秒数，过期时返回零。 */

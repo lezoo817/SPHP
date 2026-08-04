@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.util.List;
 
+import static com.sphp.shared.common.enums.ErrorCodeEnum.SYSTEM_ERROR;
+
 /**
  * C端挂号号源 Redis 原子预扣与补偿服务。
  */
@@ -84,6 +86,6 @@ public class RegisteringSlotLockService {
      * @return 系统异常
      */
     private CAuthException systemError(String message) {
-        return new CAuthException(ErrorCodeEnum.SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, message);
+        return new CAuthException(SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, message);
     }
 }

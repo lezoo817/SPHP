@@ -16,6 +16,7 @@ public class ConsultationAttachmentRequest {
     @NotBlank(message = "附件名称不能为空")
     @Size(max = 255, message = "附件名称不能超过255个字符")
     private String name;
+
     /** 附件访问地址 */
     @NotBlank(message = "附件地址不能为空")
     @Size(max = 2048, message = "附件地址不能超过2048个字符")

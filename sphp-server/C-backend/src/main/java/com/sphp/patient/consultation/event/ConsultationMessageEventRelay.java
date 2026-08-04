@@ -7,6 +7,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import static com.sphp.patient.common.constant.ConsultationConstant.BUSINESS_EXCHANGE;
+import static com.sphp.patient.common.constant.ConsultationConstant.MESSAGE_SENT_ROUTING_KEY;
+
 /**
  * 问诊消息事件的事务后 RabbitMQ 转发器。
  */
@@ -24,7 +27,7 @@ public class ConsultationMessageEventRelay {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void relayConsultationMessageSentEvent(ConsultationMessageSentEvent event) {
         // 事件只携带业务定位字段，禁止将问诊文字原文放入消息队列。
-        rabbitTemplate.convertAndSend(ConsultationConstant.BUSINESS_EXCHANGE,
-                ConsultationConstant.MESSAGE_SENT_ROUTING_KEY, event);
+        rabbitTemplate.convertAndSend(BUSINESS_EXCHANGE,
+                MESSAGE_SENT_ROUTING_KEY, event);
     }
 }

@@ -14,6 +14,7 @@ public class ConsultationAttachmentVO {
 
     /** 附件展示名称 */
     private String name;
+
     /** 附件访问地址 */
     private String url;
 }

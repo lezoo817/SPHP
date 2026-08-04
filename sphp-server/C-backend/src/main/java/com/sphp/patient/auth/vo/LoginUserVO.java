@@ -12,6 +12,7 @@ public class LoginUserVO {
 
     /** C端用户 ID */
     private final Long id;
+
     /** 登录账号 */
     private final String account;
 }

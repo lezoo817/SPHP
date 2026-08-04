@@ -18,7 +18,9 @@ public class AllergyUpdateRequest {
     @NotBlank(message = "过敏原不能为空")
     @Size(max = 128, message = "过敏原长度不能超过128位")
     private String allergen;
+
     /** 过敏反应描述，未传时保留原值 */
     @Size(max = 512, message = "过敏反应长度不能超过512位")
     private String reaction;
+
 }

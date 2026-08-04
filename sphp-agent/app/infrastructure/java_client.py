@@ -38,6 +38,28 @@ _WRITE_METHODS = {"POST", "PUT", "PATCH"}
 # （context 为空）行为与原来一致（调用内生成唯一键）。
 _IDEMPOTENCY_CONTEXT: ContextVar[str | None] = ContextVar("idempotency_key", default=None)
 
+# 当前请求的 JWT token（C 端鉴权修复）：Java C 端拦截器强制要求
+# ``Authorization: Bearer <token>`` 且明确拒绝外部 ``X-User-Id`` 头，因此
+# Agent 调 Java 时必须透传用户 JWT。token 经 MCP 内部键 ``__jwt_token__``
+# 透传至封装函数所在任务栈，dispatcher._wrap 剥离后设置本 ContextVar，
+# call_java_api 据此注入 Authorization 头。
+_JWT_CONTEXT: ContextVar[str | None] = ContextVar("jwt_token", default=None)
+
+
+def set_jwt_context(token: str) -> Token[str | None]:
+    """设置当前任务栈的 JWT，返回恢复句柄（dispatcher._wrap 使用）。"""
+    return _JWT_CONTEXT.set(token)
+
+
+def reset_jwt_context(handle: Token[str | None]) -> None:
+    """恢复调用前 JWT 上下文（dispatcher._wrap 使用）。"""
+    _JWT_CONTEXT.reset(handle)
+
+
+def get_jwt_context() -> str | None:
+    """读取当前任务栈的 JWT（call_java_api 注入 Authorization 头时使用）。"""
+    return _JWT_CONTEXT.get()
+
 
 def set_idempotency_context(key: str) -> Token[str | None]:
     """设置当前任务栈的幂等键，返回恢复句柄（dispatcher._wrap 使用）。"""
@@ -223,7 +245,14 @@ async def call_java_api(
     url = f"{settings.java_base_url}{path}"
 
     headers = {"Content-Type": "application/json"}
-    if user_id is not None:
+    # C 端鉴权修复：Java 拦截器要求 ``Authorization: Bearer <token>`` 且拒绝
+    # 外部 ``X-User-Id`` 头。透传当前任务栈的 JWT（dispatcher._wrap 设置）时
+    # 用它建立身份，不再注入 X-User-Id；无 JWT（如内部/匿名降级场景）时
+    # 保留原 X-User-Id 行为，与调用方显式 user_id 兼容。
+    jwt_token = get_jwt_context()
+    if jwt_token:
+        headers["Authorization"] = f"Bearer {jwt_token}"
+    elif user_id is not None:
         headers["X-User-Id"] = str(user_id)
 
     method_upper = method.upper()

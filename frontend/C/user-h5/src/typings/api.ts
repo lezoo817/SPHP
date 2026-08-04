@@ -170,3 +170,9 @@ export type NotificationType = 'APPOINTMENT' | 'DRUG_ORDER' | 'MEDICATION_REMIND
 export interface NotificationItem { id: number; type: NotificationType; patientId?: number; patientName?: string; title: string; content: string; read: boolean; createdAt: string; }
 /** 标记站内通知已读后的结果。 */
 export interface NotificationReadResult { id: number; read: true; readAt?: string; }
+/** 当前账号的收货地址。 */
+export interface DeliveryAddress { id: number; receiverName: string; receiverPhone: string; province: string; provinceName: string; city: string; district?: string; detailAddress: string; isDefault: boolean; createdAt?: string; updatedAt?: string; }
+/** 新增或编辑收货地址的可提交字段。 */
+export interface DeliveryAddressPayload { receiverName: string; receiverPhone: string; province: string; city: string; district?: string; detailAddress: string; }
+/** 收货地址软删除结果。 */
+export interface DeliveryAddressDeleteResult { id: number; deletedAt: string; }
