@@ -30,9 +30,11 @@ logger = logging.getLogger(__name__)
 # _wrap 剥离后注入 ContextVar，供同任务栈内封装函数的 call_java_api 复用，
 # 确保同一确认操作（含失败重试）Java 侧幂等去重。
 _IDEMPOTENCY_ARG = "__idempotency_key__"
-# JWT 内部键：call_java_api 需透传用户 JWT（Authorization Bearer），
-# 经 MCP 协议透传至此，_wrap 剥离后注入 ContextVar，供封装函数内
-# call_java_api 注入 Authorization 头（C 端鉴权修复）。
+
+# JWT 透传内部键（与幂等键对称，C 端拦截器硬需求）：tool_executor 将
+# AgentState.jwt_token 注入此键，经 MCP 协议透传至此。不在任何 ToolSchema
+# 参数中，LLM 不会伪造；_wrap 剥离后注入 ContextVar，供封装函数内
+# call_java_api 读 Authorization: Bearer 头，C 端拦截器校验通过。
 _JWT_ARG = "__jwt_token__"
 
 
@@ -45,8 +47,9 @@ async def _wrap(
     若有则设置幂等键 ContextVar，使封装函数内 call_java_api 的写操作复用
     该键；await 结束后恢复，不影响同任务后续调用。
 
-    C 端鉴权修复：同样剥离 ``__jwt_token__`` 并设置 JWT ContextVar，使
-    封装函数内 call_java_api 注入 ``Authorization: Bearer`` 头。
+    JWT 透传：对称剥离 ``__jwt_token__``，设置 JWT ContextVar，使封装函数内
+    call_java_api 注入 Authorization: Bearer 头（C 端拦截器强制、拒绝
+    X-User-Id）；await 结束后恢复。
     """
     func = getattr(module, func_name)
     sig = inspect.signature(func)
@@ -60,17 +63,19 @@ async def _wrap(
     if "user_id" in sig.parameters:
         kwargs["user_id"] = user_id
 
+    # 幂等键 / JWT 均经 ContextVar 透传至封装函数内 call_java_api；
+    # finally 反序恢复（LIFO），互不影响。
     idem_key = arguments.get(_IDEMPOTENCY_ARG)
-    idem_handle = set_idempotency_context(idem_key) if idem_key else None
     jwt = arguments.get(_JWT_ARG)
+    idem_handle = set_idempotency_context(idem_key) if idem_key else None
     jwt_handle = set_jwt_context(jwt) if jwt else None
     try:
         return cast(dict[str, Any], await func(**kwargs))
     finally:
-        if idem_handle is not None:
-            reset_idempotency_context(idem_handle)
         if jwt_handle is not None:
             reset_jwt_context(jwt_handle)
+        if idem_handle is not None:
+            reset_idempotency_context(idem_handle)
 
 
 # 工具名 -> 模块 import 路径（对应 mcp_server/tools/*.py）

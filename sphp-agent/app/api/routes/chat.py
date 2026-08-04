@@ -256,97 +256,99 @@ def _handle_message_chunk(
     return events, streamed
 
 
+def _call_signature(kind: str, name: str, arguments: dict[str, Any] | None) -> tuple[str, str, str]:
+    """构造工具调用签名（去重键）。
+
+    kind 区分 action / observation / card，使 action 与其配对的 observation
+    互不挡（同一工具同一参数下，action 与 observation 各推一次）；arguments
+    序列化保证同工具不同参数均推送、同工具同参数二次出现才去重。
+
+    Args:
+        kind: 事件类别（action / observation / card）。
+        name: 工具名（card 用 confirm_token 或 tool_name）。
+        arguments: 工具参数（card 用 tool_arguments），序列化为去重键组成部分。
+
+    Returns:
+        tuple[str, str, str]: 可哈希签名，入 seen 集合去重。
+    """
+    return (
+        kind,
+        name,
+        json.dumps(arguments or {}, sort_keys=True, ensure_ascii=False),
+    )
+
+
 def _handle_updates_chunk(
-    chunk: dict[str, Any], seen: set[str] | None = None
+    chunk: dict[str, Any], seen: set[tuple[str, str, str]] | None = None
 ) -> list[tuple[str, dict[str, Any]]]:
     """updates 分支处理：从子图更新重建 action / observation / card 事件。
 
-    方案 B（实时上报）：``astream(..., subgraphs=True)`` 后子图内部每个节点
-    （tool_caller / safety_check / tool_executor）的 updates 会**逐节点实时**
-    传播到父图流，因此每轮工具执行完成即可推送，前端边执行边出卡片，不再
-    等子图整体结束一次性上报。
+    subgraphs=True（方案 B 实时上报）：子图内部节点（tool_caller /
+    safety_check / tool_executor）的 updates 逐节点实时上浮到主图流，每轮
+    工具完成即推 action/observation、L2 即推 card。因 tool_results /
+    pending_confirmations 自累积（tool_executor 保留前序轮次结果）+ 子图
+    结束后主图层级再上报整体更新，同一结果会被重复上报，需 seen 签名去重。
 
-    **去重**：tool_executor / safety_check 返回自累积的全量结果（子图循环
-    多轮时 tool_results / pending_confirmations 累加，tool_calls 也会被覆盖），
-    子图结束后主图层级还会再上报一次子图节点整体更新。用 ``seen`` 集合
-    记录已推送的签名（tool+arguments / confirm_token），避免重复推送。
+    去重粒度（kind 区分，配对事件不互相挡）：
+        - action：``("action", tool_name, arguments)``--tool_caller 已推过
+          from_call 则 tool_executor 不重复推 action（仅补 observation）
+        - observation：``("observation", tool_name, arguments)``--自累积
+          重复结果只推一次
+        - card：``("card", confirm_token or tool_name, arguments)``--
+          子图与主图层级重复上报只推一次
 
-    事件重建规则（M6-A1 定案，行为不变）：
-        - tool_results 非空 -> 每个结果配对推送 action + observation
-          （子图循环会覆盖 tool_calls，action 从结果反推，工具确已执行）
-        - 仅 tool_calls 无结果（理论顶层场景）-> 只推 action
-        - pending_confirmations 非空 -> 推送 L2 确认 card（系分 §6.2.2）
+    seen 为 None 时内部新建空集，保持单参调用兼容（现有单测无需改）。
 
     Args:
         chunk: updates 模式下的一帧（node_name -> state 更新 dict）。
-        seen: 已推送签名集合（跨帧累积，防止子图循环 / 主图层级重复推送）。
+        seen: 跨帧去重签名集（_sse_generator 传入，跨子图层级累积）。
 
     Returns:
         list[tuple[str, dict[str, Any]]]：(event, payload) 事件列表，
             event ∈ {"action", "observation", "card"}。
     """
+    if seen is None:
+        seen = set()
     events: list[tuple[str, dict[str, Any]]] = []
-    seen = set() if seen is None else seen
     for _node_name, node_update in chunk.items():
         if not isinstance(node_update, dict):
             continue
         tool_calls = node_update.get("tool_calls") or []
         tool_results = node_update.get("tool_results") or []
         if tool_results:
-            # 子图循环会把 tool_calls 覆盖为空，action 无法从 tool_calls 重建，
-            # 改为从 tool_results 反推（工具确已执行）：每个结果推送 action -> observation 配对
             for tr in tool_results:
-                if _observation_seen(seen, tr):
+                tool = tr.get("tool_name", "")
+                args = tr.get("arguments", {})
+                # observation 签名去重：自累积重复结果只推一次
+                obs_sig = _call_signature("observation", tool, args)
+                if obs_sig in seen:
                     continue
-                events.append(("action", _build_action(tr)))
+                # action 签名去重：tool_caller 已推 from_call 则不重复推
+                action_sig = _call_signature("action", tool, args)
+                if action_sig not in seen:
+                    seen.add(action_sig)
+                    events.append(("action", _build_action(tr)))
+                seen.add(obs_sig)
                 events.append(("observation", _build_observation(tr)))
         elif tool_calls:
-            # 仅 tool_calls 无结果（理论顶层场景）：只推 action
+            # 仅 tool_calls 无结果（工具开始执行）：action 签名去重后推送
             for tc in tool_calls:
-                sig = _call_signature("action", tc.get("name", ""), tc.get("arguments", {}))
-                if sig in seen:
+                tool = tc.get("name", "")
+                args = tc.get("arguments", {})
+                action_sig = _call_signature("action", tool, args)
+                if action_sig in seen:
                     continue
-                seen.add(sig)
+                seen.add(action_sig)
                 events.append(("action", _build_action(tc, from_call=True)))
-        # L2 操作需用户确认：推送 card 事件（系分 §6.2.2）
+        # L2 操作需用户确认：card 按 confirm_token 去重（系分 §6.2.2）
         for p in node_update.get("pending_confirmations") or []:
-            sig = ("card", p.get("confirm_token") or p.get("tool_name", ""))
-            if sig in seen:
+            card_key = p.get("confirm_token") or p.get("tool_name", "")
+            card_sig = _call_signature("card", card_key, p.get("tool_arguments", {}))
+            if card_sig in seen:
                 continue
-            seen.add(sig)
+            seen.add(card_sig)
             events.append(("card", _build_card(p)))
     return events
-
-
-def _call_signature(kind: str, name: str, arguments: Any) -> tuple[str, str, str]:
-    """生成事件签名（去重键）：事件类型 + 工具名 + 规范化参数。
-
-    kind 区分 action / observation：同一工具的 action（loading 卡片）与
-    observation（完成卡片）是**配对**事件，必须都推送，不能共用同一去重键
-    导致 observation 被 action 签名挡住。观察 / 调用各自独立去重：
-        - action: tool_caller 多轮循环重复决策同一工具时去重
-        - observation: tool_results 自累积（子图多轮）+ 子图结束后主图层级
-          再上报整体更新时去重
-    """
-    try:
-        args_json = json.dumps(arguments or {}, sort_keys=True, ensure_ascii=False)
-    except (TypeError, ValueError):
-        args_json = str(arguments or {})
-    return (kind, name, args_json)
-
-
-def _observation_seen(seen: set[str], result: dict[str, Any]) -> bool:
-    """判断 tool_results 项是否已推送 observation，未推送则登记签名并返回 False。
-
-    tool_executor 自累积 tool_results（子图多轮时含前几轮结果），子图结束后
-    主图层级还会上报一次整体更新。用 (observation + tool_name + arguments)
-    签名去重，保证同一工具同一参数只推送一次完成卡片。
-    """
-    sig = _call_signature("observation", result.get("tool_name", ""), result.get("arguments", {}))
-    if sig in seen:
-        return True
-    seen.add(sig)
-    return False
 
 
 async def _sse_generator(
@@ -354,23 +356,24 @@ async def _sse_generator(
 ) -> AsyncIterator[str]:
     """SSE 流式输出生成器（系分 §6.2.1，基于 astream 混合 stream_mode）。
 
-    事件映射（方案 B 实时上报，subgraphs=True 展开子图内部 updates）：
-    - 子图内部 tool_executor / tool_caller -> 逐节点实时 ``event: action`` /
-      ``event: observation``（每轮工具执行完成即推送，前端边执行边出卡片）
-    - 子图内部 safety_check -> 实时 ``event: card``（L2 确认，系分 §6.2.2）
-    - updates 含 reply_node 输出      -> 未流式时兜底推送完整回复
+    事件映射（方案 B 实时上报：astream subgraphs=True + seen 去重）：
+    - updates（含子图内部节点）含 tool_results -> ``event: action`` + ``event: observation``
+      （action 经 seen 去重，tool_caller 已推则 tool_executor 仅补 observation）
+    - updates 含 tool_calls（无结果场景）-> ``event: action``（工具开始执行）
     - messages 且 msg 是 AIMessage    -> ``event: message``（回复 token）
     - messages 含 reasoning_content   -> ``event: thought``（推理思考 token，M6-B4）
+    - updates 含 reply_node 输出      -> 未流式时兜底推送完整回复
+    - updates 含 pending_confirmations -> ``event: card``（按 confirm_token 去重）
     - 结束                            -> ``event: done``（含 usage token 统计，M6-B4）
+
+    subgraphs=True 展开子图内部节点 updates 实时上浮（langgraph 1.2.9），
+    输出三元组 ``(namespace, mode, chunk)``；namespace 不消费（解包丢弃）。
+    messages 流中子图内部 tool_caller 的 LLM token 不推送为 message--
+    _handle_message_chunk 仅认 langgraph_node == "reply_node"。
 
     P3 契约说明：``thought`` / ``error`` 事件与 ``done.trace_id`` 是对系分
     §6.2.1 事件表的**扩展**（M6-B4 推理过程展示 / P1-3 异常透出 / 链路追踪），
     前端按未知事件忽略处理，不破坏原有契约。
-
-    Note:
-        去重（seen 集合）：subgraphs=True 展开后，子图整体结束还会在主图层级
-        再上报一次子图节点整体更新（含自累积的全量 tool_results /
-        pending_confirmations），_handle_updates_chunk 用签名去重，只推送新增项。
     """
     graph = _get_graph()
     # P2 归属隔离：LangGraph thread_id 与会话锁绑定 (user_id, session_id)，
@@ -392,8 +395,9 @@ async def _sse_generator(
     # 本轮 LLM token 用量（M6-B4 done.usage）：langgraph 首个 chunk 含
     # input_tokens，后续 chunk 只递增 output_tokens
     usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-    # 方案 B 去重：跨帧累积已推送的 action/observation/card 签名
-    seen: set[str] = set()
+    # subgraphs=True 去重签名集：跨帧累积，防止子图自累积 + 主图层级重复
+    # 上报导致同一工具结果/确认卡片被重复推送（方案 B 实时上报）
+    seen: set[tuple[str, str, str]] = set()
 
     # P1-9 会话级串行锁：同 session 并发请求排队执行，防止交错读写同一
     # checkpoint 互相覆盖（checkpointer 锁 per-instance，无法跨请求协调）。
@@ -428,9 +432,6 @@ async def _sse_generator(
                     for event, payload in events:
                         yield _sse(event, payload)
                 elif mode == "updates":
-                    # 方案 B：subgraphs=True 展开子图内部节点 updates，
-                    # 每轮工具执行实时推送；seen 去重防重复（子图循环多轮 /
-                    # 主图层级子图节点整体再上报一次时只推新增）
                     for event, payload in _handle_updates_chunk(chunk, seen):
                         yield _sse(event, payload)
                     # reply_node 完成但未流式时，兜底推送完整回复
@@ -528,6 +529,79 @@ async def list_sessions(request: Request) -> JSONResponse:
     return success_response({"sessions": sessions}, getattr(request.state, "trace_id", ""))
 
 
+@router.delete("/chat/sessions/{session_id}")
+async def delete_session(session_id: str, request: Request) -> JSONResponse:
+    """删除历史会话（系分 §6.2 扩展，仅 C 端患者）。
+
+    删除该会话的元数据条目（agent_sessions）+ checkpoint 历史消息，使其从
+    历史会话列表消失且切换进去不再有历史消息。按 ``user_id`` 隔离，跨用户
+    不可删他人会话。
+
+    Args:
+        session_id: 路径参数，待删会话 ID。
+        request: 请求（JWT 中间件注入 user_id；匿名时未注入）。
+
+    Returns:
+        统一信封 {code, message, data: {session_id}}；未登录 401；会话不存在 404。
+    """
+    user_id = getattr(request.state, "user_id", None)
+    trace_id = getattr(request.state, "trace_id", "")
+    if user_id is None:
+        return error_response("AUTH_MISSING", "缺少有效的鉴权 Token", trace_id, 401)
+    # 删元数据（按 user_id 隔离，跨用户删不到他人会话）
+    try:
+        deleted = await get_session_store().delete(user_id, session_id)
+    except Exception:
+        logger.exception("会话删除失败, user_id=%s session_id=%s", user_id, session_id)
+        return error_response("SERVER_ERROR", "服务异常，请稍后重试", trace_id, 500)
+    # 删 checkpoint 历史消息：thread_key 与 _sse_generator 一致（user_id:session_id）。
+    # 即使元数据未落库（deleted=False）仍尝试清理可能残留的 checkpoint；thread_key
+    # 含 user_id，删不到他人会话，安全。失败仅 log，不阻塞删除主流程。
+    try:
+        await _get_graph().checkpointer.adelete_thread(f"{user_id}:{session_id}")
+    except Exception:
+        logger.warning("删除 checkpoint 失败, session_id=%s", session_id)
+    if not deleted:
+        return error_response("SESSION_NOT_FOUND", "会话不存在", trace_id, 404)
+    return success_response({"session_id": session_id}, trace_id)
+
+
+@router.get("/chat/sessions/{session_id}/messages")
+async def get_session_messages(session_id: str, request: Request) -> JSONResponse:
+    """历史会话消息（系分 §6.2 扩展，仅 C 端患者）。
+
+    前端切换到历史会话后调此接口拉取该会话历史消息，渲染对话气泡。从
+    checkpointer 读取 thread_id 对应的最新 state（含完整 messages 历史），
+    按 user_id 隔离（thread_key 含 user_id，跨用户读不到他人会话）。
+
+    依赖 ``checkpointer_backend=postgres``（生产持久化）；memory 后端进程
+    重启即失，重启后历史消息为空（开发已知限制）。
+
+    Args:
+        session_id: 路径参数，历史会话 ID。
+        request: 请求（JWT 中间件注入 user_id；匿名时未注入）。
+
+    Returns:
+        统一信封 {code, message, data: {messages: [{role, content}]}}；未登录 401。
+    """
+    user_id = getattr(request.state, "user_id", None)
+    trace_id = getattr(request.state, "trace_id", "")
+    if user_id is None:
+        return error_response("AUTH_MISSING", "缺少有效的鉴权 Token", trace_id, 401)
+    # thread_key 与 _sse_generator 一致（user_id:session_id）
+    config = {"configurable": {"thread_id": f"{user_id}:{session_id}"}}
+    try:
+        snapshot = await _get_graph().aget_state(config)
+    except Exception:
+        logger.exception("历史消息读取失败, session_id=%s", session_id)
+        return error_response("SERVER_ERROR", "服务异常，请稍后重试", trace_id, 500)
+    messages = (snapshot.values or {}).get("messages", [])
+    return success_response(
+        {"messages": _serialize_session_messages(messages)},
+        trace_id,
+    )
+
+
 def _chunk_text(msg: Any) -> str:
     """提取 message chunk 的文本内容（str 或 LangChain 内容块列表）。
 
@@ -540,11 +614,67 @@ def _chunk_text(msg: Any) -> str:
     content = getattr(msg, "content", None) or ""
     if isinstance(content, str):
         return content
+    return _content_blocks_to_text(content)
+
+
+def _content_blocks_to_text(blocks: Any) -> str:
+    """LangChain 内容块列表转文本（提取 type=text 块拼接，系分 §6.2 扩展）。
+
+    Args:
+        blocks: content 值（list[dict] / 其他）；非 list 统一 str() 兜底。
+
+    Returns:
+        str: 拼接后的文本。
+    """
+    if not isinstance(blocks, list):
+        return str(blocks) if blocks is not None else ""
     parts = []
-    for block in content:
+    for block in blocks:
         if isinstance(block, dict) and block.get("type") == "text":
             parts.append(block.get("text", ""))
     return "".join(parts)
+
+
+def _serialize_session_messages(messages: Any) -> list[dict[str, str]]:
+    """将 state messages 序列化为前端 {role, content} 列表（系分 §6.2 扩展）。
+
+    仅保留 user / assistant（过滤 system 注入与 tool 中间态），兼容 dict
+    与 LangChain BaseMessage 两种存储形态，content 统一转文本。
+
+    Args:
+        messages: state.values["messages"]（dict 或 BaseMessage 列表）。
+
+    Returns:
+        list[dict[str, str]]: {role: "user"|"assistant", content: str} 列表。
+    """
+    result: list[dict[str, str]] = []
+    for m in messages:
+        role, content = _extract_message_role_content(m)
+        if role in ("user", "assistant") and content:
+            result.append({"role": role, "content": content})
+    return result
+
+
+def _extract_message_role_content(m: Any) -> tuple[str, str]:
+    """提取单条消息 (role, content 文本)，兼容 dict 与 BaseMessage。
+
+    BaseMessage.type 映射：human->user, ai->assistant；其余原样返回。
+
+    Args:
+        m: 消息（dict 或 LangChain BaseMessage）。
+
+    Returns:
+        tuple[str, str]: (role, content 文本)。
+    """
+    if isinstance(m, dict):
+        role = str(m.get("role", ""))
+        raw = m.get("content", "")
+    else:
+        msg_type = getattr(m, "type", "")
+        role = {"human": "user", "ai": "assistant"}.get(msg_type, msg_type)
+        raw = getattr(m, "content", "")
+    text = raw if isinstance(raw, str) else _content_blocks_to_text(raw)
+    return role, text
 
 
 def _truncate_title(text: str, max_len: int = 30) -> str:
@@ -849,8 +979,8 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
             "user_id": getattr(request.state, "user_id", None),
             "scope": getattr(request.state, "scope", "c_end"),
             "session_id": req.session_id,
-            # C 端鉴权修复：确认执行同样需要透传 JWT，否则 Java 拦截器
-            # 拒绝（无 Bearer 头 / X-User-Id 头被禁）
+            # JWT 透传（C 端拦截器硬需求）：L2 确认执行的工具调用经
+            # call_java_api 需 Authorization: Bearer；中间件已注入 jwt_token。
             "jwt_token": getattr(request.state, "jwt_token", None),
         },
     )
