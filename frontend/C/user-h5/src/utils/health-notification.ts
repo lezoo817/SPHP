@@ -1,4 +1,4 @@
-import type { Appointment, FollowUpPlan, MedicationPlan, MedicationPlanAction, NotificationType } from '../typings/api';
+import type { Appointment, FollowUpPlan, MedicationPlan, MedicationPlanAction, NotificationItem, NotificationType } from '../typings/api';
 import { createIdempotencyKey } from './form';
 
 /** 首页跨就诊人查询到的原始待办数据。 */
@@ -9,6 +9,16 @@ export interface HealthTodo { id: number; type: 'APPOINTMENT' | 'MEDICATION' | '
 /** 将通知类型映射为患者可理解的页面文案。 */
 export function getNotificationTypeText(type: NotificationType): string {
   return ({ APPOINTMENT: '挂号通知', DRUG_ORDER: '购药通知', MEDICATION_REMINDER: '用药提醒', FOLLOW_UP_REMINDER: '随访提醒', SYSTEM: '系统通知' } as Record<NotificationType, string>)[type];
+}
+
+/**
+ * 从后端已按时间倒序返回的未读通知中定位最新候补可预约提醒。
+ * @param notifications 当前账号的未读通知列表
+ * @returns 候补号源可预约通知；不存在时返回 undefined
+ */
+export function findLatestWaitlistPromotionNotification(notifications: NotificationItem[]): NotificationItem | undefined {
+  // 后端使用 APPOINTMENT 类型和固定标题标识候补晋级，避免将普通挂号通知误弹出。
+  return notifications.find((notification) => notification.type === 'APPOINTMENT' && notification.title === '候补号源可预约');
 }
 
 /**

@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react';
-import { CalendarPlus, ChevronRight, ClipboardPlus, FileChartColumn, HeartPulse, Pill, Search, Stethoscope } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { BellRing, CalendarPlus, ChevronRight, ClipboardPlus, FileChartColumn, HeartPulse, Pill, Search, Stethoscope, X } from 'lucide-react';
 import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
 import { getSelection, saveSelection } from '../../models/selection';
 import { getFamilyMembers } from '../../services/family';
 import { getFollowUpPlans, getMedicationPlans } from '../../services/health';
+import { getNotifications } from '../../services/notification';
 import { getAppointments, getHospitals } from '../../services/registration';
-import type { FamilyMember, Hospital } from '../../typings/api';
-import { buildHealthTodos, type HealthTodo, type PatientHealthSource } from '../../utils/health-notification';
+import type { FamilyMember, Hospital, NotificationItem } from '../../typings/api';
+import { buildHealthTodos, findLatestWaitlistPromotionNotification, type HealthTodo, type PatientHealthSource } from '../../utils/health-notification';
 import { formatMedicalTime, sortHospitals } from '../../utils/medical';
 
 /** 展示医院入口、就诊人、快捷服务和全账号健康待办的首页。 */
@@ -20,6 +21,8 @@ export default function HomePage() {
   const [patientOpen, setPatientOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const [todos, setTodos] = useState<HealthTodo[]>([]);
+  const [waitlistNotification, setWaitlistNotification] = useState<NotificationItem>();
+  const bannerTimer = useRef<number>();
 
   /** 读取单个就诊人的三类待办，供首页统一展示。 */
   async function loadPatientHealthSource(member: FamilyMember): Promise<PatientHealthSource> {
@@ -34,6 +37,8 @@ export default function HomePage() {
   /** 初始化医院、当前就诊人和账号全部健康待办。 */
   async function loadHome() {
     try {
+      // 候补提醒独立读取，通知接口失败不能阻断首页核心数据加载。
+      const notificationPromise = getNotifications({ read: false, pageNo: 1, pageSize: 20 }).catch(() => undefined);
       const [nextHospitals, nextMembers] = await Promise.all([getHospitals(), getFamilyMembers()]);
       setHospitals(sortHospitals(nextHospitals));
       setMembers(nextMembers);
@@ -44,8 +49,13 @@ export default function HomePage() {
       };
       saveSelection(next);
       setSelected(next);
+      const healthResultsPromise = Promise.allSettled(nextMembers.map(loadPatientHealthSource));
+      const notificationPage = await notificationPromise;
+      if (notificationPage) {
+        setWaitlistNotification(findLatestWaitlistPromotionNotification(notificationPage.records));
+      }
       // 后端按患者隔离待办，首页需要汇总本人和家属后才能展示账号全部待办。
-      const healthResults = await Promise.allSettled(nextMembers.map(loadPatientHealthSource));
+      const healthResults = await healthResultsPromise;
       const sources = healthResults.filter((item): item is PromiseFulfilledResult<PatientHealthSource> => item.status === 'fulfilled').map((item) => item.value);
       setTodos(buildHealthTodos(sources));
       if (healthResults.some((item) => item.status === 'rejected')) setNotice('部分健康待办加载失败，请稍后重试');
@@ -55,6 +65,24 @@ export default function HomePage() {
   }
 
   useEffect(() => { void loadHome(); }, []);
+
+  useEffect(() => {
+    if (!waitlistNotification) return undefined;
+    // 候补提醒仅短暂展示，未读状态仍由通知消息页统一维护。
+    bannerTimer.current = window.setTimeout(() => setWaitlistNotification(undefined), 5000);
+    return () => { if (bannerTimer.current) window.clearTimeout(bannerTimer.current); };
+  }, [waitlistNotification?.id]);
+
+  /** 关闭顶部候补提醒，不调用已读接口以保留通知入口的未读红点。 */
+  function dismissWaitlistNotification() {
+    setWaitlistNotification(undefined);
+  }
+
+  /** 打开通知消息页，由现有页面完成单条通知已读处理。 */
+  function openWaitlistNotification() {
+    setWaitlistNotification(undefined);
+    navigate('/mine/notifications');
+  }
 
   /** 根据待办类别跳转到可继续处理的页面。 */
   function openTodo(todo: HealthTodo) {
@@ -75,6 +103,7 @@ export default function HomePage() {
   ];
 
   return <main className="home-page">
+    {waitlistNotification && <section className="waitlist-banner" aria-label="候补可预约提醒"><button className="waitlist-banner__body" type="button" onClick={openWaitlistNotification}><span className="waitlist-banner__icon"><BellRing size={23} /></span><span className="waitlist-banner__content"><b>{waitlistNotification.title}</b><span>{waitlistNotification.content}</span><small>{waitlistNotification.patientName || '当前就诊人'}</small></span></button><button className="waitlist-banner__close" type="button" aria-label="关闭候补提醒" onClick={dismissWaitlistNotification}><X size={18} /></button></section>}
     <header className="home-hero"><div className="home-brand"><b>智</b><div><strong>智愈先锋</strong><span>省人民医院智慧医疗服务</span></div></div><p>让每一次就医，都更清晰、更安心</p></header>
     <section className="home-content">
       <button className="hospital-switch" type="button" onClick={() => navigate('/home/hospitals')}>当前医院：{currentHospital?.name || '选择医院'} <ChevronRight size={18} /></button>

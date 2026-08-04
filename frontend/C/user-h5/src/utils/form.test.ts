@@ -19,7 +19,7 @@ import { buildDoctorPagePath, findDoctorById, getDoctorScheduleDates } from './d
 import { groupSlotsByHalfDay, summarizeHalfDaySlots } from './doctor';
 import { buildAppointmentsPath } from '../services/registration';
 import { buildNotificationsPath } from '../services/notification';
-import { buildHealthTodos, canConfirmFollowUp, getMedicationPlanActions, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
+import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotification, getMedicationPlanActions, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
 import { buildDeliveryAddressPath } from '../services/delivery-address';
 import { buildDeliveryAddressPayload, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
 import { getAssistantTabs, getCurrentFlowAction } from './assistant';
@@ -234,6 +234,15 @@ describe('健康待办、提醒与通知规则', () => {
   it('将后端通知类型转换为患者可读文案', () => {
     expect(getNotificationTypeText('MEDICATION_REMINDER')).toBe('用药提醒');
     expect(getNotificationTypeText('SYSTEM')).toBe('系统通知');
+  });
+
+  it('仅弹出最新未读的候补可预约挂号通知', () => {
+    const notifications = [
+      { id: 3, type: 'APPOINTMENT' as const, patientName: '张三', title: '候补号源可预约', content: '请在15分钟内完成预约。', read: false, createdAt: '2026-08-04T10:00:00+08:00' },
+      { id: 2, type: 'APPOINTMENT' as const, patientName: '张三', title: '挂号支付成功', content: '订单已支付。', read: false, createdAt: '2026-08-04T09:00:00+08:00' },
+    ];
+    expect(findLatestWaitlistPromotionNotification(notifications)?.id).toBe(3);
+    expect(findLatestWaitlistPromotionNotification([notifications[1]])).toBeUndefined();
   });
 
   it('通知已读网络重试复用首次生成的幂等键', () => {
