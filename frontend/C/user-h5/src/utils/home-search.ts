@@ -17,3 +17,13 @@ export function resolveInitialDepartment(departments: Department[]): Department 
 export function hasSearchKeyword(keyword: string): boolean {
   return Boolean(keyword.trim());
 }
+
+/**
+ * 判断科室名称或科室位置是否包含用户输入的关键词。
+ * @param department 后端返回的科室信息
+ * @param keyword 已去除两端空白的搜索关键词
+ * @returns 匹配科室名称或位置时返回 true
+ */
+export function matchesDepartmentKeyword(department: Department, keyword: string): boolean {
+  return `${department.name}${department.location || ''}`.includes(keyword);
+}

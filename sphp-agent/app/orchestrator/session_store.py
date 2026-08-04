@@ -68,6 +68,16 @@ class SessionStore(Protocol):
     async def list_by_user(self, user_id: int) -> list[SessionRecord]:
         """列出某用户的历史会话（C 端，updated_at 倒序，LIMIT 上限）。"""
 
+    async def delete(self, user_id: int, session_id: str) -> bool:
+        """删除某会话元数据（按 user_id 隔离，跨用户不可删他人会话）。
+
+        仅删 ``agent_sessions`` 元数据；checkpoint 历史消息由调用方经
+        checkpointer ``adelete_thread`` 清理（二者后端同源）。
+
+        Returns:
+            bool: 是否删到记录（False 表示会话不存在或不属于该用户）。
+        """
+
 
 class MemorySessionStore:
     """内存会话元数据存储（与 MemorySaver 同生命周期，开发/测试默认）。
@@ -123,6 +133,19 @@ class MemorySessionStore:
             for r in records[:SESSION_LIST_LIMIT]
         ]
 
+    async def delete(self, user_id: int, session_id: str) -> bool:
+        """删除会话元数据（MemorySaver 同生命周期，开发/测试）。
+
+        Args:
+            user_id: 用户 ID（按 user_id 隔离）。
+            session_id: 会话 ID。
+
+        Returns:
+            bool: 是否删到记录。
+        """
+        key = (user_id, session_id)
+        return self._records.pop(key, None) is not None
+
 
 class PostgresSessionStore:
     """PG 会话元数据存储（生产，长期持久化）。
@@ -174,7 +197,7 @@ class PostgresSessionStore:
                 """
                 INSERT INTO agent_sessions
                     (user_id, session_id, scope, title, last_message, message_count)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (user_id, session_id)
                 DO UPDATE SET
                     last_message = EXCLUDED.last_message,
@@ -192,9 +215,9 @@ class PostgresSessionStore:
                 """
                 SELECT session_id, title, last_message, message_count, updated_at
                 FROM agent_sessions
-                WHERE user_id = $1 AND scope = 'c_end'
+                WHERE user_id = %s AND scope = 'c_end'
                 ORDER BY updated_at DESC
-                LIMIT $2
+                LIMIT %s
                 """,
                 (user_id, SESSION_LIST_LIMIT),
             )
@@ -209,6 +232,25 @@ class PostgresSessionStore:
             }
             for r in rows
         ]
+
+    async def delete(self, user_id: int, session_id: str) -> bool:
+        """删除会话元数据（PG 持久化，生产）。
+
+        Args:
+            user_id: 用户 ID（WHERE 过滤，跨用户不可删他人会话）。
+            session_id: 会话 ID。
+
+        Returns:
+            bool: 是否删到记录（rowcount > 0）。
+        """
+        if self._pool is None:
+            return False
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "DELETE FROM agent_sessions WHERE user_id = %s AND session_id = %s",
+                (user_id, session_id),
+            )
+            return cur.rowcount > 0
 
 
 # 进程级单例（与 checkpointer 后端绑定后不再切换）

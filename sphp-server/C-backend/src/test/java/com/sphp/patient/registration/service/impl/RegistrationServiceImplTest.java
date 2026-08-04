@@ -63,7 +63,7 @@ class RegistrationServiceImplTest {
         when(resourceMapper.selectAvailableHospital(101L)).thenReturn(
                 new HospitalRecord(101L, "智愈先锋第一医院", "三级甲等", "北京市东城区示例路1号", "010-12345678"));
         when(resourceMapper.selectAvailableDepartments(101L, "呼吸")).thenReturn(List.of(
-                new DepartmentRecord(301L, "呼吸内科", "1号楼2层201室")
+                new DepartmentRecord(301L, "呼吸内科", "门诊楼3层A区")
         ));
 
         List<DepartmentListVO> result = registrationService.listDepartments(101L, "呼吸");
@@ -71,7 +71,7 @@ class RegistrationServiceImplTest {
         assertEquals(1, result.size());
         assertEquals(301L, result.getFirst().getId());
         assertEquals("呼吸内科", result.getFirst().getName());
-        assertEquals("1号楼2层201室", result.getFirst().getLocation());
+        assertEquals("门诊楼3层A区", result.getFirst().getLocation());
     }
 
     /**

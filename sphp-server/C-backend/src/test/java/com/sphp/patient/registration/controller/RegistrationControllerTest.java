@@ -63,13 +63,14 @@ class RegistrationControllerTest {
                 .setControllerAdvice(new RegistrationExceptionHandler())
                 .build();
         when(registrationService.listDepartments(101L, "呼吸")).thenReturn(List.of(DepartmentListVO.builder()
-                .id(301L).name("呼吸内科").location("1号楼2层201室").build()));
+                .id(301L).name("呼吸内科").location("门诊楼3层A区").build()));
 
         mockMvc.perform(get("/c/v1/departments").param("hospitalId", "101").param("keyword", "呼吸"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("00000"))
                 .andExpect(jsonPath("$.data[0].id").value(301L))
-                .andExpect(jsonPath("$.data[0].name").value("呼吸内科"));
+                .andExpect(jsonPath("$.data[0].name").value("呼吸内科"))
+                .andExpect(jsonPath("$.data[0].location").value("门诊楼3层A区"));
     }
 
     /**

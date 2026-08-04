@@ -11,7 +11,7 @@ import { filterHospitals, formatAmount, getAppointmentStatusText, sortHospitals 
 import { resolveSelfPatientId } from '../models/selection';
 import { buildDrugOrderListPath } from '../services/pharmacy';
 import { matchesDrugOrderTab } from './pharmacy';
-import { hasSearchKeyword, resolveInitialDepartment } from './home-search';
+import { hasSearchKeyword, matchesDepartmentKeyword, resolveInitialDepartment } from './home-search';
 import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
 import { resolveMinePatientId } from '../models/mine-patient';
 import { isSessionTokenExpired, type SessionState } from '../models/session';
@@ -22,6 +22,7 @@ import { buildNotificationsPath } from '../services/notification';
 import { buildHealthTodos, canConfirmFollowUp, getMedicationPlanActions, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
 import { buildDeliveryAddressPath } from '../services/delivery-address';
 import { buildDeliveryAddressPayload, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
+import { getAssistantTabs, getCurrentFlowAction } from './assistant';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -45,6 +46,17 @@ describe('前端表单与联调规则', () => {
 describe('就诊人默认选择', () => {
   it('优先选择本人而非全局家属选择', () => {
     expect(resolveSelfPatientId([{ patientId: 2, relation: 'CHILD' }, { patientId: 1, relation: 'SELF' }])).toBe(1);
+  });
+});
+
+describe('就诊助手展示规则', () => {
+  it('仅展示挂号记录和处方两个分类', () => {
+    expect(getAssistantTabs).toEqual(['挂号记录', '处方']);
+  });
+
+  it('仅未支付订单可进入支付，已支付订单保持等待就诊', () => {
+    expect(getCurrentFlowAction('UNPAID')).toBe('PAY');
+    expect(getCurrentFlowAction('PAID')).toBe('WAITING');
   });
 });
 
@@ -91,6 +103,10 @@ describe('首页科室与搜索规则', () => {
   it('空白关键词不允许发起搜索', () => {
     expect(hasSearchKeyword('   ')).toBe(false);
     expect(hasSearchKeyword('心内科')).toBe(true);
+  });
+
+  it('科室位置可作为科室搜索关键词', () => {
+    expect(matchesDepartmentKeyword({ id: 1, name: '呼吸内科', location: '门诊楼3层A区' }, '3层')).toBe(true);
   });
 });
 
@@ -190,10 +206,13 @@ describe('健康待办、提醒与通知规则', () => {
   });
 
   it('只聚合待处理项目并按时间升序关联就诊人', () => {
-    expect(buildHealthTodos([
+    const todos = buildHealthTodos([
       { patientId: 2, patientName: '小明', appointments: [{ id: 1, doctorName: '张医生', departmentName: '内科', startTime: '2026-08-05T10:00:00+08:00', status: 'COMPLETED', amountCent: 100 }], medicationPlans: [{ id: 2, drugName: '维生素', dosage: '1片', frequency: '每日一次', nextReminderAt: '2026-08-04T08:00:00+08:00', status: 'ACTIVE' }], followUps: [] },
-      { patientId: 1, patientName: '张三', appointments: [{ id: 3, doctorName: '李医生', departmentName: '心内科', startTime: '2026-08-03T14:30:00+08:00', status: 'PAID', amountCent: 200 }], medicationPlans: [], followUps: [{ id: 4, type: '复诊', content: '携带检查报告', dueAt: '2026-08-06T09:00:00+08:00', status: 'CANCELLED' }] },
-    ]).map((item) => [item.type, item.patientName])).toEqual([['APPOINTMENT', '张三'], ['MEDICATION', '小明']]);
+      { patientId: 1, patientName: '张三', appointments: [{ id: 3, doctorName: '李医生', departmentName: '心内科', departmentLocation: '门诊楼2层201室', startTime: '2026-08-03T14:30:00+08:00', status: 'PAID', amountCent: 200 }], medicationPlans: [], followUps: [{ id: 4, type: '复诊', content: '携带检查报告', dueAt: '2026-08-06T09:00:00+08:00', status: 'CANCELLED' }] },
+    ]);
+    expect(todos.map((item) => [item.type, item.patientName])).toEqual([['APPOINTMENT', '张三'], ['MEDICATION', '小明']]);
+    expect(todos[0].departmentLocation).toBe('门诊楼2层201室');
+    expect(todos[1].departmentLocation).toBeUndefined();
   });
 
   it('仅按后端状态机提供用药和随访操作', () => {

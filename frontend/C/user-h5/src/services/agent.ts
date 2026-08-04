@@ -12,8 +12,15 @@ import type {
   AgentChatRequest,
   AgentConfirmData,
   AgentConfirmRequest,
+  AgentSession,
   AgentSseEvent,
 } from '../typings/agent';
+
+/** 历史消息条目 */
+export interface AgentHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
 import type { ApiResponse } from '../typings/api';
 
 /** SSE 解析回调：每解析出一条事件触发一次。 */
@@ -217,6 +224,127 @@ async function extractErrorMessage(response: Response): Promise<string> {
   } catch {
     return response.status === 429 ? '对话请求过于频繁，请稍后重试' : '服务暂时不可用，请稍后重试';
   }
+}
+
+/**
+ * 获取历史会话列表（GET /api/chat/sessions）。
+ *
+ * 返回当前用户的所有 C 端 AI 会话，按最后更新时间倒序。
+ * @returns 会话列表
+ */
+export async function getSessions(): Promise<AgentSession[]> {
+  const token = await ensureAccessToken();
+  if (!token) {
+    redirectToLogin();
+    throw new Error('登录状态已失效，请重新登录');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${AGENT_BASE_URL}/api/chat/sessions`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    throw new Error('网络连接失败，请稍后重试');
+  }
+
+  if (response.status === 401) {
+    redirectToLogin();
+    throw new Error('登录已失效，请重新登录');
+  }
+
+  let payload: ApiResponse<{ sessions: AgentSession[] }>;
+  try {
+    payload = (await response.json()) as ApiResponse<{ sessions: AgentSession[] }>;
+  } catch {
+    throw new Error('获取会话列表失败，请稍后重试');
+  }
+
+  if (payload.code === '00000' && payload.data?.sessions) {
+    return payload.data.sessions;
+  }
+
+  throw new Error(payload.message || '获取会话列表失败');
+}
+
+/**
+ * 删除指定历史会话（DELETE /api/chat/sessions/{session_id}）。
+ * @param sessionId 会话 ID
+ */
+export async function deleteSession(sessionId: string): Promise<void> {
+  const token = await ensureAccessToken();
+  if (!token) {
+    redirectToLogin();
+    throw new Error('登录状态已失效，请重新登录');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${AGENT_BASE_URL}/api/chat/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    throw new Error('网络连接失败，请稍后重试');
+  }
+
+  if (response.status === 401) {
+    redirectToLogin();
+    throw new Error('登录已失效，请重新登录');
+  }
+
+  let payload: ApiResponse<unknown>;
+  try {
+    payload = (await response.json()) as ApiResponse<unknown>;
+  } catch {
+    throw new Error('删除会话失败，请稍后重试');
+  }
+
+  if (payload.code !== '00000') {
+    throw new Error(payload.message || '删除会话失败');
+  }
+}
+
+/**
+ * 获取指定会话的历史消息（GET /api/chat/sessions/{session_id}/messages）。
+ * @param sessionId 会话 ID
+ * @returns 消息列表（role + content）
+ */
+export async function getSessionMessages(sessionId: string): Promise<AgentHistoryMessage[]> {
+  const token = await ensureAccessToken();
+  if (!token) {
+    redirectToLogin();
+    throw new Error('登录状态已失效，请重新登录');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${AGENT_BASE_URL}/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    throw new Error('网络连接失败，请稍后重试');
+  }
+
+  if (response.status === 401) {
+    redirectToLogin();
+    throw new Error('登录已失效，请重新登录');
+  }
+
+  let payload: ApiResponse<{ messages: AgentHistoryMessage[] }>;
+  try {
+    payload = (await response.json()) as ApiResponse<{ messages: AgentHistoryMessage[] }>;
+  } catch {
+    throw new Error('获取历史消息失败，请稍后重试');
+  }
+
+  if (payload.code === '00000' && payload.data?.messages) {
+    return payload.data.messages;
+  }
+
+  throw new Error(payload.message || '获取历史消息失败');
 }
 
 /**
