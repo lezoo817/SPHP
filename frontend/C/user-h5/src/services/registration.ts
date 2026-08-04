@@ -35,6 +35,22 @@ export function buildAppointmentsPath(patientId?: number, status?: string, pageS
 export function getAppointments(patientId?: number, status?: string, pageSize = 20): Promise<PageData<Appointment>> {
   return request(buildAppointmentsPath(patientId, status, pageSize), { method: 'GET' });
 }
+/**
+ * 构建医生重复预约状态查询路径。
+ * @param doctorId 医生 ID
+ * @returns 当前账号预约状态接口路径
+ */
+export function buildDoctorBookingStatusPath(doctorId: number): string {
+  return `/c/v1/appointments/doctor-booking-status?doctorId=${doctorId}`;
+}
+/**
+ * 查询当前账号是否已成功预约指定医生。
+ * @param doctorId 医生 ID
+ * @returns 当前账号维度的成功预约状态
+ */
+export function getDoctorBookingStatus(doctorId: number): Promise<{ doctorId: number; booked: boolean }> {
+  return request(buildDoctorBookingStatusPath(doctorId), { method: 'GET' });
+}
 /** 查询挂号订单详情。 */
 export function getAppointment(appointmentId: number): Promise<AppointmentDetail> { return request(`/c/v1/appointments/${appointmentId}`, { method: 'GET' }); }
 /** 取消未支付挂号订单。 */

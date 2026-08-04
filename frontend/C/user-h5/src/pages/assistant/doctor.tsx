@@ -3,7 +3,7 @@ import { CalendarPlus } from 'lucide-react';
 import { useNavigate, useParams } from 'umi';
 import { PageHeader } from '../../components/PageHeader';
 import { getSelection } from '../../models/selection';
-import { createAppointment, createWaitlist, getDepartments, getDoctors, getSlots } from '../../services/registration';
+import { createAppointment, createWaitlist, getDepartments, getDoctorBookingStatus, getDoctors, getSlots } from '../../services/registration';
 import type { AppointmentSlot, Doctor } from '../../typings/api';
 import { findDoctorById, getDoctorScheduleDates, groupSlotsByHalfDay, summarizeHalfDaySlots, type DoctorScheduleDate } from '../../utils/doctor';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
@@ -25,6 +25,7 @@ export default function DoctorBookingPage() {
   const [loadingDoctor, setLoadingDoctor] = useState(true);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
   const [loadingDates, setLoadingDates] = useState<string[]>([]);
+  const [checkingBookingStatus, setCheckingBookingStatus] = useState(true);
   const [notice, setNotice] = useState('');
   const [isDuplicateBookingBlocked, setDuplicateBookingBlocked] = useState(false);
   const operationKey = useRef<string>();
@@ -89,6 +90,22 @@ export default function DoctorBookingPage() {
     }
   }
 
+  /** 在展示可点击号源前核验账号维度的重复预约状态。 */
+  async function loadDoctorBookingStatus(currentDoctor: Doctor) {
+    setCheckingBookingStatus(true);
+    setDuplicateBookingBlocked(false);
+    try {
+      const status = await getDoctorBookingStatus(currentDoctor.id);
+      // 后端按支付账号和医生 ID 查询，覆盖本人及所有家庭成员的历史成功预约。
+      setDuplicateBookingBlocked(status.booked);
+    } catch (error) {
+      // 查询失败时不伪造已预约状态，仍由创建接口完成最终并发校验。
+      showTransientNotice(getApiErrorMessage(error));
+    } finally {
+      setCheckingBookingStatus(false);
+    }
+  }
+
   /** 刷新用户点击日期的号源状态，即使重复点击同一日期也重新请求后端。 */
   async function refreshDateSlots(date: string, notifyWhenEmpty: boolean) {
     if (!selection.hospitalId || !doctor) return;
@@ -106,7 +123,11 @@ export default function DoctorBookingPage() {
   }
 
   useEffect(() => { void loadDoctor(); }, [doctorId]);
-  useEffect(() => { if (doctor) void loadWeeklySchedule(doctor); }, [doctor]);
+  useEffect(() => {
+    if (!doctor) return;
+    void loadWeeklySchedule(doctor);
+    void loadDoctorBookingStatus(doctor);
+  }, [doctor]);
 
   /** 选择日期并刷新该日期号源；重复点击同一日期同样触发刷新。 */
   function selectDate(date: string) {
@@ -150,30 +171,30 @@ export default function DoctorBookingPage() {
 
   return <main className="subpage doctor-page"><PageHeader title="医生主页" backPath="/home/departments" /><section className="subpage-content">
     {loadingDoctor && <p className="empty-state">正在读取医生资料...</p>}
-    {!loadingDoctor && doctor && <><section className="doctor-profile-card"><span className="doctor-profile-avatar">{doctor.name.slice(0, 1)}</span><div><h2>{doctor.name} <small>{doctor.title || '医生'}</small></h2><p>{doctor.departmentName || '所属科室待确认'}</p><p>{doctor.specialty || '暂无专长说明'}</p><strong>挂号费 {formatAmount(doctor.registrationFeeCent)}</strong></div></section><section className="doctor-service-card"><CalendarPlus size={26} /><div><h2>预约挂号</h2><p>按日期与上午、下午查看真实开放时段。</p></div></section>{isDuplicateBookingBlocked && <section className="duplicate-appointment-notice"><b>不可重复预约</b><p>当前账号下已有就诊人预约过该医生，请前往挂号记录查看。</p><button className="secondary-button" type="button" onClick={() => navigate('/assistant')}>查看挂号记录</button></section>}<section className="doctor-schedule"><h2>{doctor.departmentName || '门诊'}号源</h2>{loadingSchedule && <p className="empty-state">号源加载中...</p>}{!loadingSchedule && <ScheduleTable dates={dates} selectedDate={selectedDate} slotsByDate={slotsByDate} loadingDates={loadingDates} isDuplicateBookingBlocked={isDuplicateBookingBlocked} onSelectDate={selectDate} onChooseSlot={chooseSlot} />}</section></>}
+    {!loadingDoctor && doctor && <><section className="doctor-profile-card"><span className="doctor-profile-avatar">{doctor.name.slice(0, 1)}</span><div><h2>{doctor.name} <small>{doctor.title || '医生'}</small></h2><p>{doctor.departmentName || '所属科室待确认'}</p><p>{doctor.specialty || '暂无专长说明'}</p><strong>挂号费 {formatAmount(doctor.registrationFeeCent)}</strong></div></section><section className="doctor-service-card"><CalendarPlus size={26} /><div><h2>预约挂号</h2><p>按日期与上午、下午查看真实开放时段。</p></div></section>{isDuplicateBookingBlocked && <section className="duplicate-appointment-notice"><b>不可重复预约</b><p>当前账号下已有就诊人预约过该医生，请前往挂号记录查看。</p><button className="secondary-button" type="button" onClick={() => navigate('/assistant')}>查看挂号记录</button></section>}<section className="doctor-schedule"><h2>{doctor.departmentName || '门诊'}号源</h2>{loadingSchedule && <p className="empty-state">号源加载中...</p>}{!loadingSchedule && <ScheduleTable dates={dates} selectedDate={selectedDate} slotsByDate={slotsByDate} loadingDates={loadingDates} isDuplicateBookingBlocked={isDuplicateBookingBlocked} isCheckingBookingStatus={checkingBookingStatus} onSelectDate={selectDate} onChooseSlot={chooseSlot} />}</section></>}
     {!loadingDoctor && !doctor && <p className="empty-state">暂无可展示的医生资料</p>}
   </section>{notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}</main>;
 }
 
 /** 课程表式号源的入参。 */
-interface ScheduleTableProps { dates: DoctorScheduleDate[]; selectedDate: string; slotsByDate: Record<string, AppointmentSlot[]>; loadingDates: string[]; isDuplicateBookingBlocked: boolean; onSelectDate: (date: string) => void; onChooseSlot: (slot: AppointmentSlot) => void; }
+interface ScheduleTableProps { dates: DoctorScheduleDate[]; selectedDate: string; slotsByDate: Record<string, AppointmentSlot[]>; loadingDates: string[]; isDuplicateBookingBlocked: boolean; isCheckingBookingStatus: boolean; onSelectDate: (date: string) => void; onChooseSlot: (slot: AppointmentSlot) => void; }
 
 /** 按七天列、上午与下午行展示医生实际可预约号源。 */
-function ScheduleTable({ dates, selectedDate, slotsByDate, loadingDates, isDuplicateBookingBlocked, onSelectDate, onChooseSlot }: ScheduleTableProps) {
-  return <div className="doctor-timetable-wrap"><div className="doctor-timetable"><div className="doctor-timetable__corner" />{dates.map((date) => <button className={selectedDate === date.value ? 'doctor-timetable__date active' : 'doctor-timetable__date'} key={date.value} type="button" onClick={() => onSelectDate(date.value)}><b>{date.day}</b><span>{date.weekday}</span>{loadingDates.includes(date.value) && <i>刷新中</i>}</button>)}<ScheduleRow title="上午" period="morning" dates={dates} slotsByDate={slotsByDate} isDuplicateBookingBlocked={isDuplicateBookingBlocked} onChooseSlot={onChooseSlot} /><ScheduleRow title="下午" period="afternoon" dates={dates} slotsByDate={slotsByDate} isDuplicateBookingBlocked={isDuplicateBookingBlocked} onChooseSlot={onChooseSlot} /></div></div>;
+function ScheduleTable({ dates, selectedDate, slotsByDate, loadingDates, isDuplicateBookingBlocked, isCheckingBookingStatus, onSelectDate, onChooseSlot }: ScheduleTableProps) {
+  return <div className="doctor-timetable-wrap"><div className="doctor-timetable"><div className="doctor-timetable__corner" />{dates.map((date) => <button className={selectedDate === date.value ? 'doctor-timetable__date active' : 'doctor-timetable__date'} key={date.value} type="button" onClick={() => onSelectDate(date.value)}><b>{date.day}</b><span>{date.weekday}</span>{loadingDates.includes(date.value) && <i>刷新中</i>}</button>)}<ScheduleRow title="上午" period="morning" dates={dates} slotsByDate={slotsByDate} isDuplicateBookingBlocked={isDuplicateBookingBlocked} isCheckingBookingStatus={isCheckingBookingStatus} onChooseSlot={onChooseSlot} /><ScheduleRow title="下午" period="afternoon" dates={dates} slotsByDate={slotsByDate} isDuplicateBookingBlocked={isDuplicateBookingBlocked} isCheckingBookingStatus={isCheckingBookingStatus} onChooseSlot={onChooseSlot} /></div></div>;
 }
 
 /** 单个半天号源行的入参。 */
-interface ScheduleRowProps { title: string; period: 'morning' | 'afternoon'; dates: DoctorScheduleDate[]; slotsByDate: Record<string, AppointmentSlot[]>; isDuplicateBookingBlocked: boolean; onChooseSlot: (slot: AppointmentSlot) => void; }
+interface ScheduleRowProps { title: string; period: 'morning' | 'afternoon'; dates: DoctorScheduleDate[]; slotsByDate: Record<string, AppointmentSlot[]>; isDuplicateBookingBlocked: boolean; isCheckingBookingStatus: boolean; onChooseSlot: (slot: AppointmentSlot) => void; }
 
 /** 展示某一半天内每个日期的汇总余号，避免逐时段展示造成移动端日程表拥挤。 */
-function ScheduleRow({ title, period, dates, slotsByDate, isDuplicateBookingBlocked, onChooseSlot }: ScheduleRowProps) {
+function ScheduleRow({ title, period, dates, slotsByDate, isDuplicateBookingBlocked, isCheckingBookingStatus, onChooseSlot }: ScheduleRowProps) {
   return <><div className="doctor-timetable__period">{title}</div>{dates.map((date) => {
     // 同一半天的多个后端时段仅汇总余量，点击时仍提交其中一个真实 slotId。
     const summary = summarizeHalfDaySlots(groupSlotsByHalfDay(slotsByDate[date.value] || [])[period]);
     if (!summary.targetSlot) return <div className="doctor-timetable__cell" key={`${period}-${date.value}`}><small className="doctor-timetable__empty">暂无号源</small></div>;
     const hasAvailability = summary.availableCount > 0;
-    const isDisabled = isDuplicateBookingBlocked;
-    return <div className="doctor-timetable__cell" key={`${period}-${date.value}`}><button className={isDisabled ? 'doctor-timetable__slot is-disabled' : hasAvailability ? 'doctor-timetable__slot' : 'doctor-timetable__slot is-full'} type="button" disabled={isDisabled} onClick={() => onChooseSlot(summary.targetSlot!)}><span>剩余</span><b>{summary.availableCount}</b><em>{isDisabled ? '不可重复预约' : hasAvailability ? '点击挂号' : '候补挂号'}</em></button></div>;
+    const isDisabled = isDuplicateBookingBlocked || isCheckingBookingStatus;
+    return <div className="doctor-timetable__cell" key={`${period}-${date.value}`}><button className={isDisabled ? 'doctor-timetable__slot is-disabled' : hasAvailability ? 'doctor-timetable__slot' : 'doctor-timetable__slot is-full'} type="button" disabled={isDisabled} onClick={() => onChooseSlot(summary.targetSlot!)}><span>剩余</span><b>{summary.availableCount}</b><em>{isDuplicateBookingBlocked ? '不可重复预约' : isCheckingBookingStatus ? '状态核验中' : hasAvailability ? '点击挂号' : '候补挂号'}</em></button></div>;
   })}</>;
 }

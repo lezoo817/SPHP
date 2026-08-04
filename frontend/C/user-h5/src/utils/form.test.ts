@@ -26,6 +26,7 @@ import { getAssistantTabs, getCurrentFlowAction } from './assistant';
 import { buildReportListPath } from '../services/report';
 import { filterReportsByDate, getRecentReportRange, isReportInterpretationPending, mergeReportPages } from './report';
 import { isDuplicateDoctorAppointmentError } from './registration';
+import { buildDoctorBookingStatusPath } from '../services/registration';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -52,6 +53,10 @@ describe('重复预约联调规则', () => {
     expect(isDuplicateDoctorAppointmentError({ code: 'A0506', message: '幂等键冲突' })).toBe(false);
     expect(isDuplicateDoctorAppointmentError({ code: 'A0400', message: '已预约过该医生，不可重复预约' })).toBe(false);
     expect(isDuplicateDoctorAppointmentError(new Error('已预约过该医生，不可重复预约'))).toBe(false);
+  });
+
+  it('医生主页按医生 ID 查询账号维度的预约状态', () => {
+    expect(buildDoctorBookingStatusPath(401)).toBe('/c/v1/appointments/doctor-booking-status?doctorId=401');
   });
 });
 
