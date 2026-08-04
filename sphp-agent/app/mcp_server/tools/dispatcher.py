@@ -16,7 +16,12 @@ import inspect
 import logging
 from typing import Any, cast
 
-from app.infrastructure.java_client import reset_idempotency_context, set_idempotency_context
+from app.infrastructure.java_client import (
+    reset_idempotency_context,
+    reset_jwt_context,
+    set_idempotency_context,
+    set_jwt_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +30,10 @@ logger = logging.getLogger(__name__)
 # _wrap 剥离后注入 ContextVar，供同任务栈内封装函数的 call_java_api 复用，
 # 确保同一确认操作（含失败重试）Java 侧幂等去重。
 _IDEMPOTENCY_ARG = "__idempotency_key__"
+# JWT 内部键：call_java_api 需透传用户 JWT（Authorization Bearer），
+# 经 MCP 协议透传至此，_wrap 剥离后注入 ContextVar，供封装函数内
+# call_java_api 注入 Authorization 头（C 端鉴权修复）。
+_JWT_ARG = "__jwt_token__"
 
 
 async def _wrap(
@@ -35,13 +44,16 @@ async def _wrap(
     P2 #17：剥离确认流程注入的 ``__idempotency_key__``（不传给业务参数），
     若有则设置幂等键 ContextVar，使封装函数内 call_java_api 的写操作复用
     该键；await 结束后恢复，不影响同任务后续调用。
+
+    C 端鉴权修复：同样剥离 ``__jwt_token__`` 并设置 JWT ContextVar，使
+    封装函数内 call_java_api 注入 ``Authorization: Bearer`` 头。
     """
     func = getattr(module, func_name)
     sig = inspect.signature(func)
     # P3-6：未知参数不静默丢弃——业务参数演进时暴露给日志排查（debug 级，
     # 不改变行为：不在签名中的参数继续忽略，保持向后兼容；内部幂等键除外）。
     known = {k for k in arguments if k in sig.parameters}
-    unknown = {k for k in arguments if k not in known and k != _IDEMPOTENCY_ARG}
+    unknown = {k for k in arguments if k not in known and k not in (_IDEMPOTENCY_ARG, _JWT_ARG)}
     if unknown:
         logger.debug("工具 %s 忽略未知参数: %s", func_name, sorted(unknown))
     kwargs = {k: arguments[k] for k in known}
@@ -49,12 +61,16 @@ async def _wrap(
         kwargs["user_id"] = user_id
 
     idem_key = arguments.get(_IDEMPOTENCY_ARG)
-    token = set_idempotency_context(idem_key) if idem_key else None
+    idem_handle = set_idempotency_context(idem_key) if idem_key else None
+    jwt = arguments.get(_JWT_ARG)
+    jwt_handle = set_jwt_context(jwt) if jwt else None
     try:
         return cast(dict[str, Any], await func(**kwargs))
     finally:
-        if token is not None:
-            reset_idempotency_context(token)
+        if idem_handle is not None:
+            reset_idempotency_context(idem_handle)
+        if jwt_handle is not None:
+            reset_jwt_context(jwt_handle)
 
 
 # 工具名 -> 模块 import 路径（对应 mcp_server/tools/*.py）

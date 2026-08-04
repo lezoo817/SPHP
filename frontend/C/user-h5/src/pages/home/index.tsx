@@ -67,7 +67,7 @@ export default function HomePage() {
   const currentPatient = members.find((item) => item.patientId === selected.patientId);
   const services = [
     { label: '预约挂号', icon: CalendarPlus, action: () => navigate('/home/departments') },
-    { label: '智能导诊', icon: Stethoscope },
+    { label: '智能导诊', icon: Stethoscope, action: () => navigate('/agent') },
     { label: '在线问诊', icon: HeartPulse, action: () => navigate('/assistant') },
     { label: '处方购药', icon: Pill, action: () => navigate('/pharmacy') },
     { label: '报告查询', icon: FileChartColumn },
