@@ -13,6 +13,22 @@
         SELECT EXISTS(SELECT 1 FROM patient_user_relation
                       WHERE user_id = #{userId} AND patient_id = #{patientId} AND deleted_at IS NULL)
     </select>
+    <select id="registeringLockActiveUser" resultType="long">
+        SELECT id FROM c_user
+        WHERE id = #{userId} AND deleted_at IS NULL
+        FOR UPDATE
+    </select>
+    <select id="existsRegisteringPaidDoctorAppointment" resultType="boolean">
+        SELECT EXISTS(
+            SELECT 1
+            FROM appointment a
+                     INNER JOIN payment_order po ON po.appointment_id = a.id
+            WHERE po.payer_user_id = #{userId}
+              AND a.doctor_id = #{doctorId}
+              AND a.status IN ('PAID', 'COMPLETED')
+              AND a.deleted_at IS NULL
+        )
+    </select>
     <select id="selectRegisteringSlotLockInfo" resultType="com.sphp.patient.registration.mapper.RegisteringSlotLockRecord">
         SELECT sl.id AS slot_id, d.hospital_id, d.id AS doctor_id, d.registration_fee_cent AS fee_cent,
                s.schedule_date, sl.start_time, sl.end_time, s.status AS schedule_status, d.status AS doctor_status
@@ -61,7 +77,7 @@
         SELECT <include refid="appointmentFields"/> <include refid="appointmentJoin"/> WHERE a.id = #{appointmentId} AND a.deleted_at IS NULL
     </select>
     <select id="selectRegisteringPayment" resultType="com.sphp.patient.registration.mapper.RegisteringPaymentRecord">
-        SELECT po.id, po.appointment_id, a.patient_id, po.payer_user_id, a.slot_snapshot_id AS snapshot_id, ss.slot_id,
+        SELECT po.id, po.appointment_id, a.patient_id, a.doctor_id, po.payer_user_id, a.slot_snapshot_id AS snapshot_id, ss.slot_id,
                po.amount_cent, po.status AS payment_status, a.status AS appointment_status, po.expire_at, po.paid_at, u.password_hash
         FROM payment_order po INNER JOIN appointment a ON a.id = po.appointment_id AND a.deleted_at IS NULL
         INNER JOIN slot_snapshot ss ON ss.id = a.slot_snapshot_id AND ss.deleted_at IS NULL

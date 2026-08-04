@@ -2,13 +2,16 @@ package com.sphp.patient.registration.service.impl;
 
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
+import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.registration.dto.RegisteringAppointmentCreateRequest;
+import com.sphp.patient.registration.dto.RegisteringPaymentSimulateRequest;
 import com.sphp.patient.registration.dto.RegisteringWaitlistCreateRequest;
 import com.sphp.patient.registration.entity.RegisteringWaitlist;
 import com.sphp.patient.registration.mapper.RegisteringAppointmentRecord;
 import com.sphp.patient.registration.mapper.RegisteringDataMapper;
 import com.sphp.patient.registration.mapper.RegisteringAppointmentMapper;
 import com.sphp.patient.registration.mapper.RegisteringPaymentOrderMapper;
+import com.sphp.patient.registration.mapper.RegisteringPaymentRecord;
 import com.sphp.patient.registration.mapper.RegisteringWaitlistMapper;
 import com.sphp.patient.registration.support.RegisteringSlotLockService;
 import com.sphp.patient.registration.support.RegisteringWaitlistPromotionService;
@@ -17,16 +20,19 @@ import com.sphp.patient.notification.mq.producer.NotificationEventProducer;
 import org.springframework.context.ApplicationEventPublisher;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
 import org.junit.jupiter.api.Test;
+import org.mindrot.jbcrypt.BCrypt;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 /**
@@ -57,6 +63,8 @@ class RegisteringServiceImplTest {
                 new com.sphp.patient.registration.mapper.RegisteringSlotLockRecord(
                         501L, 301L, 401L, 5000, LocalDate.now().plusDays(1),
                         LocalTime.of(9, 0), LocalTime.of(9, 30), "PUBLISHED", "ENABLED"));
+        when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
+        when(dataMapper.existsRegisteringPaidDoctorAppointment(10001L, 401L)).thenReturn(false);
         when(dataMapper.countRegisteringAvailableSnapshots(501L)).thenReturn(1L);
         when(slotLockService.registeringLock(eq(501L), eq(1L), any())).thenReturn(true);
         when(dataMapper.registeringLockOneSnapshot(eq(501L), eq(20001L), any())).thenReturn(9001L);
@@ -81,6 +89,79 @@ class RegisteringServiceImplTest {
             assertEquals("UNPAID", result.getStatus());
             assertEquals(5000, result.getAmountCent());
             verify(waitlistPromotionService).registeringFulfillNotifiedWaitlist(eq(10001L), eq(20001L), eq(501L), any());
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证同一登录账号已支付过同一医生时，不能再次创建挂号订单。
+     */
+    @Test
+    void registeringCreateAppointmentRejectsUserWhoAlreadyPaidSameDoctorBeforeLockingSlot() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringSlotLockService slotLockService = mock(RegisteringSlotLockService.class);
+        when(dataMapper.existsRegisteringActivePatient(20002L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20002L)).thenReturn(true);
+        when(dataMapper.selectRegisteringSlotLockInfo(101L, 501L)).thenReturn(
+                new com.sphp.patient.registration.mapper.RegisteringSlotLockRecord(
+                        501L, 301L, 401L, 5000, LocalDate.now().plusDays(1),
+                        LocalTime.of(9, 0), LocalTime.of(9, 30), "PUBLISHED", "ENABLED"));
+        when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
+        when(dataMapper.existsRegisteringPaidDoctorAppointment(10001L, 401L)).thenReturn(true);
+        RegisteringServiceImpl service = new RegisteringServiceImpl(dataMapper,
+                mock(RegisteringAppointmentMapper.class), mock(RegisteringPaymentOrderMapper.class),
+                slotLockService, mock(RegisteringWaitlistPromotionService.class), mock(RegisteringWaitlistMapper.class),
+                registrationProperties(), mock(ApplicationEventPublisher.class), mock(NotificationEventProducer.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        RegisteringAppointmentCreateRequest request = new RegisteringAppointmentCreateRequest();
+        request.setPatientId(20002L);
+        request.setHospitalId(101L);
+        request.setSlotId(501L);
+
+        try {
+            CAuthException exception = assertThrows(CAuthException.class,
+                    () -> service.registeringCreateAppointment(request));
+
+            assertEquals("A0506", exception.getCode());
+            verify(dataMapper).registeringLockActiveUser(10001L);
+            verify(dataMapper).existsRegisteringPaidDoctorAppointment(10001L, 401L);
+            verify(slotLockService, never()).registeringLock(any(), any(Long.class), any());
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证同一账号的另一笔待支付订单不能绕过限约规则完成支付。
+     */
+    @Test
+    void registeringSimulatePaymentRejectsSecondPaidAppointmentForSameDoctor() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringPaymentRecord payment = new RegisteringPaymentRecord(8002L, 7002L, 20002L, 401L,
+                10001L, 9002L, 501L, 5000, "PENDING", "UNPAID", OffsetDateTime.now().plusMinutes(10),
+                null, BCrypt.hashpw("Password123", BCrypt.gensalt()));
+        when(dataMapper.selectRegisteringPayment(8002L)).thenReturn(payment);
+        when(dataMapper.existsRegisteringActivePatient(20002L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20002L)).thenReturn(true);
+        when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
+        when(dataMapper.existsRegisteringPaidDoctorAppointment(10001L, 401L)).thenReturn(true);
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), mock(RegisteringWaitlistPromotionService.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        RegisteringPaymentSimulateRequest request = new RegisteringPaymentSimulateRequest();
+        request.setLoginPassword("Password123");
+
+        try {
+            CAuthException exception = assertThrows(CAuthException.class,
+                    () -> service.registeringSimulatePayment(8002L, request));
+
+            assertEquals("A0506", exception.getCode());
+            verify(dataMapper).registeringLockActiveUser(10001L);
+            verify(dataMapper).existsRegisteringPaidDoctorAppointment(10001L, 401L);
+            verify(dataMapper, never()).registeringMarkPaymentSuccess(any(), any());
+            verify(dataMapper, never()).registeringMarkAppointmentPaid(any(), any());
+            verify(dataMapper, never()).registeringMarkSnapshotSold(any(), any());
         } finally {
             CUserContext.clear();
         }
@@ -162,11 +243,21 @@ class RegisteringServiceImplTest {
     private RegisteringServiceImpl service(RegisteringDataMapper dataMapper, RegisteringWaitlistMapper waitlistMapper,
                                            NotificationEventProducer notificationProducer,
                                            RegisteringWaitlistPromotionService promotionService) {
-        RegistrationProperties properties = new RegistrationProperties();
-        properties.setPaymentTimeout(900);
+        RegistrationProperties properties = registrationProperties();
         return new RegisteringServiceImpl(dataMapper, mock(RegisteringAppointmentMapper.class),
                 mock(RegisteringPaymentOrderMapper.class), mock(RegisteringSlotLockService.class), promotionService,
                 waitlistMapper, properties, mock(ApplicationEventPublisher.class), notificationProducer);
+    }
+
+    /**
+     * 创建测试使用的挂号配置。
+     *
+     * @return 支付超时时间为十五分钟的配置
+     */
+    private RegistrationProperties registrationProperties() {
+        RegistrationProperties properties = new RegistrationProperties();
+        properties.setPaymentTimeout(900);
+        return properties;
     }
 
     /**

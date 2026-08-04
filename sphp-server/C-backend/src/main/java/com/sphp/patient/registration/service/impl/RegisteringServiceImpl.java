@@ -95,6 +95,8 @@ public class RegisteringServiceImpl implements RegisteringService {
         RegisteringSlotLockRecord slot = dataMapper.selectRegisteringSlotLockInfo(request.getHospitalId(), request.getSlotId());
         // 验证号源
         registeringValidateSlot(slot);
+        // 账号行锁与已支付历史检查必须先于 Redis 预扣，避免重复预约占用号源。
+        registeringEnsureUserCanBookDoctor(userId, slot.doctorId());
         long availableCount = dataMapper.countRegisteringAvailableSnapshots(slot.slotId());
         // 支付超时
         Duration ttl = Duration.ofSeconds(Math.max(registrationProperties.getPaymentTimeout(), 1));
@@ -306,6 +308,8 @@ public class RegisteringServiceImpl implements RegisteringService {
         if (!BCrypt.checkpw(request.getLoginPassword(), payment.passwordHash())) {
             throw new CAuthException(PASSWORD_VALIDATION_FAILED, HttpStatus.BAD_REQUEST, "支付密码校验失败");
         }
+        // 串行化同一账号的支付确认，防止多个待支付订单并发支付同一医生。
+        registeringEnsureUserCanBookDoctor(payment.payerUserId(), payment.doctorId());
         // 条件更新确保支付、超时消费者和主动取消只有一个请求能完成状态流转。
         if (dataMapper.registeringMarkPaymentSuccess(paymentId, now) != 1
                 || dataMapper.registeringMarkAppointmentPaid(payment.appointmentId(), now) != 1
@@ -414,6 +418,24 @@ public class RegisteringServiceImpl implements RegisteringService {
         // 解析并校验当前账号可访问的就诊人
         registeringResolveAccessiblePatient(userId, payment.patientId());
         return payment;
+    }
+
+    /**
+     * 串行校验当前账号是否已成功预约指定医生。
+     *
+     * @param userId C 端用户 ID
+     * @param doctorId 医生 ID
+     * @throws CAuthException 当前账号不存在或已成功预约该医生时抛出
+     */
+    private void registeringEnsureUserCanBookDoctor(Long userId, Long doctorId) {
+        // 锁定账号行，使挂号创建与支付确认在同一账号范围内串行执行。
+        if (dataMapper.registeringLockActiveUser(userId) == null) {
+            throw new CAuthException(UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "登录状态已失效");
+        }
+        // 同一账号下的任意就诊人只允许成功预约同一医生一次。
+        if (dataMapper.existsRegisteringPaidDoctorAppointment(userId, doctorId)) {
+            throw new CAuthException(DUPLICATE_REQUEST, HttpStatus.CONFLICT, "已预约过该医生，不可重复预约");
+        }
     }
 
     /**
