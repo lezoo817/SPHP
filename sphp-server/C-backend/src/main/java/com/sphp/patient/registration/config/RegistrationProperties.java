@@ -19,4 +19,10 @@ public class RegistrationProperties {
 
     /** 可查询的未来放号天数，包含当天 */
     private int slotReleaseDays;
+
+    /** 候补人收到可预约通知后的有效时间，单位秒 */
+    private int waitlistNotifyTimeout;
+
+    /** 候补通知超时扫描间隔，单位毫秒 */
+    private long waitlistScanIntervalMillis;
 }

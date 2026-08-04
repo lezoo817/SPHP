@@ -44,7 +44,7 @@
                d.title,
                d.specialty,
                d.registration_fee_cent,
-               COUNT(ss.id) FILTER (WHERE ss.status = 'AVAILABLE' AND ss.deleted_at IS NULL) AS available_count
+               COUNT(ss.id) FILTER (WHERE ss.status IN ('AVAILABLE', 'RELEASED') AND ss.deleted_at IS NULL) AS available_count
         FROM doctor d
         LEFT JOIN schedule s ON s.doctor_id = d.id
                             AND s.schedule_date = #{date}
@@ -94,7 +94,7 @@
                sl.start_time,
                sl.end_time,
                d.registration_fee_cent AS fee_cent,
-               COUNT(ss.id) FILTER (WHERE ss.status = 'AVAILABLE' AND ss.deleted_at IS NULL) AS available_count,
+               COUNT(ss.id) FILTER (WHERE ss.status IN ('AVAILABLE', 'RELEASED') AND ss.deleted_at IS NULL) AS available_count,
                s.status AS schedule_status
         FROM doctor d
         INNER JOIN schedule s ON s.doctor_id = d.id

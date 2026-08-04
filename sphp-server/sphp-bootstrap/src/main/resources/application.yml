@@ -96,6 +96,10 @@ sphp:
     payment-timeout: ${dev.sphp.registration.payment-timeout}
     # C端可查询的未来放号天数，包含当天。
     slot-release-days: ${dev.sphp.registration.slot-release-days}
+    # 候补人收到可预约通知后的有效时间，单位秒，默认 900 秒。
+    waitlist-notify-timeout: ${dev.sphp.registration.waitlist-notify-timeout}
+    # 候补通知超时扫描间隔，单位毫秒，默认 60000 毫秒。
+    waitlist-scan-interval-millis: ${dev.sphp.registration.waitlist-scan-interval-millis}
 
   # C端认证有效期与登录保护阈值。
   auth:
