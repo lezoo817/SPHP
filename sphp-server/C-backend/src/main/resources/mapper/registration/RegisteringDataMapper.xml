@@ -42,7 +42,7 @@
     </sql>
     <sql id="appointmentFields">
         a.id, a.patient_id, a.slot_snapshot_id AS snapshot_id, sl.id AS slot_id, a.doctor_id, d.name AS doctor_name,
-        dp.name AS department_name, s.schedule_date, sl.start_time, sl.end_time, a.status, a.amount_cent, a.expire_at,
+        dp.name AS department_name, dp.location AS department_location, s.schedule_date, sl.start_time, sl.end_time, a.status, a.amount_cent, a.expire_at,
         po.id AS payment_id, po.status AS payment_status
     </sql>
     <select id="selectRegisteringAppointments" resultType="com.sphp.patient.registration.mapper.RegisteringAppointmentRecord">

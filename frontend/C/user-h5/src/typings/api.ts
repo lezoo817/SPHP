@@ -132,15 +132,46 @@ export interface MedicalHistoryPayload {
 /** 可供选择的医院。 */
 export interface Hospital { hospitalId: number; name: string; level?: string; address?: string; contact?: string; }
 /** 医院下的可预约科室。 */
-export interface Department { id: number; name: string; description?: string; }
+export interface Department {
+  /** 科室 ID。 */
+  id: number;
+  /** 科室名称。 */
+  name: string;
+  /** 后端返回的科室位置。 */
+  location?: string;
+}
 /** 医生及当天可用号源摘要。 */
 export interface Doctor { id: number; name: string; title?: string; specialty?: string; registrationFeeCent: number; availableCount: number; departmentId?: number; departmentName?: string; }
 /** 医生预约时段。 */
 export interface AppointmentSlot { slotId: number; startTime: string; endTime: string; feeCent: number; availableCount: number; }
 /** 挂号订单列表项。 */
-export interface Appointment { id: number; doctorName: string; departmentName: string; startTime: string; status: 'UNPAID' | 'PAID' | 'COMPLETED' | 'CANCELLED'; amountCent: number; expireAt?: string; }
+export interface Appointment {
+  /** 挂号订单 ID。 */
+  id: number;
+  /** 医生姓名。 */
+  doctorName: string;
+  /** 科室名称。 */
+  departmentName: string;
+  /** 科室位置，由订单接口直接返回。 */
+  departmentLocation?: string;
+  /** 就诊开始时间。 */
+  startTime: string;
+  /** 挂号订单状态。 */
+  status: 'UNPAID' | 'PAID' | 'COMPLETED' | 'CANCELLED';
+  /** 挂号金额，单位为分。 */
+  amountCent: number;
+  /** 待支付订单失效时间。 */
+  expireAt?: string;
+}
 /** 挂号订单详情。 */
-export interface AppointmentDetail extends Appointment { doctor: { id: number; name: string; departmentName: string }; slot: { id: number; startTime: string; endTime: string }; payment?: { id: number; status: string }; }
+export interface AppointmentDetail extends Appointment {
+  /** 医生、科室与位置资料。 */
+  doctor: { id: number; name: string; departmentName: string; departmentLocation?: string };
+  /** 号源时间段资料。 */
+  slot: { id: number; startTime: string; endTime: string };
+  /** 支付单资料。 */
+  payment?: { id: number; status: string };
+}
 /** 分页响应。 */
 export interface PageData<T> { pageNo: number; pageSize: number; total: number; records: T[]; }
 /** 问诊记录列表项。 */
