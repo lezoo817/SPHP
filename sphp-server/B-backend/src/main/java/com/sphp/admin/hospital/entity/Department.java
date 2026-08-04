@@ -26,8 +26,8 @@ public class Department {
     /** 科室负责人医生 ID */
     private Long headDoctorId;
 
-    /** 科室简介 */
-    private String description;
+    /** 科室位置（如：1号楼2层201室） */
+    private String location;
 
     /** 状态：ENABLED / DISABLED */
     private String status;

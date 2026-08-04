@@ -31,8 +31,8 @@ public class DepartmentListVO {
     @Schema(description = "科室负责人姓名")
     private String headDoctorName;
 
-    @Schema(description = "科室简介")
-    private String description;
+    @Schema(description = "科室位置（如：1号楼2层201室）")
+    private String location;
 
     @Schema(description = "状态：ENABLED / DISABLED")
     private String status;

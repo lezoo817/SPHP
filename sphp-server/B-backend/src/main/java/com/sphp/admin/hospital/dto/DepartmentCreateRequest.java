@@ -20,6 +20,6 @@ public class DepartmentCreateRequest {
     @Schema(description = "科室负责人医生ID")
     private Long headDoctorId;
 
-    @Schema(description = "科室简介")
-    private String description;
+    @Schema(description = "科室位置（如：1号楼2层201室）")
+    private String location;
 }

@@ -74,7 +74,7 @@ declare global {
       hospitalId: number;
       headDoctorId?: number;
       headDoctorName?: string;
-      description?: string;
+      location?: string;
       status: 'ENABLED' | 'DISABLED';
     }
 
@@ -89,7 +89,7 @@ declare global {
     interface UpsertDepartmentReq {
       name: string;
       headDoctorId?: number;
-      description?: string;
+      location?: string;
     }
 
     /** 更新科室状态请求 */
