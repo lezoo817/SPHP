@@ -112,7 +112,8 @@ public class ScheduleServiceImpl implements ScheduleService {
             wrapper.eq(Schedule::getDoctorId, scope.doctorId());
         }
         wrapper.eq(StringUtils.hasText(status), Schedule::getStatus, status)
-                .orderByAsc(Schedule::getScheduleDate)
+                // 按排班日期倒序展示，最近的排班在最前
+                .orderByDesc(Schedule::getScheduleDate)
                 .orderByAsc(Schedule::getId);
 
         Page<Schedule> result = scheduleMapper.selectPage(new Page<>(page, size), wrapper);

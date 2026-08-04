@@ -219,6 +219,11 @@ export default function ScheduleDetail() {
     try {
       await configureScheduleSlots(scheduleId, configs);
       message.success('时段配置已保存');
+      // 号源之和等于总号源数时已满足发布条件，直接返回列表便于继续发布
+      if (sum === totalSlots) {
+        navigate('/schedule/list');
+        return;
+      }
       await loadSlots();
     } catch (err: any) {
       message.error(err?.message || '保存失败，请重试');
