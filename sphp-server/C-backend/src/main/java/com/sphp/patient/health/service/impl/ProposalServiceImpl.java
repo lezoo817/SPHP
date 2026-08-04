@@ -13,6 +13,7 @@ import com.sphp.patient.health.entity.ProposalPatientReport;
 import com.sphp.patient.health.entity.ProposalReportIndicator;
 import com.sphp.patient.health.mapper.ConsultationReportListRecord;
 import com.sphp.patient.health.mapper.ConsultationMedicalRecordListRecord;
+import com.sphp.patient.health.mapper.ConsultationMedicalRecordRecord;
 import com.sphp.patient.health.mapper.ConsultationReportInterpretationRecord;
 import com.sphp.patient.health.mapper.ConsultationReportRecord;
 import com.sphp.patient.health.mapper.FollowUpRecord;
@@ -29,6 +30,7 @@ import com.sphp.patient.health.vo.ProposalReportDetailVO;
 import com.sphp.patient.health.vo.ProposalReportInterpretationVO;
 import com.sphp.patient.health.vo.ProposalReportPageVO;
 import com.sphp.patient.health.vo.ProposalMedicalRecordPageVO;
+import com.sphp.patient.health.vo.ProposalMedicalRecordDetailVO;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -96,6 +98,36 @@ public class ProposalServiceImpl implements ProposalService {
                 .pageSize(resolvedPageSize)
                 .total(dataMapper.proposalCountConsultationMedicalRecords(resolvedPatientId))
                 .records(records)
+                .build();
+    }
+
+    /**
+     * 查询单份当前账号可访问的医生病历。
+     *
+     * @param consultId 问诊记录 ID，即病历 ID
+     * @return 病历详情
+     * @throws CAuthException 病历不存在、暂不可展示或当前账号无权访问时抛出
+     */
+    @Override
+    public ProposalMedicalRecordDetailVO proposalGetMedicalRecord(Long consultId) {
+        // 先以病历 ID 查询受可见性条件约束的问诊记录，避免返回未完成或空正文病历。
+        ConsultationMedicalRecordRecord medicalRecord =
+                dataMapper.proposalSelectConsultationMedicalRecord(consultId);
+        if (medicalRecord == null) {
+            throw proposalNotFound("病历不存在或暂不可查看");
+        }
+        // 由病历反查就诊人归属，禁止通过病历 ID 跨账号读取医疗记录。
+        proposalRequireAccessiblePatient(medicalRecord.patientId());
+        return ProposalMedicalRecordDetailVO.builder()
+                .id(medicalRecord.id())
+                .patientId(medicalRecord.patientId())
+                .doctorId(medicalRecord.doctorId())
+                .doctorName(medicalRecord.doctorName())
+                .departmentName(medicalRecord.departmentName())
+                .doctorNote(medicalRecord.doctorNote())
+                .startedAt(medicalRecord.startedAt())
+                .completedAt(medicalRecord.completedAt())
+                .updatedAt(medicalRecord.updatedAt())
                 .build();
     }
 

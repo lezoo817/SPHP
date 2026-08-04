@@ -10,6 +10,7 @@ import com.sphp.patient.health.vo.ProposalReportDetailVO;
 import com.sphp.patient.health.vo.ProposalReportInterpretationVO;
 import com.sphp.patient.health.vo.ProposalReportPageVO;
 import com.sphp.patient.health.vo.ProposalMedicalRecordPageVO;
+import com.sphp.patient.health.vo.ProposalMedicalRecordDetailVO;
 
 import java.util.List;
 
@@ -27,6 +28,14 @@ public interface ProposalService {
      * @return 病历分页结果
      */
     ProposalMedicalRecordPageVO proposalListMedicalRecords(Long patientId, Integer pageNo, Integer pageSize);
+
+    /**
+     * 查询单份当前账号可访问的医生病历。
+     *
+     * @param consultId 问诊记录 ID，即病历 ID
+     * @return 病历详情
+     */
+    ProposalMedicalRecordDetailVO proposalGetMedicalRecord(Long consultId);
 
     /**
      * 录入检查报告。

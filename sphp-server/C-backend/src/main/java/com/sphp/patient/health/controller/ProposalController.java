@@ -12,6 +12,7 @@ import com.sphp.patient.health.vo.ProposalReportDetailVO;
 import com.sphp.patient.health.vo.ProposalReportInterpretationVO;
 import com.sphp.patient.health.vo.ProposalReportPageVO;
 import com.sphp.patient.health.vo.ProposalMedicalRecordPageVO;
+import com.sphp.patient.health.vo.ProposalMedicalRecordDetailVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.sphp.shared.common.constant.HeaderConstant;
@@ -89,6 +90,19 @@ public class ProposalController {
             @RequestParam(required = false) @Positive Integer pageNo,
             @RequestParam(required = false) @Positive Integer pageSize) {
         return Result.success("查询成功", proposalService.proposalListMedicalRecords(patientId, pageNo, pageSize));
+    }
+
+    /**
+     * 查询单份当前账号可访问的医生病历。
+     *
+     * @param consultId 问诊记录 ID，即病历 ID
+     * @return 病历详情
+     */
+    @GetMapping("/medical-records/{consultId}")
+    @Operation(summary = "查询医生病历详情")
+    public Result<ProposalMedicalRecordDetailVO> proposalGetMedicalRecord(
+            @PathVariable @Positive Long consultId) {
+        return Result.success("查询成功", proposalService.proposalGetMedicalRecord(consultId));
     }
 
     /**

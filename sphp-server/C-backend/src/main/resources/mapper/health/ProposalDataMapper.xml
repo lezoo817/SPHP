@@ -32,6 +32,27 @@
           AND cr.deleted_at IS NULL
     </select>
 
+    <select id="proposalSelectConsultationMedicalRecord"
+            resultType="com.sphp.patient.health.mapper.ConsultationMedicalRecordRecord">
+        SELECT cr.id,
+               cr.patient_id AS patient_id,
+               cr.doctor_id AS doctor_id,
+               d.name AS doctor_name,
+               dept.name AS department_name,
+               cr.doctor_note,
+               cr.started_at,
+               cr.ended_at AS completed_at,
+               cr.updated_at
+        FROM consult_record cr
+                 JOIN doctor d ON d.id = cr.doctor_id
+                 LEFT JOIN department dept ON dept.id = d.dept_id
+        WHERE cr.id = #{consultId}
+          AND cr.status = 'COMPLETED'
+          AND cr.doctor_note IS NOT NULL
+          AND btrim(cr.doctor_note) != ''
+          AND cr.deleted_at IS NULL
+    </select>
+
     <select id="proposalSelectConsultationReports"
             resultType="com.sphp.patient.health.mapper.ConsultationReportListRecord">
         SELECT cr.id,

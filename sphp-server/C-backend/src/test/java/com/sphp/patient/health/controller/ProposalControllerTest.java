@@ -13,6 +13,7 @@ import com.sphp.patient.health.vo.ProposalReportDetailVO;
 import com.sphp.patient.health.vo.ProposalReportInterpretationVO;
 import com.sphp.patient.health.vo.ProposalReportPageVO;
 import com.sphp.patient.health.vo.ProposalMedicalRecordPageVO;
+import com.sphp.patient.health.vo.ProposalMedicalRecordDetailVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
@@ -141,6 +142,30 @@ class ProposalControllerTest {
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.records[0].doctorName").value("张医生"))
                 .andExpect(jsonPath("$.data.records[0].completedAt").exists());
+    }
+
+    /**
+     * 验证病历详情路由可被 C 端客户端访问。
+     *
+     * @throws Exception MockMvc 执行失败时抛出
+     */
+    @Test
+    void proposalGetMedicalRecordRouteExists() throws Exception {
+        ProposalService service = mock(ProposalService.class);
+        when(service.proposalGetMedicalRecord(7001L)).thenReturn(ProposalMedicalRecordDetailVO.builder()
+                .id(7001L).patientId(20001L).doctorId(30001L).doctorName("张医生")
+                .departmentName("呼吸内科").doctorNote("建议按医嘱复诊")
+                .startedAt(OffsetDateTime.parse("2026-08-02T09:00:00+08:00"))
+                .completedAt(OffsetDateTime.parse("2026-08-02T09:30:00+08:00"))
+                .updatedAt(OffsetDateTime.parse("2026-08-02T09:35:00+08:00")).build());
+
+        newMockMvc(service, mock(CIdempotencyService.class))
+                .perform(get("/c/v1/medical-records/7001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("00000"))
+                .andExpect(jsonPath("$.data.doctorNote").value("建议按医嘱复诊"))
+                .andExpect(jsonPath("$.data.departmentName").value("呼吸内科"))
+                .andExpect(jsonPath("$.data.completedAt").exists());
     }
 
     /**

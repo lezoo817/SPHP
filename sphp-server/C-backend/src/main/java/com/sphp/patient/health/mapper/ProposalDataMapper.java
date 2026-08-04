@@ -32,6 +32,14 @@ public interface ProposalDataMapper {
     long proposalCountConsultationMedicalRecords(@Param("patientId") Long patientId);
 
     /**
+     * 按病历 ID 查询可向患者展示的医生病历。
+     *
+     * @param consultId 问诊记录 ID，即病历 ID
+     * @return 医生病历详情投影，不存在或暂不可展示时返回 null
+     */
+    ConsultationMedicalRecordRecord proposalSelectConsultationMedicalRecord(@Param("consultId") Long consultId);
+
+    /**
      * 分页查询已完成且已保存病历的问诊记录。
      *
      * @param patientId 患者 ID
