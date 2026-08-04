@@ -241,16 +241,16 @@ public class RegisteringServiceImpl implements RegisteringService {
         if (dataMapper.countRegisteringAvailableSnapshots(request.getSlotId()) > 0) {
             throw new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, "当前时段仍可预约，无需候补");
         }
-
+        // 已存在待处理候补
         if (dataMapper.existsRegisteringActiveWaitlist(patientId, request.getSlotId())) {
             throw new CAuthException(DUPLICATE_REQUEST, HttpStatus.CONFLICT, "已登记该时段候补");
         }
-
+        // 插入候补队列
         int queueNo = dataMapper.selectRegisteringNextQueueNo(request.getSlotId());
         RegisteringWaitlist waitlist = new RegisteringWaitlist();
         waitlist.setPatientId(patientId);
         waitlist.setSlotId(request.getSlotId());
-        waitlist.setQueueNo(queueNo);
+        waitlist.setQueueNo(queueNo); // 队列号
         waitlist.setStatus(WAITING.name()); // 待处理
         if (waitlistMapper.insert(waitlist) != 1) throw systemError("候补登记失败");
         // 通知
