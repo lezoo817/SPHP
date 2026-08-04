@@ -38,6 +38,23 @@ public interface RegisteringDataMapper {
     boolean hasActivePatientRelation(@Param("userId") Long userId, @Param("patientId") Long patientId);
 
     /**
+     * 锁定当前有效 C 端用户，串行化同一账号的挂号和支付限约判断。
+     *
+     * @param userId C 端用户 ID
+     * @return 锁定成功的用户 ID，用户不存在或已删除时返回 null
+     */
+    Long registeringLockActiveUser(@Param("userId") Long userId);
+
+    /**
+     * 判断当前登录账号是否已成功预约指定医生。
+     *
+     * @param userId C 端用户 ID
+     * @param doctorId 医生 ID
+     * @return 存在已支付或已完成挂号时返回 true
+     */
+    boolean existsRegisteringPaidDoctorAppointment(@Param("userId") Long userId, @Param("doctorId") Long doctorId);
+
+    /**
      * 查询挂号锁号需要的时段、排班、医生和医院链路。
      *
      * @param hospitalId 医院 ID
@@ -86,6 +103,36 @@ public interface RegisteringDataMapper {
     boolean existsRegisteringActiveWaitlist(@Param("patientId") Long patientId, @Param("slotId") Long slotId);
     /** 查询时段的下一个候补排队号。 */
     int selectRegisteringNextQueueNo(@Param("slotId") Long slotId);
+    /**
+     * 锁定尚未开始的候补晋级时段，串行化同一时段的候补状态变更。
+     *
+     * @param slotId 时段 ID
+     * @param now 当前时间
+     * @return 锁定成功的时段 ID，时段不存在或已开始时返回 null
+     */
+    Long registeringLockWaitlistPromotionSlot(@Param("slotId") Long slotId, @Param("now") OffsetDateTime now);
+    /** 统计可重新预约的号源快照数量。 */
+    long countRegisteringRebookableSnapshots(@Param("slotId") Long slotId);
+    /** 统计当前已通知但未过期的候补数量。 */
+    long countRegisteringNotifiedWaitlists(@Param("slotId") Long slotId);
+    /** 锁定当前时段排队最靠前的待通知候补。 */
+    RegisteringWaitlistCandidateRecord registeringLockNextWaitingWaitlist(@Param("slotId") Long slotId);
+    /** 条件将候补状态从排队中更新为已通知。 */
+    int registeringNotifyWaitlist(@Param("waitlistId") Long waitlistId, @Param("now") OffsetDateTime now);
+    /** 查询已超过通知期限的候补记录。 */
+    List<RegisteringWaitlistCandidateRecord> selectRegisteringExpiredNotifiedWaitlists(
+            @Param("deadline") OffsetDateTime deadline);
+    /** 条件将已通知候补更新为过期。 */
+    int registeringExpireNotifiedWaitlist(@Param("waitlistId") Long waitlistId,
+                                           @Param("deadline") OffsetDateTime deadline,
+                                           @Param("now") OffsetDateTime now);
+    /** 将已开始时段的活跃候补统一更新为过期。 */
+    int registeringExpireStartedWaitlists(@Param("now") OffsetDateTime now);
+    /** 当前登记账号成功锁号后将其已通知候补标记为已履约。 */
+    int registeringFulfillNotifiedWaitlist(@Param("userId") Long userId,
+                                            @Param("patientId") Long patientId,
+                                            @Param("slotId") Long slotId,
+                                            @Param("now") OffsetDateTime now);
     /** 条件完成挂号支付。 */
     int registeringMarkPaymentSuccess(@Param("paymentId") Long paymentId, @Param("now") OffsetDateTime now);
     /** 条件确认挂号订单已支付。 */

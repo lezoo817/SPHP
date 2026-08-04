@@ -19,8 +19,10 @@ import com.sphp.patient.registration.mapper.RegisteringPaymentRecord;
 import com.sphp.patient.registration.mapper.RegisteringWaitlistMapper;
 import com.sphp.patient.registration.service.RegisteringService;
 import com.sphp.patient.registration.support.RegisteringSlotLockService;
+import com.sphp.patient.registration.support.RegisteringWaitlistPromotionService;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentListVO;
+import com.sphp.patient.registration.vo.RegisteringDoctorBookingStatusVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentDetailVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCancelVO;
 import com.sphp.patient.registration.vo.RegisteringWaitlistCreateVO;
@@ -67,6 +69,8 @@ public class RegisteringServiceImpl implements RegisteringService {
     private final RegisteringPaymentOrderMapper paymentMapper;
     // 号源锁
     private final RegisteringSlotLockService slotLockService;
+    // 候补晋级与通知
+    private final RegisteringWaitlistPromotionService waitlistPromotionService;
     // 候补
     private final RegisteringWaitlistMapper waitlistMapper;
     // 挂号配置
@@ -92,6 +96,8 @@ public class RegisteringServiceImpl implements RegisteringService {
         RegisteringSlotLockRecord slot = dataMapper.selectRegisteringSlotLockInfo(request.getHospitalId(), request.getSlotId());
         // 验证号源
         registeringValidateSlot(slot);
+        // 账号行锁与已支付历史检查必须先于 Redis 预扣，避免重复预约占用号源。
+        registeringEnsureUserCanBookDoctor(userId, slot.doctorId());
         long availableCount = dataMapper.countRegisteringAvailableSnapshots(slot.slotId());
         // 支付超时
         Duration ttl = Duration.ofSeconds(Math.max(registrationProperties.getPaymentTimeout(), 1));
@@ -129,6 +135,8 @@ public class RegisteringServiceImpl implements RegisteringService {
             if (paymentMapper.insert(payment) != 1) {
                 throw systemError("支付单创建失败");
             }
+            // 候补人通过正常锁号成功后结束其候补状态，普通挂号不会命中任何记录。
+            waitlistPromotionService.registeringFulfillNotifiedWaitlist(userId, patientId, slot.slotId(), now);
             // 事务提交后由监听器投递延迟消息，支付完成前自动触发超时检查。
             eventPublisher.publishEvent(RegisteringAppointmentLockedEvent.registeringOf(appointment.getId(), userId));
             // 锁号成功后异步生成待支付通知，通知写入不会阻塞订单主事务。
@@ -185,6 +193,23 @@ public class RegisteringServiceImpl implements RegisteringService {
                 .build();
     }
 
+    /**
+     * 查询当前账号是否已有任意就诊人成功预约指定医生。
+     *
+     * @param doctorId 医生 ID
+     * @return 当前账号的成功预约状态
+     */
+    @Override
+    public RegisteringDoctorBookingStatusVO registeringGetDoctorBookingStatus(Long doctorId) {
+        Long userId = CUserContext.getRequired().userId();
+        // 与创建及支付链路复用同一账号维度查询，保证前端展示规则与最终拦截规则一致。
+        boolean booked = dataMapper.existsRegisteringPaidDoctorAppointment(userId, doctorId);
+        return RegisteringDoctorBookingStatusVO.builder()
+                .doctorId(doctorId)
+                .booked(booked)
+                .build();
+    }
+
     /***
      * 获取挂号订单详情。
      * @param appointmentId 挂号订单 ID
@@ -214,8 +239,11 @@ public class RegisteringServiceImpl implements RegisteringService {
         }
         dataMapper.registeringClosePendingPayment(appointmentId, now);
         // 释放锁定的号源
-        if (dataMapper.registeringReleaseLockedSnapshot(record.snapshotId(), now) == 1)
+        if (dataMapper.registeringReleaseLockedSnapshot(record.snapshotId(), now) == 1) {
             slotLockService.registeringUnlock(record.slotId());
+            // 仅在号源快照实际释放后晋级候补，避免重复取消产生重复通知。
+            waitlistPromotionService.registeringPromoteAfterSlotReleased(record.slotId());
+        }
 
         return RegisteringAppointmentCancelVO.builder()
                 .appointmentId(appointmentId)
@@ -241,16 +269,17 @@ public class RegisteringServiceImpl implements RegisteringService {
         if (dataMapper.countRegisteringAvailableSnapshots(request.getSlotId()) > 0) {
             throw new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, "当前时段仍可预约，无需候补");
         }
-
+        // 已存在待处理候补
         if (dataMapper.existsRegisteringActiveWaitlist(patientId, request.getSlotId())) {
             throw new CAuthException(DUPLICATE_REQUEST, HttpStatus.CONFLICT, "已登记该时段候补");
         }
-
+        // 插入候补队列
         int queueNo = dataMapper.selectRegisteringNextQueueNo(request.getSlotId());
         RegisteringWaitlist waitlist = new RegisteringWaitlist();
+        waitlist.setUserId(userId);
         waitlist.setPatientId(patientId);
         waitlist.setSlotId(request.getSlotId());
-        waitlist.setQueueNo(queueNo);
+        waitlist.setQueueNo(queueNo); // 队列号
         waitlist.setStatus(WAITING.name()); // 待处理
         if (waitlistMapper.insert(waitlist) != 1) throw systemError("候补登记失败");
         // 通知
@@ -297,6 +326,8 @@ public class RegisteringServiceImpl implements RegisteringService {
         if (!BCrypt.checkpw(request.getLoginPassword(), payment.passwordHash())) {
             throw new CAuthException(PASSWORD_VALIDATION_FAILED, HttpStatus.BAD_REQUEST, "支付密码校验失败");
         }
+        // 串行化同一账号的支付确认，防止多个待支付订单并发支付同一医生。
+        registeringEnsureUserCanBookDoctor(payment.payerUserId(), payment.doctorId());
         // 条件更新确保支付、超时消费者和主动取消只有一个请求能完成状态流转。
         if (dataMapper.registeringMarkPaymentSuccess(paymentId, now) != 1
                 || dataMapper.registeringMarkAppointmentPaid(payment.appointmentId(), now) != 1
@@ -408,6 +439,24 @@ public class RegisteringServiceImpl implements RegisteringService {
     }
 
     /**
+     * 串行校验当前账号是否已成功预约指定医生。
+     *
+     * @param userId C 端用户 ID
+     * @param doctorId 医生 ID
+     * @throws CAuthException 当前账号不存在或已成功预约该医生时抛出
+     */
+    private void registeringEnsureUserCanBookDoctor(Long userId, Long doctorId) {
+        // 锁定账号行，使挂号创建与支付确认在同一账号范围内串行执行。
+        if (dataMapper.registeringLockActiveUser(userId) == null) {
+            throw new CAuthException(UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "登录状态已失效");
+        }
+        // 同一账号下的任意就诊人只允许成功预约同一医生一次。
+        if (dataMapper.existsRegisteringPaidDoctorAppointment(userId, doctorId)) {
+            throw new CAuthException(DUPLICATE_REQUEST, HttpStatus.CONFLICT, "已预约过该医生，不可重复预约");
+        }
+    }
+
+    /**
      * 过期支付单。
      * @param payment 支付单
      * @param now 当前时间
@@ -417,9 +466,11 @@ public class RegisteringServiceImpl implements RegisteringService {
         if (dataMapper.registeringCancelUnpaidAppointment(payment.appointmentId(), now) == 1) {
             // 关闭待支付订单
             dataMapper.registeringClosePendingPayment(payment.appointmentId(), now);
-            if (dataMapper.registeringReleaseLockedSnapshot(payment.snapshotId(), now) == 1)
-                // 释放锁定的号源
+            if (dataMapper.registeringReleaseLockedSnapshot(payment.snapshotId(), now) == 1) {
+                // 释放锁定的号源并通知候补队列的下一位。
                 slotLockService.registeringUnlock(payment.slotId());
+                waitlistPromotionService.registeringPromoteAfterSlotReleased(payment.slotId());
+            }
         }
     }
 

@@ -4,6 +4,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { cancelAppointment, getPayment, simulatePayment } from '../../services/registration';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatAmount, getRemainingSeconds } from '../../utils/medical';
+import { isDuplicateDoctorAppointmentError } from '../../utils/registration';
 
 /** 挂号支付单在页面展示所需的最小字段。 */
 interface PaymentState {
@@ -26,6 +27,7 @@ export default function PaymentPage() {
   const [password, setPassword] = useState('');
   const [seconds, setSeconds] = useState(0);
   const [notice, setNotice] = useState('');
+  const [isDuplicatePaymentBlocked, setDuplicatePaymentBlocked] = useState(false);
   const key = useRef<string>();
 
   /** 查询服务端支付单，支付完成后以服务端状态刷新页面。 */
@@ -59,6 +61,14 @@ export default function PaymentPage() {
       await loadPayment();
       setNotice('支付成功');
     } catch (error) {
+      if (isDuplicateDoctorAppointmentError(error)) {
+        // 服务端已拒绝本笔重复支付，清除幂等键并保留取消订单入口释放号源。
+        key.current = undefined;
+        setDuplicatePaymentBlocked(true);
+        setNotice('该账号已有同医生有效预约，本笔订单不可继续支付');
+        await loadPayment();
+        return;
+      }
       setNotice(getApiErrorMessage(error));
       // 状态冲突或支付失败后重新以服务端支付单为准。
       await loadPayment();
@@ -83,6 +93,7 @@ export default function PaymentPage() {
 
   const isPending = payment?.status === 'PENDING';
   const isSuccess = payment?.status === 'SUCCESS';
+  const canPay = isPending && !isDuplicatePaymentBlocked;
 
   return <main className="subpage">
     <PageHeader title="挂号支付" />
@@ -93,7 +104,8 @@ export default function PaymentPage() {
       {isPending && <p>剩余支付时间：{String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</p>}
       {isPending && <>
         <label>登录密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-        <button className="primary-button" type="button" onClick={() => void pay()}>确认支付</button>
+        {isDuplicatePaymentBlocked && <p className="duplicate-payment-notice">该账号已有同医生有效预约，请取消本笔订单释放号源。</p>}
+        <button className="primary-button" type="button" disabled={!canPay} onClick={() => void pay()}>确认支付</button>
         <button className="secondary-button" type="button" onClick={() => void cancel()}>取消挂号</button>
       </>}
       {isSuccess && <button className="primary-button" type="button" onClick={returnHome}>返回首页</button>}

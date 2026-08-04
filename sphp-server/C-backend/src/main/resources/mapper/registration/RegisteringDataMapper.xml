@@ -13,6 +13,22 @@
         SELECT EXISTS(SELECT 1 FROM patient_user_relation
                       WHERE user_id = #{userId} AND patient_id = #{patientId} AND deleted_at IS NULL)
     </select>
+    <select id="registeringLockActiveUser" resultType="long">
+        SELECT id FROM c_user
+        WHERE id = #{userId} AND deleted_at IS NULL
+        FOR UPDATE
+    </select>
+    <select id="existsRegisteringPaidDoctorAppointment" resultType="boolean">
+        SELECT EXISTS(
+            SELECT 1
+            FROM appointment a
+                     INNER JOIN payment_order po ON po.appointment_id = a.id
+            WHERE po.payer_user_id = #{userId}
+              AND a.doctor_id = #{doctorId}
+              AND a.status IN ('PAID', 'COMPLETED')
+              AND a.deleted_at IS NULL
+        )
+    </select>
     <select id="selectRegisteringSlotLockInfo" resultType="com.sphp.patient.registration.mapper.RegisteringSlotLockRecord">
         SELECT sl.id AS slot_id, d.hospital_id, d.id AS doctor_id, d.registration_fee_cent AS fee_cent,
                s.schedule_date, sl.start_time, sl.end_time, s.status AS schedule_status, d.status AS doctor_status
@@ -22,11 +38,13 @@
         WHERE sl.id = #{slotId} AND d.hospital_id = #{hospitalId} AND sl.deleted_at IS NULL
     </select>
     <select id="countRegisteringAvailableSnapshots" resultType="long">
-        SELECT COUNT(1) FROM slot_snapshot WHERE slot_id = #{slotId} AND status = 'AVAILABLE' AND deleted_at IS NULL
+        SELECT COUNT(1) FROM slot_snapshot
+        WHERE slot_id = #{slotId} AND status IN ('AVAILABLE', 'RELEASED') AND deleted_at IS NULL
     </select>
     <select id="registeringLockOneSnapshot" resultType="long">
         WITH candidate AS (
-            SELECT id FROM slot_snapshot WHERE slot_id = #{slotId} AND status = 'AVAILABLE' AND deleted_at IS NULL
+            SELECT id FROM slot_snapshot
+            WHERE slot_id = #{slotId} AND status IN ('AVAILABLE', 'RELEASED') AND deleted_at IS NULL
             ORDER BY id ASC FOR UPDATE SKIP LOCKED LIMIT 1
         )
         UPDATE slot_snapshot ss SET status = 'LOCKED', patient_id = #{patientId}, locked_at = #{lockedAt}, updated_at = #{lockedAt}
@@ -59,7 +77,7 @@
         SELECT <include refid="appointmentFields"/> <include refid="appointmentJoin"/> WHERE a.id = #{appointmentId} AND a.deleted_at IS NULL
     </select>
     <select id="selectRegisteringPayment" resultType="com.sphp.patient.registration.mapper.RegisteringPaymentRecord">
-        SELECT po.id, po.appointment_id, a.patient_id, po.payer_user_id, a.slot_snapshot_id AS snapshot_id, ss.slot_id,
+        SELECT po.id, po.appointment_id, a.patient_id, a.doctor_id, po.payer_user_id, a.slot_snapshot_id AS snapshot_id, ss.slot_id,
                po.amount_cent, po.status AS payment_status, a.status AS appointment_status, po.expire_at, po.paid_at, u.password_hash
         FROM payment_order po INNER JOIN appointment a ON a.id = po.appointment_id AND a.deleted_at IS NULL
         INNER JOIN slot_snapshot ss ON ss.id = a.slot_snapshot_id AND ss.deleted_at IS NULL
@@ -77,6 +95,65 @@
     </select>
     <select id="existsRegisteringActiveWaitlist" resultType="boolean">SELECT EXISTS(SELECT 1 FROM appointment_waitlist WHERE patient_id=#{patientId} AND slot_id=#{slotId} AND deleted_at IS NULL AND status IN ('WAITING','NOTIFIED'))</select>
     <select id="selectRegisteringNextQueueNo" resultType="int">SELECT COALESCE(MAX(queue_no), 0) + 1 FROM appointment_waitlist WHERE slot_id=#{slotId} AND deleted_at IS NULL AND status IN ('WAITING','NOTIFIED')</select>
+    <select id="registeringLockWaitlistPromotionSlot" resultType="long">
+        SELECT sl.id
+        FROM slot sl
+                 INNER JOIN schedule s ON s.id = sl.schedule_id AND s.deleted_at IS NULL
+        WHERE sl.id = #{slotId}
+          AND sl.deleted_at IS NULL
+          AND (s.schedule_date + sl.start_time) AT TIME ZONE 'Asia/Shanghai' &gt; #{now}
+        FOR UPDATE
+    </select>
+    <select id="countRegisteringRebookableSnapshots" resultType="long">
+        SELECT COUNT(1) FROM slot_snapshot
+        WHERE slot_id = #{slotId} AND status IN ('AVAILABLE', 'RELEASED') AND deleted_at IS NULL
+    </select>
+    <select id="countRegisteringNotifiedWaitlists" resultType="long">
+        SELECT COUNT(1) FROM appointment_waitlist
+        WHERE slot_id = #{slotId} AND status = 'NOTIFIED' AND deleted_at IS NULL
+    </select>
+    <select id="registeringLockNextWaitingWaitlist"
+            resultType="com.sphp.patient.registration.mapper.RegisteringWaitlistCandidateRecord">
+        SELECT id, user_id, patient_id, slot_id, queue_no
+        FROM appointment_waitlist
+        WHERE slot_id = #{slotId} AND status = 'WAITING' AND user_id IS NOT NULL AND deleted_at IS NULL
+        ORDER BY queue_no ASC, id ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+    </select>
+    <update id="registeringNotifyWaitlist">
+        UPDATE appointment_waitlist
+        SET status = 'NOTIFIED', notified_at = #{now}, updated_at = #{now}
+        WHERE id = #{waitlistId} AND status = 'WAITING' AND deleted_at IS NULL
+    </update>
+    <select id="selectRegisteringExpiredNotifiedWaitlists"
+            resultType="com.sphp.patient.registration.mapper.RegisteringWaitlistCandidateRecord">
+        SELECT id, user_id, patient_id, slot_id, queue_no
+        FROM appointment_waitlist
+        WHERE status = 'NOTIFIED' AND notified_at &lt;= #{deadline} AND deleted_at IS NULL
+        ORDER BY notified_at ASC, id ASC
+    </select>
+    <update id="registeringExpireNotifiedWaitlist">
+        UPDATE appointment_waitlist
+        SET status = 'EXPIRED', updated_at = #{now}
+        WHERE id = #{waitlistId} AND status = 'NOTIFIED' AND notified_at &lt;= #{deadline} AND deleted_at IS NULL
+    </update>
+    <update id="registeringExpireStartedWaitlists">
+        UPDATE appointment_waitlist aw
+        SET status = 'EXPIRED', updated_at = #{now}
+        FROM slot sl
+                 INNER JOIN schedule s ON s.id = sl.schedule_id AND s.deleted_at IS NULL
+        WHERE aw.slot_id = sl.id
+          AND aw.status IN ('WAITING', 'NOTIFIED')
+          AND aw.deleted_at IS NULL
+          AND (s.schedule_date + sl.start_time) AT TIME ZONE 'Asia/Shanghai' &lt;= #{now}
+    </update>
+    <update id="registeringFulfillNotifiedWaitlist">
+        UPDATE appointment_waitlist
+        SET status = 'FULFILLED', fulfilled_at = #{now}, updated_at = #{now}
+        WHERE user_id = #{userId} AND patient_id = #{patientId} AND slot_id = #{slotId}
+          AND status = 'NOTIFIED' AND deleted_at IS NULL
+    </update>
     <update id="registeringMarkPaymentSuccess">UPDATE payment_order SET status='SUCCESS', paid_at=#{now}, updated_at=#{now} WHERE id=#{paymentId} AND status='PENDING'</update>
     <update id="registeringMarkAppointmentPaid">UPDATE appointment SET status='PAID', paid_at=#{now}, updated_at=#{now} WHERE id=#{appointmentId} AND status='UNPAID' AND deleted_at IS NULL</update>
     <update id="registeringMarkSnapshotSold">UPDATE slot_snapshot SET status='SOLD', sold_at=#{now}, updated_at=#{now} WHERE id=#{snapshotId} AND status='LOCKED' AND deleted_at IS NULL</update>

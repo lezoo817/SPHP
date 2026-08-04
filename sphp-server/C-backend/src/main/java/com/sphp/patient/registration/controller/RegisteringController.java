@@ -8,6 +8,7 @@ import com.sphp.patient.registration.dto.RegisteringWaitlistCreateRequest;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCancelVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentDetailVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentListVO;
+import com.sphp.patient.registration.vo.RegisteringDoctorBookingStatusVO;
 import com.sphp.patient.registration.vo.RegisteringPaymentStatusVO;
 import com.sphp.patient.registration.vo.RegisteringWaitlistCreateVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
@@ -29,6 +30,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import jakarta.validation.constraints.Positive;
+
+import static com.sphp.shared.common.constant.HeaderConstant.IDEMPOTENCY_KEY;
 
 /**
  * C端挂号订单与模拟支付接口。
@@ -54,7 +57,7 @@ public class RegisteringController {
     @PostMapping("/appointments")
     @Operation(summary = "创建挂号锁定订单")
     public Result<RegisteringAppointmentCreateVO> registeringCreateAppointment(
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody RegisteringAppointmentCreateRequest request) {
         Long userId = CUserContext.getRequired().userId();
         // 幂等键按用户和接口隔离，成功重放时复用首次锁号结果。
@@ -69,7 +72,14 @@ public class RegisteringController {
         return Result.success(payload.message(), payload.data());
     }
 
-    /** 查询当前账号指定就诊人的挂号订单列表。 */
+    /**
+     * 查询当前账号可访问的挂号订单列表。
+     * @param patientId 挂号订单所属账号
+     * @param status 挂号订单状态
+     * @param pageNo 页码
+     * @param pageSize 每页数量
+     * @return 挂号订单列表
+     */
     @GetMapping("/appointments") @Operation(summary = "查询挂号订单列表")
     public Result<RegisteringAppointmentListVO> registeringListAppointments(
             @RequestParam(required = false) @Positive(message = "patientId 必须为正数") Long patientId,
@@ -79,18 +89,41 @@ public class RegisteringController {
         return Result.success("查询成功", registeringService.registeringListAppointments(patientId, status, pageNo, pageSize));
     }
 
-    /** 查询当前账号可访问的挂号订单详情。 */
+    /**
+     * 查询当前账号对指定医生的成功预约状态。
+     *
+     * @param doctorId 医生 ID
+     * @return 是否已支付或完成预约
+     */
+    @GetMapping("/appointments/doctor-booking-status")
+    @Operation(summary = "查询医生重复预约状态")
+    public Result<RegisteringDoctorBookingStatusVO> registeringGetDoctorBookingStatus(
+            @RequestParam @Positive(message = "doctorId 必须为正数") Long doctorId) {
+        return Result.success("查询成功", registeringService.registeringGetDoctorBookingStatus(doctorId));
+    }
+
+    /**
+     * 查询挂号订单详情。
+     * @param appointmentId 挂号订单ID
+     * @return 挂号订单详情
+     */
     @GetMapping("/appointments/{appointmentId}") @Operation(summary = "查询挂号订单详情")
     public Result<RegisteringAppointmentDetailVO> registeringGetAppointment(@PathVariable @Positive Long appointmentId) {
         return Result.success("查询成功", registeringService.registeringGetAppointment(appointmentId));
     }
 
-    /** 取消当前账号可访问的未支付挂号订单。 */
+    /**
+     * 取消未支付挂号订单。
+     * @param appointmentId 挂号订单ID
+     * @param idempotencyKey 幂等键
+     * @return 挂号订单取消结果
+     */
     @PostMapping("/appointments/{appointmentId}/cancel") @Operation(summary = "取消未支付挂号订单")
     public Result<RegisteringAppointmentCancelVO> registeringCancelAppointment(
             @PathVariable @Positive Long appointmentId,
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
         Long userId = CUserContext.getRequired().userId();
+        // 幂等键按用户和接口隔离，成功重放时复用首次取消结果。
         IdempotencyPayload<RegisteringAppointmentCancelVO> payload = idempotencyService.execute(userId,
                 "/c/v1/appointments/" + appointmentId + "/cancel", idempotencyKey, appointmentId,
                 RegisteringAppointmentCancelVO.class, () -> new IdempotencyPayload<>("挂号订单已取消",
@@ -98,10 +131,15 @@ public class RegisteringController {
         return Result.success(payload.message(), payload.data());
     }
 
-    /** 创建当前账号就诊人的挂号候补登记。 */
+    /**
+     * 创建候补登记并返回待支付信息。
+     * @param idempotencyKey 幂等键
+     * @param request 候补登记请求参数
+     * @return 候补登记响应
+     */
     @PostMapping("/waitlists") @Operation(summary = "创建候补登记")
     public Result<RegisteringWaitlistCreateVO> registeringCreateWaitlist(
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody RegisteringWaitlistCreateRequest request) {
         Long userId = CUserContext.getRequired().userId();
         IdempotencyPayload<RegisteringWaitlistCreateVO> payload = idempotencyService.execute(userId, "/c/v1/waitlists",
@@ -110,7 +148,11 @@ public class RegisteringController {
         return Result.success(payload.message(), payload.data());
     }
 
-    /** 查询当前账号的挂号支付单状态。 */
+    /**
+     * 模拟支付并返回支付结果。
+     * @param paymentId 支付单ID
+     * @return 支付结果
+     */
     @GetMapping("/payments/{paymentId}") @Operation(summary = "查询支付状态")
     public Result<RegisteringPaymentStatusVO> registeringGetPayment(@PathVariable @Positive Long paymentId) {
         return Result.success("查询成功", registeringService.registeringGetPayment(paymentId));

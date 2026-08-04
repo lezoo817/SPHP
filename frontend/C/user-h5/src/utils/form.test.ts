@@ -19,12 +19,14 @@ import { buildDoctorPagePath, findDoctorById, getDoctorScheduleDates } from './d
 import { groupSlotsByHalfDay, summarizeHalfDaySlots } from './doctor';
 import { buildAppointmentsPath } from '../services/registration';
 import { buildNotificationsPath } from '../services/notification';
-import { buildHealthTodos, canConfirmFollowUp, getMedicationPlanActions, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
+import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotification, getMedicationPlanActions, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
 import { buildDeliveryAddressPath } from '../services/delivery-address';
 import { buildDeliveryAddressPayload, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
 import { getAssistantTabs, getCurrentFlowAction } from './assistant';
 import { buildReportListPath } from '../services/report';
 import { filterReportsByDate, getRecentReportRange, isReportInterpretationPending, mergeReportPages } from './report';
+import { isDuplicateDoctorAppointmentError } from './registration';
+import { buildDoctorBookingStatusPath } from '../services/registration';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -42,6 +44,19 @@ describe('前端表单与联调规则', () => {
 
   it('优先使用后端返回的可读错误信息', () => {
     expect(getApiErrorMessage({ code: 'A0400', message: '账号不能为空', traceId: 'trace-1' })).toBe('账号不能为空');
+  });
+});
+
+describe('重复预约联调规则', () => {
+  it('仅识别后端明确返回的重复预约冲突', () => {
+    expect(isDuplicateDoctorAppointmentError({ code: 'A0506', message: '已预约过该医生，不可重复预约' })).toBe(true);
+    expect(isDuplicateDoctorAppointmentError({ code: 'A0506', message: '幂等键冲突' })).toBe(false);
+    expect(isDuplicateDoctorAppointmentError({ code: 'A0400', message: '已预约过该医生，不可重复预约' })).toBe(false);
+    expect(isDuplicateDoctorAppointmentError(new Error('已预约过该医生，不可重复预约'))).toBe(false);
+  });
+
+  it('医生主页按医生 ID 查询账号维度的预约状态', () => {
+    expect(buildDoctorBookingStatusPath(401)).toBe('/c/v1/appointments/doctor-booking-status?doctorId=401');
   });
 });
 
@@ -234,6 +249,15 @@ describe('健康待办、提醒与通知规则', () => {
   it('将后端通知类型转换为患者可读文案', () => {
     expect(getNotificationTypeText('MEDICATION_REMINDER')).toBe('用药提醒');
     expect(getNotificationTypeText('SYSTEM')).toBe('系统通知');
+  });
+
+  it('仅弹出最新未读的候补可预约挂号通知', () => {
+    const notifications = [
+      { id: 3, type: 'APPOINTMENT' as const, patientName: '张三', title: '候补号源可预约', content: '请在15分钟内完成预约。', read: false, createdAt: '2026-08-04T10:00:00+08:00' },
+      { id: 2, type: 'APPOINTMENT' as const, patientName: '张三', title: '挂号支付成功', content: '订单已支付。', read: false, createdAt: '2026-08-04T09:00:00+08:00' },
+    ];
+    expect(findLatestWaitlistPromotionNotification(notifications)?.id).toBe(3);
+    expect(findLatestWaitlistPromotionNotification([notifications[1]])).toBeUndefined();
   });
 
   it('通知已读网络重试复用首次生成的幂等键', () => {
