@@ -36,6 +36,9 @@ public class RegisteringAppointmentListVO {
         /** 科室名称 */
         private final String departmentName;
 
+        /** 科室位置 */
+        private final String departmentLocation;
+
         /** 就诊开始时间 */
         private final OffsetDateTime startTime;
 

@@ -116,6 +116,7 @@ export default function AssistantPage() {
         <div className="flow-highlight">
           <b>{formatMedicalTime(currentFlow.startTime)} · {currentFlow.departmentName}</b>
           <span>{currentFlow.doctorName}</span>
+          <small>科室位置：{currentFlow.departmentLocation || '科室位置待确认'}</small>
         </div>
         <ol className="flow-steps">
           {getFlowSteps(currentFlow.status).map((step) => <li className={`flow-step is-${step.state}`} key={step.label}>
@@ -134,7 +135,7 @@ export default function AssistantPage() {
         {(['挂号记录', '在线问诊', '处方'] as AssistantTab[]).map((item) => <button key={item} type="button" className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{item}</button>)}
       </div>
       {tab === '挂号记录' && appointments.map((item) => <button className="record-card" key={item.id} type="button" onClick={() => item.status === 'PAID' && navigate(`/assistant/pre-consultation/${item.id}`)}>
-        <span className="record-card__main"><b>{formatMedicalTime(item.startTime)}</b><span>{item.departmentName} · {item.doctorName}</span></span>
+        <span className="record-card__main"><b>{formatMedicalTime(item.startTime)}</b><span>{item.departmentName} · {item.doctorName}</span><small>科室位置：{item.departmentLocation || '科室位置待确认'}</small></span>
         <em className={`record-card__status status-${item.status.toLowerCase()}`}>{getAppointmentStatusText(item.status)}</em>
       </button>)}
       {tab === '在线问诊' && consultations.map((item) => <button className="record-card" key={item.id} type="button" onClick={() => navigate(`/assistant/consultation/${item.id}`)}><b>{item.doctorName}</b><span>{formatMedicalTime(item.updatedAt)}</span><em>{item.status}</em></button>)}
