@@ -7,6 +7,7 @@ import { getMinePatientId, resolveMinePatientId, saveMinePatientId } from '../..
 import { clearSession, getSession } from '../../models/session';
 import { changePassword, logout } from '../../services/auth';
 import { getFamilyMembers } from '../../services/family';
+import { getNotifications } from '../../services/notification';
 import { getProfile } from '../../services/profile';
 import type { FamilyMember, Profile } from '../../typings/api';
 import { getApiErrorMessage, getRelationLabel, validatePassword } from '../../utils/form';
@@ -18,7 +19,7 @@ const healthEntries = [
   { label: '报告查询', icon: FileChartColumn },
   { label: '用药提醒', icon: Pill, path: '/mine/medication-plans' },
   { label: '随访计划', icon: HeartPulse, path: '/mine/follow-ups' },
-  { label: '通知消息', icon: Bell, path: '/mine/notifications' },
+  { label: '通知消息', icon: Bell, path: '/mine/notifications', showUnreadBadge: true },
 ];
 
 /** 提供“我的”首页、专属当前就诊人资料概览和已开放业务入口。 */
@@ -28,15 +29,21 @@ export default function MinePage() {
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [minePatientId, setMinePatientId] = useState<number>();
   const [loading, setLoading] = useState(true);
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
   const [notice, setNotice] = useState('');
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [passwords, setPasswords] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
   const [submitting, setSubmitting] = useState(false);
 
-  /** 读取本人资料与家属列表，并恢复“我的”页面独立选择。 */
+  /** 读取本人资料、家属与未读通知数量，并恢复“我的”页面独立选择。 */
   async function loadMineData() {
     setLoading(true);
-    const [profileResult, membersResult] = await Promise.allSettled([getProfile(), getFamilyMembers()]);
+    const [profileResult, membersResult, unreadResult] = await Promise.allSettled([
+      getProfile(),
+      getFamilyMembers(),
+      // 仅读取未读总数，首页红点不需要加载完整通知内容。
+      getNotifications({ read: false, pageNo: 1, pageSize: 1 }),
+    ]);
     if (profileResult.status === 'fulfilled') setProfile(profileResult.value);
     else setNotice(getApiErrorMessage(profileResult.reason));
     if (membersResult.status === 'fulfilled') {
@@ -49,6 +56,8 @@ export default function MinePage() {
         setMinePatientId(resolvedId);
       }
     } else setNotice(getApiErrorMessage(membersResult.reason));
+    if (unreadResult.status === 'fulfilled') setHasUnreadNotifications(unreadResult.value.total > 0);
+    else setNotice(getApiErrorMessage(unreadResult.reason));
     setLoading(false);
   }
 
@@ -114,7 +123,7 @@ export default function MinePage() {
   return <main className="mine-page">
     <header className="mine-hero"><span>我的</span><button className="more-button" aria-label="更多功能" type="button" onClick={() => setNotice('更多功能暂未开放')}>•••</button></header>
     <section className="profile-card">{loading ? <p>正在读取资料...</p> : current ? <><div className="profile-card__top"><div><h1>{current.name}<em>{isSelf ? '本人' : getRelationLabel(selectedMember?.relation || '')}</em></h1><p>{genderText} · {current.birthday || '生日待完善'}</p></div><button className="profile-card__switch icon-button" type="button" aria-label="管理就诊人" onClick={() => navigate('/mine/family-members')}><ChevronRight color="#7a7477" /></button></div><div className="profile-lines"><p>手机号 <span>{current.phone || '资料暂未完善'}</span></p></div><div className="profile-card__footer"><button type="button" className="text-button" onClick={() => navigate('/mine/family-members')}>管理就诊人</button><button type="button" className="text-button" onClick={openCurrentPatientProfile}>{isSelf ? '查看资料' : '管理资料'} <ChevronRight size={15} /></button></div></> : <p>暂无可展示的就诊人资料</p>}</section>
-    <section className="mine-section"><h2>健康服务</h2><div className="health-grid">{healthEntries.map(({ label, icon: Icon, path }) => <button className="health-entry" key={label} type="button" onClick={() => openHealthEntry(path)}><Icon size={31} /><span>{label}</span></button>)}</div></section>
+    <section className="mine-section"><h2>健康服务</h2><div className="health-grid">{healthEntries.map(({ label, icon: Icon, path, showUnreadBadge }) => <button className="health-entry" key={label} type="button" onClick={() => openHealthEntry(path)}><span className="health-entry__icon"><Icon size={34} />{showUnreadBadge && hasUnreadNotifications && <i className="health-entry__badge" aria-label="有未读消息" />}</span><span className="health-entry__label">{label}</span></button>)}</div></section>
     <section className="menu-card"><MenuItem icon={UsersRound} label="就诊人管理" onClick={() => navigate('/mine/family-members')} /><MenuItem icon={MapPin} label="我的地址" onClick={() => navigate('/mine/addresses')} /><MenuItem icon={ShieldCheck} label="账号与安全" onClick={() => setShowPasswordDialog(true)} /></section>
     <button className="logout-button" disabled={submitting} type="button" onClick={submitLogout}><LogOut size={18} />退出登录</button>
     {notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}
