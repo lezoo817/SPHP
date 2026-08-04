@@ -148,4 +148,5 @@ docs/
 
 /技术文档/
 /sphp-server/sphp-bootstrap/src/main/resources/application.yml
+/sphp-server/sphp-bootstrap/src/main/java/com/sphp/config/RedissonConfig.java
 /frontend/C/AGENTS.md
