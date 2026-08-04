@@ -12,9 +12,10 @@ import com.sphp.patient.health.dto.ProposalMedicationUpdateRequest;
 import com.sphp.patient.health.dto.ProposalReportCreateRequest;
 import com.sphp.patient.health.entity.ProposalPatientReport;
 import com.sphp.patient.health.entity.ProposalReportIndicator;
+import com.sphp.patient.health.mapper.ConsultationReportListRecord;
+import com.sphp.patient.health.mapper.ConsultationReportRecord;
 import com.sphp.patient.health.mapper.FollowUpRecord;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
-import com.sphp.patient.health.mapper.IndicatorRecord;
 import com.sphp.patient.health.mapper.MedicationRecord;
 import com.sphp.patient.health.mapper.ProposalDataMapper;
 import com.sphp.patient.health.mapper.ProposalReportIndicatorMapper;
@@ -53,7 +54,7 @@ public class ProposalServiceImpl implements ProposalService {
     private final ProposalReportMapper reportMapper;
     // 检查报告指标数据
     private final ProposalReportIndicatorMapper indicatorMapper;
-    // 检查报告数据
+    // 健康模块跨表查询数据
     private final ProposalDataMapper dataMapper;
     // 对象映射器, 用于 JSON 转换
     private final ObjectMapper objectMapper;
@@ -98,7 +99,7 @@ public class ProposalServiceImpl implements ProposalService {
     }
 
     /**
-     * 分页查询当前账号可访问就诊人的检查报告。
+     * 分页查询当前账号可访问就诊人的已完成医生病历报告。
      *
      * @param patientId 可选就诊人 ID，未传时使用本人
      * @param pageNo 可选页码
@@ -117,26 +118,29 @@ public class ProposalServiceImpl implements ProposalService {
         }
 
         long offset = (long) (resolvedPageNo - 1) * resolvedPageSize;
-        List<ProposalReportPageVO.Item> records = dataMapper.proposalSelectReports(
-                        resolvedPatientId, resolvedPageSize, offset)
-                .stream()
+        // 仅查询已完成且医生已保存正文的问诊记录，避免向患者展示接诊中的草稿病历。
+        List<ConsultationReportListRecord> reportRecords = dataMapper.proposalSelectConsultationReports(
+                resolvedPatientId, resolvedPageSize, offset);
+        List<ProposalReportPageVO.Item> records = reportRecords.stream()
                 .map(item -> ProposalReportPageVO.Item.builder()
                         .id(item.id())
-                        .reportName(item.reportName())
-                        .reportDate(item.reportDate())
-                        .indicatorCount(item.indicatorCount())
+                        .patientId(item.patientId())
+                        .doctorName(item.doctorName())
+                        .departmentName(item.departmentName())
+                        .completedAt(item.completedAt())
+                        .updatedAt(item.updatedAt())
                         .build())
                 .toList();
         return ProposalReportPageVO.builder()
                 .pageNo(resolvedPageNo)
                 .pageSize(resolvedPageSize)
-                .total(dataMapper.proposalCountReports(resolvedPatientId))
+                .total(dataMapper.proposalCountConsultationReports(resolvedPatientId))
                 .records(records)
                 .build();
     }
 
     /**
-     * 查询单份检查报告及其全部指标。
+     * 查询单份已完成的医生病历报告。
      *
      * @param reportId 报告 ID
      * @return 报告详情
@@ -144,17 +148,18 @@ public class ProposalServiceImpl implements ProposalService {
      */
     @Override
     public ProposalReportDetailVO proposalGetReport(Long reportId) {
-        // 解析并检查报告 ID
-        ReportRecord report = proposalRequireReport(reportId);
-        List<ProposalReportDetailVO.Indicator> indicators = dataMapper.proposalSelectIndicators(reportId)
-                .stream()
-                .map(this::proposalToIndicatorVO)
-                .toList();
+        // 资源反查并校验就诊人归属，禁止通过报告 ID 跨账号读取病历。
+        ConsultationReportRecord report = proposalRequireConsultationReport(reportId);
         return ProposalReportDetailVO.builder()
                 .id(report.id())
-                .reportName(report.reportName())
-                .reportDate(report.reportDate())
-                .indicators(indicators)
+                .patientId(report.patientId())
+                .doctorId(report.doctorId())
+                .doctorName(report.doctorName())
+                .departmentName(report.departmentName())
+                .doctorNote(report.doctorNote())
+                .startedAt(report.startedAt())
+                .completedAt(report.completedAt())
+                .updatedAt(report.updatedAt())
                 .build();
     }
 
@@ -333,6 +338,23 @@ public class ProposalServiceImpl implements ProposalService {
     }
 
     /**
+     * 读取可向患者展示的医生病历，并校验其患者归属。
+     *
+     * @param reportId 问诊记录 ID，即 C 端报告 ID
+     * @return 已授权访问的医生病历报告
+     * @throws CAuthException 报告不存在、未完成、无正文或无权访问时抛出
+     */
+    private ConsultationReportRecord proposalRequireConsultationReport(Long reportId) {
+        ConsultationReportRecord report = dataMapper.proposalSelectConsultationReport(reportId);
+        if (report == null) {
+            throw proposalNotFound("医生病历报告不存在");
+        }
+        // 仅在资源可展示后校验归属，避免暴露其他患者的病历状态。
+        proposalRequireAccessiblePatient(report.patientId());
+        return report;
+    }
+
+    /**
      * 解析请求目标患者并校验当前账号拥有有效关系。
      *
      * @param patientId 可选就诊人 ID
@@ -363,21 +385,6 @@ public class ProposalServiceImpl implements ProposalService {
     private Long proposalRequireAccessiblePatient(Long patientId) {
         // 检查患者存在
         return proposalResolvePatientId(patientId);
-    }
-
-    /**
-     * 将指标投影转换为对外详情对象。
-     *
-     * @param indicator 指标投影
-     * @return 指标详情
-     */
-    private ProposalReportDetailVO.Indicator proposalToIndicatorVO(IndicatorRecord indicator) {
-        return ProposalReportDetailVO.Indicator.builder()
-                .name(indicator.name())
-                .value(indicator.value())
-                .unit(indicator.unit())
-                .referenceRange(indicator.referenceRange())
-                .build();
     }
 
     /**
