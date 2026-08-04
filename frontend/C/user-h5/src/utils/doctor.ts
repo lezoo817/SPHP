@@ -3,6 +3,16 @@ import type { AppointmentSlot, Doctor } from '../typings/api';
 /** 医生号源页的一天展示信息。 */
 export interface DoctorScheduleDate { value: string; day: string; weekday: string; }
 
+/** 医生某日半天号源的汇总结果。 */
+export interface HalfDaySlotSummary {
+  /** 该半天的真实排班数量。 */
+  slotCount: number;
+  /** 后端返回的可预约余量总和。 */
+  availableCount: number;
+  /** 点击挂号时优先使用的最早可预约号源；无余量时回退到首个号源候补。 */
+  targetSlot?: AppointmentSlot;
+}
+
 /**
  * 生成从指定日期起的连续七天号源日期。
  * @param start 开始日期，默认当天
@@ -52,6 +62,21 @@ export function groupSlotsByHalfDay(slots: AppointmentSlot[]): { morning: Appoin
     else result.afternoon.push(slot);
     return result;
   }, { morning: [], afternoon: [] });
+}
+
+/**
+ * 汇总一个半天的真实余号，并选出可用于创建挂号或候补登记的号源。
+ * @param slots 同一半天内按后端时间顺序返回的号源
+ * @returns 供课程表单元格展示和点击操作使用的汇总数据
+ */
+export function summarizeHalfDaySlots(slots: AppointmentSlot[]): HalfDaySlotSummary {
+  // 优先选择仍有余量的最早时段，避免在用户点击“挂号”时创建候补记录。
+  const targetSlot = slots.find((slot) => slot.availableCount > 0) || slots[0];
+  return {
+    slotCount: slots.length,
+    availableCount: slots.reduce((total, slot) => total + Math.max(slot.availableCount, 0), 0),
+    targetSlot,
+  };
 }
 
 /** 将本地日期格式化为后端约定的 yyyy-MM-dd。 */

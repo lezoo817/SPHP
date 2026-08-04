@@ -16,7 +16,7 @@ import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, validateProfil
 import { resolveMinePatientId } from '../models/mine-patient';
 import { isSessionTokenExpired, type SessionState } from '../models/session';
 import { buildDoctorPagePath, findDoctorById, getDoctorScheduleDates } from './doctor';
-import { groupSlotsByHalfDay } from './doctor';
+import { groupSlotsByHalfDay, summarizeHalfDaySlots } from './doctor';
 import { buildAppointmentsPath } from '../services/registration';
 import { buildNotificationsPath } from '../services/notification';
 import { buildHealthTodos, canConfirmFollowUp, getMedicationPlanActions, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
@@ -156,6 +156,15 @@ describe('医生个人挂号页规则', () => {
     ];
     expect(groupSlotsByHalfDay(slots).morning.map((item) => item.slotId)).toEqual([1]);
     expect(groupSlotsByHalfDay(slots).afternoon.map((item) => item.slotId)).toEqual([2]);
+  });
+
+  it('将同一半天的多段号源汇总余量并优先选择可挂号时段', () => {
+    const summary = summarizeHalfDaySlots([
+      { slotId: 1, startTime: '2026-08-04T09:30:00+08:00', endTime: '2026-08-04T10:00:00+08:00', feeCent: 3000, availableCount: 0 },
+      { slotId: 2, startTime: '2026-08-04T10:00:00+08:00', endTime: '2026-08-04T10:30:00+08:00', feeCent: 3000, availableCount: 5 },
+    ]);
+    expect(summary.availableCount).toBe(5);
+    expect(summary.targetSlot?.slotId).toBe(2);
   });
 });
 

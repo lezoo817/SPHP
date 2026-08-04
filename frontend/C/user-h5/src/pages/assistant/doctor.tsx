@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { CalendarPlus, Stethoscope } from 'lucide-react';
+import { CalendarPlus } from 'lucide-react';
 import { useNavigate, useParams } from 'umi';
 import { PageHeader } from '../../components/PageHeader';
 import { getSelection } from '../../models/selection';
 import { createAppointment, createWaitlist, getDepartments, getDoctors, getSlots } from '../../services/registration';
 import type { AppointmentSlot, Doctor } from '../../typings/api';
-import { findDoctorById, getDoctorScheduleDates, groupSlotsByHalfDay, type DoctorScheduleDate } from '../../utils/doctor';
+import { findDoctorById, getDoctorScheduleDates, groupSlotsByHalfDay, summarizeHalfDaySlots, type DoctorScheduleDate } from '../../utils/doctor';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatAmount } from '../../utils/medical';
 
@@ -153,12 +153,13 @@ function ScheduleTable({ dates, selectedDate, slotsByDate, loadingDates, onSelec
 /** 单个半天号源行的入参。 */
 interface ScheduleRowProps { title: string; period: 'morning' | 'afternoon'; dates: DoctorScheduleDate[]; slotsByDate: Record<string, AppointmentSlot[]>; onChooseSlot: (slot: AppointmentSlot) => void; }
 
-/** 展示某一半天内每个日期的真实号源卡片。 */
+/** 展示某一半天内每个日期的汇总余号，避免逐时段展示造成移动端日程表拥挤。 */
 function ScheduleRow({ title, period, dates, slotsByDate, onChooseSlot }: ScheduleRowProps) {
-  return <><div className="doctor-timetable__period">{title}</div>{dates.map((date) => <div className="doctor-timetable__cell" key={`${period}-${date.value}`}>{groupSlotsByHalfDay(slotsByDate[date.value] || [])[period].map((slot) => <button className={slot.availableCount > 0 ? 'doctor-timetable__slot' : 'doctor-timetable__slot is-full'} key={slot.slotId} type="button" onClick={() => onChooseSlot(slot)}><Stethoscope size={15} /><b>{formatSlotTime(slot.startTime)}-{formatSlotTime(slot.endTime)}</b><span>{slot.availableCount > 0 ? `余 ${slot.availableCount}` : '候补'}</span></button>)}{groupSlotsByHalfDay(slotsByDate[date.value] || [])[period].length === 0 && <small className="doctor-timetable__empty">暂无号源</small>}</div>)}</>;
-}
-
-/** 将后端 ISO 时间转换为课程表中的简短时分。 */
-function formatSlotTime(value: string): string {
-  return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value));
+  return <><div className="doctor-timetable__period">{title}</div>{dates.map((date) => {
+    // 同一半天的多个后端时段仅汇总余量，点击时仍提交其中一个真实 slotId。
+    const summary = summarizeHalfDaySlots(groupSlotsByHalfDay(slotsByDate[date.value] || [])[period]);
+    if (!summary.targetSlot) return <div className="doctor-timetable__cell" key={`${period}-${date.value}`}><small className="doctor-timetable__empty">暂无号源</small></div>;
+    const hasAvailability = summary.availableCount > 0;
+    return <div className="doctor-timetable__cell" key={`${period}-${date.value}`}><button className={hasAvailability ? 'doctor-timetable__slot' : 'doctor-timetable__slot is-full'} type="button" onClick={() => onChooseSlot(summary.targetSlot!)}><span>剩余</span><b>{summary.availableCount}</b><em>{hasAvailability ? '点击挂号' : '候补挂号'}</em></button></div>;
+  })}</>;
 }
