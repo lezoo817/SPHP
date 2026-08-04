@@ -96,7 +96,7 @@ public class ProposalController {
     }
 
     /**
-     * 查看已生成的检查报告解读。
+     * 查看已生成的医生病历报告解读。
      *
      * @param reportId 报告 ID
      * @return 报告解读内容

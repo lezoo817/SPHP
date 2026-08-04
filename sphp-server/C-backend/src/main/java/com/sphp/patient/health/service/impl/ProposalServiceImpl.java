@@ -1,6 +1,5 @@
 package com.sphp.patient.health.service.impl;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.common.constant.ProposalConstant;
@@ -13,6 +12,7 @@ import com.sphp.patient.health.dto.ProposalReportCreateRequest;
 import com.sphp.patient.health.entity.ProposalPatientReport;
 import com.sphp.patient.health.entity.ProposalReportIndicator;
 import com.sphp.patient.health.mapper.ConsultationReportListRecord;
+import com.sphp.patient.health.mapper.ConsultationReportInterpretationRecord;
 import com.sphp.patient.health.mapper.ConsultationReportRecord;
 import com.sphp.patient.health.mapper.FollowUpRecord;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
@@ -20,7 +20,6 @@ import com.sphp.patient.health.mapper.MedicationRecord;
 import com.sphp.patient.health.mapper.ProposalDataMapper;
 import com.sphp.patient.health.mapper.ProposalReportIndicatorMapper;
 import com.sphp.patient.health.mapper.ProposalReportMapper;
-import com.sphp.patient.health.mapper.ReportRecord;
 import com.sphp.patient.health.service.ProposalService;
 import com.sphp.patient.health.vo.ProposalFollowUpVO;
 import com.sphp.patient.health.vo.ProposalMedicationPlanVO;
@@ -56,8 +55,6 @@ public class ProposalServiceImpl implements ProposalService {
     private final ProposalReportIndicatorMapper indicatorMapper;
     // 健康模块跨表查询数据
     private final ProposalDataMapper dataMapper;
-    // 对象映射器, 用于 JSON 转换
-    private final ObjectMapper objectMapper;
 
     /**
      * 为当前账号可访问的就诊人录入检查报告及其指标。
@@ -164,25 +161,27 @@ public class ProposalServiceImpl implements ProposalService {
     }
 
     /**
-     * 读取已生成的报告解读内容，不触发新的解读生成任务。
+     * 读取已生成的医生病历解读内容，不触发新的解读生成任务。
      *
      * @param reportId 报告 ID
      * @return 已准备好的报告解读
-     * @throws CAuthException 报告无权访问、解读未准备完成或 JSON 无法解析时抛出
+     * @throws CAuthException 报告无权访问或解读未准备完成时抛出
      */
     @Override
     public ProposalReportInterpretationVO proposalGetReportInterpretation(Long reportId) {
-        // 解析并检查报告 ID
-        ReportRecord report = proposalRequireReport(reportId);
-        //如果状态不是 READY，则返回错误
-        if (!"READY".equals(report.interpretationStatus()) || report.interpretation() == null) {
+        // 先校验病历可展示及患者归属，解读记录不能单独绕过报告访问控制。
+        proposalRequireConsultationReport(reportId);
+        ConsultationReportInterpretationRecord interpretation =
+                dataMapper.proposalSelectReadyConsultationReportInterpretation(reportId);
+        if (interpretation == null) {
             throw new CAuthException(BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT, "报告解读尚未生成");
         }
-        try {
-            return objectMapper.readValue(report.interpretation(), ProposalReportInterpretationVO.class);
-        } catch (Exception exception) {
-            throw proposalSystemError("报告解读读取失败");
-        }
+        return ProposalReportInterpretationVO.builder()
+                .reportId(reportId)
+                .content(interpretation.content())
+                .disclaimer(interpretation.disclaimer())
+                .generatedAt(interpretation.generatedAt())
+                .build();
     }
 
     /**
@@ -318,23 +317,6 @@ public class ProposalServiceImpl implements ProposalService {
                 .status("CONFIRMED")
                 .remindAt(remindAt)
                 .build();
-    }
-
-    /**
-     * 读取报告并校验其患者归属。
-     *
-     * @param reportId 报告 ID
-     * @return 已授权访问的报告记录
-     * @throws CAuthException 报告不存在或无权访问时抛出
-     */
-    private ReportRecord proposalRequireReport(Long reportId) {
-        ReportRecord report = dataMapper.proposalSelectReport(reportId);
-        if (report == null) {
-            throw proposalNotFound("检查报告不存在");
-        }
-        // 校验资源反查得到的患者可被当前账号访问
-        proposalRequireAccessiblePatient(report.patientId());
-        return report;
     }
 
     /**

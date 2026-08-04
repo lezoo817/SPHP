@@ -133,14 +133,15 @@ class ProposalControllerTest {
     @Test
     void proposalGetReportInterpretationReturnsReadyContent() throws Exception {
         ProposalService service = mock(ProposalService.class);
-        ProposalReportInterpretationVO interpretation = new ProposalReportInterpretationVO();
-        interpretation.setReportId(7001L);
-        interpretation.setDisclaimer("仅供参考");
+        ProposalReportInterpretationVO interpretation = ProposalReportInterpretationVO.builder()
+                .reportId(7001L).content("建议规律复诊").disclaimer("仅供参考")
+                .generatedAt(OffsetDateTime.parse("2026-08-02T10:00:00+08:00")).build();
         when(service.proposalGetReportInterpretation(7001L)).thenReturn(interpretation);
 
         newMockMvc(service, mock(CIdempotencyService.class)).perform(get("/c/v1/reports/7001/interpretation"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.reportId").value(7001L))
+                .andExpect(jsonPath("$.data.content").value("建议规律复诊"))
                 .andExpect(jsonPath("$.data.disclaimer").value("仅供参考"));
     }
 
