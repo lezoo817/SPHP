@@ -98,7 +98,7 @@ export default function HomePage() {
     { label: '智能导诊', icon: Stethoscope, action: () => navigate('/agent') },
     { label: '在线问诊', icon: HeartPulse, action: () => navigate('/assistant') },
     { label: '处方购药', icon: Pill, action: () => navigate('/pharmacy') },
-    { label: '报告查询', icon: FileChartColumn, action: () => navigate('/reports?source=home') },
+    { label: '病历报告', icon: FileChartColumn, action: () => navigate('/medical-records?source=home') },
     { label: '用药提醒', icon: ClipboardPlus, action: () => navigate('/mine/medication-plans') },
   ];
 
