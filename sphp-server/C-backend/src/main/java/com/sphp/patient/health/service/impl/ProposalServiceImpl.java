@@ -12,6 +12,7 @@ import com.sphp.patient.health.dto.ProposalReportCreateRequest;
 import com.sphp.patient.health.entity.ProposalPatientReport;
 import com.sphp.patient.health.entity.ProposalReportIndicator;
 import com.sphp.patient.health.mapper.ConsultationReportListRecord;
+import com.sphp.patient.health.mapper.ConsultationMedicalRecordListRecord;
 import com.sphp.patient.health.mapper.ConsultationReportInterpretationRecord;
 import com.sphp.patient.health.mapper.ConsultationReportRecord;
 import com.sphp.patient.health.mapper.FollowUpRecord;
@@ -27,6 +28,7 @@ import com.sphp.patient.health.vo.ProposalReportCreateVO;
 import com.sphp.patient.health.vo.ProposalReportDetailVO;
 import com.sphp.patient.health.vo.ProposalReportInterpretationVO;
 import com.sphp.patient.health.vo.ProposalReportPageVO;
+import com.sphp.patient.health.vo.ProposalMedicalRecordPageVO;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -55,6 +57,47 @@ public class ProposalServiceImpl implements ProposalService {
     private final ProposalReportIndicatorMapper indicatorMapper;
     // 健康模块跨表查询数据
     private final ProposalDataMapper dataMapper;
+
+    /**
+     * 分页查询当前账号可访问就诊人的医生病历。
+     *
+     * @param patientId 可选就诊人 ID，未传时使用本人
+     * @param pageNo 可选页码
+     * @param pageSize 可选每页数量
+     * @return 病历分页结果
+     * @throws CAuthException 就诊人无权访问或分页参数越界时抛出
+     */
+    @Override
+    public ProposalMedicalRecordPageVO proposalListMedicalRecords(Long patientId, Integer pageNo, Integer pageSize) {
+        // 统一解析本人或当前账号已绑定的家庭成员，防止跨账号读取病历。
+        Long resolvedPatientId = proposalResolvePatientId(patientId);
+        int resolvedPageNo = pageNo == null ? DEFAULT_PAGE_NO : pageNo;
+        int resolvedPageSize = pageSize == null ? DEFAULT_PAGE_SIZE : pageSize;
+        if (resolvedPageSize > MAX_PAGE_SIZE) {
+            throw proposalBadRequest("pageSize 不能超过100");
+        }
+
+        long offset = (long) (resolvedPageNo - 1) * resolvedPageSize;
+        // 仅返回已完成且医生已保存正文的病历，不向患者暴露接诊过程中的草稿。
+        List<ConsultationMedicalRecordListRecord> medicalRecords =
+                dataMapper.proposalSelectConsultationMedicalRecords(resolvedPatientId, resolvedPageSize, offset);
+        List<ProposalMedicalRecordPageVO.Item> records = medicalRecords.stream()
+                .map(item -> ProposalMedicalRecordPageVO.Item.builder()
+                        .id(item.id())
+                        .patientId(item.patientId())
+                        .doctorName(item.doctorName())
+                        .departmentName(item.departmentName())
+                        .completedAt(item.completedAt())
+                        .updatedAt(item.updatedAt())
+                        .build())
+                .toList();
+        return ProposalMedicalRecordPageVO.builder()
+                .pageNo(resolvedPageNo)
+                .pageSize(resolvedPageSize)
+                .total(dataMapper.proposalCountConsultationMedicalRecords(resolvedPatientId))
+                .records(records)
+                .build();
+    }
 
     /**
      * 为当前账号可访问的就诊人录入检查报告及其指标。

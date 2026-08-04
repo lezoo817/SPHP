@@ -11,6 +11,7 @@ import com.sphp.patient.health.vo.ProposalReportCreateVO;
 import com.sphp.patient.health.vo.ProposalReportDetailVO;
 import com.sphp.patient.health.vo.ProposalReportInterpretationVO;
 import com.sphp.patient.health.vo.ProposalReportPageVO;
+import com.sphp.patient.health.vo.ProposalMedicalRecordPageVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.sphp.shared.common.constant.HeaderConstant;
@@ -71,6 +72,23 @@ public class ProposalController {
                 ProposalReportCreateVO.class,
                 () -> new IdempotencyPayload<>("报告已录入", proposalService.proposalCreateReport(request)));
         return Result.success(payload.message(), payload.data());
+    }
+
+    /**
+     * 分页查询当前账号可访问就诊人的医生病历。
+     *
+     * @param patientId 可选就诊人 ID
+     * @param pageNo 可选页码
+     * @param pageSize 可选每页数量
+     * @return 病历分页数据
+     */
+    @GetMapping("/medical-records")
+    @Operation(summary = "查询医生病历")
+    public Result<ProposalMedicalRecordPageVO> proposalListMedicalRecords(
+            @RequestParam(required = false) @Positive Long patientId,
+            @RequestParam(required = false) @Positive Integer pageNo,
+            @RequestParam(required = false) @Positive Integer pageSize) {
+        return Result.success("查询成功", proposalService.proposalListMedicalRecords(patientId, pageNo, pageSize));
     }
 
     /**

@@ -13,6 +13,25 @@ import java.util.List;
 public interface ProposalDataMapper {
 
     /**
+     * 分页查询已完成且保存病历正文的问诊记录。
+     *
+     * @param patientId 就诊人 ID
+     * @param limit 分页大小
+     * @param offset 分页偏移量
+     * @return 医生病历列表投影
+     */
+    List<ConsultationMedicalRecordListRecord> proposalSelectConsultationMedicalRecords(
+            @Param("patientId") Long patientId, @Param("limit") int limit, @Param("offset") long offset);
+
+    /**
+     * 统计已完成且保存病历正文的问诊记录数量。
+     *
+     * @param patientId 就诊人 ID
+     * @return 可见病历总数
+     */
+    long proposalCountConsultationMedicalRecords(@Param("patientId") Long patientId);
+
+    /**
      * 分页查询已完成且已保存病历的问诊记录。
      *
      * @param patientId 患者 ID

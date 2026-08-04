@@ -12,6 +12,7 @@ import com.sphp.patient.health.entity.ProposalReportIndicator;
 import com.sphp.patient.health.mapper.ConsultationReportRecord;
 import com.sphp.patient.health.mapper.ConsultationReportInterpretationRecord;
 import com.sphp.patient.health.mapper.ConsultationReportListRecord;
+import com.sphp.patient.health.mapper.ConsultationMedicalRecordListRecord;
 import com.sphp.patient.health.mapper.FollowUpRecord;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
 import com.sphp.patient.health.mapper.MedicationRecord;
@@ -23,6 +24,7 @@ import com.sphp.patient.health.vo.ProposalMedicationPlanVO;
 import com.sphp.patient.health.vo.ProposalReportCreateVO;
 import com.sphp.patient.health.vo.ProposalReportInterpretationVO;
 import com.sphp.patient.health.vo.ProposalReportPageVO;
+import com.sphp.patient.health.vo.ProposalMedicalRecordPageVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -107,6 +109,32 @@ class ProposalServiceImplTest {
         assertEquals("呼吸内科", result.getRecords().getFirst().getDepartmentName());
         assertEquals(completedAt, result.getRecords().getFirst().getCompletedAt());
         verify(dataMapper).proposalSelectConsultationReports(20001L, 20, 0L);
+    }
+
+    /**
+     * 验证病历列表只通过病历专用 Mapper 映射当前账号可访问患者的已完成问诊记录。
+     */
+    @Test
+    void proposalListMedicalRecordsMapsCompletedDoctorNotes() {
+        ProposalDataMapper dataMapper = mock(ProposalDataMapper.class);
+        OffsetDateTime completedAt = OffsetDateTime.parse("2026-08-02T09:30:00+08:00");
+        OffsetDateTime updatedAt = OffsetDateTime.parse("2026-08-02T09:35:00+08:00");
+        when(dataMapper.proposalSelectConsultationMedicalRecords(20001L, 20, 0L)).thenReturn(List.of(
+                new ConsultationMedicalRecordListRecord(7001L, 20001L, "张医生", "呼吸内科", completedAt, updatedAt)));
+        when(dataMapper.proposalCountConsultationMedicalRecords(20001L)).thenReturn(1L);
+        ProposalServiceImpl service = service(authorizedPatientMapper(), mock(ProposalReportMapper.class),
+                mock(ProposalReportIndicatorMapper.class), dataMapper);
+        setUserContext();
+
+        ProposalMedicalRecordPageVO result = service.proposalListMedicalRecords(null, null, null);
+
+        assertEquals(1, result.getPageNo());
+        assertEquals(20, result.getPageSize());
+        assertEquals(1L, result.getTotal());
+        assertEquals("张医生", result.getRecords().getFirst().getDoctorName());
+        assertEquals("呼吸内科", result.getRecords().getFirst().getDepartmentName());
+        assertEquals(completedAt, result.getRecords().getFirst().getCompletedAt());
+        verify(dataMapper).proposalSelectConsultationMedicalRecords(20001L, 20, 0L);
     }
 
     /**
