@@ -292,7 +292,10 @@ export default function DrugCatalog() {
           <ProFormText
             name="approvalNumber"
             label="批准文号"
-            rules={[{ max: 50, message: '最多 50 个字符' }]}
+            rules={[
+              { required: true, message: '请输入批准文号' },
+              { max: 50, message: '最多 50 个字符' },
+            ]}
             placeholder="如：国药准字H12345678"
           />
           <ProFormText

@@ -4,14 +4,15 @@ import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
 import { resolveSelfPatientId } from '../../models/selection';
-import { getConsultations, getPrescriptions } from '../../services/consultation';
+import { getPrescriptions } from '../../services/consultation';
 import { getFamilyMembers } from '../../services/family';
 import { getAppointment, getAppointments } from '../../services/registration';
-import type { Appointment, Consultation, FamilyMember, Prescription } from '../../typings/api';
+import type { Appointment, FamilyMember, Prescription } from '../../typings/api';
+import { getAssistantTabs, getCurrentFlowAction } from '../../utils/assistant';
 import { getApiErrorMessage } from '../../utils/form';
 import { formatMedicalTime, getAppointmentStatusText } from '../../utils/medical';
 
-type AssistantTab = '挂号记录' | '在线问诊' | '处方';
+type AssistantTab = (typeof getAssistantTabs)[number];
 type FlowStepState = 'done' | 'active' | 'pending';
 
 /** 当前挂号流程中的单个展示步骤。 */
@@ -37,13 +38,12 @@ function getFlowSteps(status: Appointment['status']): FlowStep[] {
   ];
 }
 
-/** 展示当前挂号流程、挂号记录、问诊记录和处方入口。 */
+/** 展示当前挂号流程、挂号记录和处方入口。 */
 export default function AssistantPage() {
   const navigate = useNavigate();
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [patientId, setPatientId] = useState<number>();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<AssistantTab>('挂号记录');
@@ -59,14 +59,12 @@ export default function AssistantPage() {
       const targetPatientId = patientId || resolveSelfPatientId(nextMembers);
       if (!targetPatientId) return;
       if (!patientId) setPatientId(targetPatientId);
-      // 三类列表均使用同一就诊人，切换家属后不会混合展示他人的数据。
-      const [appointmentPage, consultationPage, prescriptionPage] = await Promise.all([
+      // 两类列表均使用同一就诊人，切换家属后不会混合展示他人的数据。
+      const [appointmentPage, prescriptionPage] = await Promise.all([
         getAppointments(targetPatientId),
-        getConsultations(targetPatientId),
         getPrescriptions(targetPatientId),
       ]);
       setAppointments(appointmentPage.records);
-      setConsultations(consultationPage.records);
       setPrescriptions(prescriptionPage.records);
     } catch (error) {
       setNotice(getApiErrorMessage(error));
@@ -77,12 +75,10 @@ export default function AssistantPage() {
     void loadData();
   }, [patientId]);
 
-  /** 根据当前订单状态进入支付或预问诊，并从详情读取可靠的支付单 ID。 */
+  /** 根据未支付订单状态进入支付页，并从详情读取可靠的支付单 ID。 */
   async function continueCurrentFlow(appointment: Appointment) {
-    if (appointment.status === 'PAID') {
-      navigate(`/assistant/pre-consultation/${appointment.id}`);
-      return;
-    }
+    // 状态变化后不再允许旧事件继续进入支付流程。
+    if (appointment.status !== 'UNPAID') return;
     try {
       // 列表契约不含 paymentId，支付入口必须查询订单详情后再跳转。
       const detail = await getAppointment(appointment.id);
@@ -116,6 +112,7 @@ export default function AssistantPage() {
         <div className="flow-highlight">
           <b>{formatMedicalTime(currentFlow.startTime)} · {currentFlow.departmentName}</b>
           <span>{currentFlow.doctorName}</span>
+          <small>科室位置：{currentFlow.departmentLocation || '科室位置待确认'}</small>
         </div>
         <ol className="flow-steps">
           {getFlowSteps(currentFlow.status).map((step) => <li className={`flow-step is-${step.state}`} key={step.label}>
@@ -124,20 +121,19 @@ export default function AssistantPage() {
             <small>{step.state === 'done' ? '已完成' : step.state === 'active' ? '当前步骤' : '待进行'}</small>
           </li>)}
         </ol>
-        <button className="primary-button" type="button" onClick={() => void continueCurrentFlow(currentFlow)}>{currentFlow.status === 'UNPAID' ? '立即支付' : '填写预问诊'}</button>
+        {getCurrentFlowAction(currentFlow.status) === 'PAY' ? <button className="primary-button" type="button" onClick={() => void continueCurrentFlow(currentFlow)}>立即支付</button> : <button className="primary-button assistant-waiting-button" type="button" disabled>等待就诊中...</button>}
       </section> : <section className="flow-card empty-state">
         暂无进行中的就诊流程<br />
         <button className="primary-button" type="button" onClick={() => navigate('/assistant/book')}>去预约挂号</button>
       </section>}
 
       <div className="assistant-tabs">
-        {(['挂号记录', '在线问诊', '处方'] as AssistantTab[]).map((item) => <button key={item} type="button" className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{item}</button>)}
+        {getAssistantTabs.map((item) => <button key={item} type="button" className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{item}</button>)}
       </div>
-      {tab === '挂号记录' && appointments.map((item) => <button className="record-card" key={item.id} type="button" onClick={() => item.status === 'PAID' && navigate(`/assistant/pre-consultation/${item.id}`)}>
-        <span className="record-card__main"><b>{formatMedicalTime(item.startTime)}</b><span>{item.departmentName} · {item.doctorName}</span></span>
+      {tab === '挂号记录' && appointments.map((item) => <article className="record-card" key={item.id}>
+        <span className="record-card__main"><b>{formatMedicalTime(item.startTime)}</b><span>{item.departmentName} · {item.doctorName}</span><small>科室位置：{item.departmentLocation || '科室位置待确认'}</small></span>
         <em className={`record-card__status status-${item.status.toLowerCase()}`}>{getAppointmentStatusText(item.status)}</em>
-      </button>)}
-      {tab === '在线问诊' && consultations.map((item) => <button className="record-card" key={item.id} type="button" onClick={() => navigate(`/assistant/consultation/${item.id}`)}><b>{item.doctorName}</b><span>{formatMedicalTime(item.updatedAt)}</span><em>{item.status}</em></button>)}
+      </article>)}
       {tab === '处方' && prescriptions.map((item) => <button className="record-card" key={item.id} type="button" onClick={() => navigate(`/assistant/prescription/${item.id}`)}><b>{item.doctorName}处方</b><span>{formatMedicalTime(item.issuedAt)}</span><ChevronRight size={18} /></button>)}
     </section>
     {open && <Dialog title="切换就诊人" onClose={() => setOpen(false)}>

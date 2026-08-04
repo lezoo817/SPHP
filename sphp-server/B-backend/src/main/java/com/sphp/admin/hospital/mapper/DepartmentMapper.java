@@ -30,4 +30,13 @@ public interface DepartmentMapper extends BaseMapper<Department> {
     @Select("SELECT COUNT(*) FROM consult_record cr JOIN doctor d ON cr.doctor_id = d.id " +
             "WHERE d.dept_id = #{deptId} AND cr.status = 'IN_PROGRESS' AND cr.deleted_at IS NULL")
     long countInProgressConsultByDept(@Param("deptId") Long deptId);
+
+    /**
+     * 统计科室下启用（ENABLED）医生数量。
+     *
+     * @param deptId 科室 ID
+     * @return 启用医生数
+     */
+    @Select("SELECT COUNT(*) FROM doctor WHERE dept_id = #{deptId} AND status = 'ENABLED' AND deleted_at IS NULL")
+    long countEnabledDoctorByDept(@Param("deptId") Long deptId);
 }

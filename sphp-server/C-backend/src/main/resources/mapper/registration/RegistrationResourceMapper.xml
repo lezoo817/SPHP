@@ -19,7 +19,7 @@
     </select>
 
     <select id="selectAvailableDepartments" resultType="com.sphp.patient.registration.mapper.DepartmentRecord">
-        SELECT id, name, description
+        SELECT id, name, location
         FROM department
         WHERE hospital_id = #{hospitalId}
           AND status = 'ENABLED'

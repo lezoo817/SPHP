@@ -40,6 +40,8 @@ public class RegisteringAppointmentDetailVO {
         private final String name;
         // 科室名称
         private final String departmentName;
+        // 科室位置
+        private final String departmentLocation;
     }
 
     /** 时段展示信息。 */
