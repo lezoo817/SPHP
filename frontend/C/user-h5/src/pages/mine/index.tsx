@@ -16,7 +16,7 @@ const healthEntries = [
   { label: '健康档案', icon: BookHeart, path: 'health-record' },
   { label: '我的处方', icon: ClipboardPlus },
   { label: '就诊记录', icon: HeartPulse },
-  { label: '报告查询', icon: FileChartColumn },
+  { label: '报告查询', icon: FileChartColumn, path: '/reports?source=mine' },
   { label: '用药提醒', icon: Pill, path: '/mine/medication-plans' },
   { label: '随访计划', icon: HeartPulse, path: '/mine/follow-ups' },
   { label: '通知消息', icon: Bell, path: '/mine/notifications', showUnreadBadge: true },
