@@ -147,8 +147,9 @@ public class DepartmentServiceImpl implements DepartmentService {
         Long hospitalId = currentUserService.getCurrentHospitalId();
         Department dept = getDepartment(id, hospitalId);
         String status = request.getStatus();
-        // 停用前置校验：已发布排班 / 进行中问诊
+        // 停用前置校验：无启用医生 / 已发布排班 / 进行中问诊
         if ("DISABLED".equals(status)) {
+            assertNoEnabledDoctor(dept.getId());
             assertNoPublishedSchedule(dept.getId());
             assertNoInProgressConsult(dept.getId());
             // 同步停用该科室下所有医生（状态改为 DISABLED）
@@ -181,6 +182,13 @@ public class DepartmentServiceImpl implements DepartmentService {
         }
         if (!deptId.equals(doctor.getDeptId())) {
             throw new BusinessException("A0402", "科室负责人必须是本科室的医生");
+        }
+    }
+
+    /** 停用前置校验 0：科室下无 ENABLED 医生（否则 4001） */
+    private void assertNoEnabledDoctor(Long deptId) {
+        if (departmentMapper.countEnabledDoctorByDept(deptId) > 0) {
+            throw new BusinessException("4001", "科室下存在启用医生，无法停用");
         }
     }
 
