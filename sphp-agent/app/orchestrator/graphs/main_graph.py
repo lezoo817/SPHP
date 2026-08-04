@@ -6,6 +6,9 @@ LangGraph StateGraph 串联标准节点：auth -> [B 端直达工具子图 | int
 M8-3 B 端意图路由：scope=b_end 跳过 C 端意图分类、auth_node 后直接进入
 B 端全量工具子图（省一次 LLM 意图分类调用 + 避免 C 端 6 类意图语义吞掉
 B 端工具）。C 端保持 auth -> intent -> 意图路由 -> 业务子图的原有链路。
+
+M8-2 健康档案子图：C 端意图新增 health（健康档案场景五），路由到
+health_graph 直达 10 工具白名单子图，补齐此前无 intent 路由的缺口。
 """
 
 from typing import Any
@@ -15,6 +18,7 @@ from langgraph.graph import END, StateGraph
 from app.orchestrator.checkpointer import build_checkpointer
 from app.orchestrator.graphs._common import build_tool_subgraph
 from app.orchestrator.graphs.consult_graph import build_consultation_graph
+from app.orchestrator.graphs.health_graph import build_health_graph
 from app.orchestrator.graphs.pharmacy_graph import build_pharmacy_graph
 from app.orchestrator.graphs.registration_graph import build_registration_graph
 from app.orchestrator.graphs.triage_graph import build_triage_graph
@@ -55,6 +59,7 @@ def route_by_intent(state: AgentState) -> str:
         "registration": "registration_graph",
         "consultation": "consultation_graph",
         "pharmacy": "pharmacy_graph",
+        "health": "health_graph",  # M8-2 健康档案场景五
         "qa": "qa_node",
         "chitchat": "chitchat_node",
     }
@@ -77,6 +82,8 @@ def build_main_graph() -> Any:
     builder.add_node("registration_graph", build_registration_graph())
     builder.add_node("consultation_graph", build_consultation_graph())
     builder.add_node("pharmacy_graph", build_pharmacy_graph())
+    # M8-2 健康档案子图（场景五，10 工具白名单）
+    builder.add_node("health_graph", build_health_graph())
 
     # M8-3 B 端直达工具子图：tool_names=None 绑定当前 scope（b_end）全量
     # L1/L2 工具（9 个），B 端无白名单约束（M5 定案，全量绑定）
@@ -104,6 +111,7 @@ def build_main_graph() -> Any:
             "registration_graph": "registration_graph",
             "consultation_graph": "consultation_graph",
             "pharmacy_graph": "pharmacy_graph",
+            "health_graph": "health_graph",
             "qa_node": "qa_node",
             "chitchat_node": "chitchat_node",
         },
@@ -116,6 +124,7 @@ def build_main_graph() -> Any:
     builder.add_edge("registration_graph", "reply_node")
     builder.add_edge("consultation_graph", "reply_node")
     builder.add_edge("pharmacy_graph", "reply_node")
+    builder.add_edge("health_graph", "reply_node")
     builder.add_edge("b_end_tool_graph", "reply_node")
 
     builder.add_edge("reply_node", END)
