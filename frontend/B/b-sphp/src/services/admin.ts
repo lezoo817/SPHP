@@ -252,6 +252,24 @@ export async function sendMessage(
   return (res as API.Result<API.MessageVO>).data;
 }
 
+// ===================== 接诊历史 =====================
+
+/** 查询当前医生的历史接诊记录 */
+export async function getConsultHistory(
+  params?: { page?: number; size?: number },
+): Promise<API.PageResult<API.ConsultHistoryItem>> {
+  const res = await request('/api/b/doctor/consult/history', { params });
+  return (res as API.Result<API.PageResult<API.ConsultHistoryItem>>).data;
+}
+
+/** 查询历史接诊详情（病历全文 + 关联处方） */
+export async function getConsultHistoryDetail(
+  consultId: number,
+): Promise<API.ConsultHistoryDetail> {
+  const res = await request(`/api/b/doctor/consult/${consultId}/history-detail`);
+  return (res as API.Result<API.ConsultHistoryDetail>).data;
+}
+
 // ===================== 处方管理 =====================
 
 /** 查询处方列表（分页） */

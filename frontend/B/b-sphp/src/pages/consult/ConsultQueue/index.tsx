@@ -48,6 +48,8 @@ import {
   saveNote,
   getMessages,
   sendMessage,
+  getConsultHistory,
+  getConsultHistoryDetail,
 } from '@/services/admin';
 import dayjs from 'dayjs';
 import styles from './index.module.less';
@@ -112,6 +114,14 @@ export default function ConsultQueue() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // 接诊历史
+  const [historyItems, setHistoryItems] = useState<API.ConsultHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyDetail, setHistoryDetail] = useState<API.ConsultHistoryDetail | null>(null);
+  const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
+
   // ==================== 队列加载 ====================
 
   const loadQueue = useCallback(
@@ -131,16 +141,21 @@ export default function ConsultQueue() {
     [queueTab],
   );
 
-  /** 首次加载 & 切换 Tab 时重新加载 */
+  /** 首次加载 & 切换 Tab 时重新加载（接诊历史 Tab 不刷新待接诊队列） */
   useEffect(() => {
-    loadQueue(1);
+    if (queueTab !== 'HISTORY') {
+      loadQueue(1);
+    }
     setSelectedConsultId(null);
     setPatientDetail(null);
     setSelectedStatus(null);
   }, [queueTab, loadQueue]);
 
-  /** 轮询：每 15 秒刷新队列 */
+  /** 轮询：每 15 秒刷新队列（仅待接诊/接诊中） */
   useEffect(() => {
+    if (queueTab === 'HISTORY') {
+      return;
+    }
     const timer = setInterval(() => loadQueue(queuePage), 15000);
     return () => clearInterval(timer);
   }, [queueTab, queuePage, loadQueue]);
@@ -152,6 +167,7 @@ export default function ConsultQueue() {
     setSelectedStatus(item.status);
     setDetailLoading(true);
     setPatientDetail(null);
+    setHistoryDetail(null);
     setDoctorNote('');
     setMessages([]);
     setNoteChanged(false);
@@ -281,6 +297,55 @@ export default function ConsultQueue() {
     }
   };
 
+  // ==================== 接诊历史 ====================
+
+  const loadHistory = useCallback(async (page = 1) => {
+    setHistoryLoading(true);
+    try {
+      const res = await getConsultHistory({ page, size: 10 });
+      setHistoryItems(res.list ?? []);
+      setHistoryTotal(res.total);
+      setHistoryPage(page);
+    } catch {
+      // 静默失败
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  /** 切换至接诊历史 Tab 时加载 */
+  useEffect(() => {
+    if (queueTab === 'HISTORY') {
+      loadHistory(1);
+    }
+  }, [queueTab, loadHistory]);
+
+  /** 选择历史接诊记录 */
+  const handleSelectHistoryItem = async (item: API.ConsultHistoryItem) => {
+    setSelectedConsultId(item.consultId);
+    setSelectedStatus(item.status);
+    setDetailLoading(true);
+    setHistoryDetailLoading(true);
+    setPatientDetail(null);
+    setHistoryDetail(null);
+    setDoctorNote('');
+    setMessages([]);
+    setNoteChanged(false);
+    try {
+      const [detail, hDetail] = await Promise.all([
+        getPatientDetail(item.consultId),
+        getConsultHistoryDetail(item.consultId),
+      ]);
+      setPatientDetail(detail);
+      setHistoryDetail(hDetail);
+    } catch (err: any) {
+      message.error(err?.message || '加载详情失败');
+    } finally {
+      setDetailLoading(false);
+      setHistoryDetailLoading(false);
+    }
+  };
+
   // ==================== 工具函数 ====================
 
   const calcAge = (dateOfBirth?: string): number | null => {
@@ -296,66 +361,128 @@ export default function ConsultQueue() {
         <Title level={5} style={{ margin: 0 }}>
           <OrderedListOutlined /> 接诊队列
         </Title>
-        <Badge count={queueTotal} showZero color="#1890ff" />
+        {queueTab !== 'HISTORY' && <Badge count={queueTotal} showZero color="#1890ff" />}
       </div>
       <Tabs
         activeKey={queueTab}
-        onChange={(key) => setQueueTab(key)}
+        onChange={(key) => {
+          setQueueTab(key);
+          if (key !== 'HISTORY') {
+            setSelectedConsultId(null);
+            setPatientDetail(null);
+            setSelectedStatus(null);
+          }
+        }}
         size="small"
         items={[
           { key: 'PENDING', label: '待接诊' },
           { key: 'IN_PROGRESS', label: '接诊中' },
+          { key: 'HISTORY', label: '接诊历史' },
         ]}
       />
       <div className={styles.queueList}>
-        <Spin spinning={queueLoading}>
-          {queueItems.length === 0 ? (
-            <Empty description="暂无队列数据" />
-          ) : (
-            <List
-              dataSource={queueItems}
-              renderItem={(item) => {
-                const isSelected = item.consultId === selectedConsultId;
-                const gender = GENDER_MAP[item.patientGender] ?? GENDER_MAP.UNKNOWN;
-                const statusCfg = STATUS_MAP[item.status] ?? { text: item.status, color: 'default' };
-                return (
-                  <List.Item
-                    className={`${styles.queueItem} ${isSelected ? styles.queueItemSelected : ''}`}
-                    onClick={() => handleSelectItem(item)}
-                  >
-                    <div className={styles.queueItemHeader}>
-                      <Space>
-                        <span style={{ color: gender.color }}>{gender.icon}</span>
-                        <Text strong>{item.patientName}</Text>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {item.patientAge}岁
-                        </Text>
-                      </Space>
-                      <Tag color={statusCfg.color}>{statusCfg.text}</Tag>
-                    </div>
-                    <div className={styles.queueItemMeta}>
-                      <Space size={12}>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          <ClockCircleOutlined /> #{item.queueNumber}
-                        </Text>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {item.appointmentTime ? dayjs(item.appointmentTime).format('HH:mm') : '-'}
-                        </Text>
-                      </Space>
-                    </div>
-                    {item.aiSummary?.chiefComplaint && (
-                      <div className={styles.aiSummary}>
-                        <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
-                          主诉：{item.aiSummary.chiefComplaint}
+        {queueTab === 'HISTORY' ? (
+          // 接诊历史列表
+          <Spin spinning={historyLoading}>
+            {historyItems.length === 0 ? (
+              <Empty description="暂无接诊历史" />
+            ) : (
+              <List
+                dataSource={historyItems}
+                renderItem={(item) => {
+                  const isSelected = item.consultId === selectedConsultId;
+                  const gender = GENDER_MAP[item.patientGender] ?? GENDER_MAP.UNKNOWN;
+                  const age = item.patientDateOfBirth
+                    ? dayjs().diff(dayjs(item.patientDateOfBirth), 'year')
+                    : null;
+                  return (
+                    <List.Item
+                      className={`${styles.queueItem} ${isSelected ? styles.queueItemSelected : ''}`}
+                      onClick={() => handleSelectHistoryItem(item)}
+                    >
+                      <div className={styles.queueItemHeader}>
+                        <Space>
+                          <span style={{ color: gender.color }}>{gender.icon}</span>
+                          <Text strong>{item.patientName}</Text>
+                          {age !== null && (
+                            <Text type="secondary" style={{ fontSize: 12 }}>{age}岁</Text>
+                          )}
+                        </Space>
+                        <Tag>{item.status === 'COMPLETED' ? '已完成' : item.status}</Tag>
+                      </div>
+                      {item.chiefComplaint && (
+                        <div className={styles.aiSummary}>
+                          <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
+                            主诉：{item.chiefComplaint}
+                          </Text>
+                        </div>
+                      )}
+                      <div style={{ marginTop: 2 }}>
+                        <Text type="secondary" style={{ fontSize: 11 }}>
+                          {item.endedAt
+                            ? dayjs(item.endedAt).format('MM-DD HH:mm')
+                            : dayjs(item.createdAt).format('MM-DD HH:mm')}
+                          接诊
+                          {item.noteSummary && ` · ${item.noteSummary}`}
                         </Text>
                       </div>
-                    )}
-                  </List.Item>
-                );
-              }}
-            />
-          )}
-        </Spin>
+                    </List.Item>
+                  );
+                }}
+              />
+            )}
+          </Spin>
+        ) : (
+          // 待接诊/接诊中列表
+          <Spin spinning={queueLoading}>
+            {queueItems.length === 0 ? (
+              <Empty description="暂无队列数据" />
+            ) : (
+              <List
+                dataSource={queueItems}
+                renderItem={(item) => {
+                  const isSelected = item.consultId === selectedConsultId;
+                  const gender = GENDER_MAP[item.patientGender] ?? GENDER_MAP.UNKNOWN;
+                  const statusCfg = STATUS_MAP[item.status] ?? { text: item.status, color: 'default' };
+                  return (
+                    <List.Item
+                      className={`${styles.queueItem} ${isSelected ? styles.queueItemSelected : ''}`}
+                      onClick={() => handleSelectItem(item)}
+                    >
+                      <div className={styles.queueItemHeader}>
+                        <Space>
+                          <span style={{ color: gender.color }}>{gender.icon}</span>
+                          <Text strong>{item.patientName}</Text>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            {item.patientAge}岁
+                          </Text>
+                        </Space>
+                        <Tag color={statusCfg.color}>{statusCfg.text}</Tag>
+                      </div>
+                      <div className={styles.queueItemMeta}>
+                        <Space size={12}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            <ClockCircleOutlined /> #{item.queueNumber}
+                          </Text>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            {item.appointmentTime ? dayjs(item.appointmentTime).format('HH:mm') : '-'}
+                          </Text>
+                        </Space>
+                      </div>
+                      {item.aiSummary?.chiefComplaint && (
+                        <div className={styles.aiSummary}>
+                          <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
+                            主诉：{item.aiSummary.chiefComplaint}
+                          </Text>
+                        </div>
+                      )}
+                    </List.Item>
+                  );
+                }}
+              />
+            )}
+          </Spin>
+        )}
       </div>
     </div>
   );
@@ -554,12 +681,68 @@ export default function ConsultQueue() {
     <div className={styles.panel}>
       <div className={styles.panelHeader}>
         <Title level={5} style={{ margin: 0 }}>
-          <MedicineBoxOutlined /> 接诊操作
+          <MedicineBoxOutlined /> {queueTab === 'HISTORY' ? '接诊详情' : '接诊操作'}
         </Title>
       </div>
       <div className={styles.consultContent}>
         {!selectedConsultId ? (
           <Empty description="请选择患者" />
+        ) : queueTab === 'HISTORY' ? (
+          // 历史接诊详情
+          <Spin spinning={historyDetailLoading}>
+            {historyDetail ? (
+              <div style={{ padding: '4px 0' }}>
+                <div className={styles.sectionTitle}>
+                  <FileTextOutlined /> 病历记录
+                </div>
+                <div style={{ margin: '8px 0', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
+                  {historyDetail.doctorNote || '无病历记录'}
+                </div>
+
+                {historyDetail.prescriptions.length > 0 && (
+                  <>
+                    <Divider style={{ margin: '12px 0' }} />
+                    <div className={styles.sectionTitle}>
+                      <MedicineBoxOutlined /> 关联处方
+                    </div>
+                    <List
+                      size="small"
+                      dataSource={historyDetail.prescriptions}
+                      renderItem={(p) => (
+                        <List.Item>
+                          <Space>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              处方 #{p.id}
+                            </Text>
+                            <Tag>{p.status === 'APPROVED' ? '已通过' : p.status}</Tag>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {p.itemCount} 项
+                            </Text>
+                            {p.issuedAt && (
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                {dayjs(p.issuedAt).format('MM-DD HH:mm')}
+                              </Text>
+                            )}
+                          </Space>
+                        </List.Item>
+                      )}
+                    />
+                  </>
+                )}
+
+                <Divider style={{ margin: '12px 0' }} />
+                <div style={{ fontSize: 12, color: '#999' }}>
+                  {historyDetail.endedAt ? (
+                    <>接诊时间：{dayjs(historyDetail.endedAt).format('YYYY-MM-DD HH:mm')}</>
+                  ) : (
+                    <>创建时间：{dayjs(historyDetail.createdAt).format('YYYY-MM-DD HH:mm')}</>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <Empty description="加载中..." />
+            )}
+          </Spin>
         ) : selectedStatus === 'PENDING' ? (
           <div className={styles.startConsultArea}>
             <Button

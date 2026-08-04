@@ -74,7 +74,7 @@ declare global {
       hospitalId: number;
       headDoctorId?: number;
       headDoctorName?: string;
-      description?: string;
+      location?: string;
       status: 'ENABLED' | 'DISABLED';
     }
 
@@ -89,7 +89,7 @@ declare global {
     interface UpsertDepartmentReq {
       name: string;
       headDoctorId?: number;
-      description?: string;
+      location?: string;
     }
 
     /** 更新科室状态请求 */
@@ -233,6 +233,39 @@ declare global {
       queueNumber: number;
       appointmentTime: string;
       status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+    }
+
+    /** 接诊历史项 */
+    interface ConsultHistoryItem {
+      consultId: number;
+      patientId: number;
+      patientName: string;
+      patientGender: 'MALE' | 'FEMALE' | 'UNKNOWN';
+      patientDateOfBirth: string;
+      chiefComplaint?: string;
+      noteSummary?: string;
+      status: string;
+      startedAt?: string;
+      endedAt?: string;
+      createdAt: string;
+    }
+
+    /** 接诊历史详情 */
+    interface ConsultHistoryDetail {
+      consultId: number;
+      patientId: number;
+      status: string;
+      chiefComplaint?: string;
+      doctorNote?: string;
+      startedAt?: string;
+      endedAt?: string;
+      createdAt?: string;
+      prescriptions: {
+        id: number;
+        status: string;
+        itemCount: number;
+        issuedAt?: string;
+      }[];
     }
 
     /** 队列查询参数 */
