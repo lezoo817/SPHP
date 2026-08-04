@@ -69,6 +69,24 @@ def _build_tools_prompt(tools: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _format_pending(pending: list[dict[str, Any]]) -> str:
+    """格式化待确认 L2 操作列表为 LLM 可读摘要（M8-1，注入 tool_caller 上下文）。
+
+    Args:
+        pending: ``pending_confirmations`` 列表（safety_check 写入，含
+            tool_name / tool_arguments 字段）。
+
+    Returns:
+        str: 每行一个待确认操作（工具名 + 参数），供 LLM 识别已挂起卡片。
+    """
+    lines = []
+    for p in pending:
+        name = p.get("tool_name", "")
+        args = p.get("tool_arguments") or {}
+        lines.append(f"- {name}({args})")
+    return "\n".join(lines)
+
+
 async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None) -> dict[str, Any]:
     """LLM 决定调用工具，返回 ``{"tool_calls": [...]}``。
 
@@ -138,6 +156,18 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
         summary = _format_tool_results(tool_results)
         messages.append({"role": "system", "content": f"已执行的工具结果：\n{summary}"})
 
+    # M8-1：注入待确认 L2 摘要，让 LLM 知已有卡片，避免重复调用同一 L2
+    # （软约束，硬兜底由 _dedupe_tool_calls 对比 pending + safety_check 复用 token）
+    pending_confirmations = state.get("pending_confirmations")
+    if pending_confirmations:
+        messages.append(
+            {
+                "role": "system",
+                "content": "以下操作正在等待用户确认，不要重复调用：\n"
+                + _format_pending(pending_confirmations),
+            }
+        )
+
     try:
         response = await llm_with_tools.ainvoke(messages)
         tool_calls = _extract_tool_calls(response, tool_scope, effective_allowed)
@@ -206,9 +236,7 @@ def _dedupe_tool_calls(
         # M8-1 防 L2 重复挂起：相同 tool_name+args 已在 pending → 剔除
         # （pending 项参数键为 tool_arguments，与 executed 的 arguments 区分）
         is_pending_dup = any(
-            p.get("tool_name") == name
-            and (p.get("tool_arguments") or {}) == args
-            for p in pending
+            p.get("tool_name") == name and (p.get("tool_arguments") or {}) == args for p in pending
         )
         if is_executed_dup:
             logger.info("去重重复工具调用: %s %s（上次已成功）", name, args)
