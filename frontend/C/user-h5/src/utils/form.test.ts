@@ -25,6 +25,7 @@ import { buildDeliveryAddressPayload, getDeliveryCities, getDeliveryProvinces, r
 import { getAssistantTabs, getCurrentFlowAction } from './assistant';
 import { buildReportListPath } from '../services/report';
 import { filterReportsByDate, getRecentReportRange, isReportInterpretationPending, mergeReportPages } from './report';
+import { isDuplicateDoctorAppointmentError } from './registration';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -42,6 +43,15 @@ describe('前端表单与联调规则', () => {
 
   it('优先使用后端返回的可读错误信息', () => {
     expect(getApiErrorMessage({ code: 'A0400', message: '账号不能为空', traceId: 'trace-1' })).toBe('账号不能为空');
+  });
+});
+
+describe('重复预约联调规则', () => {
+  it('仅识别后端明确返回的重复预约冲突', () => {
+    expect(isDuplicateDoctorAppointmentError({ code: 'A0506', message: '已预约过该医生，不可重复预约' })).toBe(true);
+    expect(isDuplicateDoctorAppointmentError({ code: 'A0506', message: '幂等键冲突' })).toBe(false);
+    expect(isDuplicateDoctorAppointmentError({ code: 'A0400', message: '已预约过该医生，不可重复预约' })).toBe(false);
+    expect(isDuplicateDoctorAppointmentError(new Error('已预约过该医生，不可重复预约'))).toBe(false);
   });
 });
 
