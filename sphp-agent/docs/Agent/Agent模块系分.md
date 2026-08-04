@@ -1532,6 +1532,28 @@ Agent 依赖多个外部系统（LLM API、Java 后端、PostgreSQL、Redis）�
 > **设计依据**：B 端医生不可编造患者 ID（隐私边界），故 patient_id 仅来自前端 context，
 > Agent 不自行猜测；LLM 提示词约束不可靠，故用 schema 驱动的确定性补全兜底。
 
+**当前医院上下文注入（与 M8-5 同构，C 端镜像）：**
+
+前端经 `context.hospital_id` 传入页面"当前选择的医院"（§6.2），
+`_resolve_hospital_id` 按 scope 解析写入 `AgentState.hospital_id` 后，
+`tool_caller` 同样两层消费：
+
+1. **软约束（提示词）**：hospital_id 非空时注入一条独立 system 消息
+   「当前医院 ID：{id}。涉及医院维度的工具（查科室/查医生/查排班/创建挂号/导诊分诊等）
+   必须携带此 hospital_id，直接使用，不要向用户索要医院 ID」——解决 C 端 5 个必填
+   hospital_id 工具（create_triage_assessment / query_departments / query_doctors /
+   query_schedule_slots / create_appointment）在用户未提医院名时 LLM 反问
+   "您在哪家医院"（体验差）或编造医院 ID 的问题。
+2. **硬兜底（确定性补全）**：`_fill_missing_hospital_id` 对 schema 将 hospital_id 标为
+   必填的 C 端 5 个工具在 LLM 漏填参数时从 `state.hospital_id` 补全（与
+   `_fill_missing_patient_id` 同为 `_fill_missing_required_param` 的封装，均执行于
+   `_dedupe_tool_calls` 之前）。B 端工具 schema 无 hospital_id 必填，天然不触碰。
+
+> **设计依据**：与 patient_id 同策略——hospital_id 为 None（C 端未选医院且 JWT 无
+> hospitalId）时不注入、不补全，并靠 C 端提示词显式规则「未给出医院且用户未说明时
+> 先询问用户，禁止编造 hospital_id」兜底（对等 B 端 patient_id 的「先索要、不编造」）。
+> B 端 hospital_id 以 JWT（医生所属医院）为权威，注入亦无害（B 端无工具需要该参数）。
+
 ### 5.12 LangGraph 流式输出与 SSE 映射
 
 Agent 使用 LangGraph 的 `astream_events` API 获取流式输出，在路由级 SSE handler 中将 LangGraph 事件映射为 SSE 事件推送给前端。映射关系如下：
