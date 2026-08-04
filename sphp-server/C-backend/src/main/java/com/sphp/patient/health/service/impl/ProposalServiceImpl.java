@@ -12,6 +12,7 @@ import com.sphp.patient.health.dto.ProposalMedicationUpdateRequest;
 import com.sphp.patient.health.dto.ProposalReportCreateRequest;
 import com.sphp.patient.health.entity.ProposalPatientReport;
 import com.sphp.patient.health.entity.ProposalReportIndicator;
+import com.sphp.patient.health.mapper.ConsultationReportListRecord;
 import com.sphp.patient.health.mapper.FollowUpRecord;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
 import com.sphp.patient.health.mapper.IndicatorRecord;
@@ -53,7 +54,7 @@ public class ProposalServiceImpl implements ProposalService {
     private final ProposalReportMapper reportMapper;
     // 检查报告指标数据
     private final ProposalReportIndicatorMapper indicatorMapper;
-    // 检查报告数据
+    // 健康模块跨表查询数据
     private final ProposalDataMapper dataMapper;
     // 对象映射器, 用于 JSON 转换
     private final ObjectMapper objectMapper;
@@ -98,7 +99,7 @@ public class ProposalServiceImpl implements ProposalService {
     }
 
     /**
-     * 分页查询当前账号可访问就诊人的检查报告。
+     * 分页查询当前账号可访问就诊人的已完成医生病历报告。
      *
      * @param patientId 可选就诊人 ID，未传时使用本人
      * @param pageNo 可选页码
@@ -117,20 +118,23 @@ public class ProposalServiceImpl implements ProposalService {
         }
 
         long offset = (long) (resolvedPageNo - 1) * resolvedPageSize;
-        List<ProposalReportPageVO.Item> records = dataMapper.proposalSelectReports(
-                        resolvedPatientId, resolvedPageSize, offset)
-                .stream()
+        // 仅查询已完成且医生已保存正文的问诊记录，避免向患者展示接诊中的草稿病历。
+        List<ConsultationReportListRecord> reportRecords = dataMapper.proposalSelectConsultationReports(
+                resolvedPatientId, resolvedPageSize, offset);
+        List<ProposalReportPageVO.Item> records = reportRecords.stream()
                 .map(item -> ProposalReportPageVO.Item.builder()
                         .id(item.id())
-                        .reportName(item.reportName())
-                        .reportDate(item.reportDate())
-                        .indicatorCount(item.indicatorCount())
+                        .patientId(item.patientId())
+                        .doctorName(item.doctorName())
+                        .departmentName(item.departmentName())
+                        .completedAt(item.completedAt())
+                        .updatedAt(item.updatedAt())
                         .build())
                 .toList();
         return ProposalReportPageVO.builder()
                 .pageNo(resolvedPageNo)
                 .pageSize(resolvedPageSize)
-                .total(dataMapper.proposalCountReports(resolvedPatientId))
+                .total(dataMapper.proposalCountConsultationReports(resolvedPatientId))
                 .records(records)
                 .build();
     }

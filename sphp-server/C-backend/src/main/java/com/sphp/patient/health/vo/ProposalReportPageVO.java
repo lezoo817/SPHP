@@ -1,9 +1,11 @@
 package com.sphp.patient.health.vo;
 import lombok.*;
-import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 
-/** 报告分页响应。 */
+/**
+ * 医生病历报告分页响应。
+ */
 @Getter
 @Builder
 public class ProposalReportPageVO {
@@ -20,13 +22,17 @@ public class ProposalReportPageVO {
     @Getter
     @Builder
     public static class Item {
-        // 报告 ID
+        // 报告 ID，即问诊记录 ID
         private final Long id;
-        // 报告名称
-        private final String reportName;
-        // 报告日期
-        private final LocalDate reportDate;
-        // 指标数量
-        private final long indicatorCount;
+        // 就诊人 ID
+        private final Long patientId;
+        // 医生姓名
+        private final String doctorName;
+        // 科室名称
+        private final String departmentName;
+        // 问诊完成时间
+        private final OffsetDateTime completedAt;
+        // 病历最后保存时间
+        private final OffsetDateTime updatedAt;
     }
 }
