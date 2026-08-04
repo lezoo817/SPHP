@@ -12,6 +12,8 @@ import com.sphp.admin.common.CurrentUserService;
 import com.sphp.admin.common.DataScope;
 import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.doctor.dto.ConsultEndVO;
+import com.sphp.admin.doctor.dto.ConsultHistoryDetailVO;
+import com.sphp.admin.doctor.dto.ConsultHistoryVO;
 import com.sphp.admin.doctor.dto.ConsultStartVO;
 import com.sphp.admin.doctor.dto.MessageVO;
 import com.sphp.admin.doctor.dto.NoteSaveVO;
@@ -30,6 +32,8 @@ import com.sphp.admin.doctor.mapper.BPatientMedicalHistoryMapper;
 import com.sphp.admin.doctor.mapper.QueueRow;
 import com.sphp.admin.doctor.service.DoctorConsultService;
 import com.sphp.admin.prescription.entity.Prescription;
+import com.sphp.admin.prescription.entity.PrescriptionItem;
+import com.sphp.admin.prescription.mapper.PrescriptionItemMapper;
 import com.sphp.admin.prescription.mapper.PrescriptionMapper;
 import com.sphp.shared.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
@@ -74,6 +78,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     private final BPatientMedicalHistoryMapper patientMedicalHistoryMapper;
     private final BConsultationMessageMapper consultationMessageMapper;
     private final PrescriptionMapper prescriptionMapper;
+    private final PrescriptionItemMapper prescriptionItemMapper;
     private final DoctorMapper doctorMapper;
     private final CurrentUserService currentUserService;
     private final ObjectMapper objectMapper;
@@ -305,6 +310,62 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 .build();
     }
 
+    // ==================== 接诊历史 ====================
+
+    @Override
+    public PageResult<ConsultHistoryVO> pageHistory(int page, int size) {
+        DataScope scope = currentUserService.getCurrentDataScope();
+        Long doctorId = scope.doctorId();
+        if (doctorId == null) {
+            return PageResult.of(0, List.of(), page, size);
+        }
+
+        Page<ConsultRecord> result = consultRecordMapper.selectPage(
+                new Page<>(page, size),
+                Wrappers.<ConsultRecord>lambdaQuery()
+                        .eq(ConsultRecord::getDoctorId, doctorId)
+                        .ne(ConsultRecord::getStatus, STATUS_PENDING)
+                        .isNull(ConsultRecord::getDeletedAt)
+                        .orderByDesc(ConsultRecord::getEndedAt, ConsultRecord::getCreatedAt));
+
+        List<ConsultHistoryVO> list = result.getRecords().stream()
+                .map(this::toConsultHistoryVO)
+                .toList();
+        return PageResult.of(result.getTotal(), list, page, size);
+    }
+
+    @Override
+    public ConsultHistoryDetailVO getHistoryDetail(Long consultId) {
+        ConsultRecord record = getConsultInScope(consultId);
+        List<Prescription> prescriptions = prescriptionMapper.selectList(
+                Wrappers.<Prescription>lambdaQuery()
+                        .eq(Prescription::getConsultId, consultId)
+                        .isNull(Prescription::getDeletedAt)
+                        .orderByDesc(Prescription::getCreatedAt));
+        List<ConsultHistoryDetailVO.PrescriptionBrief> briefs = prescriptions.stream()
+                .map(p -> {
+                    long cnt = prescriptionItemMapper.selectCount(
+                            Wrappers.<PrescriptionItem>lambdaQuery()
+                                    .eq(com.sphp.admin.prescription.entity.PrescriptionItem::getPrescriptionId, p.getId()));
+                    return ConsultHistoryDetailVO.PrescriptionBrief.builder()
+                            .id(p.getId()).status(p.getStatus())
+                            .itemCount((int) cnt).issuedAt(p.getIssuedAt())
+                            .build();
+                })
+                .toList();
+        return ConsultHistoryDetailVO.builder()
+                .consultId(record.getId())
+                .patientId(record.getPatientId())
+                .status(record.getStatus())
+                .chiefComplaint(record.getChiefComplaint())
+                .doctorNote(record.getDoctorNote())
+                .startedAt(record.getStartedAt())
+                .endedAt(record.getEndedAt())
+                .createdAt(record.getCreatedAt())
+                .prescriptions(briefs)
+                .build();
+    }
+
     // ==================== 私有方法 ====================
 
     /**
@@ -376,6 +437,32 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 .queueNumber(row.getQueueNumber())
                 .appointmentTime(row.getAppointmentTime())
                 .status(row.getStatus())
+                .build();
+    }
+
+    /**
+     * 将 ConsultRecord 转换为 ConsultHistoryVO。
+     */
+    private ConsultHistoryVO toConsultHistoryVO(ConsultRecord r) {
+        Patient patient = r.getPatientId() != null ? patientMapper.selectById(r.getPatientId()) : null;
+        int age = patient != null && patient.getDateOfBirth() != null
+                ? Period.between(patient.getDateOfBirth(), LocalDate.now()).getYears()
+                : 0;
+        String noteSummary = r.getDoctorNote() != null
+                ? r.getDoctorNote().substring(0, Math.min(r.getDoctorNote().length(), 100))
+                : null;
+        return ConsultHistoryVO.builder()
+                .consultId(r.getId())
+                .patientId(r.getPatientId())
+                .patientName(patient != null ? patient.getName() : null)
+                .patientGender(patient != null ? patient.getGender() : null)
+                .patientDateOfBirth(patient != null ? patient.getDateOfBirth() : null)
+                .chiefComplaint(r.getChiefComplaint())
+                .noteSummary(noteSummary)
+                .status(r.getStatus())
+                .startedAt(r.getStartedAt())
+                .endedAt(r.getEndedAt())
+                .createdAt(r.getCreatedAt())
                 .build();
     }
 

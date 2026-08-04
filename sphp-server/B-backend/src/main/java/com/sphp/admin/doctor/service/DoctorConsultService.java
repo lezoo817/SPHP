@@ -6,6 +6,8 @@ import com.sphp.admin.doctor.dto.ConsultStartVO;
 import com.sphp.admin.doctor.dto.MessageVO;
 import com.sphp.admin.doctor.dto.NoteSaveVO;
 import com.sphp.admin.doctor.dto.PatientDetailVO;
+import com.sphp.admin.doctor.dto.ConsultHistoryDetailVO;
+import com.sphp.admin.doctor.dto.ConsultHistoryVO;
 import com.sphp.admin.doctor.dto.QueueItemVO;
 
 /**
@@ -47,4 +49,14 @@ public interface DoctorConsultService {
      * 发送问诊消息（系分 §5.5.7）。
      */
     MessageVO sendMessage(Long consultationId, String content);
+
+    /**
+     * 分页查询当前医生的历史接诊记录。
+     */
+    PageResult<ConsultHistoryVO> pageHistory(int page, int size);
+
+    /**
+     * 查询历史接诊详情（含病历全文、关联处方）。
+     */
+    ConsultHistoryDetailVO getHistoryDetail(Long consultId);
 }

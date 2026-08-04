@@ -111,8 +111,8 @@ export default function DepartmentList() {
       render: (text) => text || '-',
     },
     {
-      title: '描述',
-      dataIndex: 'description',
+      title: '位置',
+      dataIndex: 'location',
       ellipsis: true,
       hideInSearch: true,
     },
@@ -253,7 +253,7 @@ export default function DepartmentList() {
               ? {
                   name: editingDept.name,
                   headDoctorId: editingDept.headDoctorId,
-                  description: editingDept.description,
+                  location: editingDept.location,
                 }
               : undefined
           }
@@ -279,8 +279,8 @@ export default function DepartmentList() {
             debounceTime={300}
           />
           <ProFormText
-            name="description"
-            label="科室描述"
+            name="location"
+            label="科室位置"
             rules={[{ max: 500, message: '最多 500 个字符' }]}
           />
         </ProForm>

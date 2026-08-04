@@ -35,6 +35,9 @@ public class ConsultRecord {
     /** 医生病历文本 */
     private String doctorNote;
 
+    /** 患者主诉 */
+    private String chiefComplaint;
+
     /** 开始接诊时间 */
     private OffsetDateTime startedAt;
 

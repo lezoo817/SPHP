@@ -64,7 +64,7 @@ public class DepartmentServiceImpl implements DepartmentService {
                         .hospitalId(d.getHospitalId())
                         .headDoctorId(d.getHeadDoctorId())
                         .headDoctorName(d.getHeadDoctorId() == null ? null : doctorNames.get(d.getHeadDoctorId()))
-                        .description(d.getDescription())
+                        .location(d.getLocation())
                         .status(d.getStatus())
                         .build())
                 .toList();
@@ -94,7 +94,7 @@ public class DepartmentServiceImpl implements DepartmentService {
                 .hospitalId(dept.getHospitalId())
                 .headDoctorId(dept.getHeadDoctorId())
                 .headDoctorName(headDoctorName)
-                .description(dept.getDescription())
+                .location(dept.getLocation())
                 .status(dept.getStatus())
                 .doctorCount(doctorCount)
                 .createdAt(dept.getCreatedAt())
@@ -105,17 +105,23 @@ public class DepartmentServiceImpl implements DepartmentService {
     @Transactional(rollbackFor = Exception.class)
     public void create(DepartmentCreateRequest request) {
         Long hospitalId = currentUserService.getCurrentHospitalId();
-        // 负责人医生（若指定）必须存在且属本院
-        if (request.getHeadDoctorId() != null) {
-            ensureDoctorInHospital(request.getHeadDoctorId(), hospitalId);
-        }
+
+        // 先插入科室（不含负责人，避免循环依赖）
         Department dept = new Department();
         dept.setHospitalId(hospitalId);
         dept.setName(request.getName());
-        dept.setHeadDoctorId(request.getHeadDoctorId());
-        dept.setDescription(request.getDescription());
+        dept.setLocation(request.getLocation());
         dept.setStatus("ENABLED");
         departmentMapper.insert(dept);
+
+        // 若指定负责人，必须存在、属本院且属于本科室
+        if (request.getHeadDoctorId() != null) {
+            ensureDoctorBelongsToDept(request.getHeadDoctorId(), hospitalId, dept.getId());
+            dept.setHeadDoctorId(request.getHeadDoctorId());
+            dept.setUpdatedAt(OffsetDateTime.now());
+            departmentMapper.updateById(dept);
+        }
+
         log.info("新增科室 name={}, hospitalId={}", dept.getName(), hospitalId);
     }
 
@@ -124,13 +130,13 @@ public class DepartmentServiceImpl implements DepartmentService {
     public void update(Long id, DepartmentUpdateRequest request) {
         Long hospitalId = currentUserService.getCurrentHospitalId();
         Department dept = getDepartment(id, hospitalId);
-        // 负责人医生（若指定）必须存在且属本院
+        // 负责人医生（若指定）必须存在、属本院且属于本科室
         if (request.getHeadDoctorId() != null) {
-            ensureDoctorInHospital(request.getHeadDoctorId(), hospitalId);
+            ensureDoctorBelongsToDept(request.getHeadDoctorId(), hospitalId, dept.getId());
         }
         dept.setName(request.getName());
         dept.setHeadDoctorId(request.getHeadDoctorId());
-        dept.setDescription(request.getDescription());
+        dept.setLocation(request.getLocation());
         dept.setUpdatedAt(OffsetDateTime.now());
         departmentMapper.updateById(dept);
     }
@@ -167,11 +173,14 @@ public class DepartmentServiceImpl implements DepartmentService {
         return dept;
     }
 
-    /** 校验医生存在且属于指定医院 */
-    private void ensureDoctorInHospital(Long doctorId, Long hospitalId) {
+    /** 校验医生存在、属于指定医院且属于指定科室 */
+    private void ensureDoctorBelongsToDept(Long doctorId, Long hospitalId, Long deptId) {
         Doctor doctor = doctorMapper.selectById(doctorId);
         if (doctor == null || doctor.getDeletedAt() != null || !doctor.getHospitalId().equals(hospitalId)) {
             throw new BusinessException("A0402", "科室负责人医生不存在或不属于本院");
+        }
+        if (!deptId.equals(doctor.getDeptId())) {
+            throw new BusinessException("A0402", "科室负责人必须是本科室的医生");
         }
     }
 
