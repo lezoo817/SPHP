@@ -529,6 +529,79 @@ async def list_sessions(request: Request) -> JSONResponse:
     return success_response({"sessions": sessions}, getattr(request.state, "trace_id", ""))
 
 
+@router.delete("/chat/sessions/{session_id}")
+async def delete_session(session_id: str, request: Request) -> JSONResponse:
+    """删除历史会话（系分 §6.2 扩展，仅 C 端患者）。
+
+    删除该会话的元数据条目（agent_sessions）+ checkpoint 历史消息，使其从
+    历史会话列表消失且切换进去不再有历史消息。按 ``user_id`` 隔离，跨用户
+    不可删他人会话。
+
+    Args:
+        session_id: 路径参数，待删会话 ID。
+        request: 请求（JWT 中间件注入 user_id；匿名时未注入）。
+
+    Returns:
+        统一信封 {code, message, data: {session_id}}；未登录 401；会话不存在 404。
+    """
+    user_id = getattr(request.state, "user_id", None)
+    trace_id = getattr(request.state, "trace_id", "")
+    if user_id is None:
+        return error_response("AUTH_MISSING", "缺少有效的鉴权 Token", trace_id, 401)
+    # 删元数据（按 user_id 隔离，跨用户删不到他人会话）
+    try:
+        deleted = await get_session_store().delete(user_id, session_id)
+    except Exception:
+        logger.exception("会话删除失败, user_id=%s session_id=%s", user_id, session_id)
+        return error_response("SERVER_ERROR", "服务异常，请稍后重试", trace_id, 500)
+    # 删 checkpoint 历史消息：thread_key 与 _sse_generator 一致（user_id:session_id）。
+    # 即使元数据未落库（deleted=False）仍尝试清理可能残留的 checkpoint；thread_key
+    # 含 user_id，删不到他人会话，安全。失败仅 log，不阻塞删除主流程。
+    try:
+        await _get_graph().checkpointer.adelete_thread(f"{user_id}:{session_id}")
+    except Exception:
+        logger.warning("删除 checkpoint 失败, session_id=%s", session_id)
+    if not deleted:
+        return error_response("SESSION_NOT_FOUND", "会话不存在", trace_id, 404)
+    return success_response({"session_id": session_id}, trace_id)
+
+
+@router.get("/chat/sessions/{session_id}/messages")
+async def get_session_messages(session_id: str, request: Request) -> JSONResponse:
+    """历史会话消息（系分 §6.2 扩展，仅 C 端患者）。
+
+    前端切换到历史会话后调此接口拉取该会话历史消息，渲染对话气泡。从
+    checkpointer 读取 thread_id 对应的最新 state（含完整 messages 历史），
+    按 user_id 隔离（thread_key 含 user_id，跨用户读不到他人会话）。
+
+    依赖 ``checkpointer_backend=postgres``（生产持久化）；memory 后端进程
+    重启即失，重启后历史消息为空（开发已知限制）。
+
+    Args:
+        session_id: 路径参数，历史会话 ID。
+        request: 请求（JWT 中间件注入 user_id；匿名时未注入）。
+
+    Returns:
+        统一信封 {code, message, data: {messages: [{role, content}]}}；未登录 401。
+    """
+    user_id = getattr(request.state, "user_id", None)
+    trace_id = getattr(request.state, "trace_id", "")
+    if user_id is None:
+        return error_response("AUTH_MISSING", "缺少有效的鉴权 Token", trace_id, 401)
+    # thread_key 与 _sse_generator 一致（user_id:session_id）
+    config = {"configurable": {"thread_id": f"{user_id}:{session_id}"}}
+    try:
+        snapshot = await _get_graph().aget_state(config)
+    except Exception:
+        logger.exception("历史消息读取失败, session_id=%s", session_id)
+        return error_response("SERVER_ERROR", "服务异常，请稍后重试", trace_id, 500)
+    messages = (snapshot.values or {}).get("messages", [])
+    return success_response(
+        {"messages": _serialize_session_messages(messages)},
+        trace_id,
+    )
+
+
 def _chunk_text(msg: Any) -> str:
     """提取 message chunk 的文本内容（str 或 LangChain 内容块列表）。
 
@@ -541,11 +614,67 @@ def _chunk_text(msg: Any) -> str:
     content = getattr(msg, "content", None) or ""
     if isinstance(content, str):
         return content
+    return _content_blocks_to_text(content)
+
+
+def _content_blocks_to_text(blocks: Any) -> str:
+    """LangChain 内容块列表转文本（提取 type=text 块拼接，系分 §6.2 扩展）。
+
+    Args:
+        blocks: content 值（list[dict] / 其他）；非 list 统一 str() 兜底。
+
+    Returns:
+        str: 拼接后的文本。
+    """
+    if not isinstance(blocks, list):
+        return str(blocks) if blocks is not None else ""
     parts = []
-    for block in content:
+    for block in blocks:
         if isinstance(block, dict) and block.get("type") == "text":
             parts.append(block.get("text", ""))
     return "".join(parts)
+
+
+def _serialize_session_messages(messages: Any) -> list[dict[str, str]]:
+    """将 state messages 序列化为前端 {role, content} 列表（系分 §6.2 扩展）。
+
+    仅保留 user / assistant（过滤 system 注入与 tool 中间态），兼容 dict
+    与 LangChain BaseMessage 两种存储形态，content 统一转文本。
+
+    Args:
+        messages: state.values["messages"]（dict 或 BaseMessage 列表）。
+
+    Returns:
+        list[dict[str, str]]: {role: "user"|"assistant", content: str} 列表。
+    """
+    result: list[dict[str, str]] = []
+    for m in messages:
+        role, content = _extract_message_role_content(m)
+        if role in ("user", "assistant") and content:
+            result.append({"role": role, "content": content})
+    return result
+
+
+def _extract_message_role_content(m: Any) -> tuple[str, str]:
+    """提取单条消息 (role, content 文本)，兼容 dict 与 BaseMessage。
+
+    BaseMessage.type 映射：human->user, ai->assistant；其余原样返回。
+
+    Args:
+        m: 消息（dict 或 LangChain BaseMessage）。
+
+    Returns:
+        tuple[str, str]: (role, content 文本)。
+    """
+    if isinstance(m, dict):
+        role = str(m.get("role", ""))
+        raw = m.get("content", "")
+    else:
+        msg_type = getattr(m, "type", "")
+        role = {"human": "user", "ai": "assistant"}.get(msg_type, msg_type)
+        raw = getattr(m, "content", "")
+    text = raw if isinstance(raw, str) else _content_blocks_to_text(raw)
+    return role, text
 
 
 def _truncate_title(text: str, max_len: int = 30) -> str:
