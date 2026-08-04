@@ -9,7 +9,6 @@ export default defineConfig({
   request: {},
   routes,
   npmClient: 'pnpm',
-  utoopack: {},
   proxy: {
     '/api/b': {
       target: 'http://localhost:8080',
