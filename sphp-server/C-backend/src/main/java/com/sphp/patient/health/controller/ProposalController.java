@@ -113,6 +113,8 @@ public class ProposalController {
      * @param pageSize 可选每页数量
      * @return 检查报告分页数据
      */
+    @Deprecated(since = "2026-08", forRemoval = false)
+    @Operation(summary = "查询医生病历报告（已废弃）", deprecated = true)
     @GetMapping("/reports")
     public Result<ProposalReportPageVO> proposalListReports(
             @RequestParam(required = false) @Positive Long patientId,
@@ -127,6 +129,8 @@ public class ProposalController {
      * @param reportId 报告 ID
      * @return 医生病历报告详情
      */
+    @Deprecated(since = "2026-08", forRemoval = false)
+    @Operation(summary = "查询医生病历报告详情（已废弃）", deprecated = true)
     @GetMapping("/reports/{reportId}")
     public Result<ProposalReportDetailVO> proposalGetReport(@PathVariable @Positive Long reportId) {
         return Result.success("查询成功", proposalService.proposalGetReport(reportId));
@@ -138,6 +142,8 @@ public class ProposalController {
      * @param reportId 报告 ID
      * @return 报告解读内容
      */
+    @Deprecated(since = "2026-08", forRemoval = false)
+    @Operation(summary = "查询医生病历报告解读（已废弃）", deprecated = true)
     @GetMapping("/reports/{reportId}/interpretation")
     public Result<ProposalReportInterpretationVO> proposalGetReportInterpretation(
             @PathVariable @Positive Long reportId) {

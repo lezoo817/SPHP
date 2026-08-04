@@ -56,6 +56,7 @@ public interface ProposalService {
      * @param pageSize 可选每页数量
      * @return 报告分页结果
      */
+    @Deprecated(since = "2026-08", forRemoval = false)
     ProposalReportPageVO proposalListReports(Long patientId, Integer pageNo, Integer pageSize);
 
     /**
@@ -64,6 +65,7 @@ public interface ProposalService {
      * @param reportId 报告 ID
      * @return 报告详情
      */
+    @Deprecated(since = "2026-08", forRemoval = false)
     ProposalReportDetailVO proposalGetReport(Long reportId);
 
     /**
@@ -72,6 +74,7 @@ public interface ProposalService {
      * @param reportId 报告 ID
      * @return 报告解读
      */
+    @Deprecated(since = "2026-08", forRemoval = false)
     ProposalReportInterpretationVO proposalGetReportInterpretation(Long reportId);
 
     /**

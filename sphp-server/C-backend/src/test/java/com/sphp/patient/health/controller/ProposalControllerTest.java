@@ -95,6 +95,24 @@ class ProposalControllerTest {
     }
 
     /**
+     * 验证旧报告读取接口保留兼容行为，但显式提示新客户端迁移至病历接口。
+     *
+     * @throws NoSuchMethodException 控制器方法缺失时抛出
+     */
+    @Test
+    void proposalReportReadEndpointsAreDeprecatedForNewClients() throws NoSuchMethodException {
+        assertTrue(ProposalController.class
+                .getDeclaredMethod("proposalListReports", Long.class, Integer.class, Integer.class)
+                .isAnnotationPresent(Deprecated.class));
+        assertTrue(ProposalController.class
+                .getDeclaredMethod("proposalGetReport", Long.class)
+                .isAnnotationPresent(Deprecated.class));
+        assertTrue(ProposalController.class
+                .getDeclaredMethod("proposalGetReportInterpretation", Long.class)
+                .isAnnotationPresent(Deprecated.class));
+    }
+
+    /**
      * 验证报告列表路由返回医生病历分页数据。
      *
      * @throws Exception MockMvc 执行失败时抛出

@@ -183,6 +183,7 @@ public class ProposalServiceImpl implements ProposalService {
      * @throws CAuthException 就诊人无权访问或分页参数越界时抛出
      */
     @Override
+    @Deprecated(since = "2026-08", forRemoval = false)
     public ProposalReportPageVO proposalListReports(Long patientId, Integer pageNo, Integer pageSize) {
         // 解析并检查就诊人 ID
         Long resolvedPatientId = proposalResolvePatientId(patientId);
@@ -222,6 +223,7 @@ public class ProposalServiceImpl implements ProposalService {
      * @throws CAuthException 报告不存在或当前账号无权访问时抛出
      */
     @Override
+    @Deprecated(since = "2026-08", forRemoval = false)
     public ProposalReportDetailVO proposalGetReport(Long reportId) {
         // 资源反查并校验就诊人归属，禁止通过报告 ID 跨账号读取病历。
         ConsultationReportRecord report = proposalRequireConsultationReport(reportId);
@@ -246,6 +248,7 @@ public class ProposalServiceImpl implements ProposalService {
      * @throws CAuthException 报告无权访问或解读未准备完成时抛出
      */
     @Override
+    @Deprecated(since = "2026-08", forRemoval = false)
     public ProposalReportInterpretationVO proposalGetReportInterpretation(Long reportId) {
         // 先校验病历可展示及患者归属，解读记录不能单独绕过报告访问控制。
         proposalRequireConsultationReport(reportId);
