@@ -26,6 +26,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import static com.sphp.shared.common.constant.HeaderConstant.IDEMPOTENCY_KEY;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.INVALID_PARAMETER;
+
 /**
  * C端站内通知接口。
  */
@@ -37,6 +40,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    // 幂等服务
     private final CIdempotencyService idempotencyService;
 
     /**
@@ -69,7 +73,7 @@ public class NotificationController {
      */
     private void validateListParameters(Long patientId, Integer pageNo, Integer pageSize) {
         if ((patientId != null && patientId < 1) || (pageNo != null && pageNo < 1) || (pageSize != null && pageSize < 1)) {
-            throw new CAuthException(ErrorCodeEnum.INVALID_PARAMETER, HttpStatus.BAD_REQUEST, "分页参数或就诊人ID必须为正整数");
+            throw new CAuthException(INVALID_PARAMETER, HttpStatus.BAD_REQUEST, "分页参数或就诊人ID必须为正整数");
         }
     }
 
@@ -84,8 +88,9 @@ public class NotificationController {
     @Operation(summary = "标记通知已读")
     public Result<NotificationReadVO> markNotificationRead(
             @PathVariable @Positive(message = "通知ID必须为正整数") Long notificationId,
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
         Long userId = CUserContext.getRequired().userId();
+        // 幂等
         IdempotencyPayload<NotificationReadVO> payload = idempotencyService.execute(
                 userId,
                 NotificationConstant.READ_PATH_PREFIX + notificationId + "/read",

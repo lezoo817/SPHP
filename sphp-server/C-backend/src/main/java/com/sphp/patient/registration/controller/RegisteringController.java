@@ -39,8 +39,9 @@ import jakarta.validation.constraints.Positive;
 @Tag(name = "C端挂号与支付", description = "创建挂号订单、候补和模拟支付")
 @RequiredArgsConstructor
 public class RegisteringController {
-
+    // 挂号服务
     private final RegisteringService registeringService;
+    // 幂等键服务
     private final CIdempotencyService idempotencyService;
 
     /**

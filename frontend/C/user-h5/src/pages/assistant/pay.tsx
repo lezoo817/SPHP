@@ -5,5 +5,99 @@ import { cancelAppointment, getPayment, simulatePayment } from '../../services/r
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatAmount, getRemainingSeconds } from '../../utils/medical';
 
-/** 展示支付状态、倒计时并执行模拟支付。 */
-export default function PaymentPage() { const { paymentId } = useParams(); const navigate = useNavigate(); const appointmentId = Number(new URLSearchParams(location.search).get('appointmentId')); const [payment, setPayment] = useState<any>(); const [password, setPassword] = useState(''); const [seconds, setSeconds] = useState(0); const [notice, setNotice] = useState(''); const key = useRef<string>(); const load = async () => { try { const next = await getPayment(Number(paymentId)); setPayment(next); setSeconds(getRemainingSeconds(next.expireAt)); } catch (error) { setNotice(getApiErrorMessage(error)); } }; useEffect(() => { void load(); }, [paymentId]); useEffect(() => { const timer = window.setInterval(() => setSeconds((value) => Math.max(0, value - 1)), 1000); return () => window.clearInterval(timer); }, []); async function pay() { try { await simulatePayment(Number(paymentId), password, key.current || (key.current = createIdempotencyKey())); key.current = undefined; await load(); setNotice('支付成功'); } catch (error) { setNotice(getApiErrorMessage(error)); await load(); } } async function cancel() { try { await cancelAppointment(appointmentId, createIdempotencyKey()); navigate('/assistant'); } catch (error) { setNotice(getApiErrorMessage(error)); await load(); } } return <main className="subpage"><PageHeader title="挂号支付" /><section className="subpage-content payment-card"><h2>{payment?.status === 'SUCCESS' ? '支付成功' : '请完成支付'}</h2><b>{formatAmount(payment?.amountCent || 0)}</b><p>剩余支付时间：{String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</p>{payment?.status === 'PENDING' && <><label>登录密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label><button className="primary-button" type="button" onClick={() => void pay()}>确认支付</button><button className="secondary-button" type="button" onClick={() => void cancel()}>取消挂号</button></>}</section>{notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}</main>; }
+/** 挂号支付单在页面展示所需的最小字段。 */
+interface PaymentState {
+  /** 支付单 ID。 */
+  id: number;
+  /** 支付金额，单位为分。 */
+  amountCent: number;
+  /** 服务端返回的支付状态。 */
+  status: string;
+  /** 待支付订单的失效时间。 */
+  expireAt?: string;
+}
+
+/** 展示支付状态、待支付倒计时并执行模拟支付。 */
+export default function PaymentPage() {
+  const { paymentId } = useParams();
+  const navigate = useNavigate();
+  const appointmentId = Number(new URLSearchParams(location.search).get('appointmentId'));
+  const [payment, setPayment] = useState<PaymentState>();
+  const [password, setPassword] = useState('');
+  const [seconds, setSeconds] = useState(0);
+  const [notice, setNotice] = useState('');
+  const key = useRef<string>();
+
+  /** 查询服务端支付单，支付完成后以服务端状态刷新页面。 */
+  async function loadPayment() {
+    try {
+      const next = await getPayment(Number(paymentId));
+      setPayment(next);
+      setSeconds(getRemainingSeconds(next.expireAt));
+    } catch (error) {
+      setNotice(getApiErrorMessage(error));
+    }
+  }
+
+  useEffect(() => {
+    void loadPayment();
+  }, [paymentId]);
+
+  useEffect(() => {
+    // 仅待支付订单展示并更新倒计时，成功后立即停止计时。
+    if (payment?.status !== 'PENDING') return undefined;
+    const timer = window.setInterval(() => setSeconds((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [payment?.status]);
+
+  /** 使用登录密码调用模拟支付，并重新读取服务端最终状态。 */
+  async function pay() {
+    try {
+      // 网络重试沿用首次生成的幂等键，避免重复支付。
+      await simulatePayment(Number(paymentId), password, key.current || (key.current = createIdempotencyKey()));
+      key.current = undefined;
+      await loadPayment();
+      setNotice('支付成功');
+    } catch (error) {
+      setNotice(getApiErrorMessage(error));
+      // 状态冲突或支付失败后重新以服务端支付单为准。
+      await loadPayment();
+    }
+  }
+
+  /** 取消尚未支付的挂号订单并返回就诊助手。 */
+  async function cancel() {
+    try {
+      await cancelAppointment(appointmentId, createIdempotencyKey());
+      navigate('/assistant');
+    } catch (error) {
+      setNotice(getApiErrorMessage(error));
+      await loadPayment();
+    }
+  }
+
+  /** 支付成功后返回首页继续使用其他健康服务。 */
+  function returnHome() {
+    navigate('/home');
+  }
+
+  const isPending = payment?.status === 'PENDING';
+  const isSuccess = payment?.status === 'SUCCESS';
+
+  return <main className="subpage">
+    <PageHeader title="挂号支付" />
+    <section className="subpage-content payment-card">
+      <h2>{isSuccess ? '支付成功' : '请完成支付'}</h2>
+      <b>{formatAmount(payment?.amountCent || 0)}</b>
+      {/* 仅待支付订单存在过期时间，支付成功后不再展示倒计时。 */}
+      {isPending && <p>剩余支付时间：{String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</p>}
+      {isPending && <>
+        <label>登录密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        <button className="primary-button" type="button" onClick={() => void pay()}>确认支付</button>
+        <button className="secondary-button" type="button" onClick={() => void cancel()}>取消挂号</button>
+      </>}
+      {isSuccess && <button className="primary-button" type="button" onClick={returnHome}>返回首页</button>}
+    </section>
+    {notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}
+  </main>;
+}

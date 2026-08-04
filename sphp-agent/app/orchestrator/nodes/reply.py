@@ -5,6 +5,7 @@
 
 import json
 import logging
+from datetime import date
 from typing import Any
 
 from app.engine.llm.factory import build_llm
@@ -20,6 +21,8 @@ MEDICAL_DISCLAIMER = "\n\n---\n⚠️ **AI 建议仅供参考，不作为诊断�
 # 回复生成系统提示词
 REPLY_SYSTEM_PROMPT = """你是一个医疗健康助手，正在为用户提供服务。
 
+当前日期：{today}（服务器本地日期，YYYY-MM-DD）
+
 当前场景：
 - 用户意图：{intent}
 - 服务端：{scope}
@@ -29,6 +32,7 @@ REPLY_SYSTEM_PROMPT = """你是一个医疗健康助手，正在为用户提供�
 2. 如果有工具调用结果，优先基于结果回答
 3. 保持回复简洁、专业，避免过度医疗建议
 4. 涉及诊断、用药建议时，提醒用户咨询专业医生
+5. 涉及日期/排班信息时，以当前日期 {today} 为参照，不得混淆或编造日期
 
 注意：
 - 不要编造医疗数据
@@ -57,7 +61,9 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
 
         intent = state.get("intent", "qa")
         scope = state.get("scope", "c_end")
-        system_prompt = REPLY_SYSTEM_PROMPT.format(intent=intent, scope=scope)
+        system_prompt = REPLY_SYSTEM_PROMPT.format(
+            intent=intent, scope=scope, today=date.today().isoformat()
+        )
 
         # 构造 LLM 输入（不修改 state.messages，避免副作用）
         llm_messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
@@ -91,8 +97,13 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
             content = f"重要提示（必须在回复中如实告知用户）：{risk_warning}。语气平和，不夸大。"
             llm_messages.append({"role": "system", "content": content})
 
-        response = await llm.ainvoke(llm_messages)
-        # BaseMessage.content 可为 str 或多段内容列表（OpenAI 格式），统一转 str
+        # 流式调用：逐 token 累加。LangGraph 的 messages 流会逐 chunk 捕获
+        # 本次 LLM 输出并推送 SSE（chat.py `_handle_message_chunk` 生成 message /
+        # thought 事件），从而实现前端逐字输出；此处再拼接完整结果供节点返回。
+        response = None
+        async for chunk in llm.astream(llm_messages):
+            response = chunk if response is None else response + chunk
+        # BaseMessage.content 可能为 str 或段内容列表（OpenAI 格式），统一转 str
         raw_content = response.content
         reply_content = raw_content if isinstance(raw_content, str) else str(raw_content)
 

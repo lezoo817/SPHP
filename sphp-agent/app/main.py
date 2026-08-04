@@ -58,6 +58,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await setup_checkpointer()
 
+    # 步骤 3.7：初始化会话元数据存储（历史会话列表数据源）。
+    # postgres 后端建 agent_sessions 表（复用 checkpointer 连接池）；
+    # memory 后端无操作（进程内存，与 MemorySaver 同生命周期）。
+    from app.orchestrator.session_store import get_session_store
+
+    await get_session_store().setup()
+
     # 步骤 4：注册工具 Schema
     from app.engine.tools.b_schemas import register_b_tools
     from app.engine.tools.c_schemas import register_c_tools

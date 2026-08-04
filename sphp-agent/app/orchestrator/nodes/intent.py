@@ -20,6 +20,10 @@ INTENT_LABELS = {
     "pharmacy": "购药服务：药品查询、药店查询、创建/取消购药订单",
     "qa": "医疗咨询：疾病知识、用药指导、检查报告解读（需RAG检索）",
     "chitchat": "闲聊：非医疗话题、打招呼、确认回复",
+    "health": (
+        "健康档案：过敏史/既往史查询与更新、检查报告查询/录入、"
+        "用药计划查询/更新、随访查询/确认、通知管理"
+    ),
 }
 
 # 意图分类系统提示词
@@ -32,7 +36,7 @@ INTENT_CLASSIFIER_PROMPT = """你是一个医疗场景的意图识别助手。
 规则：
 1. 只返回意图标签，不要返回其他内容
 2. 如果无法判断，返回"qa"
-3. 优先匹配明确的服务请求（挂号/购药/问诊）
+3. 优先匹配明确的服务请求（挂号/购药/问诊/健康档案）
 4. 症状描述优先归类为"triage"
 5. 非医疗话题归类为"chitchat"
 
@@ -75,6 +79,9 @@ async def intent_node(state: AgentState) -> dict[str, Any]:
         if any(kw in user_message for kw in ["头疼", "发烧", "咳嗽", "症状"]):
             logger.info("关键词快速通道: triage")
             return {"intent": "triage"}
+        if any(kw in user_message for kw in ["过敏史", "检查报告", "用药计划", "随访", "通知"]):
+            logger.info("关键词快速通道: health")
+            return {"intent": "health"}
 
     # LLM 意图分类
     try:

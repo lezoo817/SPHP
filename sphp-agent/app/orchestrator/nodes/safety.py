@@ -12,7 +12,7 @@ import uuid
 from typing import Any
 
 from app.engine.tools.schema_registry import SecurityLevel, ToolRegistry
-from app.infrastructure.cache.redis_client import set_confirm_token
+from app.infrastructure.cache.redis_client import get_confirm_token_by_token, set_confirm_token
 from app.infrastructure.config.settings import get_settings
 from app.orchestrator.state import AgentState
 
@@ -45,18 +45,39 @@ async def safety_check(state: AgentState) -> dict[str, Any]:
             continue
 
         if tool.security_level == SecurityLevel.L2:
-            # 生成 confirm_token，写入 Redis（5min TTL），暂存待确认
-            token = str(uuid.uuid4())
+            tool_arguments = tc.get("arguments", {})
             session_id = state.get("session_id") or ""
             user_id = str(state.get("user_id") or "")
 
+            # M8-1：查找 pending 是否已有相同 tool_name+args 的项（防重复挂起）。
+            # 子图循环第二轮 LLM 重复返回同一 L2 时，_dedupe_tool_calls 已在源头
+            # 拦截；此处为确定性兜底-即使漏过，也复用已有 token 而非生成新的，
+            # 确保同一 L2 恰好一张确认卡。
+            existing = _find_pending(pending_confirmations, tool_name, tool_arguments)
+            if existing is not None:
+                existing_token = existing.get("confirm_token", "")
+                try:
+                    record = await get_confirm_token_by_token(session_id, existing_token, user_id)
+                except Exception:
+                    # Redis 故障：无法校验有效性，保守按失效处理，清理旧项重新生成
+                    record = None
+                if record is not None:
+                    # token 仍有效（未确认未过期）：复用，不重复挂起
+                    logger.info("复用已有 confirm_token: %s %s", tool_name, tool_arguments)
+                    continue
+                # token 已失效（前卡已确认/过期）：清理旧 pending 项后重新生成
+                pending_confirmations = [p for p in pending_confirmations if p is not existing]
+                logger.info("旧 confirm_token 已失效，重新生成: %s", tool_name)
+
+            # 生成 confirm_token，写入 Redis（5min TTL），暂存待确认
+            token = str(uuid.uuid4())
             try:
                 await set_confirm_token(
                     token_id=token,
                     session_id=session_id,
                     user_id=user_id,
                     tool_name=tool_name,
-                    tool_arguments=tc.get("arguments", {}),
+                    tool_arguments=tool_arguments,
                     card_type=_map_card_type(tool_name),
                 )
             except Exception as e:
@@ -73,7 +94,7 @@ async def safety_check(state: AgentState) -> dict[str, Any]:
             pending_confirmations.append(
                 {
                     "tool_name": tool_name,
-                    "tool_arguments": tc.get("arguments", {}),
+                    "tool_arguments": tool_arguments,
                     "confirm_token": token,
                     "card_type": _map_card_type(tool_name),
                     "session_id": session_id,
@@ -118,3 +139,22 @@ def _map_card_type(tool_name: str) -> str:
         "query_patient_history": "confirm_patient_history",
     }
     return mapping.get(tool_name, "confirm_generic")
+
+
+def _find_pending(
+    pending: list[dict[str, Any]], tool_name: str, tool_arguments: dict[str, Any]
+) -> dict[str, Any] | None:
+    """查找 pending 列表中相同 tool_name+tool_arguments 的项（M8-1 复用 token）。
+
+    Args:
+        pending: ``pending_confirmations`` 列表。
+        tool_name: 待查工具名。
+        tool_arguments: 待查工具参数。
+
+    Returns:
+        匹配的 pending 项 dict；无匹配返回 None。
+    """
+    for p in pending:
+        if p.get("tool_name") == tool_name and (p.get("tool_arguments") or {}) == tool_arguments:
+            return p
+    return None

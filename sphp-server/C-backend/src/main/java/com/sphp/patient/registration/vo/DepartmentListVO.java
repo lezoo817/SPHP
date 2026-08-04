@@ -12,8 +12,11 @@ public class DepartmentListVO {
 
     /** 科室 ID */
     private final Long id;
+
     /** 科室名称 */
     private final String name;
+
     /** 科室说明 */
     private final String description;
+
 }

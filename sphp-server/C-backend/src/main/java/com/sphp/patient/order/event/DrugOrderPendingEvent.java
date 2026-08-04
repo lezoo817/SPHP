@@ -9,6 +9,11 @@ public record DrugOrderPendingEvent(String eventId, String eventType, Long busin
                                     OffsetDateTime occurredAt) implements Serializable {
     /** 创建购药订单待支付事件。 */
     public static DrugOrderPendingEvent of(Long drugOrderId, Long patientId, Long userId) {
-        return new DrugOrderPendingEvent(UUID.randomUUID().toString(), "DRUG_ORDER_PENDING", drugOrderId, patientId, userId, OffsetDateTime.now());
+        return new DrugOrderPendingEvent(UUID.randomUUID().toString(),
+                "DRUG_ORDER_PENDING",
+                drugOrderId,
+                patientId,
+                userId,
+                OffsetDateTime.now());
     }
 }

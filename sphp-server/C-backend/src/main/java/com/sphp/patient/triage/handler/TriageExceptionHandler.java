@@ -14,6 +14,8 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
+
 /**
  * 导诊接口专用异常处理器。
  */
@@ -43,9 +45,11 @@ public class TriageExceptionHandler {
         FieldError fieldError = exception.getBindingResult().getFieldError();
         String message = fieldError == null ? "请求参数校验失败" : fieldError.getDefaultMessage();
         ErrorCodeEnum errorCode = fieldError != null && "symptom".equals(fieldError.getField())
-                ? ErrorCodeEnum.ILLEGAL_INPUT_CONTENT
-                : ErrorCodeEnum.INVALID_PARAMETER;
-        return ResponseEntity.badRequest().body(Result.error(errorCode, message));
+                ? ILLEGAL_INPUT_CONTENT // 症状内容非法
+                : INVALID_PARAMETER; // 其他请求参数校验失败
+        return ResponseEntity
+                .badRequest() // HTTP 400
+                .body(Result.error(errorCode, message));
     }
 
     /**
@@ -57,7 +61,7 @@ public class TriageExceptionHandler {
     @ExceptionHandler({ConstraintViolationException.class, MissingRequestHeaderException.class,
             HttpMessageNotReadableException.class})
     public ResponseEntity<Result<Void>> triageHandleBadRequestException(Exception exception) {
-        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, "请求参数错误"));
+        return ResponseEntity.badRequest().body(Result.error(INVALID_PARAMETER, "请求参数错误"));
     }
 
     /**
@@ -69,7 +73,7 @@ public class TriageExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Result<Void>> triageHandleSystemException(Exception exception) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Result.error(ErrorCodeEnum.SYSTEM_ERROR, "系统执行出错"));
+                .body(Result.error(SYSTEM_ERROR, "系统执行出错"));
     }
 
     /**

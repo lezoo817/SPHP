@@ -20,6 +20,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 
+import static com.sphp.shared.common.constant.CommonConstant.DEFAULT_SYSTEM_ERROR_MESSAGE;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.INVALID_PARAMETER;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.SYSTEM_ERROR;
+
 /**
  * C端家庭成员控制器异常处理器。
  */
@@ -51,7 +55,7 @@ public class FamilyExceptionHandler {
     public ResponseEntity<Result<Void>> handleValidException(MethodArgumentNotValidException exception) {
         FieldError fieldError = exception.getBindingResult().getFieldError();
         String message = fieldError == null ? "参数校验失败" : fieldError.getDefaultMessage();
-        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, message));
+        return ResponseEntity.badRequest().body(Result.error(INVALID_PARAMETER, message));
     }
 
     /**
@@ -64,7 +68,7 @@ public class FamilyExceptionHandler {
     public ResponseEntity<Result<Void>> handleNotReadableException(HttpMessageNotReadableException exception) {
         log.warn("C端家庭成员请求体解析失败: {}", exception.getMessage());
         return ResponseEntity.badRequest()
-                .body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, "请求体缺失或格式错误"));
+                .body(Result.error(INVALID_PARAMETER, "请求体缺失或格式错误"));
     }
 
     /**
@@ -77,7 +81,7 @@ public class FamilyExceptionHandler {
     public ResponseEntity<Result<Void>> handleMissingRequestHeaderException(MissingRequestHeaderException exception) {
         log.warn("C端家庭成员请求头缺失: {}", exception.getHeaderName());
         return ResponseEntity.badRequest()
-                .body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, "请求头" + exception.getHeaderName() + "不能为空"));
+                .body(Result.error(INVALID_PARAMETER, "请求头" + exception.getHeaderName() + "不能为空"));
     }
 
     /**
@@ -92,7 +96,7 @@ public class FamilyExceptionHandler {
                 .map(ConstraintViolation::getMessage)
                 .findFirst()
                 .orElse("参数校验失败");
-        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, message));
+        return ResponseEntity.badRequest().body(Result.error(INVALID_PARAMETER, message));
     }
 
     /**
@@ -105,7 +109,7 @@ public class FamilyExceptionHandler {
     public ResponseEntity<Result<Void>> handleException(Exception exception) {
         log.error("C端家庭成员系统异常", exception);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Result.error(ErrorCodeEnum.SYSTEM_ERROR, CommonConstant.DEFAULT_SYSTEM_ERROR_MESSAGE));
+                .body(Result.error(SYSTEM_ERROR, DEFAULT_SYSTEM_ERROR_MESSAGE));
     }
 
     /**

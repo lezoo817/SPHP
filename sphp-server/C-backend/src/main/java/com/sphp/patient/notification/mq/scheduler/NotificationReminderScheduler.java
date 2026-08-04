@@ -11,20 +11,25 @@ import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
 
+import static com.sphp.patient.common.enums.NotificationTypeEnum.FOLLOW_UP_REMINDER;
+import static com.sphp.patient.common.enums.NotificationTypeEnum.MEDICATION_REMINDER;
+
 /** C端用药和随访提醒到期扫描任务。 */
 @Component
 @RequiredArgsConstructor
 public class NotificationReminderScheduler {
+    //消息映射器
     private final NotificationMapper notificationMapper;
+    //提醒消息生产器
     private final NotificationReminderProducer notificationReminderProducer;
 
     /** 扫描到期用药计划并发送提醒消息。 */
-    @Scheduled(fixedDelayString = "${sphp.notification.scan-interval-millis}")
+    @Scheduled(fixedDelayString = "${sphp.notification.scan-interval-millis}")//间隔毫秒数
     public void scanMedicationReminders() {
         OffsetDateTime now = OffsetDateTime.now();
         notificationMapper.selectDueMedicationReminders(now).forEach(record ->
                 notificationReminderProducer.publishMedicationReminder(buildReminderEvent(record, "REMINDER",
-                        "MEDICATION_REMINDER_DUE", NotificationTypeEnum.MEDICATION_REMINDER,
+                        "MEDICATION_REMINDER_DUE", MEDICATION_REMINDER,
                         "用药提醒", "您有一项用药计划需要按时完成。")));
     }
 
@@ -34,7 +39,7 @@ public class NotificationReminderScheduler {
         OffsetDateTime now = OffsetDateTime.now();
         notificationMapper.selectDueFollowUpReminders(now).forEach(record ->
                 notificationReminderProducer.publishFollowUpReminder(buildReminderEvent(record, "FOLLOW_UP",
-                        "FOLLOW_UP_REMINDER_DUE", NotificationTypeEnum.FOLLOW_UP_REMINDER,
+                        "FOLLOW_UP_REMINDER_DUE", FOLLOW_UP_REMINDER,
                         "随访提醒", "您有一项随访计划需要按时确认或完成。")));
     }
 

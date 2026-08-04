@@ -7,7 +7,7 @@ import {
   validateFamilyMember,
   validatePassword,
 } from './form';
-import { filterHospitals, formatAmount, sortHospitals } from './medical';
+import { filterHospitals, formatAmount, getAppointmentStatusText, sortHospitals } from './medical';
 import { resolveSelfPatientId } from '../models/selection';
 import { buildDrugOrderListPath } from '../services/pharmacy';
 import { matchesDrugOrderTab } from './pharmacy';
@@ -16,9 +16,12 @@ import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, validateProfil
 import { resolveMinePatientId } from '../models/mine-patient';
 import { isSessionTokenExpired, type SessionState } from '../models/session';
 import { buildDoctorPagePath, findDoctorById, getDoctorScheduleDates } from './doctor';
+import { groupSlotsByHalfDay, summarizeHalfDaySlots } from './doctor';
 import { buildAppointmentsPath } from '../services/registration';
 import { buildNotificationsPath } from '../services/notification';
 import { buildHealthTodos, canConfirmFollowUp, getMedicationPlanActions, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
+import { buildDeliveryAddressPath } from '../services/delivery-address';
+import { buildDeliveryAddressPayload, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -61,6 +64,11 @@ describe('挂号资源展示规则', () => {
   it('未指定订单状态时不传递空状态参数', () => {
     expect(buildAppointmentsPath(1)).toBe('/c/v1/appointments?pageNo=1&pageSize=20&patientId=1');
     expect(buildAppointmentsPath(1, 'UNPAID')).toContain('status=UNPAID');
+  });
+
+  it('将挂号订单状态转换为患者可理解的中文文案', () => {
+    expect(getAppointmentStatusText('PAID')).toBe('支付完成');
+    expect(getAppointmentStatusText('CANCELLED')).toBe('支付取消');
   });
 });
 
@@ -145,6 +153,24 @@ describe('医生个人挂号页规则', () => {
   it('深链接回退查询时按医生 ID 定位资料', () => {
     expect(findDoctorById(2, [{ id: 1, name: '甲', registrationFeeCent: 100, availableCount: 1 }, { id: 2, name: '乙', registrationFeeCent: 100, availableCount: 0, departmentId: 3 }])?.departmentId).toBe(3);
   });
+
+  it('按后端时段开始时间将号源划分为上午和下午', () => {
+    const slots = [
+      { slotId: 1, startTime: '2026-08-04T09:30:00+08:00', endTime: '2026-08-04T10:00:00+08:00', feeCent: 3000, availableCount: 5 },
+      { slotId: 2, startTime: '2026-08-04T12:00:00+08:00', endTime: '2026-08-04T12:30:00+08:00', feeCent: 3000, availableCount: 4 },
+    ];
+    expect(groupSlotsByHalfDay(slots).morning.map((item) => item.slotId)).toEqual([1]);
+    expect(groupSlotsByHalfDay(slots).afternoon.map((item) => item.slotId)).toEqual([2]);
+  });
+
+  it('将同一半天的多段号源汇总余量并优先选择可挂号时段', () => {
+    const summary = summarizeHalfDaySlots([
+      { slotId: 1, startTime: '2026-08-04T09:30:00+08:00', endTime: '2026-08-04T10:00:00+08:00', feeCent: 3000, availableCount: 0 },
+      { slotId: 2, startTime: '2026-08-04T10:00:00+08:00', endTime: '2026-08-04T10:30:00+08:00', feeCent: 3000, availableCount: 5 },
+    ]);
+    expect(summary.availableCount).toBe(5);
+    expect(summary.targetSlot?.slotId).toBe(2);
+  });
 });
 
 describe('健康待办、提醒与通知规则', () => {
@@ -175,5 +201,33 @@ describe('健康待办、提醒与通知规则', () => {
     expect(getMedicationPlanActions('COMPLETED')).toEqual([]);
     expect(canConfirmFollowUp('PENDING_CONFIRM')).toBe(true);
     expect(canConfirmFollowUp('CONFIRMED')).toBe(false);
+  });
+});
+
+describe('收货地址规则', () => {
+  const addressForm = { receiverName: ' 张三 ', receiverPhone: '13800138000', province: 'HENAN', city: '郑州市', detailAddress: ' 中原路 1 号 ', district: '中原区' };
+
+  it('地址列表使用已确认的后端路径', () => {
+    expect(buildDeliveryAddressPath()).toBe('/c/v1/delivery-addresses');
+  });
+
+  it('校验必填地址字段、手机号与后端支持地区', () => {
+    expect(validateDeliveryAddress({ ...addressForm, receiverPhone: '123' })).toBe('收件人手机号格式不正确');
+    expect(validateDeliveryAddress({ ...addressForm, province: 'SICHUAN', city: '成都市' })).toBe('当前地区暂不支持配送');
+  });
+
+  it('提交时保留编辑地址的区县并清理文本两侧空白', () => {
+    expect(buildDeliveryAddressPayload(addressForm)).toEqual({ receiverName: '张三', receiverPhone: '13800138000', province: 'HENAN', city: '郑州市', district: '中原区', detailAddress: '中原路 1 号' });
+  });
+
+  it('全国省级地区按拼音首字母排序，直辖市只返回本市', () => {
+    expect(getDeliveryProvinces()[0].name).toBe('安徽省');
+    expect(getDeliveryCities('BEIJING')).toEqual(['北京市']);
+    expect(getDeliveryProvinces().every((item) => getDeliveryCities(item.code).length <= 15)).toBe(true);
+  });
+
+  it('地址写操作网络重试复用幂等键', () => {
+    const first = resolveDeliveryIdempotencyKey();
+    expect(resolveDeliveryIdempotencyKey(first)).toBe(first);
   });
 });

@@ -32,6 +32,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import static com.sphp.shared.common.constant.HeaderConstant.IDEMPOTENCY_KEY;
+
 /**
  * C端健康档案接口。
  */
@@ -68,7 +70,7 @@ public class HealthController {
     @PostMapping("/allergies")
     @Operation(summary = "新增过敏史")
     public Result<AllergyCreateVO> createAllergy(
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody AllergyCreateRequest request) {
         Long userId = CUserContext.getRequired().userId();
         IdempotencyPayload<AllergyCreateVO> payload = idempotencyService.execute(
@@ -94,7 +96,7 @@ public class HealthController {
     @Operation(summary = "更新过敏史")
     public Result<AllergyUpdateVO> updateAllergy(
             @PathVariable @Positive(message = "过敏史ID必须为正整数") Long allergyId,
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody AllergyUpdateRequest request) {
         Long userId = CUserContext.getRequired().userId();
         IdempotencyPayload<AllergyUpdateVO> payload = idempotencyService.execute(
@@ -118,7 +120,7 @@ public class HealthController {
     @PostMapping("/histories")
     @Operation(summary = "新增既往史")
     public Result<MedicalHistoryCreateVO> createMedicalHistory(
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody MedicalHistoryCreateRequest request) {
         Long userId = CUserContext.getRequired().userId();
         IdempotencyPayload<MedicalHistoryCreateVO> payload = idempotencyService.execute(
@@ -144,7 +146,7 @@ public class HealthController {
     @Operation(summary = "更新既往史")
     public Result<MedicalHistoryUpdateVO> updateMedicalHistory(
             @PathVariable @Positive(message = "既往史ID必须为正整数") Long historyId,
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody MedicalHistoryUpdateRequest request) {
         Long userId = CUserContext.getRequired().userId();
         IdempotencyPayload<MedicalHistoryUpdateVO> payload = idempotencyService.execute(

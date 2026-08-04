@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
+import static com.sphp.patient.common.constant.NotificationConstant.REMINDER_QUEUE;
+
 /** C端到期用药提醒消费者。 */
 @Component
 @RequiredArgsConstructor
@@ -17,8 +19,9 @@ public class MedicationReminderConsumer {
      *
      * @param event 用药提醒通知事件
      */
-    @RabbitListener(queues = NotificationConstant.REMINDER_QUEUE)
+    @RabbitListener(queues = REMINDER_QUEUE)
     public void consumeMedicationReminder(NotificationCreateEvent event) {
+        // 复用通知表幂等写入逻辑
         notificationCreateConsumer.consumeNotificationCreate(event);
     }
 }

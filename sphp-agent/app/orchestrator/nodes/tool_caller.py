@@ -11,6 +11,7 @@ LLM 未选工具或解析失败时降级为 ``tool_calls=[]``，由回复节点�
 """
 
 import logging
+from datetime import date
 from typing import Any
 
 from app.engine.llm.factory import build_llm
@@ -24,6 +25,8 @@ logger = logging.getLogger(__name__)
 # 工具决策系统提示词
 TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的工具调用助手。
 
+当前日期：{today}（服务器本地日期，YYYY-MM-DD）
+
 你可以使用以下工具来完成用户请求（只使用列表内的工具）：
 
 {tools_desc}
@@ -36,10 +39,50 @@ TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的工具调用助手。
      必须先执行查询、等结果返回后再调用，禁止在首次并行中编造该参数
 3. 参数严格按工具定义填写，缺失的信息先询问用户，或等上一轮工具结果返回后再决策
 4. 不要编造工具名或参数
-5. 工具调用结果会自动返回，不需要让用户等待重试
-6. 创建/修改/取消类操作（如创建挂号、取消挂号）在拿到所需参数后**直接调用对应工具**，
+5. **日期参数必须用当前日期或之后的日期**：用户说"今天"即 {today}；说"X月X日"若未给出年份，
+   默认当年，且不得早于今天。禁止编造过去日期
+6. 工具调用结果会自动返回，不需要让用户等待重试
+7. 创建/修改/取消类操作（如创建挂号、取消挂号）在拿到所需参数后**直接调用对应工具**，
    不要用自然语言反问用户"是否确认"——用户请求即代表发起授权，系统会通过确认卡片
-   让用户最终确认，你只需调用工具即可"""
+   让用户最终确认，你只需调用工具即可
+8. **完成判断（每次决策前先检查）**：
+   - 如果上一步工具结果已返回用户所需的全部信息，**停止调用工具**
+   - 如果用户请求包含创建/修改/取消操作（如"挂X的号"），查询步骤只是前置，
+     拿到所需参数后**必须继续**调用对应创建/修改/取消工具，不要提前停止
+   - 不要重复调用已执行过的工具（相同参数、相同目的）
+9. 一次只推进一个必要的查询/操作步骤，避免一次轮询所有信息
+10. **医院 ID（hospital_id）**：查科室/查医生/查排班/创建挂号/导诊分诊等工具必填
+    hospital_id。系统上下文已给出当前医院 ID 时直接使用；未给出且用户未说明医院时，
+    先询问用户在哪家医院，禁止编造 hospital_id"""
+
+# B 端工具决策系统提示词（M8-4）：C 端患者语义之上，追加医生身份/患者隐私/草稿边界。
+# 免责声明（"AI 建议仅供参考"）由 reply_node 全场景强制注入，此处不重复。
+B_TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的医生工作台助手，服务对象是**医生本人**（B 端）。
+
+当前日期：{today}（服务器本地日期，YYYY-MM-DD）
+
+你可以使用以下工具来完成医生请求（只使用列表内的工具）：
+
+{tools_desc}
+
+规则：
+1. 当医生请求涉及业务操作（查询/生成/检查）时，必须调用对应的工具完成，不要仅凭知识回复
+2. 无依赖的工具可一次并行调用；有依赖的工具分步调用（先查患者/用药，再基于结果做
+   相互作用/禁忌/过敏风险等检查，参数来自前置查询结果，禁止在首次并行中编造）
+3. 参数严格按工具定义填写，缺失的信息先询问医生，或等上一轮工具结果返回后再决策
+4. 不要编造工具名或参数
+5. 查询患者相关数据（过敏史/用药/档案）时，**必须携带当前接诊患者 patient_id**；
+   医生未提供时先向医生索要，禁止编造或猜测患者 ID
+6. 患者数据仅用于本次接诊决策，回复中不泄露敏感信息（脱敏展示）
+7. **草稿边界**：病历草稿（generate_draft_note）仅供医生修改确认，不可替代医生签名；
+   工具只保存草稿，医生最终确认由接诊流程人工完成
+8. 创建/修改类操作（如保存病历草稿）在拿到所需参数后**直接调用对应工具**，
+   不要用自然语言反问医生"是否确认"——医生请求即代表发起授权，系统会通过确认卡片
+   让医生最终确认，你只需调用工具即可
+9. **完成判断（每次决策前先检查）**：
+   - 如果上一步工具结果已返回医生所需的全部信息，**停止调用工具**
+   - 不要重复调用已执行过的工具（相同参数、相同目的）
+10. 一次只推进一个必要的查询/检查步骤，避免一次轮询所有信息"""
 
 
 def _build_tools_prompt(tools: list[dict[str, Any]]) -> str:
@@ -58,6 +101,140 @@ def _build_tools_prompt(tools: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _format_pending(pending: list[dict[str, Any]]) -> str:
+    """格式化待确认 L2 操作列表为 LLM 可读摘要（M8-1，注入 tool_caller 上下文）。
+
+    Args:
+        pending: ``pending_confirmations`` 列表（safety_check 写入，含
+            tool_name / tool_arguments 字段）。
+
+    Returns:
+        str: 每行一个待确认操作（工具名 + 参数），供 LLM 识别已挂起卡片。
+    """
+    lines = []
+    for p in pending:
+        name = p.get("tool_name", "")
+        args = p.get("tool_arguments") or {}
+        lines.append(f"- {name}({args})")
+    return "\n".join(lines)
+
+
+def _build_patient_context(state: AgentState) -> str | None:
+    """构造当前接诊患者上下文（M8-5，注入 tool_caller 的 LLM 输入）。
+
+    前端 ``context.patient_id`` 经 ``_build_initial_state`` 写入 AgentState 后，
+    在此告知 LLM 当前患者 ID。B 端工具普遍必填 ``patient_id``
+    （query_patient_history / check_drug_interaction 等 5 个），此前 LLM 上下文
+    无"当前接诊患者"信息，联调时医生被反复追问患者 ID；注入后 LLM 直接携带该
+    ID，不再索要。
+
+    Args:
+        state: 当前图状态，含 patient_id 字段。
+
+    Returns:
+        str | None: 患者上下文提示；``patient_id`` 为 None（前端未传入就诊患者）
+            时不注入，避免把编造的 ID 塞给 LLM。
+    """
+    patient_id = state.get("patient_id")
+    if patient_id is None:
+        return None
+    return (
+        f"当前接诊患者 ID：{patient_id}（前端页面已选中的就诊患者）。"
+        "涉及患者数据的工具必须携带此 patient_id，直接使用，不要向用户索要患者 ID。"
+    )
+
+
+def _build_hospital_context(state: AgentState) -> str | None:
+    """构造当前医院上下文（注入 tool_caller 的 LLM 输入）。
+
+    前端 ``context.hospital_id``（C 端页面"当前选择的医院"）经
+    ``_resolve_hospital_id`` 解析后写入 AgentState.hospital_id。C 端 5 个工具
+    （create_triage_assessment / query_departments / query_doctors /
+    query_schedule_slots / create_appointment）将 hospital_id 标为必填，
+    此前 LLM 上下文无"当前医院"信息：用户消息没提医院名时，LLM 只能反问
+    "请问您在哪家医院"（体验差），或编造医院 ID。注入后 LLM 直接携带该 ID，
+    不再索要、不编造。
+
+    Args:
+        state: 当前图状态，含 hospital_id 字段。
+
+    Returns:
+        str | None: 医院上下文提示；hospital_id 为 None（未解析到医院，
+            如 C 端用户未选医院且 JWT 无 hospitalId）时不注入，避免把编造
+            的 ID 塞给 LLM。
+    """
+    hospital_id = state.get("hospital_id")
+    if hospital_id is None:
+        return None
+    return (
+        f"当前医院 ID：{hospital_id}。涉及医院维度的工具（查科室/查医生/查排班/"
+        "创建挂号/导诊分诊等）必须携带此 hospital_id，直接使用，不要向用户索要医院 ID。"
+    )
+
+
+def _fill_missing_required_param(
+    tool_calls: list[dict[str, Any]], param_name: str, param_value: int | None
+) -> list[dict[str, Any]]:
+    """自动补全必填工具参数（确定性兜底，DRY 通用实现）。
+
+    对"工具 schema 将 ``param_name`` 标为必填且 LLM 未填"的调用，从状态值
+    ``param_value`` 确定性补全。LLM 提示词约束不可靠（可能漏填或编造），确定性
+    补全杜绝 Java 侧必填参数缺失报错 / 用户或医生被反复索要本已掌握的信息。
+    ``param_value`` 为 None 时不补全（不编造）。
+
+    Args:
+        tool_calls: LLM 提取出的工具调用列表（[{name, arguments}]）。
+        param_name: 要补全的参数名（如 patient_id / hospital_id）。
+        param_value: AgentState 中对应的参数值；None 时不补全。
+
+    Returns:
+        list[dict]: 补全后的新列表（不可变，原列表不修改）。
+    """
+    if param_value is None:
+        return tool_calls
+    filled: list[dict[str, Any]] = []
+    for call in tool_calls:
+        args = call.get("arguments") or {}
+        tool = ToolRegistry.get_tool(call["name"])
+        requires_param = bool(
+            tool is not None and param_name in tool.parameters.get("required", [])
+        )
+        if requires_param and param_name not in args:
+            filled.append({**call, "arguments": {**args, param_name: param_value}})
+        else:
+            filled.append(call)
+    return filled
+
+
+def _fill_missing_patient_id(
+    tool_calls: list[dict[str, Any]], patient_id: int | None
+) -> list[dict[str, Any]]:
+    """自动补全必填 patient_id 工具参数（M8-5 确定性兜底）。
+
+    B 端 5 个工具（query_patient_history / check_drug_interaction /
+    check_contraindication / check_allergy_risk / check_duplicate_medication）的
+    schema 将 patient_id 标为必填；C 端 patient_id 选填（默认本人）的工具不触碰。
+    详见 :func:`_fill_missing_required_param`。
+    """
+    return _fill_missing_required_param(tool_calls, "patient_id", patient_id)
+
+
+def _fill_missing_hospital_id(
+    tool_calls: list[dict[str, Any]], hospital_id: int | None
+) -> list[dict[str, Any]]:
+    """自动补全必填 hospital_id 工具参数（C 端确定性兜底）。
+
+    C 端 5 个工具（create_triage_assessment / query_departments /
+    query_doctors / query_schedule_slots / create_appointment）的 schema 将
+    hospital_id 标为必填。LLM 提示词约束不可靠（可能漏填或编造），此处对
+    "工具 schema 必填 hospital_id 且 LLM 未填"的调用从 ``state.hospital_id``
+    （前端 context.hospital_id，B 端为 JWT 医生所属医院）确定性补全，杜绝
+    Java 侧 hospital_id 缺失报错 / 用户被反复索要医院。hospital_id 为 None
+    时不补全（不编造）。详见 :func:`_fill_missing_required_param`。
+    """
+    return _fill_missing_required_param(tool_calls, "hospital_id", hospital_id)
+
+
 async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None) -> dict[str, Any]:
     """LLM 决定调用工具，返回 ``{"tool_calls": [...]}``。
 
@@ -73,6 +250,10 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     患者场景专属，不含任何 B 端工具名。若对 B 端 scope 也按白名单过滤，B 端
     医生流程的全部工具会被滤空（``tool_calls=[]``，LLM 无工具可调）。因此
     B 端保持全量绑定当前 scope 的 L1/L2 工具（M5 验收"B 端 4 场景跑通"依赖此）。
+
+    M8-4 提示词分 scope：系统提示词按 ``tool_scope`` 分支（C 端患者语义 /
+    B 端医生工作台语义——医生身份、患者隐私脱敏、病历草稿不可签名等边界约束），
+    与 M8-3 B 端直达工具子图配套，避免 B 端医生被 C 端患者语义误导。
 
     Args:
         state: 当前图状态，包含 scope / messages 字段。
@@ -114,8 +295,30 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     llm_with_tools = llm.bind_tools(tools)
 
     history = truncate_messages(state.get("messages", []), get_settings().memory_window_size)
-    system_prompt = TOOL_CALLER_SYSTEM_PROMPT.format(tools_desc=_build_tools_prompt(tools))
+    # M8-4：系统提示词按 scope 分支——C 端用患者语义提示词，B 端用医生工作台
+    # 提示词（医生身份/患者隐私/草稿边界），避免 B 端医生被 C 端"用户请求即授权"
+    # 的患者语义误导（如草稿不可签名、患者数据脱敏等约束缺失）
+    prompt_template = (
+        B_TOOL_CALLER_SYSTEM_PROMPT if tool_scope == ToolScope.B_END else TOOL_CALLER_SYSTEM_PROMPT
+    )
+    system_prompt = prompt_template.format(
+        tools_desc=_build_tools_prompt(tools), today=date.today().isoformat()
+    )
     messages = [{"role": "system", "content": system_prompt}] + history
+
+    # M8-5：注入当前接诊患者上下文（前端 context.patient_id 非空时），
+    # LLM 直接携带该 ID，避免 B 端必填 patient_id 工具反复向医生索要患者 ID。
+    # 独立 system 消息而非拼进主提示词——无患者时零侵入，有患者时显式可见。
+    patient_ctx = _build_patient_context(state)
+    if patient_ctx:
+        messages.append({"role": "system", "content": patient_ctx})
+
+    # 注入当前医院上下文（AgentState.hospital_id 非空时）：C 端 5 个工具必填
+    # hospital_id，LLM 直接携带该 ID，避免用户没提医院名时 LLM 反问或编造。
+    # 与 patient_id 同策略——hospital_id 为 None 时不注入（不编造医院 ID）。
+    hospital_ctx = _build_hospital_context(state)
+    if hospital_ctx:
+        messages.append({"role": "system", "content": hospital_ctx})
 
     # 注入已执行工具的结果（子图循环累积了前面所有轮次，LLM 分步决策可见）
     tool_results = state.get("tool_results")
@@ -125,9 +328,36 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
         summary = _format_tool_results(tool_results)
         messages.append({"role": "system", "content": f"已执行的工具结果：\n{summary}"})
 
+    # M8-1：注入待确认 L2 摘要，让 LLM 知已有卡片，避免重复调用同一 L2
+    # （软约束，硬兜底由 _dedupe_tool_calls 对比 pending + safety_check 复用 token）
+    pending_confirmations = state.get("pending_confirmations")
+    if pending_confirmations:
+        messages.append(
+            {
+                "role": "system",
+                "content": "以下操作正在等待用户确认，不要重复调用：\n"
+                + _format_pending(pending_confirmations),
+            }
+        )
+
     try:
         response = await llm_with_tools.ainvoke(messages)
         tool_calls = _extract_tool_calls(response, tool_scope, effective_allowed)
+        # M8-5：必填 patient_id / hospital_id 工具漏填时确定性补全（放在去重前——
+        # 补全后的参数才是实际执行参数，去重按补全后对比，避免"轮 2 漏填未被去重、
+        # 补全后与轮 1 实际执行参数相同仍被执行"的重复调用）。patient_id 兜底 B 端
+        # 5 工具；hospital_id 兜底 C 端 5 工具（schema 驱动，非必填工具不触碰）。
+        tool_calls = _fill_missing_patient_id(tool_calls, state.get("patient_id"))
+        tool_calls = _fill_missing_hospital_id(tool_calls, state.get("hospital_id"))
+        # 软兜底：拦截「相同参数 + 上次已成功」的重复调用（LLM 提示词收敛不可靠，
+        # 这里做确定性去重——循环问题 P3-6）。意外截断/失败的重试放行，操作型 L2
+        # 不进入 tool_results 天然豁免。M8-1：同时对比 pending_confirmations，
+        # 源头拦截子图循环第二轮重复返回同一 L2（防两张 token 互异的确认卡）。
+        tool_calls = _dedupe_tool_calls(
+            tool_calls,
+            state.get("tool_results") or [],
+            state.get("pending_confirmations") or [],
+        )
         logger.info(
             "工具决策: scope=%s, 选择 %d 个工具: %s",
             scope,
@@ -139,6 +369,60 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     except Exception as e:
         logger.error("工具决策失败: %s", e)
         return {"tool_calls": []}
+
+
+def _dedupe_tool_calls(
+    tool_calls: list[dict[str, Any]],
+    executed: list[dict[str, Any]],
+    pending: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """过滤重复工具调用（确定性防循环 P3-6 + 防重复挂起 M8-1）。
+
+    两类「重复」判定：
+    1. 与已执行结果重复（L1 防循环）：工具名相同 + 参数完全一致 + 上次执行已成功
+       - 上次失败/超时（success=False）→ 模型自主重试合理，放行
+       - 参数不同 → 合法多步推进（换科室/换日期），放行
+    2. 与待确认 L2 重复（M8-1 防重复挂起）：工具名相同 + 参数完全一致且
+       已在 ``pending_confirmations`` 中 → 剔除，不重复发起同一 L2
+       （避免子图循环第二轮 LLM 重复返回同一 L2，safety_check 又生成新
+       token，导致两张 token 互异的确认卡 → 用户双确认 = 同一业务执行两次）
+
+    Args:
+        tool_calls: LLM 本轮要调用的工具列表（[{name, arguments}]）。
+        executed: 本轮对话子图循环已执行的工具结果列表（含 tool_name /
+            arguments / success 字段）。
+        pending: 待用户确认的 L2 操作列表（safety_check 写入，含 tool_name /
+            tool_arguments 字段）。None 或空时不做 L2 去重。
+
+    Returns:
+        list[dict]: 过滤后的工具调用列表，重复项被剔除。
+    """
+    if not executed and not pending:
+        return tool_calls
+    pending = pending or []
+    deduped: list[dict[str, Any]] = []
+    for call in tool_calls:
+        name = call["name"]
+        args = call.get("arguments") or {}
+        # L1 防循环：与已执行成功结果重复 → 剔除
+        is_executed_dup = any(
+            prev.get("tool_name") == name
+            and (prev.get("arguments") or {}) == args
+            and prev.get("success")
+            for prev in executed
+        )
+        # M8-1 防 L2 重复挂起：相同 tool_name+args 已在 pending → 剔除
+        # （pending 项参数键为 tool_arguments，与 executed 的 arguments 区分）
+        is_pending_dup = any(
+            p.get("tool_name") == name and (p.get("tool_arguments") or {}) == args for p in pending
+        )
+        if is_executed_dup:
+            logger.info("去重重复工具调用: %s %s（上次已成功）", name, args)
+        elif is_pending_dup:
+            logger.info("去重重复 L2 挂起: %s %s（已在 pending_confirmations）", name, args)
+        else:
+            deduped.append(call)
+    return deduped
 
 
 def _extract_tool_calls(

@@ -564,26 +564,47 @@ graph TD
 | 挂号 (registration) | 用户期望完成挂号 | 号源查询 → 创建挂号单 → 支付引导 |
 | 问诊 (consultation) | 挂号后的预问诊或处方解读 | 信息采集 → 摘要提交 → 解读 |
 | 购药 (pharmacy) | 处方后购药 | 库存查询 → 药店推荐 → 下单 |
+| 健康档案 (health) | 管理过敏史/既往史/检查报告/用药计划/随访/通知（M8-2） | 健康档案子图 10 工具白名单 |
 | 咨询 (qa) | 医疗知识问答 | RAG 检索 → 回复生成 |
 | 闲聊 (chitchat) | 非业务对话 | 直接 LLM 回复 |
 
+**B 端意图定义（M8-3）：**
+
+C 端按上表 7 类意图做 LLM 分类；**B 端（scope=b_end）不做意图分类**——
+auth_node 后直接进入 B 端全量工具子图（绑定全部 9 个 B 端 L1/L2 工具）。
+
+| 场景 | 处理方式 |
+|------|----------|
+| 查患者/查药/处方审核/报告解读等问诊类提问 | 直达 B 端工具子图，LLM 基于 9 工具决策（跳过意图分类，省一次 LLM 调用） |
+| 纯会话/非工具需求 | 工具子图内 LLM 不选工具 → 空 tool_calls → 结束子图 → reply_node 直接回复 |
+
+> **设计依据**：C 端 7 类意图（triage/registration/consultation/pharmacy/health/qa/chitchat）
+> 均为患者端语义，与 B 端医生流程无关。B 端若走意图分类，医生提问大概率误归
+> `qa` 分支（rag_node 只检索知识库不调工具），9 个 B 端工具全不可达。直达同时
+> 与 M5 定案一致——B 端全量绑定 9 工具、无白名单约束。
+
 #### 5.2.1 图编排设计
 
-LangGraph 以有向图形式串联 7 个标准节点。主图负责鉴权、意图路由和安全校验，业务操作委托给 4 个子图处理。
+LangGraph 以有向图形式串联 8 个标准节点。主图负责鉴权、按 scope 分流、意图路由
+和安全校验，业务操作委托给 6 个子图处理（5 个 C 端业务子图 + 1 个 B 端直达工具子图）。
 
 **主图结构：**
 
 ```mermaid
 graph TD
     START["START"] --> AUTH["① auth_node<br/>JWT鉴权"]
-    AUTH --> INTENT["② intent_node<br/>意图识别"]
+    AUTH -->|"scope=b_end"| BTOOL["② b_end_tool_graph<br/>B端直达工具子图"]
+    AUTH -->|"scope=c_end"| INTENT["② intent_node<br/>意图识别"]
     INTENT -->|"triage"| TRIAGE["③ triage_graph<br/>导诊子图"]
     INTENT -->|"registration"| REG["④ registration_graph<br/>挂号子图"]
     INTENT -->|"consultation"| CONSULT["⑤ consultation_graph<br/>问诊子图"]
     INTENT -->|"pharmacy"| PHARM["⑥ pharmacy_graph<br/>购药子图"]
-    INTENT -->|"qa"| QA["⑦ qa_node<br/>RAG检索→LLM回复"]
-    INTENT -->|"chitchat"| CHAT["⑧ chitchat_node<br/>直接LLM回复"]
-    TRIAGE --> REPLY["⑨ reply_node<br/>回复生成"]
+    INTENT -->|"health"| HEALTH["⑦ health_graph<br/>健康档案子图"]
+    INTENT -->|"qa"| QA["⑧ qa_node<br/>RAG检索→LLM回复"]
+    INTENT -->|"chitchat"| CHAT["⑨ chitchat_node<br/>直接LLM回复"]
+    BTOOL --> REPLY["⑩ reply_node<br/>回复生成"]
+    HEALTH --> REPLY
+    TRIAGE --> REPLY
     REG --> REPLY
     CONSULT --> REPLY
     PHARM --> REPLY
@@ -597,11 +618,13 @@ graph TD
 | 节点 | 类型 | 职责 |
 |------|------|------|
 | auth_node | 主图节点 | 从 Header 取 JWT + 从请求体取 scope，调 Java token/parse 换取 userId（B 端同时写入 roles/dept_id/doctor_id/hospital_id），写入 AgentState |
-| intent_node | 主图节点 | 基于用户消息 + 历史对话，LLM 判断意图类型。输出意图标签用于路由 |
+| b_end_tool_graph | 子图 | **B 端直达工具子图（M8-3）**：tool_caller 绑定 B 端全量 L1/L2 工具（9 个，无白名单）→ safety → executor 循环，跳过 C 端意图分类 |
+| intent_node | 主图节点 | 基于用户消息 + 历史对话，LLM 判断意图类型。输出意图标签用于路由（仅 C 端执行） |
 | triage_graph | 子图 | 追问症状 → RAG 检索 → 推荐科室 → 调 `query_doctors` 查医生 |
 | registration_graph | 子图 | 调 `query_departments` → `query_schedule_slots` → `create_appointment`（含 L2 确认） |
 | consultation_graph | 子图 | 调 `query_consultations` / `query_prescriptions` → `interpret_prescription` |
 | pharmacy_graph | 子图 | 调 `query_pharmacy_stock` → `create_drug_order`（含 L2 确认） |
+| health_graph | 子图 | **健康档案子图（M8-2，场景五）**：10 工具白名单——L1 查询（档案/报告/用药计划/随访/通知）+ L2 变更（过敏史/既往史/报告录入/用药计划更新/随访确认，含 L2 确认） |
 | qa_node | 主图节点 | 调 RAG 检索 → 注入 LLM 上下文 → 生成回复 |
 | chitchat_node | 主图节点 | 不做工具调用，直接 LLM 自由回复 |
 | reply_node | 主图节点 | 生成最终回复（LLM 生成自然语言）。SSE 流式推送由路由级 handler 统一处理（见 §5.12） |
@@ -646,6 +669,7 @@ AgentState 是图中唯一的共享状态对象，通过 LangGraph 的 `add_mess
 - registration: 用户希望挂号、预约、查看号源或候补
 - consultation: 用户进行问诊相关操作（提交预问诊、查看处方、解读处方）
 - pharmacy: 用户希望购药、查询药品库存或下单
+- health: 用户管理健康档案（过敏史/既往史查询与更新、检查报告查询/录入、用药计划查询/更新、随访查询/确认、通知管理）
 - qa: 用户询问医疗知识、健康科普问题
 - chitchat: 问候、闲聊、感谢等非业务对话
 
@@ -666,6 +690,7 @@ AgentState 是图中唯一的共享状态对象，通过 LangGraph 的 `add_mess
 | LLM 返回非预定义标签 | 默认归类为 `qa`（RAG 兜底回答） |
 | 用户消息包含"挂号/预约/号源/排班"等关键词但不属于其他意图 | 强制 `registration` |
 | 用户消息包含"买药/购药/下单/配送"等关键词但不属于其他意图 | 强制 `pharmacy` |
+| 用户消息包含"过敏史/检查报告/用药计划/随访/通知"等关键词但不属于其他意图 | 强制 `health`（M8-2 新增） |
 
 > 关键词规则作为快速通道：消息 ≤10 字且命中关键词时跳过 LLM 调用，直接路由，减少首字延迟。
 
@@ -693,6 +718,7 @@ builder.add_node("triage_graph", triage_graph.compile())
 builder.add_node("registration_graph", registration_graph.compile())
 builder.add_node("consultation_graph", consultation_graph.compile())
 builder.add_node("pharmacy_graph", pharmacy_graph.compile())
+builder.add_node("health_graph", health_graph.compile())  # M8-2 健康档案子图（场景五）
 
 # 入口
 builder.set_entry_point("auth_node")
@@ -706,6 +732,7 @@ builder.add_conditional_edges(
         "registration": "registration_graph",
         "consultation": "consultation_graph",
         "pharmacy": "pharmacy_graph",
+        "health": "health_graph",
         "qa": "qa_node",
         "chitchat": "chitchat_node",
     }
@@ -716,6 +743,7 @@ builder.add_edge("triage_graph", "reply_node")
 builder.add_edge("registration_graph", "reply_node")
 builder.add_edge("consultation_graph", "reply_node")
 builder.add_edge("pharmacy_graph", "reply_node")
+builder.add_edge("health_graph", "reply_node")
 builder.add_edge("qa_node", "reply_node")
 builder.add_edge("chitchat_node", "reply_node")
 
@@ -1370,6 +1398,23 @@ B 端采用"一次问诊一个会话"策略：医生每次接诊（startConsult�
 
 > **设计依据**：AI 辅助面板按当前接诊患者加载内容（前端系分 §6），不同患者的对话上下文必须隔离——若复用 session，患者 A 的对话历史会泄漏到患者 B 的 LLM 上下文中，既是隐私问题也是相关性问题。30 分钟 TTL 对 B 端同样适用（一次问诊通常 10-20 分钟）。此策略不需要前后端修改接口契约——现有"session_id 为空时创建新会话"机制已天然支持。
 
+**会话元数据表（历史会话列表）：**
+
+Agent 自建会话元数据表 `agent_sessions`（`app/orchestrator/session_store.py`），记录用户历史 AI 会话的元数据（标题/最后消息/消息数/更新时间），支撑 C 端历史会话**列表与切换**（§6.2.3）。该表与完整消息历史（LangGraph checkpoint，M6-B3）**互补**：checkpoint 负责"点开某会话恢复上下文续聊"，本表负责"列出用户有哪些历史会话"。二者后端同源（`checkpointer_backend`），避免"列表能看到但点开无消息"的脱节。
+
+| 后端 | 会话列表存储 | 生命周期 |
+|------|-------------|----------|
+| `memory`（开发默认） | 进程内存（`MemorySessionStore`） | 与 MemorySaver 一致，进程重启即失——已知开发限制 |
+| `postgres`（生产） | PG `agent_sessions` 表（`PostgresSessionStore`，复用 checkpointer 连接池） | 长期持久化，历史会话可回溯 |
+
+| 设计点 | 约定 |
+|--------|------|
+| 标题定稿 | 首次落库写入首条用户消息（截断 30 字），后续轮次 upsert 不覆盖 title（首条消息定标题） |
+| message_count | 每轮 +1（跨轮累计） |
+| scope | 仅 C 端患者写入列表（B 端"一次问诊一会话"，不入列表，与 §5.9 既有策略一致） |
+| 落库时机 | `/api/chat/stream` 正常完成路径（`done` 前）；失败仅 log 不阻塞对话主流程；客户端断开/异常路径不落库 |
+| 列表上限 | 单次返回 50 条（`updated_at` 倒序），量大后再加分页/游标 |
+
 
 ### 5.10 错误处理与降级策略
 
@@ -1468,6 +1513,63 @@ Agent 依赖多个外部系统（LLM API、Java 后端、PostgreSQL、Redis）�
 - 场景指令 ≤100 字——仅追加当前场景最相关的行为约束
 - 工具使用策略用"用户意图 → 调用顺序"的映射格式，不用抽象规则描述——LLM 对具体示例的遵循度远高于抽象指令
 - 医疗安全声明在每个回复末尾强制注入（`reply_node` 中做后处理追加，不依赖 LLM 自觉）
+
+**B 端 tool_caller 提示词（M8-4）：**
+
+`tool_caller` 节点按 scope 分支系统提示词（C 端患者语义 / B 端医生工作台语义）：
+
+| 维度 | C 端（`TOOL_CALLER_SYSTEM_PROMPT`） | B 端（`B_TOOL_CALLER_SYSTEM_PROMPT`） |
+|------|----------------------------------|----------------------------------------|
+| 身份 | 医疗平台工具调用助手，服务患者 | **医生工作台助手，服务医生本人** |
+| 授权语义 | 用户请求即代表发起授权（患者自助操作） | 医生请求即代表发起授权（医生操作，仍走 L2 确认卡） |
+| 患者数据 | 查询自身数据 | **必须携带当前接诊患者 patient_id**，缺失先索要、禁止编造；**脱敏展示，不泄露敏感信息** |
+| 草稿边界 | 无 | **病历草稿（generate_draft_note）仅供医生修改确认，不可替代医生签名** |
+
+> **设计依据**：免责声明（"AI 建议仅供参考"）由 `reply_node` 全场景强制注入（B 端也有），
+> 故 B 端 tool_caller 提示词不重复免责声明，只补齐 C 端患者语义中缺失的医生身份、
+> 患者隐私、草稿边界三类约束（M8-4 修正表述：真正缺口在 tool_caller 层而非 reply 层）。
+> 与 M8-3（B 端直达工具子图）配套，构成 B 端编排双改项。
+
+**当前患者上下文注入（M8-5）：**
+
+前端经 `context.patient_id` 传入当前接诊患者 ID（§6.2，B 端医生接诊 / C 端就诊人切换可选），
+`_build_initial_state` 提取写入 `AgentState.patient_id` 后，`tool_caller` 两层消费：
+
+1. **软约束（提示词）**：patient_id 非空时注入一条独立 system 消息
+   「当前接诊患者 ID：{id}（前端页面已选中的就诊患者）。涉及患者数据的工具必须携带
+   此 patient_id，直接使用，不要向用户索要患者 ID」——解决 B 端必填 patient_id 工具
+   联调时医生被反复追问患者 ID 的问题。
+2. **硬兜底（确定性补全）**：`_fill_missing_patient_id` 对 schema 将 patient_id 标为
+   必填的工具（B 端 5 个：query_patient_history / check_drug_interaction /
+   check_contraindication / check_allergy_risk / check_duplicate_medication）在 LLM
+   漏填参数时从 `state.patient_id` 补全；补全发生在 `_dedupe_tool_calls` **之前**，
+   保证补全后的参数参与去重对比，防子图循环重复调用。C 端 patient_id 选填（默认本人）
+   的工具不触碰，保留后端默认本人语义。
+
+> **设计依据**：B 端医生不可编造患者 ID（隐私边界），故 patient_id 仅来自前端 context，
+> Agent 不自行猜测；LLM 提示词约束不可靠，故用 schema 驱动的确定性补全兜底。
+
+**当前医院上下文注入（与 M8-5 同构，C 端镜像）：**
+
+前端经 `context.hospital_id` 传入页面"当前选择的医院"（§6.2），
+`_resolve_hospital_id` 按 scope 解析写入 `AgentState.hospital_id` 后，
+`tool_caller` 同样两层消费：
+
+1. **软约束（提示词）**：hospital_id 非空时注入一条独立 system 消息
+   「当前医院 ID：{id}。涉及医院维度的工具（查科室/查医生/查排班/创建挂号/导诊分诊等）
+   必须携带此 hospital_id，直接使用，不要向用户索要医院 ID」——解决 C 端 5 个必填
+   hospital_id 工具（create_triage_assessment / query_departments / query_doctors /
+   query_schedule_slots / create_appointment）在用户未提医院名时 LLM 反问
+   "您在哪家医院"（体验差）或编造医院 ID 的问题。
+2. **硬兜底（确定性补全）**：`_fill_missing_hospital_id` 对 schema 将 hospital_id 标为
+   必填的 C 端 5 个工具在 LLM 漏填参数时从 `state.hospital_id` 补全（与
+   `_fill_missing_patient_id` 同为 `_fill_missing_required_param` 的封装，均执行于
+   `_dedupe_tool_calls` 之前）。B 端工具 schema 无 hospital_id 必填，天然不触碰。
+
+> **设计依据**：与 patient_id 同策略——hospital_id 为 None（C 端未选医院且 JWT 无
+> hospitalId）时不注入、不补全，并靠 C 端提示词显式规则「未给出医院且用户未说明时
+> 先询问用户，禁止编造 hospital_id」兜底（对等 B 端 patient_id 的「先索要、不编造」）。
+> B 端 hospital_id 以 JWT（医生所属医院）为权威，注入亦无害（B 端无工具需要该参数）。
 
 ### 5.12 LangGraph 流式输出与 SSE 映射
 
@@ -1928,7 +2030,57 @@ Authorization: Bearer <JWT Token>（选填，当前版本非必填；后续 Agen
 }
 ```
 
-> **信封统一说明**：Agent 对外业务 HTTP 接口（`/api/chat/confirm`、`/api/knowledge/*`）统一采用与 Java 后端一致的 `{code, message, data, traceId}` 信封，成功 `code="00000"`，失败 `code` 为字符串错误码（见 §6.1）。`/health` 为基础设施级健康检查端点（供负载均衡 / 容器探针使用），采用独立的 `{status, checks, version}` 格式，不套用业务信封。`/api/chat/stream` 为 SSE 流式接口，其错误通过 `event: error` 推送（字段为 `code`/`message`/`trace_id`，见 §6.2.1 ⑥），不套用此信封。
+> **信封统一说明**：Agent 对外业务 HTTP 接口（`/api/chat/confirm`、`/api/chat/sessions`、`/api/knowledge/*`）统一采用与 Java 后端一致的 `{code, message, data, traceId}` 信封，成功 `code="00000"`，失败 `code` 为字符串错误码（见 §6.1）。`/health` 为基础设施级健康检查端点（供负载均衡 / 容器探针使用），采用独立的 `{status, checks, version}` 格式，不套用业务信封。`/api/chat/stream` 为 SSE 流式接口，其错误通过 `event: error` 推送（字段为 `code`/`message`/`trace_id`，见 §6.2.1 ⑥），不套用此信封。
+
+#### 6.2.3 历史会话列表
+
+C 端患者查看/切换历史 AI 会话（数据源：`agent_sessions` 表，见 §5.9）。前端点开任一 `session_id` → 调 `POST /api/chat/stream` → 既有 checkpointer 机制恢复该会话上下文续聊（**历史会话切换自此闭环**）。
+
+```
+GET /api/chat/sessions
+Authorization: Bearer <JWT Token>
+```
+
+**鉴权与范围：**
+
+- 仅 C 端患者（B 端"一次问诊一会话"，不进入历史列表）
+- 依赖 JWT 中间件注入的 `user_id` 隔离——跨用户不可见他人会话；未鉴权/匿名请求返回 401
+
+**成功响应（200）-- 统一信封 `{code, message, data, traceId}`：**
+
+```json
+{
+  "code": "00000",
+  "message": "操作成功",
+  "data": {
+    "sessions": [
+      {
+        "session_id": "sess_abc123",
+        "title": "我头疼三天了",
+        "last_message": "建议您先休息，必要时就医",
+        "message_count": 3,
+        "updated_at": "2026-08-04T03:00:00+00:00"
+      }
+    ]
+  },
+  "traceId": "trc_xyz789"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| sessions[].session_id | string | 会话 ID，点开直接作为 `/api/chat/stream` 的 `session_id` 恢复上下文续聊 |
+| sessions[].title | string | 会话标题（首条用户消息截断 30 字） |
+| sessions[].last_message | string | 最后一条助手回复（截断 30 字），可能为 `null` |
+| sessions[].message_count | int | 会话总轮数 |
+| sessions[].updated_at | string | 最后活动时间（ISO 8601），列表按此倒序（最新在前），上限 50 条 |
+
+**错误响应（统一信封）：**
+
+| code | HTTP 状态码 | 说明 | 前端处理建议 |
+|------|--------|------|--------------|
+| AUTH_MISSING | 401 | 缺少有效鉴权 Token（未登录） | 跳转登录页 |
+| SERVER_ERROR | 500 | 会话列表查询失败 | 提示"服务异常，请稍后重试" |
 
 ### 6.3 Agent → Java：鉴权接口
 

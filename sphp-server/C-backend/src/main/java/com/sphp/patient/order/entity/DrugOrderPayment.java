@@ -21,18 +21,23 @@ public class DrugOrderPayment extends BaseDO {
     /** 关联购药订单 ID */
     @TableField("drug_order_id")
     private Long drugOrderId;
+
     /** 付款 C端用户 ID */
     @TableField("payer_user_id")
     private Long payerUserId;
+
     /** 支付金额，单位分 */
     @TableField("amount_cent")
     private Integer amountCent;
+
     /** 支付状态 */
     @TableField("status")
     private String status;
+
     /** 支付到期时间 */
     @TableField("expire_at")
     private OffsetDateTime expireAt;
+
     /** 支付成功时间 */
     @TableField("paid_at")
     private OffsetDateTime paidAt;

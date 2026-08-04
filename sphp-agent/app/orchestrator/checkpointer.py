@@ -51,45 +51,73 @@ def build_checkpointer() -> Any:
     raise ValueError(f"未知的 checkpointer_backend: {backend}（可选 memory/postgres）")
 
 
-def _build_postgres_saver() -> Any:
-    """构造 AsyncPostgresSaver（共享连接池，M6-B3）。"""
+def get_pg_pool() -> AsyncConnectionPool[AsyncConnection[dict[str, Any]]] | None:
+    """返回 PG 连接池（postgres 后端懒创建，全局单例；非 postgres 返回 None）。
+
+    checkpointer 与 session_store 等基础设施**共享同一连接池**，避免多模块重复
+    建连耗尽连接。仅 ``checkpointer_backend=postgres`` 时建池（生产 PG 依赖）；
+    memory 后端返回 None，不引入 PG 依赖。
+
+    Returns:
+        全局单例 ``AsyncConnectionPool``；非 postgres 后端返回 None。
+
+    Raises:
+        RuntimeError: postgres 后端但 psycopg_pool 依赖未安装。
+    """
     global _pg_pool
 
-    try:
-        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-        from psycopg import AsyncConnection
-        from psycopg.rows import dict_row
-        from psycopg_pool import AsyncConnectionPool
-    except ImportError as e:
-        raise RuntimeError(
-            "checkpointer_backend=postgres 需要安装 langgraph-checkpoint-postgres"
-            "（pyproject prod extra：pip install .[prod]）"
-        ) from e
-
-    settings = get_settings()
-    conninfo = (
-        f"host={settings.pg_host} port={settings.pg_port} "
-        f"user={settings.pg_user} password={settings.pg_password} "
-        f"dbname={settings.pg_database}"
-    )
+    if get_settings().checkpointer_backend != "postgres":
+        return None
 
     if _pg_pool is None:
+        try:
+            from psycopg import AsyncConnection
+            from psycopg.rows import dict_row
+            from psycopg_pool import AsyncConnectionPool
+        except ImportError as e:
+            raise RuntimeError(
+                "checkpointer_backend=postgres 需要安装 psycopg_pool"
+                "（pyproject prod extra：pip install .[prod]）"
+            ) from e
+
+        settings = get_settings()
+        conninfo = (
+            f"host={settings.pg_host} port={settings.pg_port} "
+            f"user={settings.pg_user} password={settings.pg_password} "
+            f"dbname={settings.pg_database}"
+        )
         pool = AsyncConnectionPool(
             conninfo,
             max_size=20,
             kwargs={"autocommit": True, "row_factory": dict_row, "prepare_threshold": 0},
         )
         # row_factory 经 kwargs 传入，mypy 无法静态推断出 dict_row，
-        # 显式 cast 到 AsyncPostgresSaver 期望的池类型
+        # 显式 cast 到 AsyncConnectionPool 期望的泛型
         _pg_pool = cast(AsyncConnectionPool[AsyncConnection[dict[str, Any]]], pool)
         logger.info(
-            "Postgres checkpointer 连接池已创建: %s:%s/%s",
+            "Postgres 连接池已创建: %s:%s/%s",
             settings.pg_host,
             settings.pg_port,
             settings.pg_database,
         )
 
-    return AsyncPostgresSaver(_pg_pool)
+    return _pg_pool
+
+
+def _build_postgres_saver() -> Any:
+    """构造 AsyncPostgresSaver（共享连接池，M6-B3）。"""
+    try:
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+    except ImportError as e:
+        raise RuntimeError(
+            "checkpointer_backend=postgres 需要安装 langgraph-checkpoint-postgres"
+            "（pyproject prod extra：pip install .[prod]）"
+        ) from e
+
+    pool = get_pg_pool()
+    if pool is None:
+        raise RuntimeError("checkpointer_backend=postgres 但 PG 连接池未创建")
+    return AsyncPostgresSaver(pool)
 
 
 async def setup_checkpointer() -> None:

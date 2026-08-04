@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
+import static com.sphp.patient.common.constant.NotificationConstant.*;
+
 /** C端用药与随访提醒 RabbitMQ 生产器。 */
 @Component
 @RequiredArgsConstructor
@@ -18,7 +20,7 @@ public class NotificationReminderProducer {
      * @param event 用药提醒通知事件
      */
     public void publishMedicationReminder(NotificationCreateEvent event) {
-        publish(event, NotificationConstant.REMINDER_DUE_ROUTING_KEY);
+        publish(event, REMINDER_DUE_ROUTING_KEY);
     }
 
     /**
@@ -27,7 +29,7 @@ public class NotificationReminderProducer {
      * @param event 随访提醒通知事件
      */
     public void publishFollowUpReminder(NotificationCreateEvent event) {
-        publish(event, NotificationConstant.FOLLOW_UP_DUE_ROUTING_KEY);
+        publish(event, FOLLOW_UP_DUE_ROUTING_KEY);
     }
 
     /**
@@ -37,6 +39,6 @@ public class NotificationReminderProducer {
      * @param routingKey 既定提醒路由键
      */
     private void publish(NotificationCreateEvent event, String routingKey) {
-        rabbitTemplate.convertAndSend(NotificationConstant.BUSINESS_EXCHANGE, routingKey, event);
+        rabbitTemplate.convertAndSend(BUSINESS_EXCHANGE, routingKey, event);
     }
 }

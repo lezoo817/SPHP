@@ -23,18 +23,23 @@ public class CRefreshToken {
     /** 数据库自增主键 */
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
+
     /** 所属 C端用户 ID */
     @TableField("user_id")
     private Long userId;
+
     /** Refresh Token SHA-256 摘要 */
     @TableField("token_hash")
     private String tokenHash;
+
     /** 令牌过期时间 */
     @TableField("expired_at")
     private OffsetDateTime expiredAt;
+
     /** 令牌撤销时间 */
     @TableField("revoked_at")
     private OffsetDateTime revokedAt;
+
     /** 创建时间 */
     @TableField(value = "created_at", fill = FieldFill.INSERT)
     private OffsetDateTime createdAt;

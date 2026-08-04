@@ -11,16 +11,39 @@ import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+
+import static com.sphp.shared.common.enums.ErrorCodeEnum.INVALID_USER_INPUT;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.SYSTEM_ERROR;
+
 /** C端统一支付服务实现。 */
 @Service @RequiredArgsConstructor
 public class PaymentServiceImpl implements PaymentService {
-    private final OrderDataMapper orderDataMapper; private final RegisteringService registeringService; private final OrderService orderService;
-    /** 按支付单的唯一业务关联分派挂号或购药支付。 */
+    // 数据访问接口
+    private final OrderDataMapper orderDataMapper;
+    // 挂号服务接口
+    private final RegisteringService registeringService;
+    // 购药服务接口
+    private final OrderService orderService;
+
+    /**
+     * 模拟支付
+     * @param paymentId 支付单ID
+     * @param request 模拟支付请求
+     * @return 模拟支付结果
+     */
     @Override public RegisteringPaymentSuccessVO simulatePayment(Long paymentId, RegisteringPaymentSimulateRequest request) {
+
         PaymentBusinessRecord payment=orderDataMapper.selectPaymentBusiness(paymentId);
-        if(payment==null) throw new CAuthException(ErrorCodeEnum.INVALID_USER_INPUT,HttpStatus.NOT_FOUND,"支付单不存在");
-        if(payment.appointmentId()!=null) return registeringService.registeringSimulatePayment(paymentId,request);
-        if(payment.drugOrderId()!=null) return orderService.simulateDrugOrderPayment(paymentId,request);
-        throw new CAuthException(ErrorCodeEnum.SYSTEM_ERROR,HttpStatus.INTERNAL_SERVER_ERROR,"支付单业务关联异常");
+        // 支付单不存在
+        if(payment==null)
+            throw new CAuthException(INVALID_USER_INPUT,HttpStatus.NOT_FOUND,"支付单不存在");
+        // 挂号支付
+        if(payment.appointmentId()!=null)
+            return registeringService.registeringSimulatePayment(paymentId,request);
+        // 购药支付
+        if(payment.drugOrderId()!=null)
+            return orderService.simulateDrugOrderPayment(paymentId,request);
+
+        throw new CAuthException(SYSTEM_ERROR,HttpStatus.INTERNAL_SERVER_ERROR,"支付单业务关联异常");
     }
 }

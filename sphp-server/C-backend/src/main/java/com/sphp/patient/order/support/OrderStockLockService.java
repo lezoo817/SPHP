@@ -18,6 +18,10 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
+import static com.sphp.patient.common.constant.OrderConstant.*;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.HIGH_CONCURRENCY_INVENTORY_CONFLICT;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.SYSTEM_ERROR;
+
 /**
  * 购药下单的 Redisson 多药品库存锁服务。
  */
@@ -38,25 +42,29 @@ public class OrderStockLockService {
      */
     public <T> T executeWithStockLocks(List<OrderStockRecord> stocks, Supplier<T> action) {
         List<RLock> locks = stocks.stream()
-                .sorted(Comparator.comparing(OrderStockRecord::pharmacyId).thenComparing(OrderStockRecord::drugId))
-                .map(stock -> redissonClient.getLock(OrderConstant.STOCK_LOCK_KEY_PREFIX
-                        + stock.pharmacyId() + ":" + stock.drugId()))
+                .sorted(Comparator.comparing(OrderStockRecord::pharmacyId) // 按药房 ID 排序
+                        .thenComparing(OrderStockRecord::drugId)) // 按药品 ID 排序
+                .map(stock -> redissonClient.getLock(
+                        STOCK_LOCK_KEY_PREFIX + stock.pharmacyId() + ":" + stock.drugId()))
                 .toList();
         List<RLock> acquired = new ArrayList<>();
+        // 锁需覆盖数据库提交，提交或回滚完成后再释放，避免其他请求读到未提交库存。
         boolean deferredRelease = false;
         try {
             for (RLock lock : locks) {
                 // 固定等待与租约时间，避免锁无限等待或泄漏。
-                if (!lock.tryLock(OrderConstant.STOCK_LOCK_WAIT_SECONDS, OrderConstant.STOCK_LOCK_LEASE_SECONDS,
+                if (!lock.tryLock(STOCK_LOCK_WAIT_SECONDS, STOCK_LOCK_LEASE_SECONDS,
                         TimeUnit.SECONDS)) {
                     throw concurrentConflict();
                 }
                 acquired.add(lock);
             }
+            // 事务需覆盖数据库提交，提交或回滚完成后再释放，避免其他请求读到未提交库存。
             if (!TransactionSynchronizationManager.isSynchronizationActive()) {
                 throw systemError("库存锁未处于事务环境");
             }
-            T result = action.get();
+            T result = action.get(); // 锁内业务
+
             // 锁需覆盖数据库提交，提交或回滚完成后再释放，避免其他请求读到未提交库存。
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -67,9 +75,11 @@ public class OrderStockLockService {
             deferredRelease = true;
             return result;
         } catch (InterruptedException exception) {
+            // 线程中断
             Thread.currentThread().interrupt();
             throw concurrentConflict();
         } finally {
+            // 如果锁未处于事务环境，则立即释放锁
             if (!deferredRelease) {
                 releaseLocks(acquired);
             }
@@ -84,6 +94,7 @@ public class OrderStockLockService {
     private void releaseLocks(List<RLock> locks) {
         for (int index = locks.size() - 1; index >= 0; index--) {
             RLock lock = locks.get(index);
+            // 避免锁未处于事务环境
             if (lock.isHeldByCurrentThread()) {
                 lock.unlock();
             }
@@ -96,7 +107,7 @@ public class OrderStockLockService {
      * @return HTTP 409 业务异常
      */
     private CAuthException concurrentConflict() {
-        return new CAuthException(ErrorCodeEnum.HIGH_CONCURRENCY_INVENTORY_CONFLICT,
+        return new CAuthException(HIGH_CONCURRENCY_INVENTORY_CONFLICT,
                 HttpStatus.CONFLICT, "当前药品库存正在处理中，请稍后重试");
     }
 
@@ -107,6 +118,6 @@ public class OrderStockLockService {
      * @return HTTP 500 业务异常
      */
     private CAuthException systemError(String message) {
-        return new CAuthException(ErrorCodeEnum.SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, message);
+        return new CAuthException(SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, message);
     }
 }
