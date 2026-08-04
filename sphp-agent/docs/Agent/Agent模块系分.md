@@ -1513,6 +1513,25 @@ Agent 依赖多个外部系统（LLM API、Java 后端、PostgreSQL、Redis）�
 > 患者隐私、草稿边界三类约束（M8-4 修正表述：真正缺口在 tool_caller 层而非 reply 层）。
 > 与 M8-3（B 端直达工具子图）配套，构成 B 端编排双改项。
 
+**当前患者上下文注入（M8-5）：**
+
+前端经 `context.patient_id` 传入当前接诊患者 ID（§6.2，B 端医生接诊 / C 端就诊人切换可选），
+`_build_initial_state` 提取写入 `AgentState.patient_id` 后，`tool_caller` 两层消费：
+
+1. **软约束（提示词）**：patient_id 非空时注入一条独立 system 消息
+   「当前接诊患者 ID：{id}（前端页面已选中的就诊患者）。涉及患者数据的工具必须携带
+   此 patient_id，直接使用，不要向用户索要患者 ID」——解决 B 端必填 patient_id 工具
+   联调时医生被反复追问患者 ID 的问题。
+2. **硬兜底（确定性补全）**：`_fill_missing_patient_id` 对 schema 将 patient_id 标为
+   必填的工具（B 端 5 个：query_patient_history / check_drug_interaction /
+   check_contraindication / check_allergy_risk / check_duplicate_medication）在 LLM
+   漏填参数时从 `state.patient_id` 补全；补全发生在 `_dedupe_tool_calls` **之前**，
+   保证补全后的参数参与去重对比，防子图循环重复调用。C 端 patient_id 选填（默认本人）
+   的工具不触碰，保留后端默认本人语义。
+
+> **设计依据**：B 端医生不可编造患者 ID（隐私边界），故 patient_id 仅来自前端 context，
+> Agent 不自行猜测；LLM 提示词约束不可靠，故用 schema 驱动的确定性补全兜底。
+
 ### 5.12 LangGraph 流式输出与 SSE 映射
 
 Agent 使用 LangGraph 的 `astream_events` API 获取流式输出，在路由级 SSE handler 中将 LangGraph 事件映射为 SSE 事件推送给前端。映射关系如下：
