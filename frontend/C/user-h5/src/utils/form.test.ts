@@ -16,6 +16,7 @@ import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, validateProfil
 import { resolveMinePatientId } from '../models/mine-patient';
 import { isSessionTokenExpired, type SessionState } from '../models/session';
 import { buildDoctorPagePath, findDoctorById, getDoctorScheduleDates } from './doctor';
+import { groupSlotsByHalfDay } from './doctor';
 import { buildAppointmentsPath } from '../services/registration';
 import { buildNotificationsPath } from '../services/notification';
 import { buildHealthTodos, canConfirmFollowUp, getMedicationPlanActions, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
@@ -146,6 +147,15 @@ describe('医生个人挂号页规则', () => {
 
   it('深链接回退查询时按医生 ID 定位资料', () => {
     expect(findDoctorById(2, [{ id: 1, name: '甲', registrationFeeCent: 100, availableCount: 1 }, { id: 2, name: '乙', registrationFeeCent: 100, availableCount: 0, departmentId: 3 }])?.departmentId).toBe(3);
+  });
+
+  it('按后端时段开始时间将号源划分为上午和下午', () => {
+    const slots = [
+      { slotId: 1, startTime: '2026-08-04T09:30:00+08:00', endTime: '2026-08-04T10:00:00+08:00', feeCent: 3000, availableCount: 5 },
+      { slotId: 2, startTime: '2026-08-04T12:00:00+08:00', endTime: '2026-08-04T12:30:00+08:00', feeCent: 3000, availableCount: 4 },
+    ];
+    expect(groupSlotsByHalfDay(slots).morning.map((item) => item.slotId)).toEqual([1]);
+    expect(groupSlotsByHalfDay(slots).afternoon.map((item) => item.slotId)).toEqual([2]);
   });
 });
 
