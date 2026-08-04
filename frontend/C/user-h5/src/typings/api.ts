@@ -174,6 +174,12 @@ export interface AppointmentDetail extends Appointment {
 }
 /** 分页响应。 */
 export interface PageData<T> { pageNo: number; pageSize: number; total: number; records: T[]; }
+/** 已完成问诊生成的报告列表项。 */
+export interface ReportItem { id: number; patientId: number; doctorName: string; departmentName: string; completedAt: string; updatedAt: string; }
+/** 医生病历报告详情。 */
+export interface ReportDetail extends ReportItem { doctorId: number; doctorNote: string; startedAt: string; }
+/** 已准备好的报告解读内容。 */
+export interface ReportInterpretation { reportId: number; content: string; disclaimer: string; generatedAt: string; }
 /** 问诊记录列表项。 */
 export interface Consultation { id: number; appointmentId: number; doctorName: string; status: 'DRAFT' | 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'NO_SHOW'; updatedAt: string; }
 /** 问诊详情与文字消息。 */

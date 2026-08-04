@@ -3,6 +3,7 @@ package com.sphp.patient.health.controller;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
+import com.sphp.patient.health.dto.ProposalReportCreateRequest;
 import com.sphp.patient.health.handler.ProposalExceptionHandler;
 import com.sphp.patient.health.service.ProposalService;
 import com.sphp.patient.health.vo.ProposalFollowUpVO;
@@ -32,6 +33,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -76,6 +78,18 @@ class ProposalControllerTest {
                 .andExpect(jsonPath("$.code").value("00000"))
                 .andExpect(jsonPath("$.data.reportId").value(7001L))
                 .andExpect(jsonPath("$.data.status").value("RECORDED"));
+    }
+
+    /**
+     * 验证历史报告录入接口保留兼容行为并显式标记为废弃。
+     *
+     * @throws NoSuchMethodException 控制器方法缺失时抛出
+     */
+    @Test
+    void proposalCreateReportIsDeprecatedForNewClients() throws NoSuchMethodException {
+        assertTrue(ProposalController.class
+                .getDeclaredMethod("proposalCreateReport", String.class, ProposalReportCreateRequest.class)
+                .isAnnotationPresent(Deprecated.class));
     }
 
     /**
@@ -133,14 +147,15 @@ class ProposalControllerTest {
     @Test
     void proposalGetReportInterpretationReturnsReadyContent() throws Exception {
         ProposalService service = mock(ProposalService.class);
-        ProposalReportInterpretationVO interpretation = new ProposalReportInterpretationVO();
-        interpretation.setReportId(7001L);
-        interpretation.setDisclaimer("仅供参考");
+        ProposalReportInterpretationVO interpretation = ProposalReportInterpretationVO.builder()
+                .reportId(7001L).content("建议规律复诊").disclaimer("仅供参考")
+                .generatedAt(OffsetDateTime.parse("2026-08-02T10:00:00+08:00")).build();
         when(service.proposalGetReportInterpretation(7001L)).thenReturn(interpretation);
 
         newMockMvc(service, mock(CIdempotencyService.class)).perform(get("/c/v1/reports/7001/interpretation"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.reportId").value(7001L))
+                .andExpect(jsonPath("$.data.content").value("建议规律复诊"))
                 .andExpect(jsonPath("$.data.disclaimer").value("仅供参考"));
     }
 

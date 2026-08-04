@@ -50,42 +50,6 @@ public interface ProposalDataMapper {
             @Param("reportId") Long reportId);
 
     /**
-     * 分页查询患者的未删除检查报告及指标数量。
-     *
-     * @param patientId 患者 ID
-     * @param limit 分页大小
-     * @param offset 分页偏移量
-     * @return 报告列表投影
-     */
-    List<ReportListRecord> proposalSelectReports(@Param("patientId") Long patientId,
-                                                  @Param("limit") int limit,
-                                                  @Param("offset") long offset);
-
-    /**
-     * 统计患者的未删除检查报告数量。
-     *
-     * @param patientId 患者 ID
-     * @return 报告总数
-     */
-    long proposalCountReports(@Param("patientId") Long patientId);
-
-    /**
-     * 按 ID 查询未删除检查报告的资源投影。
-     *
-     * @param reportId 报告 ID
-     * @return 报告投影，不存在时返回 null
-     */
-    ReportRecord proposalSelectReport(@Param("reportId") Long reportId);
-
-    /**
-     * 按报告 ID 查询指标并保持创建顺序。
-     *
-     * @param reportId 报告 ID
-     * @return 指标投影列表
-     */
-    List<IndicatorRecord> proposalSelectIndicators(@Param("reportId") Long reportId);
-
-    /**
      * 按患者和可选状态查询用药计划。
      *
      * @param patientId 患者 ID

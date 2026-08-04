@@ -1,6 +1,5 @@
 package com.sphp.patient.health.service.impl;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
@@ -11,17 +10,19 @@ import com.sphp.patient.health.dto.ProposalReportCreateRequest;
 import com.sphp.patient.health.entity.ProposalPatientReport;
 import com.sphp.patient.health.entity.ProposalReportIndicator;
 import com.sphp.patient.health.mapper.ConsultationReportRecord;
+import com.sphp.patient.health.mapper.ConsultationReportInterpretationRecord;
+import com.sphp.patient.health.mapper.ConsultationReportListRecord;
 import com.sphp.patient.health.mapper.FollowUpRecord;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
 import com.sphp.patient.health.mapper.MedicationRecord;
 import com.sphp.patient.health.mapper.ProposalDataMapper;
 import com.sphp.patient.health.mapper.ProposalReportIndicatorMapper;
 import com.sphp.patient.health.mapper.ProposalReportMapper;
-import com.sphp.patient.health.mapper.ReportRecord;
 import com.sphp.patient.health.vo.ProposalFollowUpVO;
 import com.sphp.patient.health.vo.ProposalMedicationPlanVO;
 import com.sphp.patient.health.vo.ProposalReportCreateVO;
 import com.sphp.patient.health.vo.ProposalReportInterpretationVO;
+import com.sphp.patient.health.vo.ProposalReportPageVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -83,6 +84,32 @@ class ProposalServiceImplTest {
     }
 
     /**
+     * 验证报告列表使用当前可访问患者范围，并映射医生病历摘要字段。
+     */
+    @Test
+    void proposalListReportsMapsCompletedDoctorNotes() {
+        ProposalDataMapper dataMapper = mock(ProposalDataMapper.class);
+        OffsetDateTime completedAt = OffsetDateTime.parse("2026-08-02T09:30:00+08:00");
+        OffsetDateTime updatedAt = OffsetDateTime.parse("2026-08-02T09:35:00+08:00");
+        when(dataMapper.proposalSelectConsultationReports(20001L, 20, 0L)).thenReturn(List.of(
+                new ConsultationReportListRecord(7001L, 20001L, "张医生", "呼吸内科", completedAt, updatedAt)));
+        when(dataMapper.proposalCountConsultationReports(20001L)).thenReturn(1L);
+        ProposalServiceImpl service = service(authorizedPatientMapper(), mock(ProposalReportMapper.class),
+                mock(ProposalReportIndicatorMapper.class), dataMapper);
+        setUserContext();
+
+        ProposalReportPageVO result = service.proposalListReports(null, null, null);
+
+        assertEquals(1, result.getPageNo());
+        assertEquals(20, result.getPageSize());
+        assertEquals(1L, result.getTotal());
+        assertEquals("张医生", result.getRecords().getFirst().getDoctorName());
+        assertEquals("呼吸内科", result.getRecords().getFirst().getDepartmentName());
+        assertEquals(completedAt, result.getRecords().getFirst().getCompletedAt());
+        verify(dataMapper).proposalSelectConsultationReports(20001L, 20, 0L);
+    }
+
+    /**
      * 验证报告资源归属当前账号以外时拒绝访问。
      */
     @Test
@@ -112,9 +139,10 @@ class ProposalServiceImplTest {
     void proposalGetReportInterpretationReadsReadyContent() {
         HealthPatientMapper patientMapper = authorizedPatientMapper();
         ProposalDataMapper dataMapper = mock(ProposalDataMapper.class);
-        when(dataMapper.proposalSelectReport(7001L)).thenReturn(new ReportRecord(7001L, 20001L,
-                "血常规", LocalDate.of(2026, 8, 2), "READY",
-                "{\"reportId\":7001,\"disclaimer\":\"仅供参考\"}"));
+        when(dataMapper.proposalSelectConsultationReport(7001L)).thenReturn(consultationReport(20001L));
+        when(dataMapper.proposalSelectReadyConsultationReportInterpretation(7001L)).thenReturn(
+                new ConsultationReportInterpretationRecord("建议规律复诊", "仅供参考",
+                        OffsetDateTime.parse("2026-08-02T10:00:00+08:00")));
         ProposalServiceImpl service = service(patientMapper, mock(ProposalReportMapper.class),
                 mock(ProposalReportIndicatorMapper.class), dataMapper);
         setUserContext();
@@ -122,6 +150,7 @@ class ProposalServiceImplTest {
         ProposalReportInterpretationVO result = service.proposalGetReportInterpretation(7001L);
 
         assertEquals(7001L, result.getReportId());
+        assertEquals("建议规律复诊", result.getContent());
         assertEquals("仅供参考", result.getDisclaimer());
     }
 
@@ -132,8 +161,7 @@ class ProposalServiceImplTest {
     void proposalGetReportInterpretationRejectsPendingStatus() {
         HealthPatientMapper patientMapper = authorizedPatientMapper();
         ProposalDataMapper dataMapper = mock(ProposalDataMapper.class);
-        when(dataMapper.proposalSelectReport(7001L)).thenReturn(new ReportRecord(7001L, 20001L,
-                "血常规", LocalDate.of(2026, 8, 2), "PENDING", null));
+        when(dataMapper.proposalSelectConsultationReport(7001L)).thenReturn(consultationReport(20001L));
         ProposalServiceImpl service = service(patientMapper, mock(ProposalReportMapper.class),
                 mock(ProposalReportIndicatorMapper.class), dataMapper);
         setUserContext();
@@ -302,7 +330,20 @@ class ProposalServiceImplTest {
      */
     private ProposalServiceImpl service(HealthPatientMapper patientMapper, ProposalReportMapper reportMapper,
                                         ProposalReportIndicatorMapper indicatorMapper, ProposalDataMapper dataMapper) {
-        return new ProposalServiceImpl(patientMapper, reportMapper, indicatorMapper, dataMapper, new ObjectMapper());
+        return new ProposalServiceImpl(patientMapper, reportMapper, indicatorMapper, dataMapper);
+    }
+
+    /**
+     * 创建可向当前患者展示的已完成医生病历。
+     *
+     * @param patientId 就诊人 ID
+     * @return 医生病历报告投影
+     */
+    private ConsultationReportRecord consultationReport(Long patientId) {
+        return new ConsultationReportRecord(7001L, patientId, 30001L, "张医生", "呼吸内科", "医生病历正文",
+                OffsetDateTime.parse("2026-08-02T09:00:00+08:00"),
+                OffsetDateTime.parse("2026-08-02T09:30:00+08:00"),
+                OffsetDateTime.parse("2026-08-02T09:35:00+08:00"));
     }
 
     /**

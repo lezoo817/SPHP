@@ -53,44 +53,16 @@
           AND cr.deleted_at IS NULL
     </select>
 
-    <select id="proposalSelectReports" resultType="com.sphp.patient.health.mapper.ReportListRecord">
-        SELECT r.id,
-               r.report_name,
-               r.report_date,
-               COUNT(i.id) AS indicator_count
-        FROM patient_report r
-                 LEFT JOIN patient_report_indicator i ON i.report_id = r.id
-        WHERE r.patient_id = #{patientId}
-          AND r.deleted_at IS NULL
-        GROUP BY r.id, r.report_name, r.report_date
-        ORDER BY r.report_date DESC, r.id DESC
-        LIMIT #{limit} OFFSET #{offset}
-    </select>
-
-    <select id="proposalCountReports" resultType="long">
-        SELECT COUNT(1)
-        FROM patient_report
-        WHERE patient_id = #{patientId}
+    <select id="proposalSelectReadyConsultationReportInterpretation"
+            resultType="com.sphp.patient.health.mapper.ConsultationReportInterpretationRecord">
+        SELECT content,
+               disclaimer,
+               generated_at
+        FROM consultation_report_interpretation
+        WHERE consult_id = #{reportId}
+          AND status = 'READY'
+          AND content IS NOT NULL
           AND deleted_at IS NULL
-    </select>
-
-    <select id="proposalSelectReport" resultType="com.sphp.patient.health.mapper.ReportRecord">
-        SELECT id,
-               patient_id,
-               report_name,
-               report_date,
-               interpretation_status,
-               interpretation::text AS interpretation
-        FROM patient_report
-        WHERE id = #{reportId}
-          AND deleted_at IS NULL
-    </select>
-
-    <select id="proposalSelectIndicators" resultType="com.sphp.patient.health.mapper.IndicatorRecord">
-        SELECT name, value, unit, reference_range
-        FROM patient_report_indicator
-        WHERE report_id = #{reportId}
-        ORDER BY id ASC
     </select>
 
     <select id="proposalSelectMedications" resultType="com.sphp.patient.health.mapper.MedicationRecord">
