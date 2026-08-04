@@ -45,6 +45,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -135,14 +136,41 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (scheduleDate.isBefore(LocalDate.now())) {
             throw new BusinessException("A0400", "排班日期不能早于今天");
         }
-        // 唯一约束：同医生同日期同班次
-        long exists = scheduleMapper.selectCount(Wrappers.<Schedule>lambdaQuery()
+        // 唯一校验：同医生同日期同班次。已作废（CANCELLED）的排班允许重新建立——
+        // 原地复用该行并重置为草稿；存在 DRAFT/PUBLISHED 有效排班时禁止重复创建
+        List<Schedule> exists = scheduleMapper.selectList(Wrappers.<Schedule>lambdaQuery()
                 .eq(Schedule::getDoctorId, doctor.getId())
                 .eq(Schedule::getScheduleDate, scheduleDate)
                 .eq(Schedule::getShift, request.getShift())
                 .isNull(Schedule::getDeletedAt));
-        if (exists > 0) {
-            throw new BusinessException("A0443", "该医生当天该班次已存在排班");
+        Schedule cancelled = null;
+        for (Schedule s : exists) {
+            if (STATUS_CANCELLED.equals(s.getStatus())) {
+                cancelled = s;
+            } else {
+                throw new BusinessException("A0443", "该医生当天该班次已存在排班");
+            }
+        }
+        if (cancelled != null) {
+            // 复用已作废排班：重置为草稿并清理旧时段，等价于重新建立该排班
+            scheduleMapper.update(null, Wrappers.<Schedule>lambdaUpdate()
+                    .set(Schedule::getStatus, STATUS_DRAFT)
+                    .set(Schedule::getTotalSlots, request.getTotalSlots())
+                    .set(Schedule::getPublishedAt, null)
+                    .set(Schedule::getUpdatedAt, OffsetDateTime.now())
+                    .eq(Schedule::getId, cancelled.getId()));
+            slotMapper.update(null, Wrappers.<Slot>lambdaUpdate()
+                    .set(Slot::getDeletedAt, OffsetDateTime.now())
+                    .set(Slot::getUpdatedAt, OffsetDateTime.now())
+                    .eq(Slot::getScheduleId, cancelled.getId())
+                    .isNull(Slot::getDeletedAt));
+            log.info("重新建立已作废排班 scheduleId={}, doctorId={}, date={}, shift={}, totalSlots={}",
+                    cancelled.getId(), doctor.getId(), scheduleDate, request.getShift(), request.getTotalSlots());
+            return ScheduleCreateVO.builder()
+                    .id(cancelled.getId())
+                    .status(STATUS_DRAFT)
+                    .createdAt(cancelled.getCreatedAt())
+                    .build();
         }
 
         Schedule schedule = new Schedule();
@@ -222,8 +250,13 @@ public class ScheduleServiceImpl implements ScheduleService {
             }
         }
 
-        // 重建时段：删除旧时段后插入（仅 DRAFT 排班无已发布快照，物理删除安全）
-        slotMapper.delete(Wrappers.<Slot>lambdaQuery().eq(Slot::getScheduleId, schedule.getId()));
+        // 重建时段：旧时段逻辑删除（复用已作废排班时旧时段可能仍关联历史快照，
+        // 物理删除会触发 slot_snapshot 外键约束），再插入新时段
+        slotMapper.update(null, Wrappers.<Slot>lambdaUpdate()
+                .set(Slot::getDeletedAt, OffsetDateTime.now())
+                .set(Slot::getUpdatedAt, OffsetDateTime.now())
+                .eq(Slot::getScheduleId, schedule.getId())
+                .isNull(Slot::getDeletedAt));
         slots.forEach(slotMapper::insert);
         log.info("配置排班号源时段 scheduleId={}, 时段数={}, 号源和={}/{}",
                 schedule.getId(), slots.size(), sum, schedule.getTotalSlots());
@@ -257,6 +290,8 @@ public class ScheduleServiceImpl implements ScheduleService {
         for (Slot slot : slots) {
             redisTemplate.opsForValue().set(redisKey(slot.getId()), String.valueOf(slot.getRemainCount()));
         }
+        // 生成号源快照：号源池以 slot_snapshot 的 AVAILABLE 记录为准，发布后患者即可预约
+        generateSlotSnapshots(slots);
         log.info("发布排班 scheduleId={}, 时段数={}", schedule.getId(), slots.size());
         return SchedulePublishVO.builder()
                 .id(schedule.getId())
@@ -282,6 +317,8 @@ public class ScheduleServiceImpl implements ScheduleService {
             }
             // 释放 LOCKED 快照为 AVAILABLE，并 Redis INCR 归还 remain_count（§5.4.6）
             releaseLockedSnapshots(slots);
+            // 清空该排班全部 AVAILABLE 号源快照：取消发布后号源池随之清空，避免残留可约数据
+            slotSnapshotMapper.clearAvailableSnapshotsBySchedule(schedule.getId());
         }
         // 批量删除该排班下所有时段的 Redis 号源缓存（防残留误读）
         deleteSlotCache(slots);
@@ -424,6 +461,32 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     /** 取消发布时释放 LOCKED 快照为 AVAILABLE，并对所属时段 Redis INCR 归还（§5.4.6） */
+    /**
+     * 按时段号源数生成 AVAILABLE 号源快照（幂等：已有有效快照的时段跳过）。
+     *
+     * <p>号源池以 slot_snapshot 的 AVAILABLE 记录为准，C 端可约数与锁号均基于
+     * AVAILABLE 快照计数（§4.2.3），故发布排班时必须同步生成快照，否则号源池为空、
+     * 患者无法预约。单条 SQL 按 generate_series 批量插入，避免逐行循环。
+     */
+    private void generateSlotSnapshots(List<Slot> slots) {
+        if (slots.isEmpty()) {
+            return;
+        }
+        List<Long> slotIds = slots.stream().map(Slot::getId).toList();
+        // 已存在有效快照的时段跳过，防止重复生成（发布仅草稿态可进入，正常不会触发）
+        Set<Long> existSlotIds = slotSnapshotMapper.selectList(Wrappers.<SlotSnapshot>lambdaQuery()
+                        .in(SlotSnapshot::getSlotId, slotIds)
+                        .isNull(SlotSnapshot::getDeletedAt))
+                .stream()
+                .map(SlotSnapshot::getSlotId)
+                .collect(Collectors.toSet());
+        for (Slot slot : slots) {
+            if (!existSlotIds.contains(slot.getId())) {
+                slotSnapshotMapper.generateAvailableSnapshots(slot.getId(), slot.getTotalCount());
+            }
+        }
+    }
+
     private void releaseLockedSnapshots(List<Slot> slots) {
         if (slots.isEmpty()) {
             return;
