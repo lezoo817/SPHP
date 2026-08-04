@@ -273,8 +273,15 @@ export default function DepartmentList() {
           <ProFormSelect
             name="headDoctorId"
             label="科室主任"
-            placeholder="请选择科室主任（可选）"
+            placeholder={
+              editingDept
+                ? '请选择科室主任（可选）'
+                : '新增科室暂无负责人可选，创建后可在编辑中设置'
+            }
             showSearch
+            // 新增时科室尚不存在，任何医生都还不属于本科室（后端会拒绝跨科负责人），
+            // 禁用选择器并提示先创建科室后到编辑中设置负责人，避免误选其它科医生
+            disabled={!editingDept}
             request={(input) => fetchDoctors(input?.key ?? '', editingDept?.id)}
             debounceTime={300}
           />
