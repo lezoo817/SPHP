@@ -49,6 +49,30 @@ def reset_idempotency_context(token: Token[str | None]) -> None:
     _IDEMPOTENCY_CONTEXT.reset(token)
 
 
+# JWT 透传（C 端拦截器硬需求）：C 端 Java 拦截器强制 Authorization: Bearer、
+# 拒绝 X-User-Id（返回 401 "不允许使用外部用户身份头"）。与幂等键对称复用
+# ContextVar 模式--chat_stream 将 JWT 写入 AgentState.jwt_token，tool_executor
+# 注入 __jwt_token__ 内部键经 MCP 链路透传，dispatcher._wrap 剥离后设置本
+# ContextVar，call_java_api 读取并注入 Authorization 头；finally 恢复。
+# 无 JWT（内部/匿名/B 端未传）时 call_java_api 回落 X-User-Id。
+_JWT_CONTEXT: ContextVar[str | None] = ContextVar("jwt_token", default=None)
+
+
+def set_jwt_context(token: str) -> Token[str | None]:
+    """设置当前任务栈的 JWT，返回恢复句柄（dispatcher._wrap 使用）。"""
+    return _JWT_CONTEXT.set(token)
+
+
+def reset_jwt_context(token: Token[str | None]) -> None:
+    """恢复调用前 JWT 上下文（dispatcher._wrap 使用）。"""
+    _JWT_CONTEXT.reset(token)
+
+
+def get_jwt_context() -> str | None:
+    """读取当前任务栈的 JWT（call_java_api 注入 Authorization 头使用）。"""
+    return _JWT_CONTEXT.get()
+
+
 class _RetryableJavaError(Exception):
     """瞬时故障（连接层超时/拒绝、网关 5xx），可安全重试。
 
@@ -223,7 +247,13 @@ async def call_java_api(
     url = f"{settings.java_base_url}{path}"
 
     headers = {"Content-Type": "application/json"}
-    if user_id is not None:
+    # 身份头互斥（C 端拦截器硬需求）：有 JWT 时用 Authorization: Bearer 且
+    # 绝不发 X-User-Id（拦截器见 X-User-Id 直接 401）；无 JWT（内部/匿名/
+    # B 端未传）回落 X-User-Id 做数据隔离。
+    jwt_token = get_jwt_context()
+    if jwt_token:
+        headers["Authorization"] = f"Bearer {jwt_token}"
+    elif user_id is not None:
         headers["X-User-Id"] = str(user_id)
 
     method_upper = method.upper()

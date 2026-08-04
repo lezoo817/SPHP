@@ -784,6 +784,9 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
             "user_id": getattr(request.state, "user_id", None),
             "scope": getattr(request.state, "scope", "c_end"),
             "session_id": req.session_id,
+            # JWT 透传（C 端拦截器硬需求）：L2 确认执行的工具调用经
+            # call_java_api 需 Authorization: Bearer；中间件已注入 jwt_token。
+            "jwt_token": getattr(request.state, "jwt_token", None),
         },
     )
     # P2 审计溯源：人工点击确认触发的 L2 工具执行，审计标记
