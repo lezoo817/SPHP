@@ -2,6 +2,57 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.sphp.patient.health.mapper.ProposalDataMapper">
 
+    <select id="proposalSelectConsultationReports"
+            resultType="com.sphp.patient.health.mapper.ConsultationReportListRecord">
+        SELECT cr.id,
+               cr.patient_id AS patient_id,
+               d.name AS doctor_name,
+               dept.name AS department_name,
+               cr.ended_at AS completed_at,
+               cr.updated_at
+        FROM consult_record cr
+                 JOIN doctor d ON d.id = cr.doctor_id
+                 LEFT JOIN department dept ON dept.id = d.dept_id
+        WHERE cr.patient_id = #{patientId}
+          AND cr.status = 'COMPLETED'
+          AND cr.doctor_note IS NOT NULL
+          AND btrim(cr.doctor_note) <> ''
+          AND cr.deleted_at IS NULL
+        ORDER BY cr.ended_at DESC NULLS LAST, cr.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="proposalCountConsultationReports" resultType="long">
+        SELECT COUNT(1)
+        FROM consult_record cr
+        WHERE cr.patient_id = #{patientId}
+          AND cr.status = 'COMPLETED'
+          AND cr.doctor_note IS NOT NULL
+          AND btrim(cr.doctor_note) <> ''
+          AND cr.deleted_at IS NULL
+    </select>
+
+    <select id="proposalSelectConsultationReport"
+            resultType="com.sphp.patient.health.mapper.ConsultationReportRecord">
+        SELECT cr.id,
+               cr.patient_id AS patient_id,
+               cr.doctor_id AS doctor_id,
+               d.name AS doctor_name,
+               dept.name AS department_name,
+               cr.doctor_note,
+               cr.started_at,
+               cr.ended_at AS completed_at,
+               cr.updated_at
+        FROM consult_record cr
+                 JOIN doctor d ON d.id = cr.doctor_id
+                 LEFT JOIN department dept ON dept.id = d.dept_id
+        WHERE cr.id = #{reportId}
+          AND cr.status = 'COMPLETED'
+          AND cr.doctor_note IS NOT NULL
+          AND btrim(cr.doctor_note) <> ''
+          AND cr.deleted_at IS NULL
+    </select>
+
     <select id="proposalSelectReports" resultType="com.sphp.patient.health.mapper.ReportListRecord">
         SELECT r.id,
                r.report_name,

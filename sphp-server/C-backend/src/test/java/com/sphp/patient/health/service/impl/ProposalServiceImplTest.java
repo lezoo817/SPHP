@@ -10,6 +10,7 @@ import com.sphp.patient.health.dto.ProposalMedicationUpdateRequest;
 import com.sphp.patient.health.dto.ProposalReportCreateRequest;
 import com.sphp.patient.health.entity.ProposalPatientReport;
 import com.sphp.patient.health.entity.ProposalReportIndicator;
+import com.sphp.patient.health.mapper.ConsultationReportRecord;
 import com.sphp.patient.health.mapper.FollowUpRecord;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
 import com.sphp.patient.health.mapper.MedicationRecord;
@@ -88,8 +89,11 @@ class ProposalServiceImplTest {
     void proposalGetReportRejectsForeignPatientResource() {
         HealthPatientMapper patientMapper = mock(HealthPatientMapper.class);
         ProposalDataMapper dataMapper = mock(ProposalDataMapper.class);
-        when(dataMapper.proposalSelectReport(7001L)).thenReturn(new ReportRecord(7001L, 20002L,
-                "血常规", LocalDate.of(2026, 8, 2), "READY", "{}"));
+        when(dataMapper.proposalSelectConsultationReport(7001L)).thenReturn(new ConsultationReportRecord(
+                7001L, 20002L, 30001L, "张医生", "呼吸内科", "医生病历正文",
+                OffsetDateTime.parse("2026-08-02T09:00:00+08:00"),
+                OffsetDateTime.parse("2026-08-02T09:30:00+08:00"),
+                OffsetDateTime.parse("2026-08-02T09:35:00+08:00")));
         when(patientMapper.existsActivePatient(20002L)).thenReturn(true);
         when(patientMapper.hasActivePatientRelation(10001L, 20002L)).thenReturn(false);
         ProposalServiceImpl service = service(patientMapper, mock(ProposalReportMapper.class),
