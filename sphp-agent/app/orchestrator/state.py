@@ -41,6 +41,13 @@ class AgentState(TypedDict):
     # B 端医院 ID / C 端 context.hospital_id
     hospital_id: int | None
 
+    # 当前问诊患者 ID（系分 §6.2 context.patient_id，M8-5）
+    # B 端医生接诊时由前端 context 传入（医生工作台当前选中的就诊患者）；
+    # C 端可选（就诊人切换时传入，健康工具 patient_id 选填默认本人）。
+    # 由 _build_initial_state 提取写入，供 tool_caller 注入 LLM 上下文，
+    # 并对 schema 必填 patient_id 的工具做确定性补全。
+    patient_id: int | None
+
     # LLM 决定调用的工具列表，由 tool_caller 节点写入
     tool_calls: list[dict[str, Any]] | None
 

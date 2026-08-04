@@ -116,6 +116,66 @@ def _format_pending(pending: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _build_patient_context(state: AgentState) -> str | None:
+    """构造当前接诊患者上下文（M8-5，注入 tool_caller 的 LLM 输入）。
+
+    前端 ``context.patient_id`` 经 ``_build_initial_state`` 写入 AgentState 后，
+    在此告知 LLM 当前患者 ID。B 端工具普遍必填 ``patient_id``
+    （query_patient_history / check_drug_interaction 等 5 个），此前 LLM 上下文
+    无"当前接诊患者"信息，联调时医生被反复追问患者 ID；注入后 LLM 直接携带该
+    ID，不再索要。
+
+    Args:
+        state: 当前图状态，含 patient_id 字段。
+
+    Returns:
+        str | None: 患者上下文提示；``patient_id`` 为 None（前端未传入就诊患者）
+            时不注入，避免把编造的 ID 塞给 LLM。
+    """
+    patient_id = state.get("patient_id")
+    if patient_id is None:
+        return None
+    return (
+        f"当前接诊患者 ID：{patient_id}（前端页面已选中的就诊患者）。"
+        "涉及患者数据的工具必须携带此 patient_id，直接使用，不要向用户索要患者 ID。"
+    )
+
+
+def _fill_missing_patient_id(
+    tool_calls: list[dict[str, Any]], patient_id: int | None
+) -> list[dict[str, Any]]:
+    """自动补全必填 patient_id 工具参数（M8-5 确定性兜底）。
+
+    B 端 5 个工具（query_patient_history / check_drug_interaction /
+    check_contraindication / check_allergy_risk / check_duplicate_medication）的
+    schema 将 patient_id 标为必填。LLM 提示词约束不可靠（可能漏填或编造），此处
+    对"工具 schema 必填 patient_id 且 LLM 未填"的调用从 ``state.patient_id``
+    （前端 context.patient_id）确定性补全，杜绝 Java 侧 patient_id 缺失报错 /
+    医生被反复索要患者 ID。C 端 patient_id 选填（默认本人）的工具不触碰。
+
+    Args:
+        tool_calls: LLM 提取出的工具调用列表（[{name, arguments}]）。
+        patient_id: AgentState.patient_id（当前接诊患者 ID）；None 时不补全。
+
+    Returns:
+        list[dict]: 补全后的新列表（不可变，原列表不修改）。
+    """
+    if patient_id is None:
+        return tool_calls
+    filled: list[dict[str, Any]] = []
+    for call in tool_calls:
+        args = call.get("arguments") or {}
+        tool = ToolRegistry.get_tool(call["name"])
+        requires_patient_id = bool(
+            tool is not None and "patient_id" in tool.parameters.get("required", [])
+        )
+        if requires_patient_id and "patient_id" not in args:
+            filled.append({**call, "arguments": {**args, "patient_id": patient_id}})
+        else:
+            filled.append(call)
+    return filled
+
+
 async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None) -> dict[str, Any]:
     """LLM 决定调用工具，返回 ``{"tool_calls": [...]}``。
 
@@ -189,6 +249,13 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     )
     messages = [{"role": "system", "content": system_prompt}] + history
 
+    # M8-5：注入当前接诊患者上下文（前端 context.patient_id 非空时），
+    # LLM 直接携带该 ID，避免 B 端必填 patient_id 工具反复向医生索要患者 ID。
+    # 独立 system 消息而非拼进主提示词——无患者时零侵入，有患者时显式可见。
+    patient_ctx = _build_patient_context(state)
+    if patient_ctx:
+        messages.append({"role": "system", "content": patient_ctx})
+
     # 注入已执行工具的结果（子图循环累积了前面所有轮次，LLM 分步决策可见）
     tool_results = state.get("tool_results")
     if tool_results:
@@ -212,6 +279,10 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     try:
         response = await llm_with_tools.ainvoke(messages)
         tool_calls = _extract_tool_calls(response, tool_scope, effective_allowed)
+        # M8-5：必填 patient_id 工具漏填时确定性补全（放在去重前——补全后的参数
+        # 才是实际执行参数，去重按补全后对比，避免"轮 2 漏填未被去重、补全后与
+        # 轮 1 实际执行参数相同仍被执行"的重复调用）。
+        tool_calls = _fill_missing_patient_id(tool_calls, state.get("patient_id"))
         # 软兜底：拦截「相同参数 + 上次已成功」的重复调用（LLM 提示词收敛不可靠，
         # 这里做确定性去重——循环问题 P3-6）。意外截断/失败的重试放行，操作型 L2
         # 不进入 tool_results 天然豁免。M8-1：同时对比 pending_confirmations，

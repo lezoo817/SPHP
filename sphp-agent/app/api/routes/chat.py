@@ -150,19 +150,25 @@ def _build_initial_state(
             },
         )
 
+    scope = getattr(request.state, "scope", req.scope)
     return {
         "messages": messages,
         "session_id": session_id,
         "intent": None,
         "user_id": getattr(request.state, "user_id", None),
-        "scope": getattr(request.state, "scope", req.scope),
+        "scope": scope,
         # M6-B1 鉴权去重：完整复制中间件注入的 B 端身份字段，auth_node 直接消费
         "roles": getattr(request.state, "roles", None),
         "dept_id": getattr(request.state, "dept_id", None),
         "doctor_id": getattr(request.state, "doctor_id", None),
-        # C 端 hospital_id 无中间件注入值（None）时退回请求 context
-        "hospital_id": getattr(request.state, "hospital_id", None)
-        or (req.context or {}).get("hospital_id"),
+        # 按 scope 解析 hospital_id：C 端 context（页面当前选择的医院）优先、
+        # JWT 兜底；B 端 JWT（医生所属医院）权威、context 不覆盖（防跨医院越权）。
+        # 原 `or` 逻辑 JWT 恒优先，C 端 JWT 带 hospitalId 时会忽略页面切换的医院。
+        "hospital_id": _resolve_hospital_id(scope, request, req.context),
+        # M8-5：当前问诊患者 ID 只来自请求 context（B 端医生接诊时前端选中，
+        # C 端就诊人切换可选），JWT 鉴权无此字段，故不做中间件回退。
+        # 供 tool_caller 注入 LLM 上下文并对必填 patient_id 工具确定性补全。
+        "patient_id": (req.context or {}).get("patient_id"),
         "tool_calls": None,
         "tool_results": None,
         "pending_confirmations": None,
@@ -171,6 +177,33 @@ def _build_initial_state(
         "rag_context": None,
         "tool_iteration": None,
     }
+
+
+def _resolve_hospital_id(
+    scope: str, request: Request, context: dict[str, Any] | None
+) -> int | None:
+    """按 scope 解析 hospital_id 优先级（系分 §6.2 context 表）。
+
+    C 端：hospital_id 是页面"当前选择的医院"（查科室/号源等工具必填），
+    前端每次切换医院经 context 传入，故 **context 优先、JWT 兜底**——若 JWT
+    携带的默认 hospitalId 覆盖 context，用户切医院后挂号/导诊会打到旧医院。
+
+    B 端：医生所属医院以 JWT（token/parse 的 hospitalId）为准，**context 不
+    覆盖**——医生必须且只能在自己所属医院内操作，防前端伪造跨医院越权。
+
+    Args:
+        scope: 当前服务端 c_end / b_end。
+        request: FastAPI 请求（含中间件注入的 hospital_id）。
+        context: 请求附加上下文（含 context.hospital_id）。
+
+    Returns:
+        int | None: 解析后的医院 ID；两者均缺失时返回 None。
+    """
+    jwt_hospital_id = getattr(request.state, "hospital_id", None)
+    ctx_hospital_id = (context or {}).get("hospital_id")
+    if scope == "b_end":
+        return jwt_hospital_id
+    return ctx_hospital_id if ctx_hospital_id is not None else jwt_hospital_id
 
 
 def _handle_message_chunk(
