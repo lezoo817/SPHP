@@ -22,6 +22,7 @@ import { buildNotificationsPath } from '../services/notification';
 import { buildHealthTodos, canConfirmFollowUp, getMedicationPlanActions, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
 import { buildDeliveryAddressPath } from '../services/delivery-address';
 import { buildDeliveryAddressPayload, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
+import { getAssistantTabs, getCurrentFlowAction } from './assistant';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -45,6 +46,17 @@ describe('前端表单与联调规则', () => {
 describe('就诊人默认选择', () => {
   it('优先选择本人而非全局家属选择', () => {
     expect(resolveSelfPatientId([{ patientId: 2, relation: 'CHILD' }, { patientId: 1, relation: 'SELF' }])).toBe(1);
+  });
+});
+
+describe('就诊助手展示规则', () => {
+  it('仅展示挂号记录和处方两个分类', () => {
+    expect(getAssistantTabs).toEqual(['挂号记录', '处方']);
+  });
+
+  it('仅未支付订单可进入支付，已支付订单保持等待就诊', () => {
+    expect(getCurrentFlowAction('UNPAID')).toBe('PAY');
+    expect(getCurrentFlowAction('PAID')).toBe('WAITING');
   });
 });
 
