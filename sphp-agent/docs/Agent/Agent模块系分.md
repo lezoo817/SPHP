@@ -567,23 +567,41 @@ graph TD
 | 咨询 (qa) | 医疗知识问答 | RAG 检索 → 回复生成 |
 | 闲聊 (chitchat) | 非业务对话 | 直接 LLM 回复 |
 
+**B 端意图定义（M8-3）：**
+
+C 端按上表 6 类意图做 LLM 分类；**B 端（scope=b_end）不做意图分类**——
+auth_node 后直接进入 B 端全量工具子图（绑定全部 9 个 B 端 L1/L2 工具）。
+
+| 场景 | 处理方式 |
+|------|----------|
+| 查患者/查药/处方审核/报告解读等问诊类提问 | 直达 B 端工具子图，LLM 基于 9 工具决策（跳过意图分类，省一次 LLM 调用） |
+| 纯会话/非工具需求 | 工具子图内 LLM 不选工具 → 空 tool_calls → 结束子图 → reply_node 直接回复 |
+
+> **设计依据**：C 端 6 类意图（triage/registration/consultation/pharmacy/qa/chitchat）
+> 均为患者端语义，与 B 端医生流程无关。B 端若走意图分类，医生提问大概率误归
+> `qa` 分支（rag_node 只检索知识库不调工具），9 个 B 端工具全不可达。直达同时
+> 与 M5 定案一致——B 端全量绑定 9 工具、无白名单约束。
+
 #### 5.2.1 图编排设计
 
-LangGraph 以有向图形式串联 7 个标准节点。主图负责鉴权、意图路由和安全校验，业务操作委托给 4 个子图处理。
+LangGraph 以有向图形式串联 8 个标准节点。主图负责鉴权、按 scope 分流、意图路由
+和安全校验，业务操作委托给 5 个子图处理（4 个 C 端业务子图 + 1 个 B 端直达工具子图）。
 
 **主图结构：**
 
 ```mermaid
 graph TD
     START["START"] --> AUTH["① auth_node<br/>JWT鉴权"]
-    AUTH --> INTENT["② intent_node<br/>意图识别"]
+    AUTH -->|"scope=b_end"| BTOOL["② b_end_tool_graph<br/>B端直达工具子图"]
+    AUTH -->|"scope=c_end"| INTENT["② intent_node<br/>意图识别"]
     INTENT -->|"triage"| TRIAGE["③ triage_graph<br/>导诊子图"]
     INTENT -->|"registration"| REG["④ registration_graph<br/>挂号子图"]
     INTENT -->|"consultation"| CONSULT["⑤ consultation_graph<br/>问诊子图"]
     INTENT -->|"pharmacy"| PHARM["⑥ pharmacy_graph<br/>购药子图"]
     INTENT -->|"qa"| QA["⑦ qa_node<br/>RAG检索→LLM回复"]
     INTENT -->|"chitchat"| CHAT["⑧ chitchat_node<br/>直接LLM回复"]
-    TRIAGE --> REPLY["⑨ reply_node<br/>回复生成"]
+    BTOOL --> REPLY["⑨ reply_node<br/>回复生成"]
+    TRIAGE --> REPLY
     REG --> REPLY
     CONSULT --> REPLY
     PHARM --> REPLY
@@ -597,7 +615,8 @@ graph TD
 | 节点 | 类型 | 职责 |
 |------|------|------|
 | auth_node | 主图节点 | 从 Header 取 JWT + 从请求体取 scope，调 Java token/parse 换取 userId（B 端同时写入 roles/dept_id/doctor_id/hospital_id），写入 AgentState |
-| intent_node | 主图节点 | 基于用户消息 + 历史对话，LLM 判断意图类型。输出意图标签用于路由 |
+| b_end_tool_graph | 子图 | **B 端直达工具子图（M8-3）**：tool_caller 绑定 B 端全量 L1/L2 工具（9 个，无白名单）→ safety → executor 循环，跳过 C 端意图分类 |
+| intent_node | 主图节点 | 基于用户消息 + 历史对话，LLM 判断意图类型。输出意图标签用于路由（仅 C 端执行） |
 | triage_graph | 子图 | 追问症状 → RAG 检索 → 推荐科室 → 调 `query_doctors` 查医生 |
 | registration_graph | 子图 | 调 `query_departments` → `query_schedule_slots` → `create_appointment`（含 L2 确认） |
 | consultation_graph | 子图 | 调 `query_consultations` / `query_prescriptions` → `interpret_prescription` |
