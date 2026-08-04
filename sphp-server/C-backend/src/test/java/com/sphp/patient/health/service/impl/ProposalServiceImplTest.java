@@ -11,6 +11,7 @@ import com.sphp.patient.health.entity.ProposalPatientReport;
 import com.sphp.patient.health.entity.ProposalReportIndicator;
 import com.sphp.patient.health.mapper.ConsultationReportRecord;
 import com.sphp.patient.health.mapper.ConsultationReportInterpretationRecord;
+import com.sphp.patient.health.mapper.ConsultationReportListRecord;
 import com.sphp.patient.health.mapper.FollowUpRecord;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
 import com.sphp.patient.health.mapper.MedicationRecord;
@@ -21,6 +22,7 @@ import com.sphp.patient.health.vo.ProposalFollowUpVO;
 import com.sphp.patient.health.vo.ProposalMedicationPlanVO;
 import com.sphp.patient.health.vo.ProposalReportCreateVO;
 import com.sphp.patient.health.vo.ProposalReportInterpretationVO;
+import com.sphp.patient.health.vo.ProposalReportPageVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -79,6 +81,32 @@ class ProposalServiceImplTest {
         verify(indicatorMapper).insert(indicatorCaptor.capture());
         assertEquals(7001L, indicatorCaptor.getValue().getReportId());
         assertEquals("白细胞", indicatorCaptor.getValue().getName());
+    }
+
+    /**
+     * 验证报告列表使用当前可访问患者范围，并映射医生病历摘要字段。
+     */
+    @Test
+    void proposalListReportsMapsCompletedDoctorNotes() {
+        ProposalDataMapper dataMapper = mock(ProposalDataMapper.class);
+        OffsetDateTime completedAt = OffsetDateTime.parse("2026-08-02T09:30:00+08:00");
+        OffsetDateTime updatedAt = OffsetDateTime.parse("2026-08-02T09:35:00+08:00");
+        when(dataMapper.proposalSelectConsultationReports(20001L, 20, 0L)).thenReturn(List.of(
+                new ConsultationReportListRecord(7001L, 20001L, "张医生", "呼吸内科", completedAt, updatedAt)));
+        when(dataMapper.proposalCountConsultationReports(20001L)).thenReturn(1L);
+        ProposalServiceImpl service = service(authorizedPatientMapper(), mock(ProposalReportMapper.class),
+                mock(ProposalReportIndicatorMapper.class), dataMapper);
+        setUserContext();
+
+        ProposalReportPageVO result = service.proposalListReports(null, null, null);
+
+        assertEquals(1, result.getPageNo());
+        assertEquals(20, result.getPageSize());
+        assertEquals(1L, result.getTotal());
+        assertEquals("张医生", result.getRecords().getFirst().getDoctorName());
+        assertEquals("呼吸内科", result.getRecords().getFirst().getDepartmentName());
+        assertEquals(completedAt, result.getRecords().getFirst().getCompletedAt());
+        verify(dataMapper).proposalSelectConsultationReports(20001L, 20, 0L);
     }
 
     /**
