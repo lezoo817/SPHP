@@ -225,3 +225,22 @@ export type AgentEntry =
 
 /** 流式连接状态。 */
 export type AgentConnectionState = 'idle' | 'connecting' | 'streaming' | 'error';
+
+/** 历史会话条目（GET /api/chat/sessions 响应）。 */
+export interface AgentSession {
+  /** 会话 ID */
+  session_id: string;
+  /** 会话标题（首条用户消息截断） */
+  title: string;
+  /** 最后一条助手消息预览 */
+  last_message: string | null;
+  /** 消息轮次 */
+  message_count: number;
+  /** 最后更新时间（ISO 8601） */
+  updated_at: string;
+}
+
+/** 历史会话列表响应。 */
+export interface AgentSessionList {
+  sessions: AgentSession[];
+}
