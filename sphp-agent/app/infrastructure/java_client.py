@@ -2,6 +2,11 @@
 
 封装对 Java 后端（:8080）的 HTTP 调用，统一超时、错误处理、X-User-Id 注入。
 替代原 backend/client.py，扁平化到 infrastructure 层根目录。
+
+字段命名契约：Agent 工具参数统一 snake_case（hospital_id / patient_id），
+Java 后端 DTO / @RequestParam 统一 camelCase（hospitalId / patientId）且无全局
+SNAKE_CASE 反序列化配置。此处集中做 body/query 键名 snake→camel 递归转换，
+避免每个工具文件手工映射——字段命名随 Java 接口演进的**单一改动点**。
 """
 
 import asyncio
@@ -78,6 +83,42 @@ class _RetryableJavaError(Exception):
 
     重试耗尽后由 call_java_api 捕获并返回统一失败信封。
     """
+
+
+def _to_camel(name: str) -> str:
+    """snake_case 键名转 camelCase（仅字母下划线组合）。
+
+    单字段名（如 ``hospital_id`` → ``hospitalId``）。非下划线命名（全小写单词、
+    含大写、纯数字键）原样返回；前导/尾随/连续下划线（如 ``__key__``）也不转换
+    ——不做无谓或错误的转换，避免破坏 Java 侧已对齐的字段。
+    """
+    if "_" not in name or not name.islower():
+        return name
+    parts = name.split("_")
+    if not all(parts):  # 前导/尾随/连续下划线：空段说明非规范 snake_case
+        return name
+    return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
+
+def _convert_keys(value: Any) -> Any:
+    """递归转换 dict 的键名 snake_case → camelCase（不可变，返回新结构）。
+
+    用于 Java 请求 body 与 query 参数。Java 后端 DTO / @RequestParam 统一
+    camelCase 且无全局 SNAKE_CASE 反序列化配置，Agent 工具参数是 snake_case，
+    此处在基础设施层集中转换，避免每个工具手工映射（系分 §4.4 命名契约）。
+
+    Args:
+        value: 任意值。dict 递归转换键名；list/tuple 递归转换各元素；
+            标量原样返回。
+
+    Returns:
+        转换后的新对象（原对象不修改，保持不可变原则）。
+    """
+    if isinstance(value, dict):
+        return {_to_camel(k): _convert_keys(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_convert_keys(item) for item in value]
+    return value
 
 
 async def get_client() -> httpx.AsyncClient:
@@ -263,6 +304,13 @@ async def call_java_api(
         headers["X-Idempotency-Key"] = (
             idempotency_key or _IDEMPOTENCY_CONTEXT.get() or str(uuid.uuid4())
         )
+
+    # 命名契约：body/query 键名 snake_case → camelCase 集中转换（见模块 docstring）。
+    # 在重试循环**前**转换一次——键名转换纯函数、与请求无关，无需随重试重复执行。
+    if body is not None:
+        body = _convert_keys(body)
+    if params is not None:
+        params = _convert_keys(params)
 
     # 重试循环：仅 _RetryableJavaError（瞬时故障）触发重试，其余失败直接返回
     attempt = 0
