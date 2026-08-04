@@ -13,6 +13,43 @@ import java.util.List;
 public interface ProposalDataMapper {
 
     /**
+     * 分页查询已完成且已保存病历的问诊记录。
+     *
+     * @param patientId 患者 ID
+     * @param limit 分页大小
+     * @param offset 分页偏移量
+     * @return 医生病历报告列表投影
+     */
+    List<ConsultationReportListRecord> proposalSelectConsultationReports(@Param("patientId") Long patientId,
+                                                                          @Param("limit") int limit,
+                                                                          @Param("offset") long offset);
+
+    /**
+     * 统计已完成且已保存病历的问诊记录数量。
+     *
+     * @param patientId 患者 ID
+     * @return 医生病历报告总数
+     */
+    long proposalCountConsultationReports(@Param("patientId") Long patientId);
+
+    /**
+     * 按报告 ID 查询可向患者展示的医生病历。
+     *
+     * @param reportId 问诊记录 ID，即 C 端报告 ID
+     * @return 医生病历报告投影，不存在或不可展示时返回 null
+     */
+    ConsultationReportRecord proposalSelectConsultationReport(@Param("reportId") Long reportId);
+
+    /**
+     * 按问诊记录读取已准备好的医生病历解读。
+     *
+     * @param reportId 问诊记录 ID，即 C 端报告 ID
+     * @return 已准备好的解读投影，不存在或未准备完成时返回 null
+     */
+    ConsultationReportInterpretationRecord proposalSelectReadyConsultationReportInterpretation(
+            @Param("reportId") Long reportId);
+
+    /**
      * 分页查询患者的未删除检查报告及指标数量。
      *
      * @param patientId 患者 ID
