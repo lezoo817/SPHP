@@ -16,7 +16,7 @@
         WHERE cr.patient_id = #{patientId}
           AND cr.status = 'COMPLETED'
           AND cr.doctor_note IS NOT NULL
-          AND btrim(cr.doctor_note) <> ''
+          AND btrim(cr.doctor_note) != ''
           AND cr.deleted_at IS NULL
         ORDER BY cr.ended_at DESC NULLS LAST, cr.id DESC
         LIMIT #{limit} OFFSET #{offset}
@@ -28,7 +28,7 @@
         WHERE cr.patient_id = #{patientId}
           AND cr.status = 'COMPLETED'
           AND cr.doctor_note IS NOT NULL
-          AND btrim(cr.doctor_note) <> ''
+          AND btrim(cr.doctor_note) != ''
           AND cr.deleted_at IS NULL
     </select>
 
@@ -49,7 +49,7 @@
         WHERE cr.id = #{reportId}
           AND cr.status = 'COMPLETED'
           AND cr.doctor_note IS NOT NULL
-          AND btrim(cr.doctor_note) <> ''
+          AND btrim(cr.doctor_note) != ''
           AND cr.deleted_at IS NULL
     </select>
 
