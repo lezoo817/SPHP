@@ -195,6 +195,6 @@ function ScheduleRow({ title, period, dates, slotsByDate, isDuplicateBookingBloc
     if (!summary.targetSlot) return <div className="doctor-timetable__cell" key={`${period}-${date.value}`}><small className="doctor-timetable__empty">暂无号源</small></div>;
     const hasAvailability = summary.availableCount > 0;
     const isDisabled = isDuplicateBookingBlocked || isCheckingBookingStatus;
-    return <div className="doctor-timetable__cell" key={`${period}-${date.value}`}><button className={isDisabled ? 'doctor-timetable__slot is-disabled' : hasAvailability ? 'doctor-timetable__slot' : 'doctor-timetable__slot is-full'} type="button" disabled={isDisabled} onClick={() => onChooseSlot(summary.targetSlot!)}><span>剩余</span><b>{summary.availableCount}</b><em>{isDuplicateBookingBlocked ? '不可重复预约' : isCheckingBookingStatus ? '状态核验中' : hasAvailability ? '点击挂号' : '候补挂号'}</em></button></div>;
+    return <div className="doctor-timetable__cell" key={`${period}-${date.value}`}><button className={isDisabled ? 'doctor-timetable__slot is-disabled' : hasAvailability ? 'doctor-timetable__slot' : 'doctor-timetable__slot is-full'} type="button" disabled={isDisabled} onClick={() => onChooseSlot(summary.targetSlot!)}><span>剩余</span><b>{summary.availableCount}</b>{isDuplicateBookingBlocked ? <em className="doctor-timetable__duplicate-text">不可<br />重复<br />预约</em> : <em>{isCheckingBookingStatus ? '状态核验中' : hasAvailability ? '点击挂号' : '候补挂号'}</em>}</button></div>;
   })}</>;
 }
