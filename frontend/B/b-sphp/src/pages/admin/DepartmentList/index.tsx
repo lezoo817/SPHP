@@ -85,9 +85,9 @@ export default function DepartmentList() {
   };
 
   /** 获取医生列表（用于科室主任选择） */
-  const fetchDoctors = async (name?: string) => {
+  const fetchDoctors = async (name?: string, deptId?: number) => {
     try {
-      const res = await getDoctors({ name, page: 1, size: 100 });
+      const res = await getDoctors({ name, deptId, page: 1, size: 100 });
       return (res.list ?? []).map((doc) => ({
         label: `${doc.name}（${doc.title}）`,
         value: doc.id,
@@ -275,7 +275,7 @@ export default function DepartmentList() {
             label="科室主任"
             placeholder="请选择科室主任（可选）"
             showSearch
-            request={(input) => fetchDoctors(input?.key ?? '')}
+            request={(input) => fetchDoctors(input?.key ?? '', editingDept?.id)}
             debounceTime={300}
           />
           <ProFormText
