@@ -1398,6 +1398,23 @@ B 端采用"一次问诊一个会话"策略：医生每次接诊（startConsult�
 
 > **设计依据**：AI 辅助面板按当前接诊患者加载内容（前端系分 §6），不同患者的对话上下文必须隔离——若复用 session，患者 A 的对话历史会泄漏到患者 B 的 LLM 上下文中，既是隐私问题也是相关性问题。30 分钟 TTL 对 B 端同样适用（一次问诊通常 10-20 分钟）。此策略不需要前后端修改接口契约——现有"session_id 为空时创建新会话"机制已天然支持。
 
+**会话元数据表（历史会话列表）：**
+
+Agent 自建会话元数据表 `agent_sessions`（`app/orchestrator/session_store.py`），记录用户历史 AI 会话的元数据（标题/最后消息/消息数/更新时间），支撑 C 端历史会话**列表与切换**（§6.2.3）。该表与完整消息历史（LangGraph checkpoint，M6-B3）**互补**：checkpoint 负责"点开某会话恢复上下文续聊"，本表负责"列出用户有哪些历史会话"。二者后端同源（`checkpointer_backend`），避免"列表能看到但点开无消息"的脱节。
+
+| 后端 | 会话列表存储 | 生命周期 |
+|------|-------------|----------|
+| `memory`（开发默认） | 进程内存（`MemorySessionStore`） | 与 MemorySaver 一致，进程重启即失——已知开发限制 |
+| `postgres`（生产） | PG `agent_sessions` 表（`PostgresSessionStore`，复用 checkpointer 连接池） | 长期持久化，历史会话可回溯 |
+
+| 设计点 | 约定 |
+|--------|------|
+| 标题定稿 | 首次落库写入首条用户消息（截断 30 字），后续轮次 upsert 不覆盖 title（首条消息定标题） |
+| message_count | 每轮 +1（跨轮累计） |
+| scope | 仅 C 端患者写入列表（B 端"一次问诊一会话"，不入列表，与 §5.9 既有策略一致） |
+| 落库时机 | `/api/chat/stream` 正常完成路径（`done` 前）；失败仅 log 不阻塞对话主流程；客户端断开/异常路径不落库 |
+| 列表上限 | 单次返回 50 条（`updated_at` 倒序），量大后再加分页/游标 |
+
 
 ### 5.10 错误处理与降级策略
 
@@ -2013,7 +2030,57 @@ Authorization: Bearer <JWT Token>（选填，当前版本非必填；后续 Agen
 }
 ```
 
-> **信封统一说明**：Agent 对外业务 HTTP 接口（`/api/chat/confirm`、`/api/knowledge/*`）统一采用与 Java 后端一致的 `{code, message, data, traceId}` 信封，成功 `code="00000"`，失败 `code` 为字符串错误码（见 §6.1）。`/health` 为基础设施级健康检查端点（供负载均衡 / 容器探针使用），采用独立的 `{status, checks, version}` 格式，不套用业务信封。`/api/chat/stream` 为 SSE 流式接口，其错误通过 `event: error` 推送（字段为 `code`/`message`/`trace_id`，见 §6.2.1 ⑥），不套用此信封。
+> **信封统一说明**：Agent 对外业务 HTTP 接口（`/api/chat/confirm`、`/api/chat/sessions`、`/api/knowledge/*`）统一采用与 Java 后端一致的 `{code, message, data, traceId}` 信封，成功 `code="00000"`，失败 `code` 为字符串错误码（见 §6.1）。`/health` 为基础设施级健康检查端点（供负载均衡 / 容器探针使用），采用独立的 `{status, checks, version}` 格式，不套用业务信封。`/api/chat/stream` 为 SSE 流式接口，其错误通过 `event: error` 推送（字段为 `code`/`message`/`trace_id`，见 §6.2.1 ⑥），不套用此信封。
+
+#### 6.2.3 历史会话列表
+
+C 端患者查看/切换历史 AI 会话（数据源：`agent_sessions` 表，见 §5.9）。前端点开任一 `session_id` → 调 `POST /api/chat/stream` → 既有 checkpointer 机制恢复该会话上下文续聊（**历史会话切换自此闭环**）。
+
+```
+GET /api/chat/sessions
+Authorization: Bearer <JWT Token>
+```
+
+**鉴权与范围：**
+
+- 仅 C 端患者（B 端"一次问诊一会话"，不进入历史列表）
+- 依赖 JWT 中间件注入的 `user_id` 隔离——跨用户不可见他人会话；未鉴权/匿名请求返回 401
+
+**成功响应（200）-- 统一信封 `{code, message, data, traceId}`：**
+
+```json
+{
+  "code": "00000",
+  "message": "操作成功",
+  "data": {
+    "sessions": [
+      {
+        "session_id": "sess_abc123",
+        "title": "我头疼三天了",
+        "last_message": "建议您先休息，必要时就医",
+        "message_count": 3,
+        "updated_at": "2026-08-04T03:00:00+00:00"
+      }
+    ]
+  },
+  "traceId": "trc_xyz789"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| sessions[].session_id | string | 会话 ID，点开直接作为 `/api/chat/stream` 的 `session_id` 恢复上下文续聊 |
+| sessions[].title | string | 会话标题（首条用户消息截断 30 字） |
+| sessions[].last_message | string | 最后一条助手回复（截断 30 字），可能为 `null` |
+| sessions[].message_count | int | 会话总轮数 |
+| sessions[].updated_at | string | 最后活动时间（ISO 8601），列表按此倒序（最新在前），上限 50 条 |
+
+**错误响应（统一信封）：**
+
+| code | HTTP 状态码 | 说明 | 前端处理建议 |
+|------|--------|------|--------------|
+| AUTH_MISSING | 401 | 缺少有效鉴权 Token（未登录） | 跳转登录页 |
+| SERVER_ERROR | 500 | 会话列表查询失败 | 提示"服务异常，请稍后重试" |
 
 ### 6.3 Agent → Java：鉴权接口
 
