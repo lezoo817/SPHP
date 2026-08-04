@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS consultation_report_interpretation (
         CHECK (status IN ('PENDING', 'READY', 'FAILED'))
 );
 
+COMMENT ON TABLE consultation_report_interpretation IS '医生提供的病历解读结果表';
+
 -- 同一份有效病历仅保留一条当前解读，软删除历史记录不影响后续重新生成。
 CREATE UNIQUE INDEX IF NOT EXISTS uk_consultation_report_interpretation_active
     ON consultation_report_interpretation(consult_id)
