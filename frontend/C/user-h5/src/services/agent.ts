@@ -12,6 +12,7 @@ import type {
   AgentChatRequest,
   AgentConfirmData,
   AgentConfirmRequest,
+  AgentSession,
   AgentSseEvent,
 } from '../typings/agent';
 import type { ApiResponse } from '../typings/api';
@@ -217,6 +218,48 @@ async function extractErrorMessage(response: Response): Promise<string> {
   } catch {
     return response.status === 429 ? '对话请求过于频繁，请稍后重试' : '服务暂时不可用，请稍后重试';
   }
+}
+
+/**
+ * 获取历史会话列表（GET /api/chat/sessions）。
+ *
+ * 返回当前用户的所有 C 端 AI 会话，按最后更新时间倒序。
+ * @returns 会话列表
+ */
+export async function getSessions(): Promise<AgentSession[]> {
+  const token = await ensureAccessToken();
+  if (!token) {
+    redirectToLogin();
+    throw new Error('登录状态已失效，请重新登录');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${AGENT_BASE_URL}/api/chat/sessions`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    throw new Error('网络连接失败，请稍后重试');
+  }
+
+  if (response.status === 401) {
+    redirectToLogin();
+    throw new Error('登录已失效，请重新登录');
+  }
+
+  let payload: ApiResponse<{ sessions: AgentSession[] }>;
+  try {
+    payload = (await response.json()) as ApiResponse<{ sessions: AgentSession[] }>;
+  } catch {
+    throw new Error('获取会话列表失败，请稍后重试');
+  }
+
+  if (payload.code === '00000' && payload.data?.sessions) {
+    return payload.data.sessions;
+  }
+
+  throw new Error(payload.message || '获取会话列表失败');
 }
 
 /**

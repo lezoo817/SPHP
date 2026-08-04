@@ -14,7 +14,7 @@
  * 与 sphp-agent `app/api/routes/chat.py` 的 SSE 事件契约对齐。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { chatStream, confirmCard, type ChatStreamHandle } from '../services/agent';
+import { chatStream, confirmCard, getSessions, type ChatStreamHandle } from '../services/agent';
 import { AGENT_TOOL_LABELS, AGENT_ERROR_TEXT } from '../constants/agent';
 import {
   clearAgentSessionId,
@@ -63,6 +63,8 @@ export interface UseAgentStream {
   cancel: () => void;
   /** 清空会话并重置状态 */
   reset: () => void;
+  /** 加载指定历史会话 */
+  loadSession: (sessionId: string) => Promise<void>;
 }
 
 /**
@@ -400,6 +402,24 @@ export function useAgentStream(): UseAgentStream {
   // 组件卸载时中断未完成的流式请求，避免内存泄漏
   useEffect(() => () => cancel(), [cancel]);
 
+  /** 加载指定历史会话：保存 session_id 并重置状态，用户发送消息时将恢复上下文。 */
+  const loadSession = useCallback(
+    async (targetSessionId: string) => {
+      // 重置当前状态
+      cancel();
+      setEntries([]);
+      setErrorMessage('');
+      setConnection('idle');
+      currentMessageIdRef.current = null;
+      currentThoughtIdRef.current = null;
+
+      // 设置目标 session_id，用户发送消息时 LangGraph checkpointer 会自动恢复上下文
+      saveAgentSessionId(targetSessionId);
+      setSessionId(targetSessionId);
+    },
+    [cancel],
+  );
+
   return {
     entries,
     connection,
@@ -410,5 +430,6 @@ export function useAgentStream(): UseAgentStream {
     confirm,
     cancel,
     reset,
+    loadSession,
   };
 }
