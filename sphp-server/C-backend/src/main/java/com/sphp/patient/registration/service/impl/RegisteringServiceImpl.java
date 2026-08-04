@@ -19,6 +19,7 @@ import com.sphp.patient.registration.mapper.RegisteringPaymentRecord;
 import com.sphp.patient.registration.mapper.RegisteringWaitlistMapper;
 import com.sphp.patient.registration.service.RegisteringService;
 import com.sphp.patient.registration.support.RegisteringSlotLockService;
+import com.sphp.patient.registration.support.RegisteringWaitlistPromotionService;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentListVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentDetailVO;
@@ -67,6 +68,8 @@ public class RegisteringServiceImpl implements RegisteringService {
     private final RegisteringPaymentOrderMapper paymentMapper;
     // 号源锁
     private final RegisteringSlotLockService slotLockService;
+    // 候补晋级与通知
+    private final RegisteringWaitlistPromotionService waitlistPromotionService;
     // 候补
     private final RegisteringWaitlistMapper waitlistMapper;
     // 挂号配置
@@ -129,6 +132,8 @@ public class RegisteringServiceImpl implements RegisteringService {
             if (paymentMapper.insert(payment) != 1) {
                 throw systemError("支付单创建失败");
             }
+            // 候补人通过正常锁号成功后结束其候补状态，普通挂号不会命中任何记录。
+            waitlistPromotionService.registeringFulfillNotifiedWaitlist(userId, patientId, slot.slotId(), now);
             // 事务提交后由监听器投递延迟消息，支付完成前自动触发超时检查。
             eventPublisher.publishEvent(RegisteringAppointmentLockedEvent.registeringOf(appointment.getId(), userId));
             // 锁号成功后异步生成待支付通知，通知写入不会阻塞订单主事务。
@@ -214,8 +219,11 @@ public class RegisteringServiceImpl implements RegisteringService {
         }
         dataMapper.registeringClosePendingPayment(appointmentId, now);
         // 释放锁定的号源
-        if (dataMapper.registeringReleaseLockedSnapshot(record.snapshotId(), now) == 1)
+        if (dataMapper.registeringReleaseLockedSnapshot(record.snapshotId(), now) == 1) {
             slotLockService.registeringUnlock(record.slotId());
+            // 仅在号源快照实际释放后晋级候补，避免重复取消产生重复通知。
+            waitlistPromotionService.registeringPromoteAfterSlotReleased(record.slotId());
+        }
 
         return RegisteringAppointmentCancelVO.builder()
                 .appointmentId(appointmentId)
@@ -248,6 +256,7 @@ public class RegisteringServiceImpl implements RegisteringService {
         // 插入候补队列
         int queueNo = dataMapper.selectRegisteringNextQueueNo(request.getSlotId());
         RegisteringWaitlist waitlist = new RegisteringWaitlist();
+        waitlist.setUserId(userId);
         waitlist.setPatientId(patientId);
         waitlist.setSlotId(request.getSlotId());
         waitlist.setQueueNo(queueNo); // 队列号
@@ -417,9 +426,11 @@ public class RegisteringServiceImpl implements RegisteringService {
         if (dataMapper.registeringCancelUnpaidAppointment(payment.appointmentId(), now) == 1) {
             // 关闭待支付订单
             dataMapper.registeringClosePendingPayment(payment.appointmentId(), now);
-            if (dataMapper.registeringReleaseLockedSnapshot(payment.snapshotId(), now) == 1)
-                // 释放锁定的号源
+            if (dataMapper.registeringReleaseLockedSnapshot(payment.snapshotId(), now) == 1) {
+                // 释放锁定的号源并通知候补队列的下一位。
                 slotLockService.registeringUnlock(payment.slotId());
+                waitlistPromotionService.registeringPromoteAfterSlotReleased(payment.slotId());
+            }
         }
     }
 

@@ -2,6 +2,7 @@ package com.sphp.patient.registration.event;
 import com.sphp.patient.registration.mapper.RegisteringAppointmentRecord;
 import com.sphp.patient.registration.mapper.RegisteringDataMapper;
 import com.sphp.patient.registration.support.RegisteringSlotLockService;
+import com.sphp.patient.registration.support.RegisteringWaitlistPromotionService;
 import com.sphp.patient.common.enums.NotificationTypeEnum;
 import com.sphp.patient.notification.mq.producer.NotificationEventProducer;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,8 @@ public class RegisteringAppointmentTimeoutConsumer {
     private final RegisteringDataMapper dataMapper;
     // 挂号锁服务
     private final RegisteringSlotLockService slotLockService;
+    // 候补晋级服务
+    private final RegisteringWaitlistPromotionService waitlistPromotionService;
     // 站内通知事件生产器
     private final NotificationEventProducer notificationEventProducer;
 
@@ -33,8 +36,11 @@ public class RegisteringAppointmentTimeoutConsumer {
         if(dataMapper.registeringCancelUnpaidAppointment(r.id(),now)==1){
             dataMapper.registeringClosePendingPayment(r.id(),now);
             // 释放锁定的号源
-            if(dataMapper.registeringReleaseLockedSnapshot(r.snapshotId(),now)==1)
+            if(dataMapper.registeringReleaseLockedSnapshot(r.snapshotId(),now)==1) {
                 slotLockService.registeringUnlock(r.slotId());
+                // 真实释放成功后才通知候补，重复超时消息不会重复晋级。
+                waitlistPromotionService.registeringPromoteAfterSlotReleased(r.slotId());
+            }
             // 仅在条件取消成功后创建超时通知，避免已支付订单被误通知。
             notificationEventProducer.publishNotification("APPOINTMENT_TIMEOUT", r.id(), event.userId(), r.patientId(),
                     NotificationTypeEnum.APPOINTMENT, "挂号订单已超时", "订单未在规定时间内支付，已自动取消。");

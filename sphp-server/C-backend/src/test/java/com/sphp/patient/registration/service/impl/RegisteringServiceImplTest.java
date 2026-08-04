@@ -3,11 +3,15 @@ package com.sphp.patient.registration.service.impl;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
 import com.sphp.patient.registration.dto.RegisteringAppointmentCreateRequest;
+import com.sphp.patient.registration.dto.RegisteringWaitlistCreateRequest;
+import com.sphp.patient.registration.entity.RegisteringWaitlist;
+import com.sphp.patient.registration.mapper.RegisteringAppointmentRecord;
 import com.sphp.patient.registration.mapper.RegisteringDataMapper;
 import com.sphp.patient.registration.mapper.RegisteringAppointmentMapper;
 import com.sphp.patient.registration.mapper.RegisteringPaymentOrderMapper;
 import com.sphp.patient.registration.mapper.RegisteringWaitlistMapper;
 import com.sphp.patient.registration.support.RegisteringSlotLockService;
+import com.sphp.patient.registration.support.RegisteringWaitlistPromotionService;
 import com.sphp.patient.registration.config.RegistrationProperties;
 import com.sphp.patient.notification.mq.producer.NotificationEventProducer;
 import org.springframework.context.ApplicationEventPublisher;
@@ -22,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -39,10 +44,11 @@ class RegisteringServiceImplTest {
         RegisteringPaymentOrderMapper paymentMapper = mock(RegisteringPaymentOrderMapper.class);
         RegisteringWaitlistMapper waitlistMapper = mock(RegisteringWaitlistMapper.class);
         RegisteringSlotLockService slotLockService = mock(RegisteringSlotLockService.class);
+        RegisteringWaitlistPromotionService waitlistPromotionService = mock(RegisteringWaitlistPromotionService.class);
         RegistrationProperties properties = new RegistrationProperties();
         properties.setPaymentTimeout(900);
         RegisteringServiceImpl service = new RegisteringServiceImpl(dataMapper, appointmentMapper, paymentMapper,
-                slotLockService, waitlistMapper, properties, mock(ApplicationEventPublisher.class),
+                slotLockService, waitlistPromotionService, waitlistMapper, properties, mock(ApplicationEventPublisher.class),
                 mock(NotificationEventProducer.class));
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
         when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
@@ -74,8 +80,103 @@ class RegisteringServiceImplTest {
             assertEquals(8001L, result.getPaymentId());
             assertEquals("UNPAID", result.getStatus());
             assertEquals(5000, result.getAmountCent());
+            verify(waitlistPromotionService).registeringFulfillNotifiedWaitlist(eq(10001L), eq(20001L), eq(501L), any());
         } finally {
             CUserContext.clear();
         }
+    }
+
+    /**
+     * 验证候补登记会持久化当前 C 端用户，供后续通知精确定位登记账号。
+     */
+    @Test
+    void registeringCreateWaitlistPersistsRegistrantUser() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringWaitlistMapper waitlistMapper = mock(RegisteringWaitlistMapper.class);
+        NotificationEventProducer notificationProducer = mock(NotificationEventProducer.class);
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.lockRegisteringWaitlistSlot(501L)).thenReturn(
+                new com.sphp.patient.registration.mapper.RegisteringSlotLockRecord(
+                        501L, 301L, 401L, 5000, LocalDate.now().plusDays(1),
+                        LocalTime.of(9, 0), LocalTime.of(9, 30), "PUBLISHED", "ENABLED"));
+        when(dataMapper.countRegisteringAvailableSnapshots(501L)).thenReturn(0L);
+        when(dataMapper.existsRegisteringActiveWaitlist(20001L, 501L)).thenReturn(false);
+        when(dataMapper.selectRegisteringNextQueueNo(501L)).thenReturn(1);
+        when(waitlistMapper.insert(any(RegisteringWaitlist.class))).thenAnswer(invocation -> {
+            invocation.<RegisteringWaitlist>getArgument(0).setId(6001L);
+            return 1;
+        });
+        RegisteringServiceImpl service = service(dataMapper, waitlistMapper, notificationProducer,
+                mock(RegisteringWaitlistPromotionService.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        RegisteringWaitlistCreateRequest request = new RegisteringWaitlistCreateRequest();
+        request.setPatientId(20001L);
+        request.setSlotId(501L);
+
+        try {
+            service.registeringCreateWaitlist(request);
+            org.mockito.ArgumentCaptor<RegisteringWaitlist> captor =
+                    org.mockito.ArgumentCaptor.forClass(RegisteringWaitlist.class);
+            verify(waitlistMapper).insert(captor.capture());
+            assertEquals(10001L, captor.getValue().getUserId());
+            assertEquals("WAITING", captor.getValue().getStatus());
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证主动取消真实释放号源后才触发候补晋级。
+     */
+    @Test
+    void registeringCancelAppointmentPromotesWaitlistAfterRelease() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringWaitlistPromotionService promotionService = mock(RegisteringWaitlistPromotionService.class);
+        when(dataMapper.selectRegisteringAppointment(7001L)).thenReturn(appointmentRecord());
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.registeringCancelUnpaidAppointment(eq(7001L), any())).thenReturn(1);
+        when(dataMapper.registeringReleaseLockedSnapshot(eq(9001L), any())).thenReturn(1);
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), promotionService);
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+
+        try {
+            service.registeringCancelAppointment(7001L);
+            verify(promotionService).registeringPromoteAfterSlotReleased(501L);
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 创建挂号服务测试实例。
+     *
+     * @param dataMapper 挂号数据访问接口
+     * @param waitlistMapper 候补数据访问接口
+     * @param notificationProducer 通知生产器
+     * @param promotionService 候补晋级服务
+     * @return 挂号服务实现
+     */
+    private RegisteringServiceImpl service(RegisteringDataMapper dataMapper, RegisteringWaitlistMapper waitlistMapper,
+                                           NotificationEventProducer notificationProducer,
+                                           RegisteringWaitlistPromotionService promotionService) {
+        RegistrationProperties properties = new RegistrationProperties();
+        properties.setPaymentTimeout(900);
+        return new RegisteringServiceImpl(dataMapper, mock(RegisteringAppointmentMapper.class),
+                mock(RegisteringPaymentOrderMapper.class), mock(RegisteringSlotLockService.class), promotionService,
+                waitlistMapper, properties, mock(ApplicationEventPublisher.class), notificationProducer);
+    }
+
+    /**
+     * 创建当前账号可访问的未支付挂号订单投影。
+     *
+     * @return 挂号订单投影
+     */
+    private RegisteringAppointmentRecord appointmentRecord() {
+        return new RegisteringAppointmentRecord(7001L, 20001L, 9001L, 501L, 401L, "张医生", "呼吸内科",
+                "门诊楼三层", LocalDate.now().plusDays(1), LocalTime.of(9, 0), LocalTime.of(9, 30),
+                "UNPAID", 5000, OffsetDateTime.now().plusMinutes(15), 8001L, "PENDING");
     }
 }
