@@ -85,10 +85,10 @@ public class ProposalController {
     }
 
     /**
-     * 查看检查报告详情。
+     * 查看医生病历报告详情。
      *
      * @param reportId 报告 ID
-     * @return 报告与指标详情
+     * @return 医生病历报告详情
      */
     @GetMapping("/reports/{reportId}")
     public Result<ProposalReportDetailVO> proposalGetReport(@PathVariable @Positive Long reportId) {

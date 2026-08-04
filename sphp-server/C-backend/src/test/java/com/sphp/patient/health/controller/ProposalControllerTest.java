@@ -104,21 +104,25 @@ class ProposalControllerTest {
     }
 
     /**
-     * 验证报告详情路由返回指标列表。
+     * 验证报告详情路由返回医生病历正文。
      *
      * @throws Exception MockMvc 执行失败时抛出
      */
     @Test
-    void proposalGetReportReturnsIndicators() throws Exception {
+    void proposalGetReportReturnsDoctorNote() throws Exception {
         ProposalService service = mock(ProposalService.class);
         when(service.proposalGetReport(7001L)).thenReturn(ProposalReportDetailVO.builder().id(7001L)
-                .reportName("血常规").reportDate(LocalDate.of(2026, 8, 2))
-                .indicators(List.of(ProposalReportDetailVO.Indicator.builder().name("白细胞")
-                        .value("5.2").unit("10^9/L").referenceRange("3.5-9.5").build())).build());
+                .patientId(20001L).doctorId(30001L).doctorName("张医生")
+                .departmentName("呼吸内科").doctorNote("建议按医嘱复诊")
+                .startedAt(OffsetDateTime.parse("2026-08-02T09:00:00+08:00"))
+                .completedAt(OffsetDateTime.parse("2026-08-02T09:30:00+08:00"))
+                .updatedAt(OffsetDateTime.parse("2026-08-02T09:35:00+08:00")).build());
 
         newMockMvc(service, mock(CIdempotencyService.class)).perform(get("/c/v1/reports/7001"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.indicators[0].name").value("白细胞"));
+                .andExpect(jsonPath("$.data.doctorNote").value("建议按医嘱复诊"))
+                .andExpect(jsonPath("$.data.departmentName").value("呼吸内科"))
+                .andExpect(jsonPath("$.data.completedAt").exists());
     }
 
     /**
