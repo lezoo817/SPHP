@@ -5,7 +5,7 @@ package com.sphp.patient.registration.mapper;
  *
  * @param id 科室 ID
  * @param name 科室名称
- * @param description 科室说明
+ * @param location 科室位置
  */
-public record DepartmentRecord(Long id, String name, String description) {
+public record DepartmentRecord(Long id, String name, String location) {
 }

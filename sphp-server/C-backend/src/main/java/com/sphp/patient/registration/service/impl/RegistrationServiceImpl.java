@@ -162,7 +162,7 @@ public class RegistrationServiceImpl implements RegistrationService {
         return DepartmentListVO.builder()
                 .id(record.id())
                 .name(record.name())
-                .description(record.description())
+                .location(record.location())
                 .build();
     }
 

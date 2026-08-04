@@ -63,7 +63,7 @@ class RegistrationControllerTest {
                 .setControllerAdvice(new RegistrationExceptionHandler())
                 .build();
         when(registrationService.listDepartments(101L, "呼吸")).thenReturn(List.of(DepartmentListVO.builder()
-                .id(301L).name("呼吸内科").description("呼吸系统疾病诊疗").build()));
+                .id(301L).name("呼吸内科").location("1号楼2层201室").build()));
 
         mockMvc.perform(get("/c/v1/departments").param("hospitalId", "101").param("keyword", "呼吸"))
                 .andExpect(status().isOk())
