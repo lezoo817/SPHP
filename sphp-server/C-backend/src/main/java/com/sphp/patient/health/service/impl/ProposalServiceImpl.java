@@ -59,11 +59,14 @@ public class ProposalServiceImpl implements ProposalService {
     /**
      * 为当前账号可访问的就诊人录入检查报告及其指标。
      *
+     * <p>历史兼容能力，新报告不再由 C 端自主录入。</p>
+     *
      * @param request 报告录入请求
      * @return 已录入报告的 ID 与状态
      * @throws CAuthException 就诊人无权访问或持久化失败时抛出
      */
     @Override
+    @Deprecated(since = "2026-08", forRemoval = false)
     @Transactional(rollbackFor = Exception.class)
     public ProposalReportCreateVO proposalCreateReport(ProposalReportCreateRequest request) {
         // 解析并检查就诊人 ID

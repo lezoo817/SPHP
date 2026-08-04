@@ -20,9 +20,12 @@ public interface ProposalService {
     /**
      * 录入检查报告。
      *
+     * <p>历史兼容能力，新 C 端报告应读取 B 端医生保存的病历。</p>
+     *
      * @param request 报告录入请求
      * @return 已录入报告结果
      */
+    @Deprecated(since = "2026-08", forRemoval = false)
     ProposalReportCreateVO proposalCreateReport(ProposalReportCreateRequest request);
 
     /**

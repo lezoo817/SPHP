@@ -15,6 +15,7 @@ import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.sphp.shared.common.constant.HeaderConstant;
 import com.sphp.shared.result.Result;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
@@ -48,10 +49,14 @@ public class ProposalController {
     /**
      * 录入检查报告。
      *
+     * <p>该历史兼容接口不再作为 C 端报告主流程；新报告由 B 端医生完成问诊后保存病历产生。</p>
+     *
      * @param idempotencyKey 客户端幂等键
      * @param request 报告录入请求
      * @return 已录入报告的 ID 和状态
      */
+    @Deprecated(since = "2026-08", forRemoval = false)
+    @Operation(summary = "录入检查报告（已废弃）", deprecated = true)
     @PostMapping("/reports")
     public Result<ProposalReportCreateVO> proposalCreateReport(
             @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank String idempotencyKey,
