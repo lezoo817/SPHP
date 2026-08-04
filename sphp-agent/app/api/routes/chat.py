@@ -15,7 +15,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.api.schemas.chat import ChatRequest, ConfirmRequest, ConfirmResponse
-from app.api.schemas.envelope import error_response
+from app.api.schemas.envelope import error_response, success_response
 from app.infrastructure.cache.redis_client import (
     delete_confirm_token_by_token,
     get_and_delete_confirm_done,
@@ -25,6 +25,7 @@ from app.infrastructure.cache.redis_client import (
 from app.orchestrator.graphs.main_graph import build_main_graph
 from app.orchestrator.nodes.reply import MEDICAL_DISCLAIMER
 from app.orchestrator.nodes.tool_executor import execute_mcp_tool
+from app.orchestrator.session_store import get_session_store
 from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -150,19 +151,25 @@ def _build_initial_state(
             },
         )
 
+    scope = getattr(request.state, "scope", req.scope)
     return {
         "messages": messages,
         "session_id": session_id,
         "intent": None,
         "user_id": getattr(request.state, "user_id", None),
-        "scope": getattr(request.state, "scope", req.scope),
+        "scope": scope,
         # M6-B1 鉴权去重：完整复制中间件注入的 B 端身份字段，auth_node 直接消费
         "roles": getattr(request.state, "roles", None),
         "dept_id": getattr(request.state, "dept_id", None),
         "doctor_id": getattr(request.state, "doctor_id", None),
-        # C 端 hospital_id 无中间件注入值（None）时退回请求 context
-        "hospital_id": getattr(request.state, "hospital_id", None)
-        or (req.context or {}).get("hospital_id"),
+        # 按 scope 解析 hospital_id：C 端 context（页面当前选择的医院）优先、
+        # JWT 兜底；B 端 JWT（医生所属医院）权威、context 不覆盖（防跨医院越权）。
+        # 原 `or` 逻辑 JWT 恒优先，C 端 JWT 带 hospitalId 时会忽略页面切换的医院。
+        "hospital_id": _resolve_hospital_id(scope, request, req.context),
+        # M8-5：当前问诊患者 ID 只来自请求 context（B 端医生接诊时前端选中，
+        # C 端就诊人切换可选），JWT 鉴权无此字段，故不做中间件回退。
+        # 供 tool_caller 注入 LLM 上下文并对必填 patient_id 工具确定性补全。
+        "patient_id": (req.context or {}).get("patient_id"),
         "tool_calls": None,
         "tool_results": None,
         "pending_confirmations": None,
@@ -171,6 +178,33 @@ def _build_initial_state(
         "rag_context": None,
         "tool_iteration": None,
     }
+
+
+def _resolve_hospital_id(
+    scope: str, request: Request, context: dict[str, Any] | None
+) -> int | None:
+    """按 scope 解析 hospital_id 优先级（系分 §6.2 context 表）。
+
+    C 端：hospital_id 是页面"当前选择的医院"（查科室/号源等工具必填），
+    前端每次切换医院经 context 传入，故 **context 优先、JWT 兜底**——若 JWT
+    携带的默认 hospitalId 覆盖 context，用户切医院后挂号/导诊会打到旧医院。
+
+    B 端：医生所属医院以 JWT（token/parse 的 hospitalId）为准，**context 不
+    覆盖**——医生必须且只能在自己所属医院内操作，防前端伪造跨医院越权。
+
+    Args:
+        scope: 当前服务端 c_end / b_end。
+        request: FastAPI 请求（含中间件注入的 hospital_id）。
+        context: 请求附加上下文（含 context.hospital_id）。
+
+    Returns:
+        int | None: 解析后的医院 ID；两者均缺失时返回 None。
+    """
+    jwt_hospital_id = getattr(request.state, "hospital_id", None)
+    ctx_hospital_id = (context or {}).get("hospital_id")
+    if scope == "b_end":
+        return jwt_hospital_id
+    return ctx_hospital_id if ctx_hospital_id is not None else jwt_hospital_id
 
 
 def _handle_message_chunk(
@@ -353,6 +387,8 @@ async def _sse_generator(
 
     logger.info("[SSE] 开始流程执行, thread_id=%s", thread_key)
     streamed_reply = False
+    # 本轮助手回复累计文本（供会话元数据落库 last_message）
+    reply_text = ""
     # 本轮 LLM token 用量（M6-B4 done.usage）：langgraph 首个 chunk 含
     # input_tokens，后续 chunk 只递增 output_tokens
     usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -387,6 +423,8 @@ async def _sse_generator(
                     events, pushed = _handle_message_chunk(msg, meta, usage)
                     if pushed:
                         streamed_reply = True
+                        # 累计回复文本：供会话元数据落库（last_message）
+                        reply_text += _chunk_text(msg)
                     for event, payload in events:
                         yield _sse(event, payload)
                 elif mode == "updates":
@@ -405,6 +443,14 @@ async def _sse_generator(
             # 流式回复后补推医疗安全声明（不在 LLM 流中，确保前端必见）
             if streamed_reply:
                 yield _sse("message", {"delta": MEDICAL_DISCLAIMER})
+
+            # 会话元数据落库（历史会话列表）：增强功能，失败仅 log，不阻塞 done
+            # 主流程。仅正常完成路径执行——异常/断开路径提前 return，不落库
+            # （该轮对话未完整，不入列表）。
+            try:
+                await _record_session(initial_state, session_id, reply_text)
+            except Exception:
+                logger.exception("会话元数据落库失败, session_id=%s", session_id)
 
         except GeneratorExit:
             # P1-3 客户端断开：记录后直接结束，不补推 done（无人接收）。
@@ -444,6 +490,117 @@ async def _sse_generator(
 def _sse(event: str, payload: dict[str, Any]) -> str:
     """构造一条 SSE 事件。"""
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+@router.get("/chat/sessions")
+async def list_sessions(request: Request) -> JSONResponse:
+    """历史会话列表（系分 §6.2 扩展，仅 C 端患者）。
+
+    按 JWT 中间件注入的 ``user_id`` 隔离（跨用户不可见他人会话），返回该用户
+    所有 C 端历史 AI 会话（updated_at 倒序，LIMIT 上限）。前端点开任一
+    ``session_id`` → 调 POST /api/chat/stream → 既有 checkpointer 机制恢复
+    该会话上下文续聊（**历史会话切换自此闭环**）。
+
+    Args:
+        request: 请求（JWT 中间件注入 user_id；匿名时未注入）。
+
+    Returns:
+        统一信封 {code, message, data: {sessions: [...]}}；未登录 401。
+    """
+    user_id = getattr(request.state, "user_id", None)
+    if user_id is None:
+        return error_response(
+            "AUTH_MISSING",
+            "缺少有效的鉴权 Token",
+            getattr(request.state, "trace_id", ""),
+            401,
+        )
+    try:
+        sessions = await get_session_store().list_by_user(user_id)
+    except Exception:
+        logger.exception("会话列表查询失败, user_id=%s", user_id)
+        return error_response(
+            "SERVER_ERROR",
+            "服务异常，请稍后重试",
+            getattr(request.state, "trace_id", ""),
+            500,
+        )
+    return success_response({"sessions": sessions}, getattr(request.state, "trace_id", ""))
+
+
+def _chunk_text(msg: Any) -> str:
+    """提取 message chunk 的文本内容（str 或 LangChain 内容块列表）。
+
+    Args:
+        msg: messages 模式下的消息 chunk（BaseMessage）。
+
+    Returns:
+        str: 拼接后的文本（无文本块返回空串）。
+    """
+    content = getattr(msg, "content", None) or ""
+    if isinstance(content, str):
+        return content
+    parts = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "text":
+            parts.append(block.get("text", ""))
+    return "".join(parts)
+
+
+def _truncate_title(text: str, max_len: int = 30) -> str:
+    """截断会话标题/摘要（折叠换行，超长加省略号）。
+
+    Args:
+        text: 原始文本。
+        max_len: 截断上限（默认 30 字）。
+
+    Returns:
+        str: 截断后的单行文本。
+    """
+    text = " ".join(text.strip().split())
+    return text if len(text) <= max_len else f"{text[:max_len]}…"
+
+
+async def _record_session(
+    initial_state: AgentState, session_id: str | None, reply_text: str
+) -> None:
+    """落库一轮会话元数据（历史会话列表，系分 §6.2 扩展）。
+
+    从 ``initial_state`` 取 user_id / scope / 首条用户消息（title 来源；
+    ``_build_initial_state`` 首条即本轮用户消息，但 confirmed_actions 会向首位
+    注入 system 消息，故循环找第一个 role=user 消息），``reply_text`` 为本轮
+    累计的助手回复文本（last_message）。
+
+    Args:
+        initial_state: ``_build_initial_state`` 构造的初始状态。
+        session_id: 本轮会话 ID（原始，非内部 thread_key）；None 时跳过落库。
+        reply_text: 本轮助手回复累计文本（可为空——无流式回复时 last_message 置 None）。
+
+    Raises:
+        Exception: 存储层失败时上抛，由调用方 try/except 包裹（不阻塞对话主流程）。
+    """
+    if not session_id:
+        return
+    user_id = initial_state.get("user_id")
+    scope = initial_state.get("scope", "c_end")
+    first_user_msg = ""
+    for m in initial_state.get("messages", []):
+        if isinstance(m, dict):
+            if m.get("role") == "user":
+                first_user_msg = m.get("content") or ""
+                break
+        elif getattr(m, "role", None) == "user":
+            first_user_msg = getattr(m, "content", "") or ""
+            break
+    store = get_session_store()
+    await store.upsert(
+        user_id=user_id,
+        session_id=session_id,
+        scope=scope,
+        title=_truncate_title(first_user_msg) if first_user_msg else "新会话",
+        last_message=_truncate_title(reply_text) if reply_text else None,
+        message_count=1,
+    )
 
 
 def _build_action(result: dict[str, Any], *, from_call: bool = False) -> dict[str, Any]:

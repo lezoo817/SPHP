@@ -39,6 +39,12 @@ def route_continue(state: AgentState) -> str:
 
     如果 LLM 返回了新的 tool_calls 且未超最大迭代次数（settings.max_tool_iterations，
     防 LLM 无限循环），循环回 tool_caller；否则结束子图。
+
+    ⚠️ M8-1 注释：此处 ``tool_calls`` 为 safety_check 放行的 L1（executor 已执行），
+    语义上 stale，但作为「让 LLM 基于 tool_results 继续分步决策」的循环信号有效
+    （如查号源后继续创建挂号）。重复 L2 不靠此处置，由 ``_dedupe_tool_calls``
+    对比 pending_confirmations + ``safety_check`` 复用 token 在源头拦截，确保
+    同一 L2 恰好一张确认卡。
     """
     iteration = state.get("tool_iteration") or 0
     has_tool_calls = bool(state.get("tool_calls"))

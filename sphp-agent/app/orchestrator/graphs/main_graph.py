@@ -1,8 +1,14 @@
 """主图构造（系分 §5.2.3）。
 
-LangGraph StateGraph 串联标准节点：auth -> intent -> [业务子图 | qa | chitchat] -> reply。
-业务意图（triage/registration/consultation/pharmacy）路由到对应子图，
-qa 路由到 rag_node 检索回答，chitchat 路由到 chitchat_node（不检索）。
+LangGraph StateGraph 串联标准节点：auth -> [B 端直达工具子图 | intent ->
+业务子图/qa/chitchat] -> reply。
+
+M8-3 B 端意图路由：scope=b_end 跳过 C 端意图分类、auth_node 后直接进入
+B 端全量工具子图（省一次 LLM 意图分类调用 + 避免 C 端 6 类意图语义吞掉
+B 端工具）。C 端保持 auth -> intent -> 意图路由 -> 业务子图的原有链路。
+
+M8-2 健康档案子图：C 端意图新增 health（健康档案场景五），路由到
+health_graph 直达 10 工具白名单子图，补齐此前无 intent 路由的缺口。
 """
 
 from typing import Any
@@ -10,7 +16,9 @@ from typing import Any
 from langgraph.graph import END, StateGraph
 
 from app.orchestrator.checkpointer import build_checkpointer
+from app.orchestrator.graphs._common import build_tool_subgraph
 from app.orchestrator.graphs.consult_graph import build_consultation_graph
+from app.orchestrator.graphs.health_graph import build_health_graph
 from app.orchestrator.graphs.pharmacy_graph import build_pharmacy_graph
 from app.orchestrator.graphs.registration_graph import build_registration_graph
 from app.orchestrator.graphs.triage_graph import build_triage_graph
@@ -22,8 +30,25 @@ from app.orchestrator.nodes.reply import reply_node
 from app.orchestrator.state import AgentState
 
 
+def route_by_scope(state: AgentState) -> str:
+    """auth_node 后按服务端分流（M8-3）。
+
+    B 端（scope=b_end）跳过 C 端意图分类，直达 B 端全量工具子图——
+    B 端工具与 C 端 6 类意图语义无关（医生问诊/处方审核/报告解读均为 B 端
+    专属流程），走意图分类大概率误归到 qa 分支而吞掉全部 9 个工具
+    （qa 分支只检索知识库不调工具）。直达同时省一次 LLM 意图分类调用。
+
+    Args:
+        state: 当前图状态，含 scope 字段。
+
+    Returns:
+        str: "b_end_tool_graph"（B 端）或 "intent_node"（C 端及未知）。
+    """
+    return "b_end_tool_graph" if state.get("scope") == "b_end" else "intent_node"
+
+
 def route_by_intent(state: AgentState) -> str:
-    """读 state.intent → 返回目标节点名。
+    """读 state.intent → 返回目标节点名（仅 C 端调用，M8-3）。
 
     业务意图路由到对应工具子图，qa 路由到 rag_node（知识检索），
     chitchat 路由到 chitchat_node（不检索，仅日常回复）。
@@ -34,6 +59,7 @@ def route_by_intent(state: AgentState) -> str:
         "registration": "registration_graph",
         "consultation": "consultation_graph",
         "pharmacy": "pharmacy_graph",
+        "health": "health_graph",  # M8-2 健康档案场景五
         "qa": "qa_node",
         "chitchat": "chitchat_node",
     }
@@ -56,14 +82,27 @@ def build_main_graph() -> Any:
     builder.add_node("registration_graph", build_registration_graph())
     builder.add_node("consultation_graph", build_consultation_graph())
     builder.add_node("pharmacy_graph", build_pharmacy_graph())
+    # M8-2 健康档案子图（场景五，10 工具白名单）
+    builder.add_node("health_graph", build_health_graph())
+
+    # M8-3 B 端直达工具子图：tool_names=None 绑定当前 scope（b_end）全量
+    # L1/L2 工具（9 个），B 端无白名单约束（M5 定案，全量绑定）
+    builder.add_node("b_end_tool_graph", build_tool_subgraph(tool_names=None))
 
     # 入口
     builder.set_entry_point("auth_node")
 
-    # auth_node → intent_node
-    builder.add_edge("auth_node", "intent_node")
+    # 条件边：auth_node 后按 scope 分流（B 端直达工具子图，C 端走意图识别）
+    builder.add_conditional_edges(
+        "auth_node",
+        route_by_scope,
+        {
+            "b_end_tool_graph": "b_end_tool_graph",
+            "intent_node": "intent_node",
+        },
+    )
 
-    # 条件边：意图路由
+    # 条件边：意图路由（仅 C 端执行）
     builder.add_conditional_edges(
         "intent_node",
         route_by_intent,
@@ -72,6 +111,7 @@ def build_main_graph() -> Any:
             "registration_graph": "registration_graph",
             "consultation_graph": "consultation_graph",
             "pharmacy_graph": "pharmacy_graph",
+            "health_graph": "health_graph",
             "qa_node": "qa_node",
             "chitchat_node": "chitchat_node",
         },
@@ -84,6 +124,8 @@ def build_main_graph() -> Any:
     builder.add_edge("registration_graph", "reply_node")
     builder.add_edge("consultation_graph", "reply_node")
     builder.add_edge("pharmacy_graph", "reply_node")
+    builder.add_edge("health_graph", "reply_node")
+    builder.add_edge("b_end_tool_graph", "reply_node")
 
     builder.add_edge("reply_node", END)
 
