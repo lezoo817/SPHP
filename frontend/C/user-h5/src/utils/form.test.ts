@@ -7,7 +7,7 @@ import {
   validateFamilyMember,
   validatePassword,
 } from './form';
-import { filterHospitals, formatAmount, sortHospitals } from './medical';
+import { filterHospitals, formatAmount, getAppointmentStatusText, sortHospitals } from './medical';
 import { resolveSelfPatientId } from '../models/selection';
 import { buildDrugOrderListPath } from '../services/pharmacy';
 import { matchesDrugOrderTab } from './pharmacy';
@@ -64,6 +64,11 @@ describe('挂号资源展示规则', () => {
   it('未指定订单状态时不传递空状态参数', () => {
     expect(buildAppointmentsPath(1)).toBe('/c/v1/appointments?pageNo=1&pageSize=20&patientId=1');
     expect(buildAppointmentsPath(1, 'UNPAID')).toContain('status=UNPAID');
+  });
+
+  it('将挂号订单状态转换为患者可理解的中文文案', () => {
+    expect(getAppointmentStatusText('PAID')).toBe('支付完成');
+    expect(getAppointmentStatusText('CANCELLED')).toBe('支付取消');
   });
 });
 
