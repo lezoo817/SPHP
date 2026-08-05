@@ -10,7 +10,7 @@ import {
 import { filterHospitals, formatAmount, getAppointmentStatusText, sortHospitals } from './medical';
 import { resolveSelfPatientId } from '../models/selection';
 import { buildDrugOrderListPath } from '../services/pharmacy';
-import { buildPharmacyInventoryPath, buildPharmacyPrescriptionPath, matchesDrugOrderTab, resolvePharmacyPatientId } from './pharmacy';
+import { buildPharmacyHomePath, buildPharmacyInventoryPath, buildPharmacyPrescriptionPath, matchesDrugOrderTab, resolvePharmacyPatientId } from './pharmacy';
 import { hasSearchKeyword, matchesDepartmentKeyword, resolveInitialDepartment } from './home-search';
 import { buildProfileUpdatePayload, normalizeProfileIdCardNo, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
 import { resolveMinePatientId } from '../models/mine-patient';
@@ -77,6 +77,8 @@ describe('就诊人默认选择', () => {
 
 describe('购药处方跳转规则', () => {
   it('购药处方详情和库存页始终透传当前本地就诊人', () => {
+    expect(buildPharmacyHomePath(20001)).toBe('/pharmacy?patientId=20001');
+    expect(buildPharmacyHomePath()).toBe('/pharmacy');
     expect(buildPharmacyPrescriptionPath(13001, 20001)).toBe('/pharmacy/prescription/13001?patientId=20001');
     expect(buildPharmacyPrescriptionPath(13001, 20001, undefined, 30001)).toBe('/pharmacy/prescription/13001?patientId=20001&drugOrderId=30001');
     expect(buildPharmacyInventoryPath(13001, 20001)).toBe('/pharmacy/prescription/13001/inventory?patientId=20001');

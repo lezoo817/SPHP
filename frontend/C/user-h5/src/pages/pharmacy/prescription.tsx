@@ -6,7 +6,7 @@ import { PrescriptionPaper } from '../../components/PrescriptionPaper';
 import { getPrescription } from '../../services/consultation';
 import type { PrescriptionDetail } from '../../typings/api';
 import { getApiErrorMessage } from '../../utils/form';
-import { buildPharmacyInventoryPath, resolvePharmacyPatientId } from '../../utils/pharmacy';
+import { buildPharmacyHomePath, buildPharmacyInventoryPath, resolvePharmacyPatientId } from '../../utils/pharmacy';
 import { buildDrugOrderLogisticsPath } from '../../utils/pharmacy-order';
 import { getPrescriptionDisplayNumber } from '../../utils/prescription';
 
@@ -56,7 +56,7 @@ export default function PharmacyPrescriptionPage() {
     navigate(buildPharmacyInventoryPath(prescriptionId, patientId, detail?.issuedAt || issuedAtFromList));
   }
 
-  return <main className="subpage pharmacy-prescription-detail-page"><PageHeader title="处方详情" backPath="/pharmacy" /><section className="subpage-content">
+  return <main className="subpage pharmacy-prescription-detail-page"><PageHeader title="处方详情" backPath={buildPharmacyHomePath(patientId)} /><section className="subpage-content">
     {!patientId && <p className="form-error">请返回购药页重新选择就诊人</p>}
     {!detail && !notice && <p className="empty-state">正在读取处方详情...</p>}
     {detail && <PrescriptionPaper detail={detail} displayNumber={getPrescriptionDisplayNumber(detail.id, detail.issuedAt || issuedAtFromList)} issuedAt={issuedAtFromList} />}

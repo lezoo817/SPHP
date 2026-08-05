@@ -37,6 +37,15 @@ export function resolvePharmacyPatientId(patientIdText: string | null): number |
 }
 
 /**
+ * 构建购药首页路径，并保留该模块独立选择的就诊人。
+ * @param patientId 当前购药页本地就诊人 ID
+ * @returns 带可选就诊人上下文的购药首页路径
+ */
+export function buildPharmacyHomePath(patientId?: number): string {
+  return Number.isInteger(patientId) && patientId! > 0 ? `/pharmacy?patientId=${patientId}` : '/pharmacy';
+}
+
+/**
  * 构建购药处方详情页面路径。
  * @param prescriptionId 处方 ID
  * @param patientId 当前购药页本地就诊人 ID

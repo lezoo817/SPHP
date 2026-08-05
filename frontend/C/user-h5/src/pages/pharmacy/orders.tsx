@@ -4,7 +4,7 @@ import { useNavigate } from 'umi';
 import { getDrugOrders } from '../../services/pharmacy';
 import type { DrugOrder } from '../../typings/api';
 import { formatAmount } from '../../utils/medical';
-import { drugOrderTabs, getLogisticsStatusText, matchesDrugOrderTab, type DrugOrderTab } from '../../utils/pharmacy';
+import { buildPharmacyHomePath, drugOrderTabs, getLogisticsStatusText, matchesDrugOrderTab, type DrugOrderTab } from '../../utils/pharmacy';
 import { getApiErrorMessage } from '../../utils/form';
 
 /** 将地址栏的 Tab 参数转换为受控物流分类。 */
@@ -62,7 +62,7 @@ export default function PharmacyOrdersPage() {
 
   const visibleOrders = orders.filter((order) => matchesDrugOrderTab(order, tab));
   return <main className="subpage discovery-page">
-    <header className="page-header"><button className="icon-button" type="button" aria-label="返回购药" onClick={() => nav('/pharmacy')}><ArrowLeft size={22} /></button><h1>我的订单</h1><span /></header>
+    <header className="page-header"><button className="icon-button" type="button" aria-label="返回购药" onClick={() => nav(buildPharmacyHomePath(patientId))}><ArrowLeft size={22} /></button><h1>我的订单</h1><span /></header>
     <section className="subpage-content pharmacy-orders">
       <form className="discovery-input order-search" onSubmit={search}>
         <Search size={20} /><input aria-label="搜索订单名称" value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索订单名称" />
