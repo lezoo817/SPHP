@@ -10,7 +10,7 @@ import {
 import { filterHospitals, formatAmount, getAppointmentStatusText, sortHospitals } from './medical';
 import { resolveSelfPatientId } from '../models/selection';
 import { buildDrugOrderListPath } from '../services/pharmacy';
-import { matchesDrugOrderTab } from './pharmacy';
+import { buildPharmacyInventoryPath, buildPharmacyPrescriptionPath, matchesDrugOrderTab, resolvePharmacyPatientId } from './pharmacy';
 import { hasSearchKeyword, matchesDepartmentKeyword, resolveInitialDepartment } from './home-search';
 import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
 import { resolveMinePatientId } from '../models/mine-patient';
@@ -63,6 +63,20 @@ describe('重复预约联调规则', () => {
 describe('就诊人默认选择', () => {
   it('优先选择本人而非全局家属选择', () => {
     expect(resolveSelfPatientId([{ patientId: 2, relation: 'CHILD' }, { patientId: 1, relation: 'SELF' }])).toBe(1);
+  });
+});
+
+describe('购药处方跳转规则', () => {
+  it('购药处方详情和库存页始终透传当前本地就诊人', () => {
+    expect(buildPharmacyPrescriptionPath(13001, 20001)).toBe('/pharmacy/prescription/13001?patientId=20001');
+    expect(buildPharmacyInventoryPath(13001, 20001)).toBe('/pharmacy/prescription/13001/inventory?patientId=20001');
+  });
+
+  it('缺失或非法就诊人参数时不解析为库存请求患者', () => {
+    expect(resolvePharmacyPatientId('20001')).toBe(20001);
+    expect(resolvePharmacyPatientId(null)).toBeUndefined();
+    expect(resolvePharmacyPatientId('0')).toBeUndefined();
+    expect(resolvePharmacyPatientId('patient')).toBeUndefined();
   });
 });
 
