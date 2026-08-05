@@ -1,2 +1,53 @@
-import { useEffect,useState } from 'react';import { useNavigate,useParams } from 'umi';import { PageHeader } from '../../components/PageHeader';import { getSelection } from '../../models/selection';import { createDrugOrder,getInventory } from '../../services/pharmacy';import type { PharmacyInventory } from '../../typings/api';import { createIdempotencyKey } from '../../utils/form';import { formatAmount } from '../../utils/medical';
-/** 展示处方药库存并从院内药房创建购药订单。 */ export default function PharmacyPrescriptionPage(){const {prescriptionId}=useParams();const nav=useNavigate();const [items,setItems]=useState<PharmacyInventory[]>([]);const [notice,setNotice]=useState('');useEffect(()=>{void getInventory(getSelection().patientId,Number(prescriptionId)).then(setItems).catch(e=>setNotice(e.message||'库存加载失败'))},[prescriptionId]);async function order(p:PharmacyInventory){try{const o=await createDrugOrder({patientId:getSelection().patientId,prescriptionId:Number(prescriptionId),pharmacyId:p.pharmacyId,deliveryAddress:'河南省郑州市演示收货地址'},createIdempotencyKey());nav(`/pharmacy/order/${o.drugOrderId}?paymentId=${o.paymentId}`)}catch(e:any){setNotice(e.message||'创建订单失败')}}return <main className="subpage"><PageHeader title="附近有货药店"/><section className="subpage-content"><p className="result-count">郑州市 · 1.2km 内</p>{items.map((p,i)=><button className="record-card" key={p.pharmacyId} type="button" onClick={()=>void order(p)}><div><b>{p.name}</b><span>{p.items.filter(x=>x.availableCount>0).length}种药均有货 · {(i?980:350)}m</span></div><em>{formatAmount(p.items.reduce((s,x)=>s+x.unitPriceCent,0))}</em></button>)}{!items.length&&<p className="empty-state">附近暂无可购买药店</p>}</section>{notice&&<div className="toast" onClick={()=>setNotice('')}>{notice}</div>}</main>}
+import { useEffect, useMemo, useState } from 'react';
+import { ShoppingCart } from 'lucide-react';
+import { useLocation, useNavigate, useParams } from 'umi';
+import { PageHeader } from '../../components/PageHeader';
+import { PrescriptionPaper } from '../../components/PrescriptionPaper';
+import { getPrescription } from '../../services/consultation';
+import type { PrescriptionDetail } from '../../typings/api';
+import { getApiErrorMessage } from '../../utils/form';
+import { buildPharmacyInventoryPath, resolvePharmacyPatientId } from '../../utils/pharmacy';
+import { getPrescriptionDisplayNumber } from '../../utils/prescription';
+
+/** 展示购药场景的已批准处方，并引导用户进入药房库存选择。 */
+export default function PharmacyPrescriptionPage() {
+  const { prescriptionId: prescriptionIdText } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const prescriptionId = Number(prescriptionIdText);
+  const patientId = useMemo(() => resolvePharmacyPatientId(new URLSearchParams(location.search).get('patientId')), [location.search]);
+  const issuedAtFromList = new URLSearchParams(location.search).get('issuedAt') || undefined;
+  const [detail, setDetail] = useState<PrescriptionDetail>();
+  const [notice, setNotice] = useState('');
+
+  /** 读取处方正文；处方详情由服务端按当前账号校验可见性。 */
+  async function loadPrescription() {
+    if (!Number.isInteger(prescriptionId) || prescriptionId <= 0) {
+      setNotice('处方编号不正确');
+      return;
+    }
+    try {
+      const next = await getPrescription(prescriptionId);
+      setDetail(next);
+    } catch (error) {
+      setNotice(getApiErrorMessage(error));
+    }
+  }
+
+  useEffect(() => { void loadPrescription(); }, [prescriptionId]);
+
+  /** 进入库存页时显式透传购药页本地就诊人，避免使用其他页面的选择状态。 */
+  function purchaseNow() {
+    if (!patientId) {
+      setNotice('请返回购药页重新选择就诊人');
+      return;
+    }
+    navigate(buildPharmacyInventoryPath(prescriptionId, patientId, detail?.issuedAt || issuedAtFromList));
+  }
+
+  return <main className="subpage pharmacy-prescription-detail-page"><PageHeader title="处方详情" backPath="/pharmacy" /><section className="subpage-content">
+    {!patientId && <p className="form-error">请返回购药页重新选择就诊人</p>}
+    {!detail && !notice && <p className="empty-state">正在读取处方详情...</p>}
+    {detail && <PrescriptionPaper detail={detail} displayNumber={getPrescriptionDisplayNumber(detail.id, detail.issuedAt || issuedAtFromList)} issuedAt={issuedAtFromList} />}
+  </section><footer className="pharmacy-purchase-bar"><button className="primary-button" type="button" disabled={!detail || !patientId} onClick={purchaseNow}><ShoppingCart size={19} />立即购药</button></footer>{notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}</main>;
+}

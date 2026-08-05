@@ -93,10 +93,10 @@ public class PrescriptionServiceImpl implements PrescriptionService {
                 .doctorName(detail.doctorName())
                 .doctor(ConsultationPrescriptionDetailVO.Doctor.builder()
                         .id(detail.doctorId())
-                        .name(detail.doctorName())
-                        .title(detail.doctorTitle())
+                        .name(detail.doctorName()) //
+                        .title(detail.doctorTitle()) // 医生职称
                         .build())
-                .items(items)
+                .items(items) // 药品明细
                 .build();
     }
 
@@ -119,10 +119,10 @@ public class PrescriptionServiceImpl implements PrescriptionService {
             throw prescriptionInterpretationNotReady(); // 未生成异常
         }
         return PrescriptionInterpretationVO.builder()
-                .prescriptionId(interpretation.prescriptionId())
-                .content(interpretation.content())
-                .disclaimer(interpretation.disclaimer())
-                .generatedAt(interpretation.generatedAt())
+                .prescriptionId(interpretation.prescriptionId()) // 处方 ID
+                .content(interpretation.content()) // 内容
+                .disclaimer(interpretation.disclaimer()) // 免责声明
+                .generatedAt(interpretation.generatedAt()) // 生成时间
                 .build();
     }
 

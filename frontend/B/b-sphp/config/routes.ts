@@ -88,6 +88,8 @@ const routes = [
           },
         ],
       },
+      // AI 辅助助手（所有人）
+      { path: '/agent', component: 'agent' },
       { path: '/', redirect: '/consult/queue' },
     ],
   },

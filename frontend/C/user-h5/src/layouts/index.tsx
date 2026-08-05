@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Outlet, useLocation, useNavigate } from 'umi';
 import { clearSession, getSession, isSessionTokenExpired } from '../models/session';
 import { AgentFloatingButton } from '../components/agent/AgentFloatingButton';
+import { queryClient } from '../query/client';
 import '../styles/app.less';
 import '../styles/health-notification.less';
 import '../styles/delivery-address.less';
@@ -25,12 +27,12 @@ export default function Layout() {
 
   if (!isLoginPage && !isAuthenticated) return null;
   return (
-    <>
+    <QueryClientProvider client={queryClient}>
       <Outlet />
       {/* AI 助手悬浮球：登录页与 AI 助手页本身不展示 */}
       {isAuthenticated && !isLoginPage && !isAgentPage && (
         <AgentFloatingButton onClick={() => navigate('/agent', { state: { from: location.pathname } })} />
       )}
-    </>
+    </QueryClientProvider>
   );
 }

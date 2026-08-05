@@ -7,7 +7,8 @@ import { resolveSelfPatientId } from '../../models/selection';
 import { getFamilyMembers } from '../../services/family';
 import { getPrescriptions } from '../../services/consultation';
 import type { FamilyMember, Prescription } from '../../typings/api';
-import { drugOrderTabs, type DrugOrderTab } from '../../utils/pharmacy';
+import { buildPharmacyPrescriptionPath, drugOrderTabs, type DrugOrderTab } from '../../utils/pharmacy';
+import { formatPrescriptionIssuedAt } from '../../utils/prescription';
 
 /** 展示本人默认的处方和四类物流入口，并支持本页切换家人。 */
 export default function PharmacyPage() {
@@ -28,7 +29,7 @@ export default function PharmacyPage() {
       if (!target) return;
       if (!patientId) setPatientId(target);
       // 物流入口不展示本地统计数，订单数据统一在独立订单页查询。
-      const prescriptionPage = await getPrescriptions(target);
+      const prescriptionPage = await getPrescriptions({ patientId: target });
       setPrescriptions(prescriptionPage.records);
     } catch (error: any) {
       setNotice(error.message || '购药数据加载失败');
@@ -53,8 +54,8 @@ export default function PharmacyPage() {
         就诊人 <b>{current?.name || '未选择'}</b><span>{current?.phone || ''}</span><b>切换 <RefreshCw size={18} /></b>
       </button>
       <h2>我的处方</h2>
-      {prescriptions.map((prescription) => <button className="record-card" key={prescription.id} type="button" onClick={() => nav(`/pharmacy/prescription/${prescription.id}`)}>
-        <Package size={25} /><div><b>{prescription.doctorName}电子处方</b><span>已批准 · {prescription.issuedAt}</span></div><em>待购药</em>
+      {prescriptions.map((prescription) => <button className="record-card" key={prescription.id} type="button" onClick={() => patientId && nav(buildPharmacyPrescriptionPath(prescription.id, patientId, prescription.issuedAt))}>
+        <Package size={25} /><div className="pharmacy-prescription-summary"><b>{prescription.doctorName}电子处方</b><span>已批准</span><small>开具时间：{formatPrescriptionIssuedAt(prescription.issuedAt)}</small></div><em>待购药</em>
       </button>)}
       {!prescriptions.length && <p className="empty-state">暂无可购药处方</p>}
       <section className="logistics-card">
