@@ -3,6 +3,7 @@ package com.sphp.admin.doctor.mapper;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 
 /**
@@ -20,4 +21,8 @@ public class QueueRow {
     private OffsetDateTime appointmentTime;
     private String status;
     private Integer queueNumber;
+    /** 号源时段开始时间（用于接诊时段校验） */
+    private LocalTime slotStartTime;
+    /** 号源时段结束时间 */
+    private LocalTime slotEndTime;
 }

@@ -7,6 +7,8 @@ import com.sphp.admin.doctor.entity.ConsultRecord;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 
 /**
@@ -27,6 +29,7 @@ public interface ConsultRecordMapper extends BaseMapper<ConsultRecord> {
             "       p.date_of_birth AS patientDateOfBirth, " +
             "       cr.ai_summary AS aiSummary, " +
             "       a.created_at AS appointmentTime, cr.status AS status, " +
+            "       s.start_time AS slotStartTime, s.end_time AS slotEndTime, " +
             "       ROW_NUMBER() OVER (PARTITION BY cr.doctor_id, sch.schedule_date ORDER BY a.created_at) AS queueNumber " +
             "FROM consult_record cr " +
             "JOIN appointment a ON cr.appointment_id = a.id AND a.deleted_at IS NULL " +
@@ -64,4 +67,16 @@ public interface ConsultRecordMapper extends BaseMapper<ConsultRecord> {
             "  AND status = 'IN_PROGRESS' " +
             "  AND doctor_id = #{doctorId}")
     long countInProgressByDoctor(@Param("doctorId") Long doctorId);
+
+    /**
+     * 查询号源时段起止时间与排班日期（用于接诊时段校验）。
+     */
+    @Select("SELECT s.start_time, s.end_time, sch.schedule_date " +
+            "FROM consult_record cr " +
+            "JOIN appointment a ON cr.appointment_id = a.id AND a.deleted_at IS NULL " +
+            "JOIN slot_snapshot ss ON a.slot_snapshot_id = ss.id AND ss.deleted_at IS NULL " +
+            "JOIN slot s ON ss.slot_id = s.id AND s.deleted_at IS NULL " +
+            "JOIN schedule sch ON s.schedule_id = sch.id AND sch.deleted_at IS NULL " +
+            "WHERE cr.id = #{consultId} AND cr.deleted_at IS NULL")
+    SlotTimeInfo selectSlotTimeByConsultId(@Param("consultId") Long consultId);
 }

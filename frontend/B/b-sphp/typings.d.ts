@@ -254,6 +254,10 @@ declare global {
       queueNumber: number;
       appointmentTime: string;
       status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+      /** 号源时段开始时间（HH:mm），用于接诊时段校验 */
+      slotStartTime?: string;
+      /** 号源时段结束时间（HH:mm） */
+      slotEndTime?: string;
     }
 
     /** 接诊历史项 */
@@ -306,6 +310,8 @@ declare global {
         phone: string;
         emergencyContact: string;
       };
+      /** 病历记录（结构化 JSON 或旧版纯文本），用于接诊中回显已保存病历 */
+      doctorNote?: string;
       allergies: AllergyInfo[];
       medicalHistories: MedicalHistoryInfo[];
       aiSummary?: Record<string, any>;
