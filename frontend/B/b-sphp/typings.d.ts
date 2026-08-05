@@ -683,4 +683,228 @@ declare global {
       deptId?: number;
     }
   }
+
+  /**
+   * ============ AI 辅助面板（Agent）相关类型 ============
+   * 与 sphp-agent 的 `app/api/routes/chat.py` SSE 事件格式对齐，覆盖
+   * Agent 模块系分 V2.1 §6.2 七类事件：message / thought / action / observation /
+   * card / error / done，以及 L2 确认回调的请求与响应结构。
+   */
+  namespace Agent {
+    /** B 端对话上下文：描述当前页面业务状态，辅助 Agent 决策。 */
+    interface ChatContext {
+      /** 当前页面标识 */
+      page?: 'doctor_workbench' | 'consultation' | 'prescription' | 'pharmacy' | 'health' | 'triage';
+      /** 当前医院 ID（数据隔离维度） */
+      hospital_id?: number;
+      /** 当前页面选中的医生 ID */
+      doctor_id?: number;
+      /** 当前接诊患者 ID（B 端医生接诊时传入） */
+      patient_id?: number;
+      /** 当前问诊记录 ID（接诊台场景必传） */
+      consultation_id?: number;
+    }
+
+    /** 发起流式对话的请求体（POST /api/chat/stream）。 */
+    interface ChatRequest {
+      /** 用户输入文本，1 至 2000 字 */
+      content: string;
+      /** 固定为 b_end */
+      scope: 'b_end';
+      /** 会话 ID；为空时 Agent 创建新会话 */
+      session_id?: string;
+      /** 附加上下文 */
+      context?: ChatContext;
+    }
+
+    /** message 事件：流式文本增量。 */
+    interface MessageEvent {
+      /** 本次增量文本片段，前端累加拼接 */
+      delta: string;
+    }
+
+    /** thought 事件：推理模型的思考增量。 */
+    interface ThoughtEvent {
+      /** 推理增量文本片段，仅推理模型触发 */
+      delta: string;
+    }
+
+    /** action 事件：工具调用开始。 */
+    interface ActionEvent {
+      /** 工具英文标识符，用于与 observation 配对 */
+      tool: string;
+      /** 传入工具的完整参数 */
+      arguments: Record<string, unknown>;
+    }
+
+    /** observation 事件：工具调用结果。 */
+    interface ObservationEvent {
+      /** 工具英文标识符，与对应 action 配对 */
+      tool: string;
+      /** 执行状态：success 或 error（后端字段为 success 布尔） */
+      status: 'success' | 'error';
+      /** 工具完整返回数据 */
+      result?: unknown;
+      /** 结果一行摘要 */
+      summary?: string;
+      /** 工具执行耗时，单位毫秒 */
+      duration_ms?: number;
+      /** 失败原因 */
+      error?: string;
+    }
+
+    /** L2 确认卡片类型，决定渲染样式和详情字段。 */
+    type CardType =
+      | 'confirm_draft_note'
+      | 'confirm_send_message'
+      | 'confirm_appointment'
+      | 'confirm_cancel_appointment'
+      | 'confirm_pre_consultation'
+      | 'confirm_drug_order'
+      | 'confirm_cancel_drug_order'
+      | 'confirm_allergy'
+      | 'confirm_medical_history'
+      | 'confirm_report'
+      | 'confirm_medication_plan'
+      | 'confirm_follow_up'
+      | 'confirm_generic';
+
+    /** card 事件：L2 操作确认卡片。 */
+    interface CardEvent {
+      card_type: CardType;
+      /** 确认令牌，确认时原样传回 */
+      confirm_token: string;
+      /** 当前会话 ID；确认请求必须与 confirm_token 一并传回 */
+      session_id: string;
+      title: string;
+      summary: string;
+      /** 结构化详情，字段随卡片类型变化 */
+      details?: Record<string, unknown>;
+      /** 令牌过期时间；到期后禁用确认 */
+      expires_at?: string;
+    }
+
+    /** error 事件：对话或工具执行错误。 */
+    interface ErrorEvent {
+      code: string;
+      message: string;
+      trace_id?: string;
+    }
+
+    /** done 事件：本轮结束。 */
+    interface DoneEvent {
+      session_id: string;
+      usage?: Record<string, number> | null;
+      trace_id?: string;
+    }
+
+    /** 七类 SSE 事件的联合类型。 */
+    type SseEvent =
+      | { event: 'message'; data: MessageEvent }
+      | { event: 'thought'; data: ThoughtEvent }
+      | { event: 'action'; data: ActionEvent }
+      | { event: 'observation'; data: ObservationEvent }
+      | { event: 'card'; data: CardEvent }
+      | { event: 'error'; data: ErrorEvent }
+      | { event: 'done'; data: DoneEvent };
+
+    /** L2 确认回调请求体（POST /api/chat/confirm）。 */
+    interface ConfirmRequest {
+      confirm_token: string;
+      session_id: string;
+    }
+
+    /** L2 确认回调响应数据。 */
+    interface ConfirmData {
+      /** MCP 工具返回的业务执行结果 */
+      action_result?: unknown;
+      /** 面向医生的业务结果提示 */
+      message?: string;
+    }
+
+    /** 确认卡片在 UI 中的运行时状态。 */
+    type ConfirmCardStatus = 'pending' | 'confirming' | 'done' | 'error' | 'expired';
+
+    /** 会话消息类型。 */
+    type MessageRole = 'user' | 'assistant';
+
+    /** 一条会话消息（AI 文本累加或用户输入）。 */
+    interface Message {
+      id: string;
+      role: MessageRole;
+      content: string;
+      /** 是否仍在本轮流式输出中 */
+      streaming?: boolean;
+      createdAt: number;
+    }
+
+    /** 思考片段（thought.delta 累加）。 */
+    interface Thought {
+      id: string;
+      content: string;
+      streaming?: boolean;
+      createdAt: number;
+    }
+
+    /** 工具调用卡片（action 与 observation 配对）。 */
+    interface ToolCard {
+      id: string;
+      tool: string;
+      label: string;
+      arguments?: Record<string, unknown>;
+      status: 'loading' | 'success' | 'error';
+      summary?: string;
+      error?: string;
+      result?: unknown;
+      durationMs?: number;
+      createdAt: number;
+    }
+
+    /** L2 确认卡片运行时对象。 */
+    interface ConfirmCard {
+      id: string;
+      cardType: CardType;
+      confirmToken: string;
+      sessionId: string;
+      title: string;
+      summary: string;
+      details?: Record<string, unknown>;
+      expiresAt?: string;
+      status: ConfirmCardStatus;
+      resultMessage?: string;
+      errorCode?: string;
+      errorMessage?: string;
+      createdAt: number;
+    }
+
+    /** 会话条目类型：消息、思考、工具卡片、确认卡片按到达顺序排列。 */
+    type Entry =
+      | { kind: 'message'; data: Message }
+      | { kind: 'thought'; data: Thought }
+      | { kind: 'tool'; data: ToolCard }
+      | { kind: 'card'; data: ConfirmCard };
+
+    /** 流式连接状态。 */
+    type ConnectionState = 'idle' | 'connecting' | 'streaming' | 'error';
+
+    /** 历史会话条目（GET /api/chat/sessions 响应）。 */
+    interface Session {
+      session_id: string;
+      title: string;
+      last_message: string | null;
+      message_count: number;
+      updated_at: string;
+    }
+
+    /** 历史会话列表响应。 */
+    interface SessionList {
+      sessions: Session[];
+    }
+
+    /** 历史消息条目。 */
+    interface HistoryMessage {
+      role: 'user' | 'assistant';
+      content: string;
+    }
+  }
 }

@@ -14,6 +14,7 @@ import {
   AlertOutlined,
   ContainerOutlined,
   ProfileOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { request } from '@umijs/max';
@@ -92,6 +93,11 @@ function buildMenuItems(roles: string[]): MenuProps['items'] {
       key: '/patient',
       label: '患者管理',
       icon: <UserOutlined />,
+    },
+    {
+      key: '/agent',
+      label: 'AI 助手',
+      icon: <RobotOutlined />,
     },
     ...(isAdmin
       ? [
