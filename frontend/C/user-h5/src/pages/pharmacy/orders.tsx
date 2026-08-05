@@ -71,7 +71,7 @@ export default function PharmacyOrdersPage() {
       <nav className="order-tabs" aria-label="订单物流状态">{drugOrderTabs.map((item) => <button className={tab === item.key ? 'active' : ''} key={item.key} type="button" onClick={() => setTab(item.key)}>{item.label}</button>)}</nav>
       {loading && <p className="empty-state">订单加载中...</p>}
       {!loading && visibleOrders.map((order) => <button className="order-list-card" key={order.id} type="button" onClick={() => nav(`/pharmacy/order/${order.id}`)}>
-        <div><b>{order.orderName || '药品订单'}</b><span>{order.pharmacyName}</span><small>{order.latestLogisticsNode || '暂无物流更新'}</small></div>
+        <div><b>{order.orderName || '药品订单'}</b><span>{order.pharmacyName}</span><small>就诊人：{order.patientName || '待确认'}</small></div>
         <aside><em>{getLogisticsStatusText(order.logisticsStatus)}</em><strong>{formatAmount(order.amountCent)}</strong></aside>
       </button>)}
       {!loading && !visibleOrders.length && <p className="empty-state">暂无符合条件的订单</p>}

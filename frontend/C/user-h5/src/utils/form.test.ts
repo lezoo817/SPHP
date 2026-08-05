@@ -210,11 +210,11 @@ describe('购药订单展示规则', () => {
     expect(getDrugOrderLogisticsSteps('RECEIVED').map((item) => item.state)).toEqual(['done', 'done', 'done', 'done']);
   });
 
-  it('预计收货时间使用完整年月日时分，并以首条物流轨迹加一分钟计算', () => {
-    const detail = { id: 1, prescriptionId: 101, orderName: '药品订单', pharmacyName: '药房', status: 'PAID', amountCent: 100, pharmacy: { id: 1, name: '药房' }, items: [], delivery: { address: '演示地址', logisticsStatus: 'PENDING_SHIPMENT', traces: [{ node: '支付成功，等待药房发货', occurredAt: '2026-08-05T10:00:00+08:00' }] } };
+  it('预计送达时间只展示后端模拟物流返回值', () => {
+    const detail = { id: 1, prescriptionId: 101, orderName: '药品订单', pharmacyName: '药房', status: 'PAID', amountCent: 100, pharmacy: { id: 1, name: '药房' }, items: [], delivery: { address: '演示地址', logisticsStatus: 'PENDING_SHIPMENT', expectedDeliveryAt: '2026-08-05T10:01:00+08:00', traces: [{ node: '支付成功，等待药房发货', occurredAt: '2026-08-05T10:00:00+08:00' }] } };
     expect(formatDrugOrderLogisticsTime('2026-08-05T10:00:00+08:00')).toBe('2026/08/05 10:00');
-    expect(getDrugOrderExpectedDeliveryTime(detail, new Date('2026-01-01T00:00:00+08:00'))).toBe('2026/08/05 10:01');
-    expect(getDrugOrderExpectedDeliveryTime({ ...detail, delivery: { ...detail.delivery, traces: [] } }, new Date('2026-08-05T10:00:00+08:00'))).toBe('2026/08/05 10:01');
+    expect(getDrugOrderExpectedDeliveryTime(detail)).toBe('2026/08/05 10:01');
+    expect(getDrugOrderExpectedDeliveryTime({ ...detail, delivery: { ...detail.delivery, expectedDeliveryAt: undefined } })).toBeUndefined();
   });
 
   it('仅已支付且未收货订单继续进行物流详情轮询', () => {

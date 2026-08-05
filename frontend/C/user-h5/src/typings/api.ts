@@ -195,8 +195,8 @@ export interface Prescription { id: number; consultationId: number; doctorName: 
 /** 已批准处方详情。 */
 export interface PrescriptionDetail extends Prescription { doctor: { id: number; name: string; title?: string }; items: { drugId: number; drugName: string; specification?: string; dosage?: string; frequency?: string; usage?: string; durationDays?: number }[]; }
 /** 药房处方库存。 */ export interface PharmacyInventory { pharmacyId:number; name:string; isDefault:boolean; items:{drugId:number;availableCount:number;unitPriceCent:number}[]; }
-/** 购药订单列表项。 */ export interface DrugOrder { id:number; prescriptionId:number; orderName:string; pharmacyName:string; status:string; logisticsStatus?:string; latestLogisticsNode?:string; amountCent:number; expireAt?:string; }
-/** 购药订单详情。 */ export interface DrugOrderDetail extends DrugOrder { pharmacy:{id:number;name:string}; delivery?:{address:string;logisticsStatus:string;traces:{node:string;occurredAt:string}[]}; payment?:{id:number;status:string}; items:{drugId:number;drugName:string;quantity:number;unitPriceCent:number}[]; }
+/** 购药订单列表项。 */ export interface DrugOrder { id:number; prescriptionId:number; orderName:string; pharmacyName:string; status:string; logisticsStatus?:string; latestLogisticsNode?:string; amountCent:number; expireAt?:string; patientName?:string; }
+/** 购药订单详情。 */ export interface DrugOrderDetail extends DrugOrder { patientPhone?:string; pharmacy:{id:number;name:string}; delivery?:{address:string;logisticsStatus:string;expectedDeliveryAt?:string;traces:{node:string;occurredAt:string}[]}; payment?:{id:number;status:string}; items:{drugId:number;drugName:string;quantity:number;unitPriceCent:number}[]; }
 /** 用药计划当前状态。 */
 export type MedicationPlanStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED';
 /** 用药计划允许的状态变更动作。 */

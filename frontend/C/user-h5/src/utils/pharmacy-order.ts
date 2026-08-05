@@ -120,17 +120,13 @@ export function formatDrugOrderLogisticsTime(value?: string | Date): string {
 }
 
 /**
- * 按支付成功首个物流节点和后端两段 30 秒流转计算预计收货时间。
+ * 读取后端模拟物流返回的预计送达时间，不在 H5 端推算配送时长。
  * @param detail 购药订单详情
- * @param now 缺少轨迹时的回退基准时间
- * @returns YYYY/MM/DD HH:mm 格式的预计收货时间
+ * @returns YYYY/MM/DD HH:mm 格式的预计送达时间；后端未返回时为 undefined
  */
-export function getDrugOrderExpectedDeliveryTime(detail: DrugOrderDetail | undefined, now = new Date()): string {
-  const traceTimes = detail?.delivery?.traces
-    .map((trace) => new Date(trace.occurredAt).getTime())
-    .filter((timestamp) => !Number.isNaN(timestamp)) || [];
-  const startAt = traceTimes.length ? Math.min(...traceTimes) : now.getTime();
-  return formatDrugOrderLogisticsTime(new Date(startAt + 60_000));
+export function getDrugOrderExpectedDeliveryTime(detail: DrugOrderDetail | undefined): string | undefined {
+  const expectedDeliveryAt = detail?.delivery?.expectedDeliveryAt;
+  return expectedDeliveryAt ? formatDrugOrderLogisticsTime(expectedDeliveryAt) : undefined;
 }
 
 /**

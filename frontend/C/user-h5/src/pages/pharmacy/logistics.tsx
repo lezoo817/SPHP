@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { MapPin, PackageCheck, Truck } from 'lucide-react';
 import { useNavigate, useParams } from 'umi';
 import { PageHeader } from '../../components/PageHeader';
+import { OrderDeliveryCard } from '../../components/OrderDeliveryCard';
 import { confirmReceipt, getDrugOrder } from '../../services/pharmacy';
 import type { DrugOrderDetail } from '../../typings/api';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
@@ -69,7 +70,8 @@ export default function DrugOrderLogisticsPage() {
   return <main className="subpage pharmacy-logistics-page"><PageHeader title="物流详情" backPath="/pharmacy" /><section className="subpage-content">
     {loading && <p className="empty-state">正在读取物流详情...</p>}
     {!loading && detail && <>
-      {isPendingDrugOrder(detail.status) ? <section className="logistics-state-card"><Truck size={29} /><div><h2>订单待支付</h2><p>支付完成后将开始配送</p></div></section> : <section className="logistics-state-card"><Truck size={29} /><div><h2>{logisticsText}</h2><p>预计 {arrival} 送达</p></div></section>}
+      {isPendingDrugOrder(detail.status) ? <section className="logistics-state-card"><Truck size={29} /><div><h2>订单待支付</h2><p>支付完成后将开始配送</p></div></section> : <section className="logistics-state-card"><Truck size={29} /><div><h2>{logisticsText}</h2>{arrival ? <p>预计 {arrival} 送达</p> : <p>预计送达时间待确认</p>}</div></section>}
+      <OrderDeliveryCard patientName={detail.patientName} patientPhone={detail.patientPhone} address={detail.delivery?.address} />
       <section className="logistics-order-summary"><h2>{detail.pharmacy?.name || detail.pharmacyName || '药房待确认'}</h2><p>订单金额：{formatAmount(detail.amountCent)}</p>{detail.items.map((item) => <article className="logistics-order-item" key={item.drugId}><b>{item.drugName}</b><span>{formatDrugOrderItemPrice(item.quantity, item.unitPriceCent)}</span></article>)}</section>
       {!isPendingDrugOrder(detail.status) && <section className="logistics-trace-card"><header><MapPin size={20} /><h2>配送轨迹</h2></header><ol className="logistics-progress">{steps.map((step) => <li className={`logistics-progress__step is-${step.state}`} key={step.label}><i className="logistics-progress__dot" aria-hidden="true" /><b>{step.label}</b></li>)}</ol></section>}
       {canConfirmDrugOrderReceipt(detail) && <button className="primary-button" disabled={submitting} type="button" onClick={() => void receive()}><PackageCheck size={19} />{submitting ? '确认中...' : '确认收货'}</button>}
