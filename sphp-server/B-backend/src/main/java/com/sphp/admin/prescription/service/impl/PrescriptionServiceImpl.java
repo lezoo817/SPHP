@@ -124,12 +124,13 @@ public class PrescriptionServiceImpl implements PrescriptionService {
         boolean auditRequired = risk.isAuditRequired();
         String prescriptionStatus = auditRequired ? STATUS_SUBMITTED : STATUS_APPROVED;
 
-        // 5. 入库
+        // 5. 入库（落库风险规则快照，供审核展示与追溯）
         Prescription prescription = new Prescription();
         prescription.setConsultId(consultId);
         prescription.setDoctorId(doctorId);
         prescription.setPatientId(consult.getPatientId());
         prescription.setStatus(prescriptionStatus);
+        prescription.setRiskWarnings(risk.getWarnings());
         if (STATUS_APPROVED.equals(prescriptionStatus)) {
             prescription.setIssuedAt(OffsetDateTime.now());
         }
@@ -233,8 +234,9 @@ public class PrescriptionServiceImpl implements PrescriptionService {
                         .build()
                         : null)
                 .status(prescription.getStatus())
-                .auditRequired(false)
-                .riskWarnings(List.of())
+                .auditRequired("SUBMITTED".equals(prescription.getStatus()))
+                .riskWarnings(prescription.getRiskWarnings() != null
+                        ? prescription.getRiskWarnings() : List.of())
                 .items(itemVOs)
                 .issuedAt(prescription.getIssuedAt())
                 .auditedAt(prescription.getAuditedAt())
@@ -277,6 +279,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
                 .deptName(dept != null ? dept.getName() : null)
                 .status(p.getStatus())
                 .itemCount((int) itemCount)
+                .riskWarnings(p.getRiskWarnings())
                 .issuedAt(p.getIssuedAt())
                 .build();
     }

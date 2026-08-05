@@ -430,6 +430,7 @@ declare global {
       deptName: string;
       status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
       auditRequired: boolean;
+      riskWarnings?: RiskWarning[];
       rejectReason?: string;
       items: PrescriptionItem[];
       createdAt: string;
@@ -466,7 +467,7 @@ declare global {
 
     /** 风险预警 */
     interface RiskWarning {
-      level: 'WARNING' | 'ERROR';
+      level: 'WARNING' | 'ERROR' | 'AUDIT';
       rule: string;
       message: string;
     }
@@ -488,6 +489,7 @@ declare global {
       deptId: number;
       deptName: string;
       itemCount: number;
+      riskWarnings?: RiskWarning[];
       issuedAt?: string;
       createdAt: string;
     }

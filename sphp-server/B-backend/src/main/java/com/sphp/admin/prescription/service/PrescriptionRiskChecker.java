@@ -31,8 +31,9 @@ import java.util.regex.Pattern;
  * <p>统一处理过敏/禁忌/重复用药/高危药品四类规则：
  * <ul>
  *   <li>ERROR（红线）：过敏强匹配、禁忌强匹配 → 抛 3004，不入库</li>
- *   <li>WARNING（提示）：重复用药 → 处方生效，返回告警</li>
- *   <li>AUDIT（审核）：高危药品 → 处方进入待审核队列</li>
+ *   <li>WARNING（提示）：重复用药 → 处方进入待审核队列（status=SUBMITTED）</li>
+ *   <li>AUDIT（审核）：高危药品 → 处方进入待审核队列（status=SUBMITTED）</li>
+ *   <li>无风险 → APPROVED</li>
  * </ul>
  *
  * <p>过敏原数据源：patient_allergy 表 + consult_record.ai_summary.allergies。
@@ -107,7 +108,8 @@ public class PrescriptionRiskChecker {
             }
         }
 
-        // 3. 重复用药（WARNING）：成分键相同或互相包含
+        // 3. 重复用药（WARNING）：成分键相同或互相包含；命中即进审核队列
+        boolean duplicateFound = false;
         for (int i = 0; i < items.size(); i++) {
             Drug drugA = drugMap.get(items.get(i).getDrugId());
             if (drugA == null) continue;
@@ -115,6 +117,7 @@ public class PrescriptionRiskChecker {
                 Drug drugB = drugMap.get(items.get(j).getDrugId());
                 if (drugB == null) continue;
                 if (sameIngredient(drugA.getName(), drugB.getName())) {
+                    duplicateFound = true;
                     warnings.add(RiskWarningVO.builder()
                             .level("WARNING")
                             .rule("重复用药检测")
@@ -125,17 +128,17 @@ public class PrescriptionRiskChecker {
             }
         }
 
-        // 4. 高危药品（AUDIT）
-        boolean auditRequired = false;
+        // 4. 高危药品（AUDIT）：特管/高危关键词命中即进审核队列
+        boolean highRisk = false;
         for (PrescriptionSubmitRequest.ItemDTO item : items) {
             Drug drug = drugMap.get(item.getDrugId());
             if (drug == null) continue;
             if (isHighRiskDrug(drug.getName())) {
-                auditRequired = true;
+                highRisk = true;
                 break;
             }
         }
-        if (auditRequired) {
+        if (highRisk) {
             warnings.add(RiskWarningVO.builder()
                     .level("AUDIT")
                     .rule("高危药物联用")
@@ -143,6 +146,8 @@ public class PrescriptionRiskChecker {
                     .build());
         }
 
+        // 命中重复用药或高危任一规则 → 进入待审核队列（status=SUBMITTED）
+        boolean auditRequired = duplicateFound || highRisk;
         return new RiskCheckResult(warnings, auditRequired);
     }
 
