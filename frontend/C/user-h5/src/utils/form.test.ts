@@ -27,6 +27,8 @@ import { buildMedicalRecordDetailPath, buildMedicalRecordListPath } from '../ser
 import { buildLegacyReportRedirectPath, createMedicalRecordDisplayNumber, filterMedicalRecordsByDate, getRecentMedicalRecordRange, mergeMedicalRecordPages } from './medical-record';
 import { isDuplicateDoctorAppointmentError } from './registration';
 import { buildDoctorBookingStatusPath } from '../services/registration';
+import { buildPrescriptionsPath } from '../services/consultation';
+import { buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, filterPrescriptionsByDate, getRecentPrescriptionRange, mergePrescriptionPages } from './prescription';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -257,6 +259,39 @@ describe('医生个人挂号页规则', () => {
     ]);
     expect(summary.availableCount).toBe(5);
     expect(summary.targetSlot?.slotId).toBe(2);
+  });
+});
+
+describe('我的处方查询规则', () => {
+  it('处方列表请求省略未选择的就诊人参数', () => {
+    expect(buildPrescriptionsPath({ pageNo: 2, pageSize: 100 })).toBe('/c/v1/prescriptions?pageNo=2&pageSize=100');
+    expect(buildPrescriptionsPath({ patientId: 20001 })).toContain('patientId=20001');
+  });
+
+  it('最近处方日期范围包含当天且支持日期筛选', () => {
+    const range = getRecentPrescriptionRange(30, new Date(2026, 7, 5));
+    expect(range).toEqual({ startDate: '2026-07-07', endDate: '2026-08-05' });
+    const filtered = filterPrescriptionsByDate([
+      { id: 1, consultationId: 11, doctorName: '张医生', status: 'APPROVED', issuedAt: '2026-08-03T10:00:00+08:00' },
+      { id: 2, consultationId: 12, doctorName: '李医生', status: 'APPROVED', issuedAt: '2026-08-04T10:00:00+08:00' },
+      { id: 3, consultationId: 13, doctorName: '王医生', status: 'APPROVED', issuedAt: '2026-07-01T10:00:00+08:00' },
+    ], range);
+    expect(filtered.map((item) => item.id)).toEqual([2, 1]);
+  });
+
+  it('处方分页按编号去重，并保留新页中的更新数据', () => {
+    const records = mergePrescriptionPages(
+      [{ id: 1, consultationId: 11, doctorName: '张医生', status: 'APPROVED', issuedAt: '2026-08-01T10:00:00+08:00' }],
+      [{ id: 1, consultationId: 11, doctorName: '张主任', status: 'APPROVED', issuedAt: '2026-08-01T10:00:00+08:00' }, { id: 2, consultationId: 12, doctorName: '李医生', status: 'APPROVED', issuedAt: '2026-08-02T10:00:00+08:00' }],
+    );
+    expect(records).toHaveLength(2);
+    expect(records.find((item) => item.id === 1)?.doctorName).toBe('张主任');
+  });
+
+  it('处方详情往返保留患者和日期筛选上下文', () => {
+    const path = buildMinePrescriptionDetailPath(1001, 2001, { startDate: '2026-07-01', endDate: '2026-08-05' });
+    expect(path).toBe('/assistant/prescription/1001?source=mine-prescriptions&startDate=2026-07-01&endDate=2026-08-05&patientId=2001');
+    expect(buildMinePrescriptionListPath(new URLSearchParams(path.split('?')[1]))).toBe('/mine/prescriptions?patientId=2001&startDate=2026-07-01&endDate=2026-08-05');
   });
 });
 

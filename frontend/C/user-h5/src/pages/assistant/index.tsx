@@ -62,7 +62,7 @@ export default function AssistantPage() {
       // 两类列表均使用同一就诊人，切换家属后不会混合展示他人的数据。
       const [appointmentPage, prescriptionPage] = await Promise.all([
         getAppointments(targetPatientId),
-        getPrescriptions(targetPatientId),
+        getPrescriptions({ patientId: targetPatientId }),
       ]);
       setAppointments(appointmentPage.records);
       setPrescriptions(prescriptionPage.records);

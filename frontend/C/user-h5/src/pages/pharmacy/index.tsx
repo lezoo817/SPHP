@@ -28,7 +28,7 @@ export default function PharmacyPage() {
       if (!target) return;
       if (!patientId) setPatientId(target);
       // 物流入口不展示本地统计数，订单数据统一在独立订单页查询。
-      const prescriptionPage = await getPrescriptions(target);
+      const prescriptionPage = await getPrescriptions({ patientId: target });
       setPrescriptions(prescriptionPage.records);
     } catch (error: any) {
       setNotice(error.message || '购药数据加载失败');
