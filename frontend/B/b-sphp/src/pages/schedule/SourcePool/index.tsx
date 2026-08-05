@@ -7,20 +7,15 @@
 import { Tag, message } from 'antd';
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns } from '@ant-design/pro-components';
-import { useModel } from '@umijs/max';
 import { getSourcePool, getDepartments, getDoctors } from '@/services/admin';
+import { useHasRole } from '@/hooks/useCurrentUser';
+import { getErrorMessage } from '@/utils/error';
+import { getShiftConfig } from '../constants';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 
-/** 班次映射 */
-const SHIFT_MAP: Record<string, { text: string; color: string }> = {
-  MORNING: { text: '上午', color: 'blue' },
-  AFTERNOON: { text: '下午', color: 'geekblue' },
-};
-
 export default function SourcePool() {
-  const { initialState } = useModel('@@initialState');
-  const isAdmin = initialState?.currentUser?.roles?.includes('ADMIN') ?? false;
+  const isAdmin = useHasRole('ADMIN');
 
   /** 日期参数归一化：ProTable 可能传入 dayjs 或字符串 */
   const toDateParam = (v: unknown): string | undefined => {
@@ -74,9 +69,10 @@ export default function SourcePool() {
       dataIndex: 'shift',
       width: 80,
       hideInSearch: true,
-      render: (_, record) => (
-        <Tag color={SHIFT_MAP[record.shift]?.color}>{SHIFT_MAP[record.shift]?.text ?? record.shift}</Tag>
-      ),
+      render: (_, record) => {
+        const cfg = getShiftConfig(record.shift);
+        return <Tag color={cfg?.color}>{cfg?.text ?? record.shift}</Tag>;
+      },
     },
     {
       title: '科室（诊室）',
@@ -165,8 +161,8 @@ export default function SourcePool() {
             doctorId: rest.doctorId,
           });
           return { data: res.list, total: res.total, success: true };
-        } catch (err: any) {
-          message.error(err?.message || '查询失败，请重试');
+        } catch (err: unknown) {
+          message.error(getErrorMessage(err, '查询失败，请重试'));
           return { data: [], total: 0, success: true };
         }
       }}
