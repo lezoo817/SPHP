@@ -28,6 +28,8 @@ export const QUERY_KEYS = {
   drugs: ['drug', 'catalog'] as const,
   /** 库存列表（30s） */
   inventory: ['drug', 'inventory'] as const,
+  /** 药房列表（5min，供库存/预警页下拉筛选） */
+  pharmacies: ['admin', 'pharmacies'] as const,
   /** 患者列表（30s） */
   patients: ['patient', 'list'] as const,
   /** 统计报表（5min） */
@@ -46,6 +48,7 @@ export const STALE_TIME = {
   prescriptions: 30_000,
   drugs: 5 * 60_000,
   inventory: 30_000,
+  pharmacies: 5 * 60_000,
   patients: 30_000,
   statistics: 5 * 60_000,
 } as const;
