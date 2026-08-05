@@ -1,2 +1,101 @@
-import { useEffect,useState } from 'react';import { useNavigate,useParams } from 'umi';import { PageHeader } from '../../components/PageHeader';import { getSession } from '../../models/session';import { cancelDrugOrder,confirmReceipt,getDrugOrder } from '../../services/pharmacy';import { simulatePayment } from '../../services/registration';import type { DrugOrderDetail } from '../../typings/api';import { createIdempotencyKey } from '../../utils/form';import { formatAmount,getDemoArrival } from '../../utils/medical';
-/** 展示购药订单支付、物流和确认收货操作。 */ export default function DrugOrderPage(){const {drugOrderId}=useParams();const nav=useNavigate();const [detail,setDetail]=useState<DrugOrderDetail>();const [pwd,setPwd]=useState('');const [notice,setNotice]=useState('');const paymentId=Number(new URLSearchParams(location.search).get('paymentId'));const load=()=>getDrugOrder(Number(drugOrderId)).then(setDetail).catch(e=>setNotice(e.message||'订单加载失败'));useEffect(()=>{void load()},[drugOrderId]);async function pay(){try{await simulatePayment(paymentId,pwd,createIdempotencyKey());await load()}catch(e:any){setNotice(e.message||'支付失败');await load()}}async function cancel(){try{await cancelDrugOrder(Number(drugOrderId),createIdempotencyKey());nav('/pharmacy')}catch(e:any){setNotice(e.message||'取消失败');await load()}}async function receive(){try{await confirmReceipt(Number(drugOrderId),createIdempotencyKey());await load()}catch(e:any){setNotice(e.message||'确认收货失败');await load()}}const arrival=getDemoArrival(getSession()?.loginAt||new Date().toISOString());return <main className="subpage"><PageHeader title="购药订单"/><section className="subpage-content"><h2>{detail?.pharmacy.name}</h2><p>订单金额：{formatAmount(detail?.amountCent||0)}</p>{detail?.items.map(i=><article className="record-card" key={i.drugId}><b>{i.drugName}</b><span>数量 {i.quantity}</span></article>)}<section className="flow-card"><h2>订单配送中</h2><p>{detail?.delivery?.traces[0]?.node||'暂无物流更新'}</p><p>预计 {arrival} 送达</p></section>{detail?.status==='PENDING_PAYMENT'&&<><label>登录密码<input type="password" value={pwd} onChange={e=>setPwd(e.target.value)}/></label><button className="primary-button" type="button" onClick={()=>void pay()}>确认支付</button><button className="secondary-button" type="button" onClick={()=>void cancel()}>取消订单</button></>}{detail?.delivery?.logisticsStatus==='TO_RECEIVE'&&<button className="primary-button" type="button" onClick={()=>void receive()}>确认收货</button>}</section>{notice&&<div className="toast" onClick={()=>setNotice('')}>{notice}</div>}</main>}
+import { useEffect, useMemo, useState } from 'react';
+import { ShoppingCart } from 'lucide-react';
+import { useNavigate, useParams, useLocation } from 'umi';
+import { Dialog } from '../../components/Dialog';
+import { PageHeader } from '../../components/PageHeader';
+import { cancelDrugOrder, getDrugOrder } from '../../services/pharmacy';
+import { simulatePayment } from '../../services/registration';
+import type { DrugOrderDetail } from '../../typings/api';
+import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
+import { formatAmount } from '../../utils/medical';
+import { buildDrugOrderLogisticsPath, formatDrugOrderItemPrice, isPendingDrugOrder, resolveDrugOrderPaymentId } from '../../utils/pharmacy-order';
+
+/** 展示待支付购药订单，并通过确认购买弹窗完成支付或取消。 */
+export default function DrugOrderPage() {
+  const { drugOrderId: drugOrderIdText } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const drugOrderId = Number(drugOrderIdText);
+  const paymentIdFromUrl = useMemo(() => Number(new URLSearchParams(location.search).get('paymentId')) || undefined, [location.search]);
+  const [detail, setDetail] = useState<DrugOrderDetail>();
+  const [password, setPassword] = useState('');
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState('');
+
+  /** 从服务端读取订单详情；状态冲突后同样使用此函数恢复真实状态。 */
+  async function loadOrder() {
+    if (!Number.isInteger(drugOrderId) || drugOrderId <= 0) {
+      setNotice('订单编号不正确');
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      setDetail(await getDrugOrder(drugOrderId));
+    } catch (error) {
+      setNotice(getApiErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadOrder(); }, [drugOrderId]);
+
+  /** 打开购买弹窗前再次确认订单仍待支付，避免过期订单继续输入密码。 */
+  function openPaymentDialog() {
+    if (!isPendingDrugOrder(detail?.status)) {
+      if (detail) navigate(buildDrugOrderLogisticsPath(detail.id));
+      return;
+    }
+    setPassword('');
+    setPaymentOpen(true);
+  }
+
+  /** 在弹窗内调用模拟支付，支付成功后切换到独立物流详情页。 */
+  async function pay() {
+    const paymentId = resolveDrugOrderPaymentId(detail, paymentIdFromUrl);
+    if (!paymentId) {
+      setNotice('当前订单暂未生成支付单');
+      return;
+    }
+    if (!password.trim()) {
+      setNotice('请输入登录密码');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await simulatePayment(paymentId, password, createIdempotencyKey());
+      setPaymentOpen(false);
+      navigate(buildDrugOrderLogisticsPath(drugOrderId));
+    } catch (error) {
+      setNotice(getApiErrorMessage(error));
+      await loadOrder();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /** 取消入口仅保留在支付弹窗内，成功后回到购药首页释放订单占用。 */
+  async function cancel() {
+    if (!Number.isInteger(drugOrderId) || drugOrderId <= 0) return;
+    setSubmitting(true);
+    try {
+      await cancelDrugOrder(drugOrderId, createIdempotencyKey());
+      setPaymentOpen(false);
+      navigate('/pharmacy');
+    } catch (error) {
+      setNotice(getApiErrorMessage(error));
+      await loadOrder();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const pendingPayment = isPendingDrugOrder(detail?.status);
+  return <main className="subpage pharmacy-order-page"><PageHeader title="购药订单" backPath="/pharmacy" /><section className="subpage-content">
+    {loading && <p className="empty-state">正在读取订单...</p>}
+    {!loading && detail && <><section className="pharmacy-order-summary"><h2>{detail.pharmacy?.name || detail.pharmacyName || '药房待确认'}</h2><p>订单金额：{formatAmount(detail.amountCent)}</p></section><section className="pharmacy-order-items">{detail.items.map((item) => <article key={item.drugId}><b>{item.drugName}</b><span>{formatDrugOrderItemPrice(item.quantity, item.unitPriceCent)}</span></article>)}</section>{pendingPayment ? <button className="primary-button" type="button" onClick={openPaymentDialog}><ShoppingCart size={19} />确认购买</button> : <button className="primary-button" type="button" onClick={openPaymentDialog}>查看物流详情</button>}</>}
+  </section>{paymentOpen && <Dialog title="确认购买" onClose={() => !submitting && setPaymentOpen(false)}><div className="form-stack"><label>登录密码<input autoComplete="current-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label><button className="primary-button" disabled={submitting} type="button" onClick={() => void pay()}>{submitting ? '购买中...' : '确认购买'}</button><button className="secondary-button" disabled={submitting} type="button" onClick={() => void cancel()}>取消订单</button></div></Dialog>}{notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}</main>;
+}

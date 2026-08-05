@@ -66,7 +66,7 @@
                   FROM drug_order_item doi WHERE doi.drug_order_id=o.id), '药品订单')
     </sql>
     <select id="selectOrderList" resultType="com.sphp.patient.order.mapper.OrderListRecord">
-        SELECT o.id, <include refid="orderNameExpression"/> AS order_name, COALESCE(o.pharmacy_name_snapshot, ph.name) AS pharmacy_name, o.status, o.logistics_status,
+        SELECT o.id, o.prescription_id, <include refid="orderNameExpression"/> AS order_name, COALESCE(o.pharmacy_name_snapshot, ph.name) AS pharmacy_name, o.status, o.logistics_status,
                (SELECT t.node FROM drug_order_logistics_trace t WHERE t.drug_order_id=o.id ORDER BY t.occurred_at DESC, t.id DESC LIMIT 1) AS latest_logistics_node,
                o.amount_cent, o.expire_at
         FROM drug_order o LEFT JOIN pharmacy ph ON ph.id=o.pharmacy_id
@@ -83,7 +83,7 @@
         <if test="keyword != null and keyword != ''">AND <include refid="orderNameExpression"/> ILIKE CONCAT('%', #{keyword}, '%')</if>
     </select>
     <select id="selectOrderDetail" resultType="com.sphp.patient.order.mapper.OrderDetailRecord">
-        SELECT o.id, o.patient_id, o.pharmacy_id, COALESCE(o.pharmacy_name_snapshot, ph.name) AS pharmacy_name, o.status,
+        SELECT o.id, o.prescription_id, o.patient_id, o.pharmacy_id, COALESCE(o.pharmacy_name_snapshot, ph.name) AS pharmacy_name, o.status,
                o.delivery_method, o.delivery_address, o.logistics_company, o.tracking_no, o.logistics_status, o.amount_cent, o.expire_at,
                po.id AS payment_id, po.status AS payment_status
         FROM drug_order o LEFT JOIN pharmacy ph ON ph.id=o.pharmacy_id LEFT JOIN payment_order po ON po.drug_order_id=o.id

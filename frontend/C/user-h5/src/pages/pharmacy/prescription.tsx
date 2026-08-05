@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ShoppingCart } from 'lucide-react';
+import { ShoppingCart, Truck } from 'lucide-react';
 import { useLocation, useNavigate, useParams } from 'umi';
 import { PageHeader } from '../../components/PageHeader';
 import { PrescriptionPaper } from '../../components/PrescriptionPaper';
@@ -7,16 +7,22 @@ import { getPrescription } from '../../services/consultation';
 import type { PrescriptionDetail } from '../../typings/api';
 import { getApiErrorMessage } from '../../utils/form';
 import { buildPharmacyInventoryPath, resolvePharmacyPatientId } from '../../utils/pharmacy';
+import { buildDrugOrderLogisticsPath } from '../../utils/pharmacy-order';
 import { getPrescriptionDisplayNumber } from '../../utils/prescription';
 
-/** 展示购药场景的已批准处方，并引导用户进入药房库存选择。 */
+/** 展示购药场景的已批准处方，并按购买状态进入药房库存或物流详情。 */
 export default function PharmacyPrescriptionPage() {
   const { prescriptionId: prescriptionIdText } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
   const prescriptionId = Number(prescriptionIdText);
-  const patientId = useMemo(() => resolvePharmacyPatientId(new URLSearchParams(location.search).get('patientId')), [location.search]);
-  const issuedAtFromList = new URLSearchParams(location.search).get('issuedAt') || undefined;
+  const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const patientId = useMemo(() => resolvePharmacyPatientId(params.get('patientId')), [params]);
+  const issuedAtFromList = params.get('issuedAt') || undefined;
+  const purchasedOrderId = useMemo(() => {
+    const value = Number(params.get('drugOrderId'));
+    return Number.isInteger(value) && value > 0 ? value : undefined;
+  }, [params]);
   const [detail, setDetail] = useState<PrescriptionDetail>();
   const [notice, setNotice] = useState('');
 
@@ -36,8 +42,13 @@ export default function PharmacyPrescriptionPage() {
 
   useEffect(() => { void loadPrescription(); }, [prescriptionId]);
 
-  /** 进入库存页时显式透传购药页本地就诊人，避免使用其他页面的选择状态。 */
+  /** 未购买时进入库存页；已购买时直接查看关联订单物流。 */
   function purchaseNow() {
+    if (purchasedOrderId) {
+      // 已购买处方直接进入其订单物流，避免再次创建同一处方订单。
+      navigate(buildDrugOrderLogisticsPath(purchasedOrderId));
+      return;
+    }
     if (!patientId) {
       setNotice('请返回购药页重新选择就诊人');
       return;
@@ -49,5 +60,5 @@ export default function PharmacyPrescriptionPage() {
     {!patientId && <p className="form-error">请返回购药页重新选择就诊人</p>}
     {!detail && !notice && <p className="empty-state">正在读取处方详情...</p>}
     {detail && <PrescriptionPaper detail={detail} displayNumber={getPrescriptionDisplayNumber(detail.id, detail.issuedAt || issuedAtFromList)} issuedAt={issuedAtFromList} />}
-  </section><footer className="pharmacy-purchase-bar"><button className="primary-button" type="button" disabled={!detail || !patientId} onClick={purchaseNow}><ShoppingCart size={19} />立即购药</button></footer>{notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}</main>;
+  </section><footer className="pharmacy-purchase-bar"><button className="primary-button" type="button" disabled={!detail || (!patientId && !purchasedOrderId)} onClick={purchaseNow}>{purchasedOrderId ? <Truck size={19} /> : <ShoppingCart size={19} />}{purchasedOrderId ? '查看物流' : '立即购药'}</button></footer>{notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}</main>;
 }

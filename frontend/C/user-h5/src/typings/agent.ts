@@ -20,6 +20,8 @@ export interface AgentChatContext {
   appointment_id?: number;
   /** 当前问诊记录 ID */
   consultation_id?: number;
+  /** 当前默认收货地址 ID（用于 Agent 推荐药店等需要收货地址的服务） */
+  address_id?: number;
 }
 
 /** 发起流式对话的请求体（POST /api/chat/stream）。 */

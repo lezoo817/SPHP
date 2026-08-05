@@ -2,7 +2,7 @@
   "private": true,
   "author": "li-shi-hao <2055399508@qq.com>",
   "scripts": {
-    "dev": "max dev",
+    "dev": "set PORT=8000&& max dev",
     "build": "max build",
     "format": "prettier --cache --write .",
     "prepare": "husky",

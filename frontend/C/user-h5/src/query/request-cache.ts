@@ -71,6 +71,10 @@ export async function readWithStaleCache<T>(queryKey: readonly unknown[], queryF
   const cached = queryClient.getQueryData<T>(queryKey);
   if (cached !== undefined) {
     const state = queryClient.getQueryState(queryKey);
+    if (state?.isInvalidated) {
+      // 支付等写操作后等待最新响应，避免物流页和购药首页短暂展示旧状态。
+      return queryClient.fetchQuery({ queryKey, queryFn, staleTime, retry: false });
+    }
     const isStale = !state?.dataUpdatedAt || Date.now() - state.dataUpdatedAt >= staleTime;
     if (isStale) {
       // 后台请求失败时保留页面已显示的缓存，避免切换页面时出现空白。
@@ -106,7 +110,7 @@ export function invalidateByMutationPath(path: string, userId: number | undefine
   const resource = getRequestCacheResource(path);
   const related = new Set([resource]);
   if (['family-members', 'profile'].includes(resource)) ['family-members', 'profile', 'health-record'].forEach((item) => related.add(item));
-  if (['appointments', 'waitlists', 'payments'].includes(resource)) ['appointments', 'waitlists', 'payments', 'slots', 'doctor-booking-status', 'notifications'].forEach((item) => related.add(item));
+  if (['appointments', 'waitlists', 'payments'].includes(resource)) ['appointments', 'waitlists', 'payments', 'slots', 'doctor-booking-status', 'notifications', 'drug-orders', 'pharmacy-inventory'].forEach((item) => related.add(item));
   if (['drug-orders', 'pharmacy-inventory'].includes(resource)) ['drug-orders', 'pharmacy-inventory', 'payments', 'notifications'].forEach((item) => related.add(item));
   if (['medication-plans', 'follow-ups'].includes(resource)) ['medication-plans', 'follow-ups', 'notifications'].forEach((item) => related.add(item));
   return invalidateRequestResources(userId, ...related);

@@ -220,6 +220,27 @@ declare global {
       expireAt: string; // lockedAt + 15min
     }
 
+    /** 号源池查询参数 */
+    interface SourcePoolParams extends PageParams {
+      startDate?: string; // yyyy-MM-dd
+      endDate?: string; // yyyy-MM-dd
+      deptId?: number;
+      doctorId?: number;
+    }
+
+    /** 号源池行（按已发布排班明细，每行=医生某天某班次） */
+    interface SourcePoolVO {
+      scheduleId: number;
+      scheduleDate: string; // yyyy-MM-dd
+      shift: 'MORNING' | 'AFTERNOON';
+      deptName: string; // 科室（诊室）
+      doctorName: string; // 医生
+      totalSlots: number; // 总号源数
+      remainSlots: number; // 剩余可约号源数
+      soldSlots: number; // 已约号源数
+      lockedSlots: number; // 锁定中号源数
+    }
+
     // ===================== 接诊台 =====================
 
     /** 待接诊队列项 */
@@ -475,9 +496,11 @@ declare global {
         drugId: number;
         drugName: string;
         dosage: string;
+        frequency?: string;
         usageMethod: string;
         days: number;
         quantity: number;
+        quantityUnit?: string;
       }[];
       createdAt: string;
     }
@@ -499,6 +522,7 @@ declare global {
         usageMethod: string;
         days: number;
         quantity: number;
+        quantityUnit?: string;
       }[];
     }
 
@@ -514,6 +538,8 @@ declare global {
       manufacturer?: string;
       approvalNumber?: string;
       status: 'ENABLED' | 'DISABLED';
+      /** 可用库存（当前医院各药房合计；仅按ID查询时返回） */
+      availableStock?: number;
     }
 
     /** 药品列表查询参数 */
@@ -535,7 +561,9 @@ declare global {
 
     /** 库存项 */
     interface InventoryItem {
-      id: number;
+      id: number | null;
+      pharmacyId: number | null;
+      pharmacyName: string | null;
       drugId: number;
       drugName: string;
       specification: string;
@@ -567,6 +595,17 @@ declare global {
 
     /** 库存预警项 */
     type AlertItem = InventoryItem;
+
+    /** 药房项 */
+    interface PharmacyItem {
+      id: number;
+      hospitalId: number;
+      name: string;
+      address: string;
+      phone: string;
+      isDefault: boolean;
+      status: string;
+    }
 
     // ===================== 患者管理 =====================
 

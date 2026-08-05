@@ -41,11 +41,13 @@ export function resolvePharmacyPatientId(patientIdText: string | null): number |
  * @param prescriptionId 处方 ID
  * @param patientId 当前购药页本地就诊人 ID
  * @param issuedAt 可选的处方开具时间，用于详情接口缺字段时展示
+ * @param drugOrderId 已购买订单 ID，用于处方详情跳转物流
  * @returns 携带就诊人与开具时间上下文的处方详情路径
  */
-export function buildPharmacyPrescriptionPath(prescriptionId: number, patientId: number, issuedAt?: string): string {
+export function buildPharmacyPrescriptionPath(prescriptionId: number, patientId: number, issuedAt?: string, drugOrderId?: number): string {
   const search = new URLSearchParams({ patientId: String(patientId) });
   if (issuedAt) search.set('issuedAt', issuedAt);
+  if (Number.isInteger(drugOrderId) && drugOrderId! > 0) search.set('drugOrderId', String(drugOrderId));
   return `/pharmacy/prescription/${prescriptionId}?${search.toString()}`;
 }
 

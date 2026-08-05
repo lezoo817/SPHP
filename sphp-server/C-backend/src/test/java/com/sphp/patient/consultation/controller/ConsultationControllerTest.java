@@ -44,7 +44,7 @@ class ConsultationControllerTest {
     }
 
     /**
-     * 验证提交预问诊走幂等处理并返回保存与提交时间。
+     * 验证直接提交预问诊走幂等处理并返回提交时间。
      *
      * @throws Exception MockMvc 调用失败时抛出
      */
@@ -66,7 +66,7 @@ class ConsultationControllerTest {
                 .perform(post("/c/v1/consultations/pre-consultations")
                         .header("X-Idempotency-Key", "pre-consultation-001")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"appointmentId\":7001,\"chiefComplaint\":\"咳嗽发热三天\",\"submit\":true}"))
+                        .content("{\"doctorId\":30001,\"chiefComplaint\":\"咳嗽发热三天\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("00000"))
                 .andExpect(jsonPath("$.message").value("预问诊已提交"))
@@ -88,7 +88,27 @@ class ConsultationControllerTest {
         newMockMvc(consultationService, idempotencyService)
                 .perform(post("/c/v1/consultations/pre-consultations")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"appointmentId\":7001,\"chiefComplaint\":\"咳嗽\",\"submit\":false}"))
+                        .content("{\"doctorId\":30001,\"chiefComplaint\":\"咳嗽\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("A0400"));
+    }
+
+    /**
+     * 验证预问诊必须指定接诊医生。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void savePreConsultationRejectsMissingDoctorId() throws Exception {
+        ConsultationService consultationService = mock(ConsultationService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+
+        newMockMvc(consultationService, idempotencyService)
+                .perform(post("/c/v1/consultations/pre-consultations")
+                        .header("X-Idempotency-Key", "pre-consultation-002")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"chiefComplaint\":\"咳嗽\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("A0400"));
     }

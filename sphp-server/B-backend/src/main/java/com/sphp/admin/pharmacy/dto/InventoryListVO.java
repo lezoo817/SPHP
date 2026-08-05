@@ -16,6 +16,12 @@ public class InventoryListVO {
     @Schema(description = "库存记录ID")
     private Long id;
 
+    @Schema(description = "药房ID")
+    private Long pharmacyId;
+
+    @Schema(description = "药房名称")
+    private String pharmacyName;
+
     @Schema(description = "药品ID")
     private Long drugId;
 

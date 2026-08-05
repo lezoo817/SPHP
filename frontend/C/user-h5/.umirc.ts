@@ -19,6 +19,7 @@ export default defineConfig({
     { path: '/pharmacy/orders', component: 'pharmacy/orders' },
     { path: '/pharmacy/prescription/:prescriptionId/inventory', component: 'pharmacy/prescription-inventory' },
     { path: '/pharmacy/prescription/:prescriptionId', component: 'pharmacy/prescription' },
+    { path: '/pharmacy/order/:drugOrderId/logistics', component: 'pharmacy/logistics' },
     { path: '/pharmacy/order/:drugOrderId', component: 'pharmacy/order' },
     { path: '/medical-records', component: 'reports/index' },
     { path: '/medical-records/:consultId', component: 'reports/detail' },
@@ -40,4 +41,6 @@ export default defineConfig({
   npmClient: 'pnpm',
   // 多个异步页面共用压缩帮助函数时隔离 IIFE，避免生产构建产物命名冲突。
   esbuildMinifyIIFE: true,
+  // 关闭 MFSU：与 @tanstack/react-query 存在 React 多实例冲突（hooks 为 null）。
+  mfsu: false,
 });

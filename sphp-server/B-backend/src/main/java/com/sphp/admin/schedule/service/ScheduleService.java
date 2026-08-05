@@ -9,6 +9,7 @@ import com.sphp.admin.schedule.vo.ScheduleCreateVO;
 import com.sphp.admin.schedule.vo.ScheduleListVO;
 import com.sphp.admin.schedule.vo.SchedulePublishVO;
 import com.sphp.admin.schedule.vo.SlotConfigVO;
+import com.sphp.admin.schedule.vo.SourcePoolVO;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -60,6 +61,16 @@ public interface ScheduleService {
      * 锁定号源看板分页查询。
      */
     PageResult<LockedSlotVO> pageLocked(LocalDate date, Long deptId, int page, int size);
+
+    /**
+     * 号源池分页查询：按日期+班次汇总每日上下午总号源/剩余/已约/锁定数（仅 PUBLISHED）。
+     *
+     * @param startDate 开始日期（默认近 7 天含今天）
+     * @param endDate   结束日期（默认今天）
+     * @param deptId    科室过滤（仅 ADMIN 生效）
+     * @param doctorId  医生过滤（仅 ADMIN 生效）
+     */
+    PageResult<SourcePoolVO> sourcePool(LocalDate startDate, LocalDate endDate, Long deptId, Long doctorId, int page, int size);
 
     /**
      * 手动释放锁定号源（ADMIN，仅 LOCKED 可释放）。

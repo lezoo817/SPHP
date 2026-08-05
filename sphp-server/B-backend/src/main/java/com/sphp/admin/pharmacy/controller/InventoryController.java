@@ -61,7 +61,7 @@ public class InventoryController {
     }
 
     @GetMapping("/alerts")
-    @Operation(summary = "低库存预警", description = "返回 availableCount < safetyStock 的药品库存列表")
+    @Operation(summary = "低库存预警", description = "返回 availableCount < 10 的 ALERT/LOW 药品库存列表，支持按药房过滤")
     public Result<List<InventoryAlertVO>> alerts(
             @Parameter(description = "药房ID过滤") @RequestParam(required = false) Long pharmacyId) {
         return Result.success("查询成功", inventoryService.alerts(pharmacyId));
