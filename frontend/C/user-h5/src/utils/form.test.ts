@@ -12,7 +12,7 @@ import { resolveSelfPatientId } from '../models/selection';
 import { buildDrugOrderListPath } from '../services/pharmacy';
 import { buildPharmacyInventoryPath, buildPharmacyPrescriptionPath, matchesDrugOrderTab, resolvePharmacyPatientId } from './pharmacy';
 import { hasSearchKeyword, matchesDepartmentKeyword, resolveInitialDepartment } from './home-search';
-import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
+import { buildProfileUpdatePayload, normalizeProfileIdCardNo, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
 import { resolveMinePatientId } from '../models/mine-patient';
 import { isSessionTokenExpired, type SessionState } from '../models/session';
 import { buildDoctorPagePath, findDoctorById, getDoctorScheduleDates } from './doctor';
@@ -39,6 +39,12 @@ describe('前端表单与联调规则', () => {
 
   it('禁止提交本人关系', () => {
     expect(validateFamilyMember({ name: '张三', relation: 'SELF' })).toBe('不能新增或编辑本人资料');
+  });
+
+  it('新增成员必须填写合法身份证号，编辑留空则保留原值', () => {
+    expect(validateFamilyMember({ name: '张三', relation: 'CHILD', idCardNo: undefined }, true)).toBe('请填写身份证号');
+    expect(validateFamilyMember({ name: '张三', relation: 'CHILD', idCardNo: '11010519491231002x' }, true)).toBeUndefined();
+    expect(validateFamilyMember({ name: '张三', relation: 'CHILD', idCardNo: undefined }, false)).toBeUndefined();
   });
 
   it('生成符合 UUID 格式的幂等键', () => {
@@ -214,15 +220,21 @@ describe('首页科室与搜索规则', () => {
 });
 
 describe('个人资料更新规则', () => {
-  const values = { name: ' 张三 ', gender: 'MALE' as const, birthday: '2000-01-01', phone: '', emergencyContact: '' };
+  const values = { name: ' 张三 ', gender: 'MALE' as const, birthday: '2000-01-01', phone: '', idCardNo: '', emergencyContact: '' };
 
   it('校验姓名和手机号格式', () => {
     expect(validateProfileForm({ ...values, name: ' ' })).toBe('请填写姓名');
     expect(validateProfileForm({ ...values, phone: '123' })).toBe('手机号格式不正确');
+    expect(validateProfileForm({ ...values, idCardNo: 'invalid' })).toBe('身份证号格式不正确');
   });
 
   it('不提交空白的敏感资料字段', () => {
     expect(buildProfileUpdatePayload(values)).toEqual({ name: '张三', gender: 'MALE', birthday: '2000-01-01' });
+  });
+
+  it('规范化身份证号并提交大写校验位', () => {
+    expect(normalizeProfileIdCardNo('11010519491231002x')).toBe('11010519491231002X');
+    expect(buildProfileUpdatePayload({ ...values, idCardNo: '11010519491231002x' }).idCardNo).toBe('11010519491231002X');
   });
 
   it('网络重试复用首次生成的幂等键', () => {

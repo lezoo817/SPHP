@@ -14,12 +14,28 @@ export function validatePassword(password: string): string | undefined {
     : '密码长度应为 8 至 64 位';
 }
 
-/** 校验家庭成员的前端业务约束。 */
-export function validateFamilyMember(member: { name: string; relation: string }): string | undefined {
+/**
+ * 校验家庭成员资料，新增时身份证号必须填写，编辑时留空表示不修改。
+ * @param member 家属可提交资料
+ * @param requireIdCardNo 是否按新增规则要求身份证号
+ * @returns 校验失败文案；合法时返回 undefined
+ */
+export function validateFamilyMember(
+  member: Pick<FamilyMemberPayload, 'name' | 'idCardNo'> & { relation: string },
+  requireIdCardNo = false,
+): string | undefined {
   if (!member.name.trim()) {
     return '请填写成员姓名';
   }
-  return member.relation === 'SELF' ? '不能新增或编辑本人资料' : undefined;
+  if (member.relation === 'SELF') {
+    return '不能新增或编辑本人资料';
+  }
+  // 编辑留空时不提交身份证号，避免将列表中的脱敏值写回服务端。
+  const idCardNo = member.idCardNo?.replace(/\s/g, '').toUpperCase() || '';
+  if (requireIdCardNo && !idCardNo) {
+    return '请填写身份证号';
+  }
+  return idCardNo && !/^(\d{15}|\d{17}[0-9X])$/.test(idCardNo) ? '身份证号格式不正确' : undefined;
 }
 
 /** 生成满足后端防重要求的 UUID v4 幂等键。 */

@@ -43,6 +43,8 @@ export interface FamilyMember {
   gender?: 'MALE' | 'FEMALE' | 'UNKNOWN';
   birthday?: string;
   phone?: string;
+  /** 后端返回的脱敏身份证号。 */
+  idCardNo?: string;
   isDefault: boolean;
 }
 
@@ -64,6 +66,8 @@ export interface Profile {
   gender?: 'MALE' | 'FEMALE' | 'UNKNOWN';
   birthday?: string;
   phone?: string;
+  /** 后端返回的脱敏身份证号。 */
+  idCardNo?: string;
   emergencyContact?: string;
 }
 
@@ -73,6 +77,8 @@ export interface ProfileUpdatePayload {
   gender?: 'MALE' | 'FEMALE' | 'UNKNOWN';
   birthday?: string;
   phone?: string;
+  /** 可选的新身份证号，空值表示保留原值。 */
+  idCardNo?: string;
   emergencyContact?: string;
 }
 
@@ -81,6 +87,8 @@ export interface ProfileUpdateResult {
   id: number;
   name: string;
   phone?: string;
+  /** 更新后返回的脱敏身份证号。 */
+  idCardNo?: string;
   updatedAt: string;
 }
 
