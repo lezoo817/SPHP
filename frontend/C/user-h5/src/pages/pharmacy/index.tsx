@@ -53,7 +53,7 @@ export default function PharmacyPage() {
         就诊人 <b>{current?.name || '未选择'}</b><span>{current?.phone || ''}</span><b>切换 <RefreshCw size={18} /></b>
       </button>
       <h2>我的处方</h2>
-      {prescriptions.map((prescription) => <button className="record-card" key={prescription.id} type="button" onClick={() => patientId && nav(buildPharmacyPrescriptionPath(prescription.id, patientId))}>
+      {prescriptions.map((prescription) => <button className="record-card" key={prescription.id} type="button" onClick={() => patientId && nav(buildPharmacyPrescriptionPath(prescription.id, patientId, prescription.issuedAt))}>
         <Package size={25} /><div><b>{prescription.doctorName}电子处方</b><span>已批准 · {prescription.issuedAt}</span></div><em>待购药</em>
       </button>)}
       {!prescriptions.length && <p className="empty-state">暂无可购药处方</p>}

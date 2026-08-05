@@ -135,7 +135,7 @@ export default function AssistantPage() {
         <span className="record-card__main"><b>{formatMedicalTime(item.startTime)}</b><span>{item.departmentName} · {item.doctorName}</span><small>科室位置：{item.departmentLocation || '科室位置待确认'}</small></span>
         <em className={`record-card__status status-${item.status.toLowerCase()}`}>{getAppointmentStatusText(item.status)}</em>
       </article>)}
-      {tab === '处方' && prescriptions.map((item) => <button className="record-card" key={item.id} type="button" onClick={() => navigate(buildAssistantPrescriptionDetailPath(item.id, patientId))}><span className="record-card__main"><b>{item.doctorName}电子处方</b><span>开具于 {formatMedicalTime(item.issuedAt)}</span><small>处方编号：{getPrescriptionDisplayNumber(item.id, item.issuedAt)}</small></span><ChevronRight size={18} /></button>)}
+      {tab === '处方' && prescriptions.map((item) => <button className="record-card" key={item.id} type="button" onClick={() => navigate(buildAssistantPrescriptionDetailPath(item.id, patientId, item.issuedAt))}><span className="record-card__main"><b>{item.doctorName}电子处方</b><span>开具于 {formatMedicalTime(item.issuedAt)}</span><small>处方编号：{getPrescriptionDisplayNumber(item.id, item.issuedAt)}</small></span><ChevronRight size={18} /></button>)}
     </section>
     {open && <Dialog title="切换就诊人" onClose={() => setOpen(false)}>
       {members.map((item) => <button className="choice-row" key={item.patientId} type="button" onClick={() => selectPatient(item.patientId)}>{item.name}<small>{item.relationName}</small></button>)}

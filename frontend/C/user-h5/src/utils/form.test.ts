@@ -289,10 +289,10 @@ describe('我的处方查询规则', () => {
   });
 
   it('处方详情往返保留患者和日期筛选上下文', () => {
-    const path = buildMinePrescriptionDetailPath(1001, 2001, { startDate: '2026-07-01', endDate: '2026-08-05' });
-    expect(path).toBe('/assistant/prescription/1001?source=mine-prescriptions&startDate=2026-07-01&endDate=2026-08-05&patientId=2001');
+    const path = buildMinePrescriptionDetailPath(1001, 2001, { startDate: '2026-07-01', endDate: '2026-08-05' }, '2026-08-05T10:00:00+08:00');
+    expect(path).toBe('/assistant/prescription/1001?source=mine-prescriptions&startDate=2026-07-01&endDate=2026-08-05&patientId=2001&issuedAt=2026-08-05T10%3A00%3A00%2B08%3A00');
     expect(buildMinePrescriptionListPath(new URLSearchParams(path.split('?')[1]))).toBe('/mine/prescriptions?patientId=2001&startDate=2026-07-01&endDate=2026-08-05');
-    expect(buildAssistantPrescriptionDetailPath(1001, 2001)).toBe('/assistant/prescription/1001?source=assistant&patientId=2001');
+    expect(buildAssistantPrescriptionDetailPath(1001, 2001, '2026-08-05T10:00:00+08:00')).toBe('/assistant/prescription/1001?source=assistant&patientId=2001&issuedAt=2026-08-05T10%3A00%3A00%2B08%3A00');
   });
 
   it('处方展示编号使用开具时间戳和四位随机尾号', () => {

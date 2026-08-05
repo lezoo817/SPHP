@@ -14,6 +14,7 @@ export default function PharmacyPrescriptionInventoryPage() {
   const navigate = useNavigate();
   const prescriptionId = Number(prescriptionIdText);
   const patientId = useMemo(() => resolvePharmacyPatientId(new URLSearchParams(location.search).get('patientId')), [location.search]);
+  const issuedAt = new URLSearchParams(location.search).get('issuedAt') || undefined;
   const [items, setItems] = useState<PharmacyInventory[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
@@ -54,7 +55,7 @@ export default function PharmacyPrescriptionInventoryPage() {
     }
   }
 
-  const backPath = patientId && Number.isInteger(prescriptionId) ? buildPharmacyPrescriptionPath(prescriptionId, patientId) : '/pharmacy';
+  const backPath = patientId && Number.isInteger(prescriptionId) ? buildPharmacyPrescriptionPath(prescriptionId, patientId, issuedAt) : '/pharmacy';
 
   return <main className="subpage"><PageHeader title="附近有货药店" backPath={backPath} /><section className="subpage-content">
     <p className="result-count">郑州市 · 1.2km 内</p>

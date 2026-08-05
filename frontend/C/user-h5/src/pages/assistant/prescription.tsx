@@ -18,6 +18,7 @@ export default function PrescriptionPage() {
   const [notice, setNotice] = useState('');
   const query = new URLSearchParams(location.search);
   const patientId = resolvePharmacyPatientId(query.get('patientId'));
+  const issuedAtFromList = query.get('issuedAt') || undefined;
   // 仅“我的处方”入口恢复其筛选条件，避免影响就诊助手既有详情返回行为。
   const backPath = query.get('source') === 'mine-prescriptions' ? buildMinePrescriptionListPath(query) : query.get('source') === 'assistant' ? '/assistant' : '/mine';
 
@@ -39,8 +40,8 @@ export default function PrescriptionPage() {
       setNotice('请返回来源页面重新选择就诊人');
       return;
     }
-    navigate(buildPharmacyInventoryPath(Number(prescriptionId), patientId));
+    navigate(buildPharmacyInventoryPath(Number(prescriptionId), patientId, detail?.issuedAt || issuedAtFromList));
   }
 
-  return <main className="subpage pharmacy-prescription-detail-page"><PageHeader title="处方详情" backPath={backPath} /><section className="subpage-content">{!patientId && <p className="form-error">请返回来源页面重新选择就诊人</p>}{!detail && !notice && <p className="empty-state">正在读取处方详情...</p>}{detail && <PrescriptionPaper detail={detail} displayNumber={getPrescriptionDisplayNumber(detail.id, detail.issuedAt)} />}</section><footer className="pharmacy-purchase-bar"><button className="primary-button" type="button" disabled={!detail || !patientId} onClick={purchaseNow}><ShoppingCart size={19} />立即购药</button></footer>{notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}</main>;
+  return <main className="subpage pharmacy-prescription-detail-page"><PageHeader title="处方详情" backPath={backPath} /><section className="subpage-content">{!patientId && <p className="form-error">请返回来源页面重新选择就诊人</p>}{!detail && !notice && <p className="empty-state">正在读取处方详情...</p>}{detail && <PrescriptionPaper detail={detail} displayNumber={getPrescriptionDisplayNumber(detail.id, detail.issuedAt || issuedAtFromList)} issuedAt={issuedAtFromList} />}</section><footer className="pharmacy-purchase-bar"><button className="primary-button" type="button" disabled={!detail || !patientId} onClick={purchaseNow}><ShoppingCart size={19} />立即购药</button></footer>{notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}</main>;
 }

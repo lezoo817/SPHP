@@ -16,6 +16,7 @@ export default function PharmacyPrescriptionPage() {
   const navigate = useNavigate();
   const prescriptionId = Number(prescriptionIdText);
   const patientId = useMemo(() => resolvePharmacyPatientId(new URLSearchParams(location.search).get('patientId')), [location.search]);
+  const issuedAtFromList = new URLSearchParams(location.search).get('issuedAt') || undefined;
   const [detail, setDetail] = useState<PrescriptionDetail>();
   const [notice, setNotice] = useState('');
 
@@ -41,12 +42,12 @@ export default function PharmacyPrescriptionPage() {
       setNotice('请返回购药页重新选择就诊人');
       return;
     }
-    navigate(buildPharmacyInventoryPath(prescriptionId, patientId));
+    navigate(buildPharmacyInventoryPath(prescriptionId, patientId, detail?.issuedAt || issuedAtFromList));
   }
 
   return <main className="subpage pharmacy-prescription-detail-page"><PageHeader title="处方详情" backPath="/pharmacy" /><section className="subpage-content">
     {!patientId && <p className="form-error">请返回购药页重新选择就诊人</p>}
     {!detail && !notice && <p className="empty-state">正在读取处方详情...</p>}
-    {detail && <PrescriptionPaper detail={detail} displayNumber={getPrescriptionDisplayNumber(detail.id, detail.issuedAt)} />}
+    {detail && <PrescriptionPaper detail={detail} displayNumber={getPrescriptionDisplayNumber(detail.id, detail.issuedAt || issuedAtFromList)} issuedAt={issuedAtFromList} />}
   </section><footer className="pharmacy-purchase-bar"><button className="primary-button" type="button" disabled={!detail || !patientId} onClick={purchaseNow}><ShoppingCart size={19} />立即购药</button></footer>{notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}</main>;
 }

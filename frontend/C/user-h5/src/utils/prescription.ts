@@ -115,11 +115,13 @@ export function formatPrescriptionIssuedAt(issuedAt?: string): string {
  * @param prescriptionId 处方编号
  * @param patientId 当前页面选择的就诊人编号
  * @param range 当前日期筛选范围
+ * @param issuedAt 处方列表返回的开具时间
  * @returns 既有处方详情的完整跳转路径
  */
-export function buildMinePrescriptionDetailPath(prescriptionId: number, patientId: number | undefined, range: PrescriptionDateRange): string {
+export function buildMinePrescriptionDetailPath(prescriptionId: number, patientId: number | undefined, range: PrescriptionDateRange, issuedAt?: string): string {
   const search = new URLSearchParams({ source: 'mine-prescriptions', startDate: range.startDate, endDate: range.endDate });
   if (patientId && patientId > 0) search.set('patientId', String(patientId));
+  if (issuedAt) search.set('issuedAt', issuedAt);
   return `/assistant/prescription/${prescriptionId}?${search.toString()}`;
 }
 
@@ -127,11 +129,13 @@ export function buildMinePrescriptionDetailPath(prescriptionId: number, patientI
  * 构建就诊助手进入处方详情时的就诊人上下文。
  * @param prescriptionId 处方编号
  * @param patientId 就诊助手页面本地就诊人编号
+ * @param issuedAt 处方列表返回的开具时间
  * @returns 可恢复助手返回路径且允许购药的详情路径
  */
-export function buildAssistantPrescriptionDetailPath(prescriptionId: number, patientId: number | undefined): string {
+export function buildAssistantPrescriptionDetailPath(prescriptionId: number, patientId: number | undefined, issuedAt?: string): string {
   const search = new URLSearchParams({ source: 'assistant' });
   if (patientId && patientId > 0) search.set('patientId', String(patientId));
+  if (issuedAt) search.set('issuedAt', issuedAt);
   return `/assistant/prescription/${prescriptionId}?${search.toString()}`;
 }
 

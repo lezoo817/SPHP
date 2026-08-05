@@ -40,18 +40,24 @@ export function resolvePharmacyPatientId(patientIdText: string | null): number |
  * 构建购药处方详情页面路径。
  * @param prescriptionId 处方 ID
  * @param patientId 当前购药页本地就诊人 ID
- * @returns 携带就诊人上下文的处方详情路径
+ * @param issuedAt 可选的处方开具时间，用于详情接口缺字段时展示
+ * @returns 携带就诊人与开具时间上下文的处方详情路径
  */
-export function buildPharmacyPrescriptionPath(prescriptionId: number, patientId: number): string {
-  return `/pharmacy/prescription/${prescriptionId}?patientId=${patientId}`;
+export function buildPharmacyPrescriptionPath(prescriptionId: number, patientId: number, issuedAt?: string): string {
+  const search = new URLSearchParams({ patientId: String(patientId) });
+  if (issuedAt) search.set('issuedAt', issuedAt);
+  return `/pharmacy/prescription/${prescriptionId}?${search.toString()}`;
 }
 
 /**
  * 构建附近有货药店页面路径。
  * @param prescriptionId 处方 ID
  * @param patientId 当前购药页本地就诊人 ID
- * @returns 携带就诊人上下文的库存页面路径
+ * @param issuedAt 可选的处方开具时间，用于库存页返回详情时恢复展示
+ * @returns 携带就诊人与开具时间上下文的库存页面路径
  */
-export function buildPharmacyInventoryPath(prescriptionId: number, patientId: number): string {
-  return `/pharmacy/prescription/${prescriptionId}/inventory?patientId=${patientId}`;
+export function buildPharmacyInventoryPath(prescriptionId: number, patientId: number, issuedAt?: string): string {
+  const search = new URLSearchParams({ patientId: String(patientId) });
+  if (issuedAt) search.set('issuedAt', issuedAt);
+  return `/pharmacy/prescription/${prescriptionId}/inventory?${search.toString()}`;
 }

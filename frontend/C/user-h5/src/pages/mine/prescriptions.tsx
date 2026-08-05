@@ -96,8 +96,8 @@ export default function MinePrescriptionsPage() {
   }
 
   /** 携带当前筛选条件进入既有处方详情，详情返回时可还原列表上下文。 */
-  function openPrescription(prescriptionId: number) {
-    navigate(buildMinePrescriptionDetailPath(prescriptionId, patientId, range));
+  function openPrescription(prescription: Prescription) {
+    navigate(buildMinePrescriptionDetailPath(prescription.id, patientId, range, prescription.issuedAt));
   }
 
   const currentPatient = members.find((member) => member.patientId === patientId);
@@ -109,7 +109,7 @@ export default function MinePrescriptionsPage() {
     <section className="report-filter-card"><div className="report-filter-card__title"><CalendarDays size={21} /><h2>全部处方</h2></div><div className="report-date-row"><label>开始日期<input aria-label="处方开始日期" type="date" value={range.startDate} onChange={(event) => changeRange({ ...range, startDate: event.target.value })} /></label><label>结束日期<input aria-label="处方结束日期" type="date" value={range.endDate} onChange={(event) => changeRange({ ...range, endDate: event.target.value })} /></label></div><div className="report-quick-ranges">{[30, 90, 180].map((days) => <button className={range.startDate === getRecentPrescriptionRange(days).startDate && range.endDate === getRecentPrescriptionRange(days).endDate ? 'active' : ''} key={days} type="button" onClick={() => selectRecentRange(days)}>最近{days}天</button>)}</div>{rangeNotice && <p className="form-error">{rangeNotice}</p>}</section>
     {loading && !prescriptions.length && <p className="empty-state">正在读取处方...</p>}
     {!loading && !filteredPrescriptions.length && <section className="report-empty-state"><FileSearch size={58} /><h2>未查询到处方</h2><p>{prescriptions.length ? '请调整日期范围后重试' : '当前就诊人暂无已批准处方'}</p></section>}
-    {filteredPrescriptions.map((prescription) => <button className="report-list-card" key={prescription.id} type="button" onClick={() => openPrescription(prescription.id)}><div><h2>{prescription.doctorName || '医生待确认'}电子处方</h2><p>已批准 · 开具于 {formatPrescriptionIssuedAt(prescription.issuedAt)}</p><small>处方编号：{getPrescriptionDisplayNumber(prescription.id, prescription.issuedAt)}</small></div><ChevronRight size={20} /></button>)}
+    {filteredPrescriptions.map((prescription) => <button className="report-list-card" key={prescription.id} type="button" onClick={() => openPrescription(prescription)}><div><h2>{prescription.doctorName || '医生待确认'}电子处方</h2><p>已批准 · 开具于 {formatPrescriptionIssuedAt(prescription.issuedAt)}</p><small>处方编号：{getPrescriptionDisplayNumber(prescription.id, prescription.issuedAt)}</small></div><ChevronRight size={20} /></button>)}
     {hasMore && <button className="load-more-button" disabled={loading || !patientId} type="button" onClick={() => patientId && void loadPrescriptions(patientId, pageNo + 1, true)}>{loading ? '加载中...' : '加载更多处方'}</button>}
   </section>{patientOpen && <Dialog title="切换就诊人" onClose={() => setPatientOpen(false)}>{members.map((member) => <button className="choice-row" key={member.patientId} type="button" onClick={() => selectPatient(member.patientId)}><span>{member.name}</span><small>{member.relationName || member.relation}{member.patientId === patientId ? ' · 当前选择' : ''}</small></button>)}{members.filter((member) => member.relation !== 'SELF').length === 0 && <p className="empty-state">当前用户未绑定亲属</p>}</Dialog>}{notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}</main>;
 }
