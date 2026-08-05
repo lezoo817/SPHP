@@ -220,6 +220,27 @@ declare global {
       expireAt: string; // lockedAt + 15min
     }
 
+    /** 号源池查询参数 */
+    interface SourcePoolParams extends PageParams {
+      startDate?: string; // yyyy-MM-dd
+      endDate?: string; // yyyy-MM-dd
+      deptId?: number;
+      doctorId?: number;
+    }
+
+    /** 号源池行（按已发布排班明细，每行=医生某天某班次） */
+    interface SourcePoolVO {
+      scheduleId: number;
+      scheduleDate: string; // yyyy-MM-dd
+      shift: 'MORNING' | 'AFTERNOON';
+      deptName: string; // 科室（诊室）
+      doctorName: string; // 医生
+      totalSlots: number; // 总号源数
+      remainSlots: number; // 剩余可约号源数
+      soldSlots: number; // 已约号源数
+      lockedSlots: number; // 锁定中号源数
+    }
+
     // ===================== 接诊台 =====================
 
     /** 待接诊队列项 */

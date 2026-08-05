@@ -28,6 +28,7 @@ import com.sphp.admin.schedule.vo.ScheduleCreateVO;
 import com.sphp.admin.schedule.vo.ScheduleListVO;
 import com.sphp.admin.schedule.vo.SchedulePublishVO;
 import com.sphp.admin.schedule.vo.SlotConfigVO;
+import com.sphp.admin.schedule.vo.SourcePoolVO;
 import com.sphp.shared.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -119,6 +120,31 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         Page<Schedule> result = scheduleMapper.selectPage(new Page<>(page, size), wrapper);
         return PageResult.of(result.getTotal(), buildListVO(result.getRecords()), page, size);
+    }
+
+    @Override
+    public PageResult<SourcePoolVO> sourcePool(LocalDate startDate, LocalDate endDate, Long deptId, Long doctorId, int page, int size) {
+        // 默认区间：近 7 天（含今天）；显式区间需满足 start <= end
+        LocalDate start = startDate != null ? startDate : LocalDate.now().minusDays(6);
+        LocalDate end = endDate != null ? endDate : LocalDate.now();
+        if (start.isAfter(end)) {
+            throw new BusinessException("A0400", "日期范围无效，开始日期不能晚于结束日期");
+        }
+        DataScope scope = currentUserService.getCurrentDataScope();
+        // 数据权限标识缺失（DEPT_HEAD 无科室 / DOCTOR 无本人医生）时按空数据返回，避免越权
+        if ((ROLE_DEPT_HEAD.equals(scope.role()) && scope.deptId() == null)
+                || (ROLE_DOCTOR.equals(scope.role()) && scope.doctorId() == null)) {
+            return PageResult.of(0, List.of(), page, size);
+        }
+        // ADMIN 的 deptId/doctorId 为用户筛选条件；DEPT_HEAD / DOCTOR 强制数据权限范围
+        Long filterDeptId = ROLE_ADMIN.equals(scope.role()) ? deptId : null;
+        Long filterDoctorId = ROLE_ADMIN.equals(scope.role()) ? doctorId : null;
+        Long scopeDeptId = ROLE_DEPT_HEAD.equals(scope.role()) ? scope.deptId() : null;
+        Long scopeDoctorId = ROLE_DOCTOR.equals(scope.role()) ? scope.doctorId() : null;
+        IPage<SourcePoolVO> result = slotMapper.selectSourcePoolPage(
+                new Page<>(page, size), start, end, scope.hospitalId(),
+                filterDeptId, filterDoctorId, scopeDeptId, scopeDoctorId);
+        return PageResult.of(result.getTotal(), result.getRecords(), page, size);
     }
 
     @Override

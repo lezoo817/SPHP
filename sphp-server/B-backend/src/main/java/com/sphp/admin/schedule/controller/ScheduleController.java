@@ -10,6 +10,7 @@ import com.sphp.admin.schedule.vo.ScheduleCreateVO;
 import com.sphp.admin.schedule.vo.ScheduleListVO;
 import com.sphp.admin.schedule.vo.SchedulePublishVO;
 import com.sphp.admin.schedule.vo.SlotConfigVO;
+import com.sphp.admin.schedule.vo.SourcePoolVO;
 import com.sphp.shared.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -93,6 +94,19 @@ public class ScheduleController {
     @Operation(summary = "取消发布排班", description = "仅 ADMIN；PUBLISHED 前置校验无未来有效 PAID 订单，释放 LOCKED 快照并清理号源缓存；DRAFT 直接作废")
     public Result<SchedulePublishVO> unpublish(@PathVariable Long id) {
         return Result.success("已取消发布", scheduleService.unpublish(id));
+    }
+
+    @GetMapping("/source-pool")
+    @Operation(summary = "号源池", description = "按已发布排班明细返回（每行=医生某天某班次，含科室/医生/总号源/剩余/已约/锁定），日期倒序；按当前用户数据权限过滤；日期区间默认近 7 天含今天")
+    public Result<PageResult<SourcePoolVO>> sourcePool(
+            @Parameter(description = "开始日期 yyyy-MM-dd，默认近 7 天（含今天）") @RequestParam(required = false) LocalDate startDate,
+            @Parameter(description = "结束日期 yyyy-MM-dd，默认今天") @RequestParam(required = false) LocalDate endDate,
+            @Parameter(description = "科室ID（仅 ADMIN 生效）") @RequestParam(required = false) Long deptId,
+            @Parameter(description = "医生ID（仅 ADMIN 生效）") @RequestParam(required = false) Long doctorId,
+            @Parameter(description = "页码，默认1") @RequestParam(defaultValue = "1") int page,
+            @Parameter(description = "每页大小，默认10") @RequestParam(defaultValue = "10") int size) {
+        return Result.success("查询成功",
+                scheduleService.sourcePool(startDate, endDate, deptId, doctorId, page, clampSize(size)));
     }
 
     @GetMapping("/slots/locked")

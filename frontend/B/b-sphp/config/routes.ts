@@ -24,6 +24,10 @@ const routes = [
             component: 'schedule/ScheduleDetail',
           },
           {
+            path: '/schedule/source-pool',
+            component: 'schedule/SourcePool',
+          },
+          {
             path: '/schedule/locked',
             component: 'schedule/LockedSlotsBoard',
           },

@@ -178,6 +178,14 @@ export async function forceReleaseSlot(slotId: number): Promise<void> {
   await request(`/api/b/admin/slots/${slotId}/force-release`, { method: 'POST' });
 }
 
+/** 查询号源池（按日期+班次汇总，仅 PUBLISHED，按数据权限过滤） */
+export async function getSourcePool(
+  params: API.SourcePoolParams,
+): Promise<API.PageResult<API.SourcePoolVO>> {
+  const res = await request('/api/b/admin/source-pool', { params });
+  return (res as API.Result<API.PageResult<API.SourcePoolVO>>).data;
+}
+
 // ===================== 接诊台 =====================
 
 /** 查询待接诊队列 */

@@ -50,6 +50,7 @@ function buildMenuItems(roles: string[]): MenuProps['items'] {
       icon: <ScheduleOutlined />,
       children: [
         { key: '/schedule/list', label: '排班列表' },
+        { key: '/schedule/source-pool', label: '号源池' },
         { key: '/schedule/locked', label: '锁定时段' },
       ],
     },
