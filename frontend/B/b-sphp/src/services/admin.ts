@@ -364,6 +364,12 @@ export async function getDrugs(
   return (res as API.Result<API.PageResult<API.Drug>>).data;
 }
 
+/** 查询单个药品（新建处方模板自动带出药品名称/规格） */
+export async function getDrugById(id: number): Promise<API.Drug> {
+  const res = await request(`/api/b/prescription-templates/drugs/${id}`);
+  return (res as API.Result<API.Drug>).data;
+}
+
 /** 新增药品 */
 export async function createDrug(data: API.CreateDrugReq): Promise<void> {
   await request('/api/b/admin/drugs', {

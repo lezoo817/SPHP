@@ -496,9 +496,11 @@ declare global {
         drugId: number;
         drugName: string;
         dosage: string;
+        frequency?: string;
         usageMethod: string;
         days: number;
         quantity: number;
+        quantityUnit?: string;
       }[];
       createdAt: string;
     }
@@ -520,6 +522,7 @@ declare global {
         usageMethod: string;
         days: number;
         quantity: number;
+        quantityUnit?: string;
       }[];
     }
 
@@ -535,6 +538,8 @@ declare global {
       manufacturer?: string;
       approvalNumber?: string;
       status: 'ENABLED' | 'DISABLED';
+      /** 可用库存（当前医院各药房合计；仅按ID查询时返回） */
+      availableStock?: number;
     }
 
     /** 药品列表查询参数 */
