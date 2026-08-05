@@ -4,6 +4,7 @@ import com.sphp.patient.order.mapper.OrderDataMapper;
 import com.sphp.patient.order.mq.event.DrugOrderLogisticsAdvanceEvent;
 import com.sphp.patient.order.service.OrderLogisticsService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,7 @@ import static com.sphp.patient.common.enums.DrugOrderLogisticsStatusEnum.TO_RECE
 /**
  * C端购药订单模拟物流状态推进服务实现。
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OrderLogisticsServiceImpl implements OrderLogisticsService {
@@ -49,6 +51,7 @@ public class OrderLogisticsServiceImpl implements OrderLogisticsService {
         }
         String node = event.targetLogisticsStatus() == IN_TRANSIT
                 ? DRUG_ORDER_IN_TRANSIT_TRACE : DRUG_ORDER_TO_RECEIVE_TRACE;
+        log.info("购药订单物流状态推进 drugOrderId={}, expectedLogisticsStatus={}, targetLogisticsStatus={}",event.drugOrderId(), event.expectedLogisticsStatus(), event.targetLogisticsStatus());
         // 状态与轨迹必须同一事务提交，避免详情出现无轨迹的物流节点。
         if (orderDataMapper.insertDrugOrderLogisticsTrace(event.drugOrderId(), node, now) != 1) {
             throw new IllegalStateException("购药订单物流轨迹写入失败");
