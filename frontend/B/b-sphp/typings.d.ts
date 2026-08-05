@@ -561,7 +561,9 @@ declare global {
 
     /** 库存项 */
     interface InventoryItem {
-      id: number;
+      id: number | null;
+      pharmacyId: number | null;
+      pharmacyName: string | null;
       drugId: number;
       drugName: string;
       specification: string;
@@ -593,6 +595,17 @@ declare global {
 
     /** 库存预警项 */
     type AlertItem = InventoryItem;
+
+    /** 药房项 */
+    interface PharmacyItem {
+      id: number;
+      hospitalId: number;
+      name: string;
+      address: string;
+      phone: string;
+      isDefault: boolean;
+      status: string;
+    }
 
     // ===================== 患者管理 =====================
 

@@ -420,9 +420,17 @@ export async function updateInventory(
 }
 
 /** 查询低库存预警列表 */
-export async function getInventoryAlerts(): Promise<API.InventoryItem[]> {
-  const res = await request('/api/b/admin/inventory/alerts');
+export async function getInventoryAlerts(
+  params?: { pharmacyId?: number },
+): Promise<API.InventoryItem[]> {
+  const res = await request('/api/b/admin/inventory/alerts', { params });
   return (res as API.Result<API.InventoryItem[]>).data;
+}
+
+/** 查询药房列表（供下拉筛选） */
+export async function getPharmacies(): Promise<API.PharmacyItem[]> {
+  const res = await request('/api/b/admin/pharmacies');
+  return (res as API.Result<API.PharmacyItem[]>).data;
 }
 
 /** 手动释放锁定库存（仅 ADMIN） */
