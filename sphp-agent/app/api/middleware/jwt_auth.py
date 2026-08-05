@@ -187,12 +187,15 @@ async def parse_token(token: str, scope: str) -> dict[str, Any] | None:
             return None
 
         data = resp.json()
-        # Java 可能返回 "00000" 或 200；响应须为 dict，否则按无效处理
+        # 统一信封契约（系分 §6.1）：成功 code 恒为 "00000"。
+        # 早期曾兼容 "200" 字符串，Java token/parse 已统一走 Result.success()
+        # 返回 "00000"，此处收紧为单一成功码，避免与 tool_executor 判定不一致
+        # 造成的隐蔽失败（P1-3）。
         if not isinstance(data, dict):
             logger.warning("token/parse 响应非对象: %s", type(data).__name__)
             return None
         code = str(data.get("code", ""))
-        if code not in ("00000", "200"):
+        if code != "00000":
             return None
 
         user_info = data.get("data")
