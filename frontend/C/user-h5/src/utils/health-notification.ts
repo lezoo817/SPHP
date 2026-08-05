@@ -37,6 +37,26 @@ export function getMedicationPlanActions(status: MedicationPlan['status']): Medi
   return [];
 }
 
+/**
+ * 根据服务端提醒开关返回执行中计划可切换的提醒动作。
+ * @param plan 用药计划的状态与提醒开关
+ * @returns 当前可执行的提醒动作；非执行中计划不展示开关
+ */
+export function getMedicationReminderAction(plan: Pick<MedicationPlan, 'status' | 'reminderEnabled'>): MedicationPlanAction | undefined {
+  // 暂停计划会停止扫描，完成计划已关闭提醒，因此不向后端发送提醒开关动作。
+  if (plan.status !== 'ACTIVE') return undefined;
+  return plan.reminderEnabled ? 'DISABLE_REMINDER' : 'ENABLE_REMINDER';
+}
+
+/**
+ * 将后端返回的每日提醒时刻转换为卡片展示文案。
+ * @param reminderTimes 服务端按频次生成的日间时刻列表
+ * @returns 以中文顿号连接的提醒时刻；没有时刻时返回空字符串
+ */
+export function formatMedicationReminderTimes(reminderTimes: string[]): string {
+  return reminderTimes.filter(Boolean).join('、');
+}
+
 /** 判断随访计划是否仍可由患者确认。 */
 export function canConfirmFollowUp(status: FollowUpPlan['status']): boolean {
   return status === 'PENDING_CONFIRM';
@@ -54,7 +74,7 @@ export function getFollowUpStatusText(status: FollowUpPlan['status']): string {
 
 /** 将后端操作编码转换为按钮文案。 */
 export function getMedicationActionText(action: MedicationPlanAction): string {
-  return ({ PAUSE: '暂停用药', RESUME: '恢复用药', COMPLETE: '完成计划' } as Record<MedicationPlanAction, string>)[action];
+  return ({ ENABLE_REMINDER: '开启用药提醒', DISABLE_REMINDER: '关闭用药提醒', PAUSE: '暂停用药', RESUME: '恢复用药', COMPLETE: '完成计划' } as Record<MedicationPlanAction, string>)[action];
 }
 
 /**
