@@ -21,7 +21,7 @@ import { buildAppointmentsPath } from '../services/registration';
 import { buildNotificationsPath } from '../services/notification';
 import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotification, formatMedicationReminderTimes, getMedicationPlanActions, getMedicationReminderAction, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
 import { buildDeliveryAddressPath } from '../services/delivery-address';
-import { buildDeliveryAddressPayload, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
+import { buildDeliveryAddressPayload, getDeliveryAddressInvalidFields, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
 import { getAssistantTabs, getCurrentFlowAction } from './assistant';
 import { buildMedicalRecordDetailPath, buildMedicalRecordListPath } from '../services/medical-record';
 import { buildLegacyReportRedirectPath, createMedicalRecordDisplayNumber, filterMedicalRecordsByDate, getRecentMedicalRecordRange, mergeMedicalRecordPages } from './medical-record';
@@ -404,6 +404,11 @@ describe('收货地址规则', () => {
   it('校验必填地址字段、手机号与后端支持地区', () => {
     expect(validateDeliveryAddress({ ...addressForm, receiverPhone: '123' })).toBe('收件人手机号格式不正确');
     expect(validateDeliveryAddress({ ...addressForm, province: 'SICHUAN', city: '成都市' })).toBe('当前地区暂不支持配送');
+  });
+
+  it('保存尝试后同时标红全部缺失或格式不正确的必填项', () => {
+    expect(getDeliveryAddressInvalidFields({ receiverName: '', receiverPhone: '', province: '', city: '', detailAddress: '' })).toEqual(['region', 'detailAddress', 'receiverName', 'receiverPhone']);
+    expect(getDeliveryAddressInvalidFields({ ...addressForm, receiverPhone: '123', detailAddress: '' })).toEqual(['detailAddress', 'receiverPhone']);
   });
 
   it('提交时保留编辑地址的区县并清理文本两侧空白', () => {

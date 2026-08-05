@@ -4,6 +4,9 @@ import { createIdempotencyKey } from './form';
 /** 地区选择器中的省级地区与城市列表。 */
 export interface DeliveryProvince { code: string; name: string; sortKey: string; cities: string[]; }
 
+/** 地址表单中需要高亮提示的字段标识。 */
+export type DeliveryAddressInvalidField = 'region' | 'detailAddress' | 'receiverName' | 'receiverPhone';
+
 /** 后端当前允许写入和配送计算的省市编码。 */
 const supportedProvinceCodes = new Set(['HENAN', 'SHANGHAI', 'BEIJING', 'JIANGSU', 'ZHEJIANG', 'GUANGDONG']);
 
@@ -69,6 +72,21 @@ export function validateDeliveryAddress(values: DeliveryAddressPayload): string 
   if (!isSupportedDeliveryProvince(values.province)) return '当前地区暂不支持配送';
   if (!values.detailAddress.trim()) return '请填写详细地址';
   return values.detailAddress.trim().length > 200 ? '详细地址不能超过 200 个字符' : undefined;
+}
+
+/**
+ * 获取提交后需要高亮的地址表单字段。
+ * @param values 当前地址表单值
+ * @returns 缺失、超长、格式不正确或不支持配送的字段标识
+ */
+export function getDeliveryAddressInvalidFields(values: DeliveryAddressPayload): DeliveryAddressInvalidField[] {
+  const invalidFields: DeliveryAddressInvalidField[] = [];
+  // 省市缺失或未被后端支持时，地区选择卡统一提示为错误状态。
+  if (!values.province || !values.city || !isSupportedDeliveryProvince(values.province)) invalidFields.push('region');
+  if (!values.detailAddress.trim() || values.detailAddress.trim().length > 200) invalidFields.push('detailAddress');
+  if (!values.receiverName.trim() || values.receiverName.trim().length > 64) invalidFields.push('receiverName');
+  if (!/^1[3-9]\d{9}$/.test(values.receiverPhone)) invalidFields.push('receiverPhone');
+  return invalidFields;
 }
 
 /** 清理表单空白文本，并保留编辑地址已有的区县。 */
