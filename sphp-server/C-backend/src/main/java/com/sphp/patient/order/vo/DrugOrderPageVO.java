@@ -26,6 +26,8 @@ public class DrugOrderPageVO {
     public static class Item {
         // 订单 ID
         private final Long id;
+        // 关联处方 ID，供客户端跳转处方对应的物流详情
+        private final Long prescriptionId;
         // 订单名称
         private final String orderName;
         // 药房名称

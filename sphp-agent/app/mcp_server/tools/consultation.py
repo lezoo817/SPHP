@@ -11,10 +11,15 @@ from app.infrastructure.java_client import call_java_api
 
 
 async def save_pre_consultation(
-    appointment_id: int, chief_complaint: str, submit: bool, user_id: int | None = None
+    doctor_id: int, chief_complaint: str, submit: bool, user_id: int | None = None
 ) -> dict[str, Any]:
-    """提交预问诊摘要（submit=true 提交，false 存草稿）。"""
-    body = {"appointment_id": appointment_id, "chief_complaint": chief_complaint, "submit": submit}
+    """提交预问诊摘要给选定的医生（submit=true 提交，false 存草稿）。
+
+    对齐原始需求 §2：在线问诊不依赖挂号，预问诊采集主诉后直接发给用户选定的医生。
+    过敏史由 Java 端按患者健康档案关联（getConsultationDetail 查询时 JOIN），
+    Agent 无需传入；Agent 在编排层先调 query_health_record 拉取用于摘要展示与处方禁忌核对。
+    """
+    body = {"doctor_id": doctor_id, "chief_complaint": chief_complaint, "submit": submit}
     return await call_java_api(tool_name="save_pre_consultation", body=body, user_id=user_id)
 
 

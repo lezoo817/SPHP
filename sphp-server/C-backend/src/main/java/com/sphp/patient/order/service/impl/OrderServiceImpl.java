@@ -500,6 +500,7 @@ public class OrderServiceImpl implements OrderService {
     private DrugOrderPageVO.Item toOrderListItem(OrderListRecord record) {
         return DrugOrderPageVO.Item.builder()
                 .id(record.id())
+                .prescriptionId(record.prescriptionId()) // 关联处方，用于购药页展示购买状态
                 .orderName(record.orderName())
                 .pharmacyName(record.pharmacyName())
                 .status(record.status())
@@ -518,6 +519,7 @@ public class OrderServiceImpl implements OrderService {
     private DrugOrderDetailVO toOrderDetail(OrderDetailRecord record) {
         return DrugOrderDetailVO.builder()
                 .id(record.id())
+                .prescriptionId(record.prescriptionId()) // 保留订单与处方的准确关联
                 .status(record.status())
                 .pharmacy(DrugOrderDetailVO.Pharmacy.builder()
                         .id(record.pharmacyId())

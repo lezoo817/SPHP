@@ -178,6 +178,14 @@ export async function forceReleaseSlot(slotId: number): Promise<void> {
   await request(`/api/b/admin/slots/${slotId}/force-release`, { method: 'POST' });
 }
 
+/** 查询号源池（按日期+班次汇总，仅 PUBLISHED，按数据权限过滤） */
+export async function getSourcePool(
+  params: API.SourcePoolParams,
+): Promise<API.PageResult<API.SourcePoolVO>> {
+  const res = await request('/api/b/admin/source-pool', { params });
+  return (res as API.Result<API.PageResult<API.SourcePoolVO>>).data;
+}
+
 // ===================== 接诊台 =====================
 
 /** 查询待接诊队列 */
@@ -356,6 +364,12 @@ export async function getDrugs(
   return (res as API.Result<API.PageResult<API.Drug>>).data;
 }
 
+/** 查询单个药品（新建处方模板自动带出药品名称/规格） */
+export async function getDrugById(id: number): Promise<API.Drug> {
+  const res = await request(`/api/b/prescription-templates/drugs/${id}`);
+  return (res as API.Result<API.Drug>).data;
+}
+
 /** 新增药品 */
 export async function createDrug(data: API.CreateDrugReq): Promise<void> {
   await request('/api/b/admin/drugs', {
@@ -406,9 +420,17 @@ export async function updateInventory(
 }
 
 /** 查询低库存预警列表 */
-export async function getInventoryAlerts(): Promise<API.InventoryItem[]> {
-  const res = await request('/api/b/admin/inventory/alerts');
+export async function getInventoryAlerts(
+  params?: { pharmacyId?: number },
+): Promise<API.InventoryItem[]> {
+  const res = await request('/api/b/admin/inventory/alerts', { params });
   return (res as API.Result<API.InventoryItem[]>).data;
+}
+
+/** 查询药房列表（供下拉筛选） */
+export async function getPharmacies(): Promise<API.PharmacyItem[]> {
+  const res = await request('/api/b/admin/pharmacies');
+  return (res as API.Result<API.PharmacyItem[]>).data;
 }
 
 /** 手动释放锁定库存（仅 ADMIN） */

@@ -34,7 +34,7 @@ public class ConsultationRecord extends BaseDeleteDO {
     @TableField("status")
     private String status;
 
-    /** 患者主诉 */
+    /** Agent 汇总的患者主诉 */
     @TableField("chief_complaint")
     private String chiefComplaint;
 
@@ -45,6 +45,10 @@ public class ConsultationRecord extends BaseDeleteDO {
     /** 附件 JSON 数组 */
     @TableField("attachments")
     private String attachmentsJson;
+
+    /** AI 总结及本人健康档案快照 JSON */
+    @TableField("ai_summary")
+    private String aiSummaryJson;
 
     /** 预问诊提交为待接诊的时间 */
     @TableField("pre_consultation_submitted_at")

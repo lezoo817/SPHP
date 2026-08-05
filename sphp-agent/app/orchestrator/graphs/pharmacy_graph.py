@@ -1,7 +1,7 @@
 """购药子图（系分 §5.2.1）。
 
-调 query_pharmacy_stock -> create_drug_order（含 L2 确认）。
-绑定购药场景工具白名单：库存查询 + 购药订单下单/取消/收货。
+调 recommend_pharmacies（加权推荐）/ query_pharmacy_stock -> create_drug_order（含 L2 确认）。
+绑定购药场景工具白名单：药店推荐 + 库存查询 + 购药订单下单/取消/收货。
 """
 
 from typing import Any
@@ -10,6 +10,7 @@ from app.orchestrator.graphs._common import build_tool_subgraph
 
 # 购药场景工具白名单（系分 §5.2.1 购药链路）
 PHARMACY_TOOLS = [
+    "recommend_pharmacies",  # 药店加权推荐（对齐原始需求 §3）
     "query_pharmacy_stock",  # 药店库存查询
     "create_drug_order",  # 创建购药订单（L2）
     "query_drug_orders",  # 购药订单查询

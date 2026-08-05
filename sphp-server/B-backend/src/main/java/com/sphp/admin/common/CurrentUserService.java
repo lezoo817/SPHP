@@ -14,8 +14,9 @@ import org.springframework.stereotype.Service;
 /**
  * 当前登录用户上下文服务。
  *
- * <p>沿用现有鉴权模式：Service 层通过 {@link StpUtil} 取当前登录 b_user（无全局拦截器）。
- * 管理员接口统一要求 ADMIN 角色，并以 ADMIN 所属 {@code hospital_id} 作为数据隔离范围。
+ * <p>双通道鉴权：Agent 调用经 {@link UserContextInterceptor} 按 X-User-Id 建立上下文后，
+ * 优先读取 {@link UserContextHolder}；B 端 Web 沿用 Sa-Token，Service 层通过 {@link StpUtil}
+ * 取当前登录 b_user。管理员接口统一要求 ADMIN 角色，并以 ADMIN 所属 {@code hospital_id} 作为数据隔离范围。
  */
 @Service
 @RequiredArgsConstructor
@@ -29,8 +30,15 @@ public class CurrentUserService {
 
     /**
      * 获取当前登录用户（未登录 / Token 无效 / 用户不存在或已软删均抛 A0301）。
+     *
+     * <p>双通道：Agent 调用（X-User-Id 已由拦截器写入 {@link UserContextHolder}）优先取线程上下文；
+     * 否则回落 Sa-Token Bearer 会话。
      */
     public BUser getCurrentUser() {
+        UserContext context = UserContextHolder.getContext();
+        if (context != null) {
+            return context.user();
+        }
         Long userId;
         try {
             userId = StpUtil.getLoginIdAsLong();
@@ -80,6 +88,11 @@ public class CurrentUserService {
      * @return 数据权限范围；doctor_id 为 null（如 ADMIN）时 deptId 为 null
      */
     public DataScope getCurrentDataScope() {
+        // Agent 通道：deptId 已由拦截器补全，直接转换（§8.2）
+        UserContext context = UserContextHolder.getContext();
+        if (context != null) {
+            return context.toDataScope();
+        }
         BUser user = getCurrentUser();
         Long deptId = null;
         if (user.getDoctorId() != null) {

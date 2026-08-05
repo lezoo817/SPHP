@@ -1,6 +1,7 @@
 package com.sphp.admin.prescription.controller;
 
 import com.sphp.admin.common.vo.PageResult;
+import com.sphp.admin.pharmacy.dto.DrugListVO;
 import com.sphp.admin.prescription.dto.SaveTemplateRequest;
 import com.sphp.admin.prescription.dto.TemplateListVO;
 import com.sphp.admin.prescription.service.PrescriptionTemplateService;
@@ -47,9 +48,15 @@ public class PrescriptionTemplateController {
     }
 
     @PostMapping("/prescription-templates")
-    @Operation(summary = "保存处方模板", description = "创建新处方模板（需医生身份）")
+    @Operation(summary = "保存处方模板", description = "创建新处方模板（需医生身份）；校验药品存在且数量充足（天数×频次×用量 ≤ 数量×规格）")
     public Result<TemplateListVO> save(@RequestBody SaveTemplateRequest request) {
         return Result.success("创建成功", templateService.save(request));
+    }
+
+    @GetMapping("/prescription-templates/drugs/{id}")
+    @Operation(summary = "查询药品（模板选药）", description = "按 ID 查询当前医院药品，供新建模板自动带出药品名称与规格；不存在或越权返回 A0402")
+    public Result<DrugListVO> getDrug(@PathVariable Long id) {
+        return Result.success("查询成功", templateService.getDrug(id));
     }
 
     @DeleteMapping("/prescription-templates/{id}")

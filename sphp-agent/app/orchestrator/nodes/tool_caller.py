@@ -172,6 +172,32 @@ def _build_hospital_context(state: AgentState) -> str | None:
     )
 
 
+def _build_address_context(state: AgentState) -> str | None:
+    """构造当前收货地址上下文（注入 tool_caller 的 LLM 输入）。
+
+    对齐原始需求 §3 药店推荐：C 端页面"当前配送地址"经 ``context.address_id``
+    写入 AgentState.address_id。recommend_pharmacies 工具将 address_id 标为必填，
+    此前 LLM 上下文无"当前收货地址"信息：用户消息没提地址时，LLM 只能反问
+    "您要送到哪里"（体验差），或编造地址 ID。注入后 LLM 直接携带该 ID，
+    不再索要、不编造。
+
+    Args:
+        state: 当前图状态，含 address_id 字段。
+
+    Returns:
+        str | None: 地址上下文提示；address_id 为 None（前端未选中配送地址）
+            时不注入，避免把编造的 ID 塞给 LLM。
+    """
+    address_id = state.get("address_id")
+    if address_id is None:
+        return None
+    return (
+        f"当前收货地址 ID：{address_id}（前端页面已选中的配送地址）。"
+        "涉及配送/药店推荐的工具（recommend_pharmacies）必须携带此 address_id，"
+        "直接使用，不要向用户索要地址 ID。"
+    )
+
+
 def _fill_missing_required_param(
     tool_calls: list[dict[str, Any]], param_name: str, param_value: int | None
 ) -> list[dict[str, Any]]:
@@ -235,7 +261,25 @@ def _fill_missing_hospital_id(
     return _fill_missing_required_param(tool_calls, "hospital_id", hospital_id)
 
 
-async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None) -> dict[str, Any]:
+def _fill_missing_address_id(
+    tool_calls: list[dict[str, Any]], address_id: int | None
+) -> list[dict[str, Any]]:
+    """自动补全必填 address_id 工具参数（药店推荐确定性兜底）。
+
+    对齐原始需求 §3：recommend_pharmacies 的 schema 将 address_id 标为必填。
+    LLM 提示词约束不可靠（可能漏填或编造），此处对"工具 schema 必填 address_id
+    且 LLM 未填"的调用从 ``state.address_id``（前端 context.address_id）确定性
+    补全。address_id 为 None 时不补全（不编造）。详见
+    :func:`_fill_missing_required_param`。
+    """
+    return _fill_missing_required_param(tool_calls, "address_id", address_id)
+
+
+async def tool_caller(
+    state: AgentState,
+    allowed_tools: list[str] | None = None,
+    scene_prompt: str | None = None,
+) -> dict[str, Any]:
     """LLM 决定调用工具，返回 ``{"tool_calls": [...]}``。
 
     从 ``ToolRegistry`` 取当前 scope 的 L1/L2 工具 Schema，绑定到 LLM，
@@ -259,6 +303,10 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
         state: 当前图状态，包含 scope / messages 字段。
         allowed_tools: 子图工具白名单（工具名列表）；None 表示不限（默认全量）。
             仅 C 端生效，B 端忽略该参数。
+        scene_prompt: 场景专属指令（系分 §5.11 场景指令），业务子图传入本场景流程
+            指令（如问诊场景的预问诊采集/处方解读要求）。作为 system 消息紧跟
+            主提示词注入，引导 LLM 按场景流程推进。None 时不注入（通用场景零侵入，
+            B 端与其他未传场景的子图无影响）。
 
     Returns:
         dict: 部分状态更新，包含 tool_calls（LLM 选择的 L1/L2 工具列表，
@@ -304,7 +352,13 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     system_prompt = prompt_template.format(
         tools_desc=_build_tools_prompt(tools), today=date.today().isoformat()
     )
-    messages = [{"role": "system", "content": system_prompt}] + history
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+    # 场景提示词注入（系分 §5.11 场景指令）：业务子图传入本场景专属流程指令
+    # （如问诊场景的预问诊采集/处方解读要求），作为 system 消息紧跟主提示词，
+    # 引导 LLM 按场景流程推进。None 时不注入（通用场景零侵入）。
+    if scene_prompt:
+        messages.append({"role": "system", "content": scene_prompt})
+    messages += history
 
     # M8-5：注入当前接诊患者上下文（前端 context.patient_id 非空时），
     # LLM 直接携带该 ID，避免 B 端必填 patient_id 工具反复向医生索要患者 ID。
@@ -319,6 +373,13 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
     hospital_ctx = _build_hospital_context(state)
     if hospital_ctx:
         messages.append({"role": "system", "content": hospital_ctx})
+
+    # 注入当前收货地址上下文（AgentState.address_id 非空时）：recommend_pharmacies
+    # 工具必填 address_id，LLM 直接携带该 ID，避免用户没选地址时 LLM 反问或编造。
+    # 与 hospital_id 同策略——address_id 为 None 时不注入（不编造地址 ID）。
+    address_ctx = _build_address_context(state)
+    if address_ctx:
+        messages.append({"role": "system", "content": address_ctx})
 
     # 注入已执行工具的结果（子图循环累积了前面所有轮次，LLM 分步决策可见）
     tool_results = state.get("tool_results")
@@ -349,6 +410,9 @@ async def tool_caller(state: AgentState, allowed_tools: list[str] | None = None)
         # 5 工具；hospital_id 兜底 C 端 5 工具（schema 驱动，非必填工具不触碰）。
         tool_calls = _fill_missing_patient_id(tool_calls, state.get("patient_id"))
         tool_calls = _fill_missing_hospital_id(tool_calls, state.get("hospital_id"))
+        # 对齐原始需求 §3：recommend_pharmacies 必填 address_id，漏填时从
+        # state.address_id（前端 context.address_id）确定性补全（不编造）。
+        tool_calls = _fill_missing_address_id(tool_calls, state.get("address_id"))
         # 软兜底：拦截「相同参数 + 上次已成功」的重复调用（LLM 提示词收敛不可靠，
         # 这里做确定性去重——循环问题 P3-6）。意外截断/失败的重试放行，操作型 L2
         # 不进入 tool_results 天然豁免。M8-1：同时对比 pending_confirmations，

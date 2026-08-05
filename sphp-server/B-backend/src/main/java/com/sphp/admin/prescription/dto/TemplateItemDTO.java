@@ -30,4 +30,7 @@ public class TemplateItemDTO {
 
     @Schema(description = "数量")
     private Integer quantity;
+
+    @Schema(description = "数量单位（盒/瓶/剂），默认盒")
+    private String quantityUnit;
 }

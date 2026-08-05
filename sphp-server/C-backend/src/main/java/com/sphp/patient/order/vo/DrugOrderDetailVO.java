@@ -12,6 +12,9 @@ public class DrugOrderDetailVO {
     /** 订单 ID */
     private final Long id;
 
+    /** 关联处方 ID，用于客户端恢复购药流程上下文。 */
+    private final Long prescriptionId;
+
     /** 订单状态 */
     private final String status;
 

@@ -1,20 +1,22 @@
 /**
  * 库存管理页
  * - ProTable 列表，展示药品库存信息
+ * - 支持按药房筛选；不选药房时汇总全部药房库存
  * - 库存状态（NORMAL/LOW/ALERT）前端根据 availableCount 与 safetyStock 计算
  * - ADMIN 角色可更新库存、手动释放锁定库存
  */
-import { Tag, Button, Modal, message, Progress, Space, Descriptions } from 'antd';
+import { Tag, Button, Modal, message, Progress, Space, Descriptions, Select } from 'antd';
 import { EditOutlined, UnlockOutlined } from '@ant-design/icons';
 import { ProTable, ProForm, ProFormDigit, ProFormText, ProFormSelect } from '@ant-design/pro-components';
 import { useModel } from '@umijs/max';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
   getInventoryList,
   updateInventory,
   unlockInventory,
   getDrugs,
+  getPharmacies,
 } from '@/services/admin';
 
 /** 根据库存数量与安全库存计算状态 */
@@ -51,6 +53,12 @@ export default function InventoryList() {
   const [unlockModalOpen, setUnlockModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<API.InventoryItem | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [pharmacies, setPharmacies] = useState<API.PharmacyItem[]>([]);
+  const [pharmacyId, setPharmacyId] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    getPharmacies().then(setPharmacies).catch(() => {});
+  }, []);
 
   /** 打开更新库存弹窗 */
   const handleUpdate = (record: API.InventoryItem) => {
@@ -69,7 +77,7 @@ export default function InventoryList() {
     if (!selectedItem) return;
     setSubmitting(true);
     try {
-      await updateInventory(selectedItem.id, values);
+      await updateInventory(selectedItem.id!, values);
       message.success('库存更新成功');
       setUpdateModalOpen(false);
       actionRef.current?.reload();
@@ -85,7 +93,7 @@ export default function InventoryList() {
     if (!selectedItem) return;
     setSubmitting(true);
     try {
-      await unlockInventory(selectedItem.id, values);
+      await unlockInventory(selectedItem.id!, values);
       message.success('锁定库存已释放');
       setUnlockModalOpen(false);
       actionRef.current?.reload();
@@ -110,6 +118,13 @@ export default function InventoryList() {
   };
 
   const columns: ProColumns<API.InventoryItem>[] = [
+    {
+      title: '药房',
+      dataIndex: 'pharmacyName',
+      width: 120,
+      ellipsis: true,
+      hideInSearch: true,
+    },
     {
       title: '药品名称',
       dataIndex: 'drugName',
@@ -191,7 +206,7 @@ export default function InventoryList() {
       hideInSearch: true,
       render: (_, record) => (
         <Space>
-          {isAdmin && (
+          {isAdmin && record.id && (
             <Button
               type="link"
               size="small"
@@ -201,7 +216,7 @@ export default function InventoryList() {
               更新库存
             </Button>
           )}
-          {isAdmin && record.lockedCount > 0 && (
+          {isAdmin && record.id && record.lockedCount > 0 && (
             <Button
               type="link"
               size="small"
@@ -220,7 +235,7 @@ export default function InventoryList() {
     <>
       <ProTable<API.InventoryItem, API.InventoryListParams>
         actionRef={actionRef}
-        rowKey="id"
+        rowKey={(record) => record.id ?? `drug-${record.drugId}`}
         columns={columns}
         request={async (params) => {
           const { current, pageSize, ...rest } = params;
@@ -229,6 +244,7 @@ export default function InventoryList() {
               page: current,
               size: pageSize,
               drugId: rest.drugId,
+              pharmacyId: pharmacyId,
             });
             return {
               data: res.list,
@@ -240,11 +256,23 @@ export default function InventoryList() {
             return { data: [], total: 0, success: true };
           }
         }}
+        params={{ pharmacyId }}
         search={{
           labelWidth: 'auto',
           defaultCollapsed: true,
         }}
         pagination={{ pageSize: 10 }}
+        toolBarRender={() => [
+          <Select
+            key="pharmacy"
+            allowClear
+            placeholder="全部药房"
+            style={{ width: 160 }}
+            value={pharmacyId}
+            onChange={(val) => setPharmacyId(val)}
+            options={pharmacies.map((p) => ({ label: p.name, value: p.id }))}
+          />,
+        ]}
       />
 
       {/* ====== 更新库存弹窗 ====== */}
@@ -258,6 +286,7 @@ export default function InventoryList() {
       >
         {selectedItem && (
           <Descriptions size="small" column={1} style={{ marginBottom: 16 }}>
+            <Descriptions.Item label="药房">{selectedItem.pharmacyName ?? '汇总'}</Descriptions.Item>
             <Descriptions.Item label="药品">{selectedItem.drugName}</Descriptions.Item>
             <Descriptions.Item label="规格">{selectedItem.specification}</Descriptions.Item>
             <Descriptions.Item label="当前库存">{selectedItem.availableCount}</Descriptions.Item>
@@ -317,6 +346,7 @@ export default function InventoryList() {
       >
         {selectedItem && (
           <Descriptions size="small" column={1} style={{ marginBottom: 16 }}>
+            <Descriptions.Item label="药房">{selectedItem.pharmacyName ?? '汇总'}</Descriptions.Item>
             <Descriptions.Item label="药品">{selectedItem.drugName}</Descriptions.Item>
             <Descriptions.Item label="当前锁定数量">{selectedItem.lockedCount}</Descriptions.Item>
           </Descriptions>

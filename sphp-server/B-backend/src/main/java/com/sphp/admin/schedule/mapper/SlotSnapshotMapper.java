@@ -5,8 +5,10 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sphp.admin.schedule.dto.LockedSlotRow;
 import com.sphp.admin.schedule.entity.SlotSnapshot;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDate;
 
@@ -52,4 +54,33 @@ public interface SlotSnapshotMapper extends BaseMapper<SlotSnapshot> {
                                           @Param("hospitalId") Long hospitalId,
                                           @Param("scopeDeptId") Long scopeDeptId,
                                           @Param("scopeDoctorId") Long scopeDoctorId);
+
+    /**
+     * 为指定时段批量生成 AVAILABLE 号源快照（号源池）。
+     *
+     * <p>号源池以 slot_snapshot 的 AVAILABLE 记录为准（系分 §4.2.3），C 端可约数与
+     * 锁号均基于 AVAILABLE 快照计数，故发布排班时必须同步生成快照，否则号源池为空、
+     * 患者无法预约。单条 SQL 借 generate_series 一次插入 count 行。
+     *
+     * @param slotId 时段 ID
+     * @param count  生成数量（须等于时段 total_count）
+     * @return 插入行数
+     */
+    @Insert("INSERT INTO slot_snapshot (slot_id, status, created_at, updated_at) " +
+            "SELECT #{slotId}, 'AVAILABLE', now(), now() FROM generate_series(1, #{count})")
+    int generateAvailableSnapshots(@Param("slotId") Long slotId, @Param("count") int count);
+
+    /**
+     * 清空某排班下全部 AVAILABLE 号源快照（软删）。
+     *
+     * <p>取消发布时调用：排班取消后号源池随之清空，避免残留可约数据造成误读；
+     * LOCKED/SOLD 等历史快照不受影响。
+     *
+     * @param scheduleId 排班 ID
+     * @return 受影响行数
+     */
+    @Update("UPDATE slot_snapshot SET deleted_at = now(), updated_at = now() " +
+            "WHERE slot_id IN (SELECT id FROM slot WHERE schedule_id = #{scheduleId} AND deleted_at IS NULL) " +
+            "  AND status = 'AVAILABLE' AND deleted_at IS NULL")
+    int clearAvailableSnapshotsBySchedule(@Param("scheduleId") Long scheduleId);
 }

@@ -42,18 +42,18 @@ public class ConsultationController {
     private final CIdempotencyService idempotencyService;
 
     /**
-     * 创建、保存或提交预问诊。
+     * 直接提交当前登录用户本人的 AI 预问诊总结。
      *
      * @param idempotencyKey 客户端幂等键
      * @param request 预问诊请求
-     * @return 保存后的问诊信息
+     * @return 已提交的问诊信息
      */
     @PostMapping("/consultations/pre-consultations")
     public Result<PreConsultationSaveVO> savePreConsultation(
             @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody PreConsultationSaveRequest request) {
         Long userId = CUserContext.getRequired().userId();
-        String message = Boolean.TRUE.equals(request.getSubmit()) ? "预问诊已提交" : "预问诊草稿已保存";
+        String message = "预问诊已提交";
         // 写入操作按用户、路由和请求体摘要进行幂等隔离，重试不会重复写入问诊记录。
         IdempotencyPayload<PreConsultationSaveVO> payload = idempotencyService.execute(
                 userId,

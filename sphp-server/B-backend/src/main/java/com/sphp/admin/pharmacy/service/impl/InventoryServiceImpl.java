@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -48,20 +49,39 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     public PageResult<InventoryListVO> page(Long drugId, Long pharmacyId, int page, int size) {
         Long hospitalId = currentUserService.getCurrentHospitalId();
+        Map<Long, String> pharmacyNameMap = loadPharmacyNameMap(hospitalId);
+
+        // pharmacyId 为空时，按药品汇总全部药房库存
+        if (pharmacyId == null) {
+            List<Map<String, Object>> rows = stockMapper.selectAggregatedByHospital(hospitalId);
+            // 手动分页
+            int total = rows.size();
+            int from = (page - 1) * size;
+            int to = Math.min(from + size, total);
+            List<InventoryListVO> list = rows.subList(from, to).stream()
+                    .map(this::toInventoryListVOFromMap)
+                    .toList();
+            return PageResult.of(total, list, page, size);
+        }
+
+        // 指定药房时，按药房查询
         Page<PharmacyDrugStock> result = stockMapper.selectPage(new Page<>(page, size),
                 Wrappers.<PharmacyDrugStock>lambdaQuery()
                         .apply("pharmacy_id IN (SELECT id FROM pharmacy WHERE hospital_id = {0} AND deleted_at IS NULL)",
                                 hospitalId)
                         .eq(drugId != null, PharmacyDrugStock::getDrugId, drugId)
-                        .eq(pharmacyId != null, PharmacyDrugStock::getPharmacyId, pharmacyId)
+                        .eq(PharmacyDrugStock::getPharmacyId, pharmacyId)
                         .orderByDesc(PharmacyDrugStock::getId));
         Map<Long, Drug> drugMap = loadDrugMap(result.getRecords().stream()
                 .map(PharmacyDrugStock::getDrugId).toList());
+        String pharmacyName = pharmacyNameMap.getOrDefault(pharmacyId, null);
         List<InventoryListVO> list = result.getRecords().stream()
                 .map(s -> {
                     Drug d = drugMap.get(s.getDrugId());
                     return InventoryListVO.builder()
                             .id(s.getId())
+                            .pharmacyId(pharmacyId)
+                            .pharmacyName(pharmacyName)
                             .drugId(s.getDrugId())
                             .drugName(d != null ? d.getName() : null)
                             .specification(d != null ? d.getSpecification() : null)
@@ -69,7 +89,7 @@ public class InventoryServiceImpl implements InventoryService {
                             .lockedCount(s.getLockedCount())
                             .safetyStock(s.getSafetyStock())
                             .unitPriceCent(s.getUnitPriceCent())
-                            .status(computeStatus(s.getAvailableCount()))
+                            .status(computeStatus(s.getAvailableCount(), s.getSafetyStock()))
                             .build();
                 })
                 .toList();
@@ -105,25 +125,32 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     public List<InventoryAlertVO> alerts(Long pharmacyId) {
         Long hospitalId = currentUserService.getCurrentHospitalId();
+        Map<Long, String> pharmacyNameMap = loadPharmacyNameMap(hospitalId);
         List<PharmacyDrugStock> rows = stockMapper.selectList(
                 Wrappers.<PharmacyDrugStock>lambdaQuery()
                         .apply("pharmacy_id IN (SELECT id FROM pharmacy WHERE hospital_id = {0} AND deleted_at IS NULL)",
                                 hospitalId)
                         .eq(pharmacyId != null, PharmacyDrugStock::getPharmacyId, pharmacyId)
-                        .apply("available_count < safety_stock")
+                        // 告警(ALERT) + 偏低(LOW) 都展示：available < safety * 2
+                        .apply("available_count < safety_stock * 2")
                         .orderByAsc(PharmacyDrugStock::getAvailableCount));
         Map<Long, Drug> drugMap = loadDrugMap(rows.stream().map(PharmacyDrugStock::getDrugId).toList());
         return rows.stream()
                 .map(s -> {
                     Drug d = drugMap.get(s.getDrugId());
+                    Long pid = s.getPharmacyId();
                     return InventoryAlertVO.builder()
                             .id(s.getId())
+                            .pharmacyId(pid)
+                            .pharmacyName(pharmacyNameMap.get(pid))
                             .drugId(s.getDrugId())
                             .drugName(d != null ? d.getName() : null)
                             .specification(d != null ? d.getSpecification() : null)
                             .availableCount(s.getAvailableCount())
+                            .lockedCount(s.getLockedCount())
                             .safetyStock(s.getSafetyStock())
                             .unitPriceCent(s.getUnitPriceCent())
+                            .status(computeStatus(s.getAvailableCount(), s.getSafetyStock()))
                             .build();
                 })
                 .toList();
@@ -165,10 +192,51 @@ public class InventoryServiceImpl implements InventoryService {
                 id, request.getDrugOrderId(), release, request.getReason());
     }
 
-    /** 库存状态：>=10 NORMAL；4~9 LOW；<=3 ALERT */
-    private String computeStatus(int availableCount) {
-        if (availableCount >= 10) return "NORMAL";
-        if (availableCount >= 4) return "LOW";
+    /** 批量加载药房名称 Map */
+    private Map<Long, String> loadPharmacyNameMap(Long hospitalId) {
+        List<Pharmacy> pharmacies = pharmacyMapper.selectList(
+                Wrappers.<Pharmacy>lambdaQuery()
+                        .eq(Pharmacy::getHospitalId, hospitalId)
+                        .isNull(Pharmacy::getDeletedAt));
+        Map<Long, String> map = new HashMap<>();
+        for (Pharmacy p : pharmacies) {
+            map.put(p.getId(), p.getName());
+        }
+        return map;
+    }
+
+    /** 将聚合查询结果 Map 转为 InventoryListVO */
+    private InventoryListVO toInventoryListVOFromMap(Map<String, Object> row) {
+        int available = toInt(row.get("available_count"));
+        return InventoryListVO.builder()
+                .id(null)
+                .pharmacyId(null)
+                .pharmacyName(null)
+                .drugId(toLong(row.get("drug_id")))
+                .drugName((String) row.get("drug_name"))
+                .specification((String) row.get("specification"))
+                .availableCount(available)
+                .lockedCount(toInt(row.get("locked_count")))
+                .safetyStock(toInt(row.get("safety_stock")))
+                .unitPriceCent(toInt(row.get("unit_price_cent")))
+                .status(computeStatus(available, toInt(row.get("safety_stock"))))
+                .build();
+    }
+
+    private Long toLong(Object val) {
+        return val instanceof Number ? ((Number) val).longValue() : null;
+    }
+
+    private int toInt(Object val) {
+        return val instanceof Number ? ((Number) val).intValue() : 0;
+    }
+
+    /** 库存状态：与前端 calcStatus 一致，基于 safety_stock 比值计算 */
+    private String computeStatus(int availableCount, int safetyStock) {
+        if (safetyStock <= 0) return "NORMAL";
+        double ratio = (double) availableCount / safetyStock;
+        if (ratio >= 2) return "NORMAL";
+        if (ratio >= 1) return "LOW";
         return "ALERT";
     }
 

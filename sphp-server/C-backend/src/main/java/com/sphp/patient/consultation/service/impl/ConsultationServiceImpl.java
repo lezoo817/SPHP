@@ -5,20 +5,18 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.support.context.CUserContext;
-import com.sphp.patient.common.constant.ConsultationConstant;
-import com.sphp.patient.common.enums.ConsultationMessageSenderTypeEnum;
 import com.sphp.patient.common.enums.ConsultationPrescriptionStatusEnum;
 import com.sphp.patient.common.enums.ConsultationStatusEnum;
-import com.sphp.patient.common.enums.RegisteringAppointmentStatusEnum;
 import com.sphp.patient.consultation.dto.ConsultationMessageSendRequest;
 import com.sphp.patient.consultation.dto.PreConsultationSaveRequest;
 import com.sphp.patient.consultation.entity.ConsultationMessage;
 import com.sphp.patient.consultation.entity.ConsultationRecord;
 import com.sphp.patient.consultation.event.ConsultationMessageSentEvent;
-import com.sphp.patient.consultation.mapper.ConsultationAppointmentRecord;
+import com.sphp.patient.consultation.mapper.ConsultationAllergySnapshotRecord;
 import com.sphp.patient.consultation.mapper.ConsultationDataMapper;
 import com.sphp.patient.consultation.mapper.ConsultationListRecord;
 import com.sphp.patient.consultation.mapper.ConsultationDetailRecord;
+import com.sphp.patient.consultation.mapper.ConsultationMedicalHistorySnapshotRecord;
 import com.sphp.patient.consultation.mapper.ConsultationMessageRecord;
 import com.sphp.patient.consultation.mapper.ConsultationMessageMapper;
 import com.sphp.patient.consultation.mapper.ConsultationPrescriptionRecord;
@@ -33,7 +31,6 @@ import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
 import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
 import com.sphp.patient.consultation.vo.ConsultationPrescriptionDetailVO;
-import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -41,13 +38,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static com.sphp.patient.common.constant.ConsultationConstant.*;
 import static com.sphp.patient.common.enums.ConsultationMessageSenderTypeEnum.PATIENT;
 import static com.sphp.patient.common.enums.ConsultationPrescriptionStatusEnum.APPROVED;
 import static com.sphp.patient.common.enums.ConsultationStatusEnum.*;
-import static com.sphp.patient.common.enums.RegisteringAppointmentStatusEnum.PAID;
 import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
 import static java.util.Arrays.stream;
 
@@ -68,62 +66,40 @@ public class ConsultationServiceImpl implements ConsultationService {
     private final ApplicationEventPublisher eventPublisher;
 
     /**
-     * 创建、保存或提交当前账号可访问就诊人的预问诊。
+     * 将当前登录用户本人的 AI 预问诊总结直接提交为待接诊记录。
      *
      * @param request 预问诊请求参数
-     * @return 保存后的问诊信息
-     * @throws CAuthException 就诊人、挂号订单或问诊状态不满足要求时抛出
+     * @return 已提交的问诊信息
+     * @throws CAuthException 本人就诊人、医生或问诊状态不满足要求时抛出
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public PreConsultationSaveVO savePreConsultation(PreConsultationSaveRequest request) {
         Long userId = CUserContext.getRequired().userId();
-        Long patientId = resolveAccessiblePatient(userId, request.getPatientId());
-        // 先锁定挂号订单，避免同一订单的草稿创建和提交出现并发覆盖。
-        ConsultationAppointmentRecord appointment = consultationDataMapper.lockConsultationAppointment(request.getAppointmentId());
-        if (appointment == null) {
-            throw notFound("挂号订单不存在");
+        // 锁定账号，避免并发请求绕过同医生活动问诊限制。
+        if (consultationDataMapper.lockConsultationUser(userId) == null) {
+            throw notFound("当前登录账号不存在");
         }
-        if (!patientId.equals(appointment.patientId())) {
-            throw forbidden("无权使用该挂号订单创建预问诊");
+        // 预问诊固定绑定当前登录用户的本人患者，不能切换家庭成员。
+        Long patientId = resolveCurrentSelfPatient(userId);
+        // 仅允许向启用且未删除的医生提交预问诊。
+        if (!consultationDataMapper.existsConsultationAvailableDoctor(request.getDoctorId())) {
+            throw notFound("医生不存在或已停用");
         }
-        if (!PAID.name().equals(appointment.status())) {
-            throw statusConflict("挂号订单未支付或当前状态不允许创建预问诊");
+        // 同一医生存在待接诊或进行中的问诊时，禁止再次提交新的总结。
+        if (consultationDataMapper.existsConsultationActiveRecord(patientId, request.getDoctorId())) {
+            throw statusConflict("当前医生仍有进行中的预问诊，请等待问诊结束后再提交");
         }
-
         OffsetDateTime now = OffsetDateTime.now();
-        ConsultationRecord existing = consultationDataMapper.selectConsultationByAppointmentForUpdate(appointment.id());
-        // 创建或更新问诊记录。
-        boolean submit = Boolean.TRUE.equals(request.getSubmit());
         // 使用 JSONB 存储附件信息，避免 JSON 字符串长度超出数据库字段限制。
         String attachmentsJson = serializeAttachments(request);
-        if (existing == null) {
-            ConsultationRecord record = buildConsultationRecord(request, appointment, attachmentsJson, now, submit);
-            // 使用显式 JSONB 写入，确保 PostgreSQL 不把 JSON 字符串当作普通字符列处理。
-            if (consultationDataMapper.insertConsultationRecord(record) != 1) {
-                throw systemError("预问诊保存失败");
-            }
-            return buildPreConsultationSaveResult(record);// 返回保存结果
+        String aiSummaryJson = serializeAiSummary(request, patientId, now);
+        ConsultationRecord record = buildConsultationRecord(request, patientId, attachmentsJson, aiSummaryJson, now);
+        // 每次提交均插入独立记录，绝不覆盖历史 AI 总结。
+        if (consultationDataMapper.insertConsultationRecord(record) != 1) {
+            throw systemError("预问诊提交失败");
         }
-        // 若还是草稿状态，则不允许提交。
-        if (!DRAFT.name().equals(existing.getStatus())) {
-            throw statusConflict("当前问诊状态不允许保存或提交预问诊");
-        }
-
-        existing.setStatus(submit ? PENDING.name() : DRAFT.name()); // 更新问诊状态
-        existing.setChiefComplaint(request.getChiefComplaint()); // 更新主诉
-        existing.setHistoryOfPresentIllness(request.getHistoryOfPresentIllness()); // 更新现病史
-        existing.setAttachmentsJson(attachmentsJson);// 更新附件
-        existing.setUpdatedAt(now);
-        // 更新提交时间
-        if (submit) {
-            existing.setPreConsultationSubmittedAt(now);
-        }
-        // 使用 DRAFT 状态条件更新，防止医生接诊后的状态被旧草稿请求回写。
-        if (consultationDataMapper.updateConsultationDraft(existing, DRAFT.name()) != 1) {
-            throw statusConflict("当前问诊状态已变化，请刷新后重试");
-        }
-        return buildPreConsultationSaveResult(existing); // 返回保存结果
+        return buildPreConsultationSaveResult(record);
     }
 
     /**
@@ -462,31 +438,97 @@ public class ConsultationServiceImpl implements ConsultationService {
     }
 
     /**
-     * 组装待保存的预问诊记录。
+     * 组装直接提交为待接诊状态的预问诊记录。
      *
      * @param request 预问诊请求参数
-     * @param appointment 已锁定挂号订单
+     * @param patientId 当前登录用户的本人患者 ID
      * @param attachmentsJson 附件 JSON 数组
+     * @param aiSummaryJson AI 总结及健康档案快照 JSON
      * @param now 当前时间
-     * @param submit 是否提交为待接诊
      * @return 新问诊记录实体
      */
     private ConsultationRecord buildConsultationRecord(PreConsultationSaveRequest request,
-                                                        ConsultationAppointmentRecord appointment,
-                                                        String attachmentsJson, OffsetDateTime now,
-                                                        boolean submit) {
+                                                        Long patientId, String attachmentsJson,
+                                                        String aiSummaryJson, OffsetDateTime now) {
         ConsultationRecord record = new ConsultationRecord();
-        record.setAppointmentId(appointment.id());
-        record.setDoctorId(appointment.doctorId());
-        record.setPatientId(appointment.patientId());
-        record.setStatus(submit ? PENDING.name() : DRAFT.name());
-        record.setChiefComplaint(request.getChiefComplaint()); // 主诉
+        record.setDoctorId(request.getDoctorId());
+        record.setPatientId(patientId);
+        record.setStatus(PENDING.name());
+        record.setChiefComplaint(request.getChiefComplaint()); // 保存 Agent 汇总的主诉
         record.setHistoryOfPresentIllness(request.getHistoryOfPresentIllness()); // 现病史补充
         record.setAttachmentsJson(attachmentsJson); // 附件
+        record.setAiSummaryJson(aiSummaryJson); // 保存本人健康档案快照
         record.setCreatedAt(now);
         record.setUpdatedAt(now);
-        record.setPreConsultationSubmittedAt(submit ? now : null);
+        record.setPreConsultationSubmittedAt(now);
         return record;
+    }
+
+    /**
+     * 解析当前登录用户有效的本人患者，不接受家庭成员作为预问诊目标。
+     *
+     * @param userId 当前 C 端用户 ID
+     * @return 有效本人患者 ID
+     * @throws CAuthException 本人关系或患者已失效时抛出
+     */
+    private Long resolveCurrentSelfPatient(Long userId) {
+        Long patientId = consultationDataMapper.selectConsultationSelfPatientId(userId);
+        if (patientId == null || !consultationDataMapper.existsConsultationActivePatient(patientId)) {
+            throw notFound("当前登录用户本人就诊人不存在");
+        }
+        return patientId;
+    }
+
+    /**
+     * 生成写入问诊记录的 AI 总结和本人健康档案快照。
+     *
+     * @param request 预问诊请求参数
+     * @param patientId 当前登录用户的本人患者 ID
+     * @param now 快照生成时间
+     * @return 可写入 JSONB 字段的 JSON 文本
+     * @throws CAuthException 健康档案快照序列化失败时抛出
+     */
+    private String serializeAiSummary(PreConsultationSaveRequest request, Long patientId, OffsetDateTime now) {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("chiefComplaint", request.getChiefComplaint());
+        summary.put("historyOfPresentIllness", request.getHistoryOfPresentIllness());
+        // 提交时读取本人当前健康档案，形成供医生查看的不可变快照。
+        summary.put("allergies", consultationDataMapper.selectConsultationAllergySnapshots(patientId)
+                .stream().map(this::toAllergySnapshot).toList());
+        summary.put("medicalHistories", consultationDataMapper.selectConsultationMedicalHistorySnapshots(patientId)
+                .stream().map(this::toMedicalHistorySnapshot).toList());
+        summary.put("snapshotAt", now.toString());
+        try {
+            return objectMapper.writeValueAsString(summary);
+        } catch (JsonProcessingException exception) {
+            throw systemError("预问诊健康档案快照处理失败");
+        }
+    }
+
+    /**
+     * 转换过敏史快照，避免保存患者关系与记录主键。
+     *
+     * @param record 过敏史数据库投影
+     * @return 可序列化的过敏史快照
+     */
+    private Map<String, String> toAllergySnapshot(ConsultationAllergySnapshotRecord record) {
+        Map<String, String> snapshot = new LinkedHashMap<>();
+        snapshot.put("allergen", record.allergen());
+        snapshot.put("reaction", record.reaction());
+        return snapshot;
+    }
+
+    /**
+     * 转换既往史快照，日期使用 ISO-8601 文本避免 JSONB 类型歧义。
+     *
+     * @param record 既往史数据库投影
+     * @return 可序列化的既往史快照
+     */
+    private Map<String, String> toMedicalHistorySnapshot(ConsultationMedicalHistorySnapshotRecord record) {
+        Map<String, String> snapshot = new LinkedHashMap<>();
+        snapshot.put("content", record.content());
+        snapshot.put("occurredAt", record.occurredAt() == null ? null : record.occurredAt().toString());
+        return snapshot;
     }
 
     /**
