@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronRight, ClipboardList, Package, PackageCheck, PackageOpen, RefreshCw, Truck } from 'lucide-react';
+import { ChevronRight, CircleX, ClipboardList, Package, PackageCheck, PackageOpen, RefreshCw, Truck } from 'lucide-react';
 import { useLocation, useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
@@ -12,7 +12,7 @@ import { buildPharmacyPrescriptionPath, drugOrderTabs, resolvePharmacyPatientId,
 import { findPurchasedDrugOrder } from '../../utils/pharmacy-order';
 import { formatPrescriptionIssuedAt } from '../../utils/prescription';
 
-/** 展示本人默认的处方和四类物流入口，并支持本页切换家人。 */
+/** 展示本人默认的处方和五类订单入口，并支持本页切换家人。 */
 export default function PharmacyPage() {
   const nav = useNavigate();
   const location = useLocation();
@@ -88,6 +88,7 @@ export default function PharmacyPage() {
           {tab.key === 'TRANSIT' && <Truck size={27} />}
           {tab.key === 'TO_RECEIVE' && <PackageOpen size={27} />}
           {tab.key === 'RECEIVED' && <PackageCheck size={27} />}
+          {tab.key === 'INVALID' && <CircleX size={27} />}
           <span>{tab.label}</span>
         </button>)}
         </div>

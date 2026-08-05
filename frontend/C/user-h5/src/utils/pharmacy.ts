@@ -1,7 +1,7 @@
 import type { DrugOrder } from '../typings/api';
 
 /** 购药订单页面可切换的物流分类。 */
-export type DrugOrderTab = 'ALL' | 'TRANSIT' | 'TO_RECEIVE' | 'RECEIVED';
+export type DrugOrderTab = 'ALL' | 'TRANSIT' | 'TO_RECEIVE' | 'RECEIVED' | 'INVALID';
 
 /** 物流分类的页面展示信息。 */
 export const drugOrderTabs:{ key:DrugOrderTab; label:string }[]=[
@@ -9,6 +9,7 @@ export const drugOrderTabs:{ key:DrugOrderTab; label:string }[]=[
   { key:'TRANSIT',label:'运输中' },
   { key:'TO_RECEIVE',label:'待收货' },
   { key:'RECEIVED',label:'已收货' },
+  { key:'INVALID',label:'已失效' },
 ];
 
 /**
@@ -17,7 +18,15 @@ export const drugOrderTabs:{ key:DrugOrderTab; label:string }[]=[
  * @param tab 页面当前分类
  * @returns 是否应在当前 Tab 展示
  */
-export function matchesDrugOrderTab(order:DrugOrder,tab:DrugOrderTab):boolean{if(tab==='ALL')return true;if(tab==='TRANSIT')return order.logisticsStatus==='SHIPPED'||order.logisticsStatus==='IN_TRANSIT';if(tab==='TO_RECEIVE')return order.logisticsStatus==='TO_RECEIVE';return order.logisticsStatus==='RECEIVED';}
+export function matchesDrugOrderTab(order:DrugOrder,tab:DrugOrderTab):boolean{
+  if(tab==='ALL') return true;
+  // 已取消和已超时订单不再按遗留物流状态混入正常配送分类。
+  if(tab==='INVALID') return order.status==='CANCELLED'||order.status==='EXPIRED';
+  if(order.status==='CANCELLED'||order.status==='EXPIRED') return false;
+  if(tab==='TRANSIT') return order.logisticsStatus==='SHIPPED'||order.logisticsStatus==='IN_TRANSIT';
+  if(tab==='TO_RECEIVE') return order.logisticsStatus==='TO_RECEIVE';
+  return order.logisticsStatus==='RECEIVED';
+}
 
 /**
  * 获取面向患者的物流状态文案。

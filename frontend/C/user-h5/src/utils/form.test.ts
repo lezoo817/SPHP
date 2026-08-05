@@ -168,9 +168,12 @@ describe('挂号资源展示规则', () => {
 });
 
 describe('购药订单展示规则', () => {
-  it('运输中同时包含已发货和运输中状态', () => {
+  it('运输中同时包含已发货和运输中状态，失效订单独立归类', () => {
     expect(matchesDrugOrderTab({ id: 1, prescriptionId: 11, orderName: '阿莫西林', pharmacyName: '健康药房', status: 'PAID', logisticsStatus: 'SHIPPED', amountCent: 100 }, 'TRANSIT')).toBe(true);
     expect(matchesDrugOrderTab({ id: 2, prescriptionId: 12, orderName: '维生素', pharmacyName: '健康药房', status: 'PAID', logisticsStatus: 'TO_RECEIVE', amountCent: 100 }, 'TRANSIT')).toBe(false);
+    const expiredOrder = { id: 3, prescriptionId: 13, orderName: '布洛芬', pharmacyName: '健康药房', status: 'EXPIRED', logisticsStatus: 'PENDING_SHIPMENT', amountCent: 100 };
+    expect(matchesDrugOrderTab(expiredOrder, 'INVALID')).toBe(true);
+    expect(matchesDrugOrderTab(expiredOrder, 'TRANSIT')).toBe(false);
   });
 
   it('订单名称关键词经过编码并传递给列表接口', () => {
