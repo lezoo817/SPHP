@@ -16,6 +16,7 @@ vi.mock('../models/session', () => ({
 }));
 
 import { isAuthenticationFailure, request } from './request';
+import { clearRequestCache } from '../query/request-cache';
 
 /** 创建符合后端统一响应结构的测试 Response。 */
 function response(code: string, data: unknown, status = 200): Response {
@@ -24,6 +25,7 @@ function response(code: string, data: unknown, status = 200): Response {
 
 describe('统一请求认证失效处理', () => {
   beforeEach(() => {
+    clearRequestCache();
     sessionMock.current = { accessToken: 'old-access', refreshToken: 'refresh', expiresIn: 900, user: { id: 1, account: 'patient' }, loginAt: '2026-08-03T00:00:00.000Z', accessTokenIssuedAt: '2026-08-03T00:00:00.000Z' };
     sessionMock.getSession.mockImplementation(() => sessionMock.current);
     sessionMock.isSessionTokenExpired.mockReturnValue(false);
