@@ -10,10 +10,8 @@ import com.sphp.admin.common.DataScope;
 import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.doctor.entity.ConsultRecord;
 import com.sphp.admin.doctor.entity.Patient;
-import com.sphp.admin.doctor.entity.PatientAllergy;
 import com.sphp.admin.doctor.mapper.ConsultRecordMapper;
 import com.sphp.admin.doctor.mapper.BPatientMapper;
-import com.sphp.admin.doctor.mapper.BPatientAllergyMapper;
 import com.sphp.admin.hospital.entity.Department;
 import com.sphp.admin.hospital.mapper.DepartmentMapper;
 import com.sphp.admin.prescription.dto.AuditRequest;
@@ -21,13 +19,13 @@ import com.sphp.admin.prescription.dto.PrescriptionDetailVO;
 import com.sphp.admin.prescription.dto.PrescriptionListVO;
 import com.sphp.admin.prescription.dto.PrescriptionSubmitRequest;
 import com.sphp.admin.prescription.dto.PrescriptionSubmitVO;
-import com.sphp.admin.prescription.dto.RiskWarningVO;
 import com.sphp.admin.prescription.entity.Drug;
 import com.sphp.admin.prescription.entity.Prescription;
 import com.sphp.admin.prescription.entity.PrescriptionItem;
 import com.sphp.admin.prescription.mapper.DrugMapper;
 import com.sphp.admin.prescription.mapper.PrescriptionItemMapper;
 import com.sphp.admin.prescription.mapper.PrescriptionMapper;
+import com.sphp.admin.prescription.service.PrescriptionRiskChecker;
 import com.sphp.admin.prescription.service.PrescriptionService;
 import com.sphp.shared.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
@@ -37,21 +35,19 @@ import org.springframework.util.StringUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * 处方管理服务实现（系分 §5.6）。
  *
- * <p>处方提交时执行风险拦截：
+ * <p>风险拦截统一委托 {@link PrescriptionRiskChecker}：
  * <ul>
- *   <li>ERROR（红线）：过敏史强匹配 → 抛 3004，不入库</li>
- *   <li>WARNING（提示）：重复用药 / 剂量超常规 → 处方生效，返回告警</li>
- *   <li>AUDIT（审核）：高危药物联用 → 处方进入待审核队列</li>
+ *   <li>ERROR（红线）：过敏/禁忌强匹配 → 抛 3004，不入库</li>
+ *   <li>WARNING（提示）：重复用药 → 处方生效，返回告警</li>
+ *   <li>AUDIT（审核）：高危药品 → 处方进入待审核队列</li>
  *   <li>无风险：直接 APPROVED</li>
  * </ul>
  */
@@ -72,15 +68,21 @@ public class PrescriptionServiceImpl implements PrescriptionService {
     private final PrescriptionItemMapper prescriptionItemMapper;
     private final DrugMapper drugMapper;
     private final ConsultRecordMapper consultRecordMapper;
-    private final BPatientAllergyMapper patientAllergyMapper;
     private final BPatientMapper patientMapper;
     private final DoctorMapper doctorMapper;
     private final DepartmentMapper departmentMapper;
     private final CurrentUserService currentUserService;
+    private final PrescriptionRiskChecker riskChecker;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public PrescriptionSubmitVO submit(PrescriptionSubmitRequest request) {
+        return createFromItems(request.getConsultId(), request.getItems());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public PrescriptionSubmitVO createFromItems(Long consultId, List<PrescriptionSubmitRequest.ItemDTO> items) {
         DataScope scope = currentUserService.getCurrentDataScope();
         Long doctorId = scope.doctorId();
         if (doctorId == null) {
@@ -88,7 +90,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
         }
 
         // 1. 校验问诊记录
-        ConsultRecord consult = consultRecordMapper.selectById(request.getConsultId());
+        ConsultRecord consult = consultRecordMapper.selectById(consultId);
         if (consult == null || consult.getDeletedAt() != null) {
             throw new BusinessException("3002", "问诊记录不存在或不可开方");
         }
@@ -100,7 +102,6 @@ public class PrescriptionServiceImpl implements PrescriptionService {
         }
 
         // 2. 校验药品
-        List<PrescriptionSubmitRequest.ItemDTO> items = request.getItems();
         Set<Long> drugIds = items.stream().map(PrescriptionSubmitRequest.ItemDTO::getDrugId).collect(Collectors.toSet());
         Map<Long, Drug> drugMap = drugMapper.selectBatchIds(drugIds).stream()
                 .filter(d -> d.getDeletedAt() == null)
@@ -116,68 +117,18 @@ public class PrescriptionServiceImpl implements PrescriptionService {
             }
         }
 
-        // 3. 风险拦截
-        List<RiskWarningVO> warnings = new ArrayList<>();
-        Long patientId = consult.getPatientId();
-
-        // 3.1 ERROR 红线：过敏史匹配
-        List<PatientAllergy> allergies = patientAllergyMapper.selectList(
-                Wrappers.<PatientAllergy>lambdaQuery()
-                        .eq(PatientAllergy::getPatientId, patientId)
-                        .isNull(PatientAllergy::getDeletedAt));
-
-        for (PrescriptionSubmitRequest.ItemDTO item : items) {
-            Drug drug = drugMap.get(item.getDrugId());
-            if (drug == null) continue;
-            for (PatientAllergy allergy : allergies) {
-                if (matchesAllergen(drug, allergy)) {
-                    log.warn("红线拦截：患者{}对{}过敏，处方含{}", patientId, allergy.getAllergen(), drug.getName());
-                    throw new BusinessException("3004",
-                            "红线规则拦截：患者对「" + allergy.getAllergen() + "」过敏，处方含「" + drug.getName() + "」，禁止提交");
-                }
-            }
-        }
-
-        // 3.2 WARNING：重复用药检测（同一成分不同药品）
-        Set<String> drugNames = items.stream()
-                .map(item -> drugMap.get(item.getDrugId()))
-                .filter(Objects::nonNull)
-                .map(Drug::getName)
-                .collect(Collectors.toSet());
-        if (drugNames.size() < items.size()) {
-            warnings.add(RiskWarningVO.builder()
-                    .level("WARNING")
-                    .rule("重复用药检测")
-                    .message("处方中存在重复或相似药品，请确认是否需联合使用")
-                    .build());
-        }
-
-        // 3.3 AUDIT：高危药物检测（简化：含特定关键词的药品进入审核）
-        boolean hasHighRiskDrug = items.stream()
-                .map(item -> drugMap.get(item.getDrugId()))
-                .filter(Objects::nonNull)
-                .anyMatch(d -> containsHighRiskKeyword(d.getName()));
+        // 3. 风险拦截（过敏 ERROR / 禁忌 ERROR / 重复用药 WARNING / 高危药品 AUDIT）
+        PrescriptionRiskChecker.RiskCheckResult risk = riskChecker.intercept(consult, drugMap, items);
 
         // 4. 判定处方状态
-        boolean auditRequired = false;
-        String prescriptionStatus;
-        if (hasHighRiskDrug) {
-            prescriptionStatus = STATUS_SUBMITTED;
-            auditRequired = true;
-            warnings.add(RiskWarningVO.builder()
-                    .level("AUDIT")
-                    .rule("高危药物联用")
-                    .message("处方命中审核级规则，需人工审核")
-                    .build());
-        } else {
-            prescriptionStatus = STATUS_APPROVED;
-        }
+        boolean auditRequired = risk.isAuditRequired();
+        String prescriptionStatus = auditRequired ? STATUS_SUBMITTED : STATUS_APPROVED;
 
         // 5. 入库
         Prescription prescription = new Prescription();
-        prescription.setConsultId(request.getConsultId());
+        prescription.setConsultId(consultId);
         prescription.setDoctorId(doctorId);
-        prescription.setPatientId(patientId);
+        prescription.setPatientId(consult.getPatientId());
         prescription.setStatus(prescriptionStatus);
         if (STATUS_APPROVED.equals(prescriptionStatus)) {
             prescription.setIssuedAt(OffsetDateTime.now());
@@ -203,7 +154,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
                 .id(prescription.getId())
                 .status(prescriptionStatus)
                 .auditRequired(auditRequired)
-                .riskWarnings(warnings)
+                .riskWarnings(risk.getWarnings())
                 .build();
     }
 
@@ -328,29 +279,6 @@ public class PrescriptionServiceImpl implements PrescriptionService {
                 .itemCount((int) itemCount)
                 .issuedAt(p.getIssuedAt())
                 .build();
-    }
-
-    /**
-     * 判断药品是否命中过敏原（简化匹配：药品名包含过敏原关键词）。
-     */
-    private boolean matchesAllergen(Drug drug, PatientAllergy allergy) {
-        if (drug == null || allergy == null || allergy.getAllergen() == null) {
-            return false;
-        }
-        String allergen = allergy.getAllergen().toLowerCase();
-        String drugName = drug.getName() != null ? drug.getName().toLowerCase() : "";
-        String indication = drug.getContraindication() != null ? drug.getContraindication().toLowerCase() : "";
-        return drugName.contains(allergen) || indication.contains(allergen);
-    }
-
-    /**
-     * 判断药品名是否含高危关键词，需人工审核。
-     */
-    private boolean containsHighRiskKeyword(String drugName) {
-        if (drugName == null) return false;
-        String name = drugName.toLowerCase();
-        return name.contains("麻醉") || name.contains("精神") || name.contains("毒")
-                || name.contains("抗凝") || name.contains("华法林");
     }
 
     // ==================== 5.6.4 待审核处方列表 ====================

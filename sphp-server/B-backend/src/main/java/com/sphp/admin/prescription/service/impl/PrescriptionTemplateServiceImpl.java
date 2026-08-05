@@ -12,6 +12,8 @@ import com.sphp.admin.hospital.entity.Department;
 import com.sphp.admin.hospital.mapper.DepartmentMapper;
 import com.sphp.admin.pharmacy.dto.DrugListVO;
 import com.sphp.admin.pharmacy.mapper.PharmacyDrugStockMapper;
+import com.sphp.admin.prescription.dto.PrescriptionSubmitRequest;
+import com.sphp.admin.prescription.dto.PrescriptionSubmitVO;
 import com.sphp.admin.prescription.dto.SaveTemplateRequest;
 import com.sphp.admin.prescription.dto.TemplateItemDTO;
 import com.sphp.admin.prescription.dto.TemplateListVO;
@@ -19,6 +21,7 @@ import com.sphp.admin.prescription.entity.Drug;
 import com.sphp.admin.prescription.entity.PrescriptionTemplate;
 import com.sphp.admin.prescription.mapper.DrugMapper;
 import com.sphp.admin.prescription.mapper.PrescriptionTemplateMapper;
+import com.sphp.admin.prescription.service.PrescriptionService;
 import com.sphp.admin.prescription.service.PrescriptionTemplateService;
 import com.sphp.shared.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +53,7 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
     private final DoctorMapper doctorMapper;
     private final DepartmentMapper departmentMapper;
     private final CurrentUserService currentUserService;
+    private final PrescriptionService prescriptionService;
 
     /** 数值提取：从用量/频次字符串中解析首个数字（如 "2粒"→2、"每日3次"→3） */
     private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d+(\\.\\d+)?");
@@ -196,6 +200,45 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         template.setStatus("DISABLED");
         templateMapper.updateById(template);
         log.info("删除处方模板 templateId={}", id);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public PrescriptionSubmitVO apply(Long templateId, Long consultId) {
+        DataScope scope = currentUserService.getCurrentDataScope();
+
+        // 1. 校验模板：当前医院、启用、未删除、明细非空
+        PrescriptionTemplate template = templateMapper.selectById(templateId);
+        if (template == null || template.getDeletedAt() != null) {
+            throw new BusinessException("A0402", "模板不存在");
+        }
+        if (!"ENABLED".equals(template.getStatus())) {
+            throw new BusinessException("A0402", "模板已停用");
+        }
+        if (!template.getHospitalId().equals(scope.hospitalId())) {
+            throw new BusinessException("3020", "无权使用该模板");
+        }
+        if (template.getItems() == null || template.getItems().isEmpty()) {
+            throw new BusinessException("A0401", "模板药品明细为空，无法开方");
+        }
+
+        // 2. 模板明细 → 处方明细
+        List<PrescriptionSubmitRequest.ItemDTO> items = template.getItems().stream()
+                .map(t -> {
+                    PrescriptionSubmitRequest.ItemDTO dto = new PrescriptionSubmitRequest.ItemDTO();
+                    dto.setDrugId(t.getDrugId());
+                    dto.setDosage(t.getDosage());
+                    dto.setFrequency(t.getFrequency());
+                    dto.setUsageMethod(t.getUsageMethod());
+                    dto.setDays(t.getDays());
+                    dto.setQuantity(t.getQuantity());
+                    return dto;
+                })
+                .collect(Collectors.toList());
+
+        // 3. 复用共享开方方法（含风险拦截）
+        log.info("应用处方模板 templateId={}, consultId={}", templateId, consultId);
+        return prescriptionService.createFromItems(consultId, items);
     }
 
     /**

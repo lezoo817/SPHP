@@ -2,6 +2,8 @@ package com.sphp.admin.prescription.controller;
 
 import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.pharmacy.dto.DrugListVO;
+import com.sphp.admin.prescription.dto.ApplyTemplateRequest;
+import com.sphp.admin.prescription.dto.PrescriptionSubmitVO;
 import com.sphp.admin.prescription.dto.SaveTemplateRequest;
 import com.sphp.admin.prescription.dto.TemplateListVO;
 import com.sphp.admin.prescription.service.PrescriptionTemplateService;
@@ -9,6 +11,7 @@ import com.sphp.shared.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -64,5 +67,12 @@ public class PrescriptionTemplateController {
     public Result<String> delete(@PathVariable Long id) {
         templateService.delete(id);
         return Result.success("删除成功");
+    }
+
+    @PostMapping("/prescription-templates/{id}/apply")
+    @Operation(summary = "应用处方模板开方", description = "应用即开方：执行风险拦截（过敏/禁忌 ERROR 拒绝，高危 AUDIT 待审，其余直接 APPROVED）；返回与提交处方一致的结果结构")
+    public Result<PrescriptionSubmitVO> apply(@PathVariable Long id,
+                                              @Valid @RequestBody ApplyTemplateRequest request) {
+        return Result.success("开方成功", templateService.apply(id, request.getConsultId()));
     }
 }
