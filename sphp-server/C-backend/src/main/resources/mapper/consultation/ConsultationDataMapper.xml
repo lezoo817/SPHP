@@ -28,49 +28,66 @@
         )
     </select>
 
-    <select id="lockConsultationAppointment" resultType="com.sphp.patient.consultation.mapper.ConsultationAppointmentRecord">
-        SELECT id, patient_id, doctor_id, status
-        FROM appointment
-        WHERE id = #{appointmentId}
+    <select id="lockConsultationUser" resultType="java.lang.Long">
+        SELECT id
+        FROM c_user
+        WHERE id = #{userId}
           AND deleted_at IS NULL
         FOR UPDATE
     </select>
 
-    <select id="selectConsultationByAppointmentForUpdate" resultType="com.sphp.patient.consultation.entity.ConsultationRecord">
-        SELECT id, appointment_id, doctor_id, patient_id, status, chief_complaint,
-               history_of_present_illness, attachments AS attachments_json,
-               pre_consultation_submitted_at, created_at, updated_at, deleted_at
-        FROM consult_record
-        WHERE appointment_id = #{appointmentId}
+    <select id="existsConsultationAvailableDoctor" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM doctor
+            WHERE id = #{doctorId}
+              AND status = 'ENABLED'
+              AND deleted_at IS NULL
+        )
+    </select>
+
+    <select id="existsConsultationActiveRecord" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM consult_record
+            WHERE patient_id = #{patientId}
+              AND doctor_id = #{doctorId}
+              AND status IN ('PENDING', 'IN_PROGRESS')
+              AND deleted_at IS NULL
+        )
+    </select>
+
+    <select id="selectConsultationAllergySnapshots"
+            resultType="com.sphp.patient.consultation.mapper.ConsultationAllergySnapshotRecord">
+        SELECT allergen, reaction
+        FROM patient_allergy
+        WHERE patient_id = #{patientId}
           AND deleted_at IS NULL
-        FOR UPDATE
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <select id="selectConsultationMedicalHistorySnapshots"
+            resultType="com.sphp.patient.consultation.mapper.ConsultationMedicalHistorySnapshotRecord">
+        SELECT content, occurred_at
+        FROM patient_medical_history
+        WHERE patient_id = #{patientId}
+          AND deleted_at IS NULL
+        ORDER BY created_at ASC, id ASC
     </select>
 
     <insert id="insertConsultationRecord" useGeneratedKeys="true" keyProperty="record.id">
         INSERT INTO consult_record (
-            appointment_id, doctor_id, patient_id, status, chief_complaint,
-            history_of_present_illness, attachments, pre_consultation_submitted_at,
+            doctor_id, patient_id, status, chief_complaint,
+            history_of_present_illness, attachments, ai_summary, pre_consultation_submitted_at,
             created_at, updated_at
         ) VALUES (
-            #{record.appointmentId}, #{record.doctorId}, #{record.patientId}, #{record.status},
+            #{record.doctorId}, #{record.patientId}, #{record.status},
             #{record.chiefComplaint}, #{record.historyOfPresentIllness},
             CAST(#{record.attachmentsJson, jdbcType=VARCHAR} AS jsonb),
+            CAST(#{record.aiSummaryJson, jdbcType=VARCHAR} AS jsonb),
             #{record.preConsultationSubmittedAt}, #{record.createdAt}, #{record.updatedAt}
         )
     </insert>
-
-    <update id="updateConsultationDraft">
-        UPDATE consult_record
-        SET status = #{record.status},
-            chief_complaint = #{record.chiefComplaint},
-            history_of_present_illness = #{record.historyOfPresentIllness},
-            attachments = CAST(#{record.attachmentsJson, jdbcType=VARCHAR} AS jsonb),
-            pre_consultation_submitted_at = #{record.preConsultationSubmittedAt},
-            updated_at = #{record.updatedAt}
-        WHERE id = #{record.id}
-          AND status = #{expectedStatus}
-          AND deleted_at IS NULL
-    </update>
 
     <select id="selectConsultationList" resultType="com.sphp.patient.consultation.mapper.ConsultationListRecord">
         SELECT cr.id, cr.appointment_id, d.name AS doctor_name, cr.status, cr.updated_at

@@ -4,7 +4,6 @@ import com.sphp.patient.consultation.entity.ConsultationRecord;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
-import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -39,20 +38,45 @@ public interface ConsultationDataMapper {
     boolean hasConsultationActivePatientRelation(@Param("userId") Long userId, @Param("patientId") Long patientId);
 
     /**
-     * 锁定挂号订单并返回创建预问诊所需的归属信息。
+     * 锁定当前 C 端账号，串行化同一账号的预问诊提交。
      *
-     * @param appointmentId 挂号订单 ID
-     * @return 已锁定的订单信息，不存在时返回 null
+     * @param userId C 端用户 ID
+     * @return 已锁定用户 ID，不存在时返回 null
      */
-    ConsultationAppointmentRecord lockConsultationAppointment(@Param("appointmentId") Long appointmentId);
+    Long lockConsultationUser(@Param("userId") Long userId);
 
     /**
-     * 锁定同一挂号订单关联的问诊记录。
+     * 判断医生是否启用且未被软删除。
      *
-     * @param appointmentId 挂号订单 ID
-     * @return 问诊记录，不存在时返回 null
+     * @param doctorId 医生 ID
+     * @return 医生可接诊时返回 true
      */
-    ConsultationRecord selectConsultationByAppointmentForUpdate(@Param("appointmentId") Long appointmentId);
+    boolean existsConsultationAvailableDoctor(@Param("doctorId") Long doctorId);
+
+    /**
+     * 查询同一患者和医生是否存在活动问诊。
+     *
+     * @param patientId 本人患者 ID
+     * @param doctorId 接诊医生 ID
+     * @return 存在待接诊或进行中问诊时返回 true
+     */
+    boolean existsConsultationActiveRecord(@Param("patientId") Long patientId, @Param("doctorId") Long doctorId);
+
+    /**
+     * 查询本人有效过敏史，用于预问诊健康档案快照。
+     *
+     * @param patientId 本人患者 ID
+     * @return 过敏史快照列表
+     */
+    List<ConsultationAllergySnapshotRecord> selectConsultationAllergySnapshots(@Param("patientId") Long patientId);
+
+    /**
+     * 查询本人有效既往史，用于预问诊健康档案快照。
+     *
+     * @param patientId 本人患者 ID
+     * @return 既往史快照列表
+     */
+    List<ConsultationMedicalHistorySnapshotRecord> selectConsultationMedicalHistorySnapshots(@Param("patientId") Long patientId);
 
     /**
      * 插入带 JSONB 附件的问诊记录。
@@ -61,16 +85,6 @@ public interface ConsultationDataMapper {
      * @return 受影响行数
      */
     int insertConsultationRecord(@Param("record") ConsultationRecord consultationRecord);
-
-    /**
-     * 条件更新草稿预问诊并可提交为待接诊。
-     *
-     * @param consultationRecord 问诊记录新内容
-     * @param expectedStatus 允许更新的原状态
-     * @return 受影响行数
-     */
-    int updateConsultationDraft(@Param("record") ConsultationRecord consultationRecord,
-                                @Param("expectedStatus") String expectedStatus);
 
     /**
      * 分页查询指定就诊人的问诊记录。
