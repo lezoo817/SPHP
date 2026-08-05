@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ClipboardList, Package, PackageCheck, PackageOpen, RefreshCw, Truck } from 'lucide-react';
-import { useNavigate } from 'umi';
+import { ChevronRight, CircleX, ClipboardList, Package, PackageCheck, PackageOpen, RefreshCw, Truck } from 'lucide-react';
+import { useLocation, useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
 import { resolveSelfPatientId } from '../../models/selection';
@@ -8,13 +8,15 @@ import { getFamilyMembers } from '../../services/family';
 import { getPrescriptions } from '../../services/consultation';
 import { getDrugOrders } from '../../services/pharmacy';
 import type { DrugOrder, FamilyMember, Prescription } from '../../typings/api';
-import { buildPharmacyPrescriptionPath, drugOrderTabs, type DrugOrderTab } from '../../utils/pharmacy';
+import { buildPharmacyPrescriptionPath, drugOrderTabs, resolvePharmacyPatientId, type DrugOrderTab } from '../../utils/pharmacy';
 import { findPurchasedDrugOrder } from '../../utils/pharmacy-order';
 import { formatPrescriptionIssuedAt } from '../../utils/prescription';
 
-/** 展示本人默认的处方和四类物流入口，并支持本页切换家人。 */
+/** 展示本人默认的处方和五类订单入口，并支持本页切换家人。 */
 export default function PharmacyPage() {
   const nav = useNavigate();
+  const location = useLocation();
+  const patientIdFromUrl = resolvePharmacyPatientId(new URLSearchParams(location.search).get('patientId'));
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [patientId, setPatientId] = useState<number>();
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
@@ -28,7 +30,8 @@ export default function PharmacyPage() {
     try {
       const next = await getFamilyMembers();
       setMembers(next);
-      const target = patientId || resolveSelfPatientId(next);
+      // 处方详情返回时优先恢复购药模块此前选择的就诊人，不影响其他页面选择。
+      const target = patientId || (next.some((member) => member.patientId === patientIdFromUrl) ? patientIdFromUrl : undefined) || resolveSelfPatientId(next);
       if (!target) return;
       if (!patientId) setPatientId(target);
       // 处方和订单并行读取，确保支付完成后首页能立即切换为已购买。
@@ -43,7 +46,7 @@ export default function PharmacyPage() {
     }
   }
 
-  useEffect(() => { void load(); }, [patientId]);
+  useEffect(() => { void load(); }, [patientId, patientIdFromUrl]);
 
   /** 打开保留当前就诊人的订单列表分类。 */
   function openOrders(tab: DrugOrderTab) {
@@ -54,13 +57,22 @@ export default function PharmacyPage() {
     nav(`/pharmacy/orders?patientId=${patientId}&tab=${tab}`);
   }
 
+  /** 跳转到“我的”处方查询页，并将购药页当前就诊人作为初始选择。 */
+  function openMinePrescriptions() {
+    if (!patientId) {
+      setNotice('暂未获取到就诊人信息');
+      return;
+    }
+    nav(`/mine/prescriptions?patientId=${patientId}`);
+  }
+
   return <main className="assistant-page">
     <header className="assistant-title"><h1>购药</h1></header>
     <section className="assistant-content">
       <button className="assistant-patient" type="button" onClick={() => setOpen(true)}>
         就诊人 <b>{current?.name || '未选择'}</b><span>{current?.phone || ''}</span><b>切换 <RefreshCw size={18} /></b>
       </button>
-      <h2>我的处方</h2>
+      <button className="pharmacy-section-link" type="button" onClick={openMinePrescriptions}><span>我的处方</span><ChevronRight size={22} /></button>
       {prescriptions.map((prescription) => {
         const purchasedOrder = findPurchasedDrugOrder(orders, prescription.id);
         return <button className="record-card" key={prescription.id} type="button" onClick={() => patientId && nav(buildPharmacyPrescriptionPath(prescription.id, patientId, prescription.issuedAt, purchasedOrder?.id))}>
@@ -76,6 +88,7 @@ export default function PharmacyPage() {
           {tab.key === 'TRANSIT' && <Truck size={27} />}
           {tab.key === 'TO_RECEIVE' && <PackageOpen size={27} />}
           {tab.key === 'RECEIVED' && <PackageCheck size={27} />}
+          {tab.key === 'INVALID' && <CircleX size={27} />}
           <span>{tab.label}</span>
         </button>)}
         </div>

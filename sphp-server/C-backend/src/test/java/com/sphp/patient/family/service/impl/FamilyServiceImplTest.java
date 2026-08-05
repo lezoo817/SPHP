@@ -57,16 +57,19 @@ class FamilyServiceImplTest {
         FamilyServiceImpl familyService = new FamilyServiceImpl(familyMemberMapper, patientMapper, relationMapper);
         CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
                 OffsetDateTime.now().plusHours(1), "session-hash"));
-        when(familyMemberMapper.selectActiveMembers(10001L)).thenReturn(List.of(
-                record(20001L, "张三", "SELF", true, "13800138000", LocalDate.of(1990, 5, 20)),
-                record(20002L, "张小明", "CHILD", false, "13800138001", LocalDate.of(2018, 6, 1))
-        ));
+        // 列表映射仅保留身份证号首三位和后四位。
+        FamilyMemberRecord self = record(20001L, "张三", "SELF", true, "13800138000", LocalDate.of(1990, 5, 20));
+        self.setIdCardNo("11010519491231002X");
+        FamilyMemberRecord child = record(20002L, "张小明", "CHILD", false, "13800138001", LocalDate.of(2018, 6, 1));
+        child.setIdCardNo("110105201806010012");
+        when(familyMemberMapper.selectActiveMembers(10001L)).thenReturn(List.of(self, child));
 
         List<FamilyMemberListVO> result = familyService.listFamilyMembers();
 
         assertEquals(2, result.size());
         assertEquals("本人", result.getFirst().getRelationName());
         assertEquals("138****8000", result.getFirst().getPhone());
+        assertEquals("110***********002X", result.getFirst().getIdCardNo());
         assertEquals("子女", result.get(1).getRelationName());
         assertFalse(result.get(1).getIsDefault());
     }

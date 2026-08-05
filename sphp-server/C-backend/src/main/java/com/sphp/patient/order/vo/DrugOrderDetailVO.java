@@ -18,6 +18,12 @@ public class DrugOrderDetailVO {
     /** 订单状态 */
     private final String status;
 
+    /** 当前处方对应的就诊人姓名。 */
+    private final String patientName;
+
+    /** 当前处方对应的脱敏就诊人手机号。 */
+    private final String patientPhone;
+
     /** 药房信息 */
     private final Pharmacy pharmacy;
 
@@ -57,6 +63,8 @@ public class DrugOrderDetailVO {
         private final String trackingNo;
         // 物流状态
         private final String logisticsStatus;
+        // 后端模拟的预计送达时间
+        private final OffsetDateTime expectedDeliveryAt;
         // 物流轨迹
         private final List<Trace> traces;
     }

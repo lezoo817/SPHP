@@ -10,9 +10,9 @@ import {
 import { filterHospitals, formatAmount, getAppointmentStatusText, sortHospitals } from './medical';
 import { resolveSelfPatientId } from '../models/selection';
 import { buildDrugOrderListPath } from '../services/pharmacy';
-import { buildPharmacyInventoryPath, buildPharmacyPrescriptionPath, matchesDrugOrderTab, resolvePharmacyPatientId } from './pharmacy';
+import { buildPharmacyHomePath, buildPharmacyInventoryPath, buildPharmacyPrescriptionPath, getDrugOrderCardStatusText, isInvalidDrugOrder, matchesDrugOrderTab, resolvePharmacyPatientId } from './pharmacy';
 import { hasSearchKeyword, matchesDepartmentKeyword, resolveInitialDepartment } from './home-search';
-import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
+import { buildProfileUpdatePayload, normalizeProfileIdCardNo, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
 import { resolveMinePatientId } from '../models/mine-patient';
 import { isSessionTokenExpired, type SessionState } from '../models/session';
 import { buildDoctorPagePath, findDoctorById, getDoctorScheduleDates } from './doctor';
@@ -21,7 +21,7 @@ import { buildAppointmentsPath } from '../services/registration';
 import { buildNotificationsPath } from '../services/notification';
 import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotification, formatMedicationReminderTimes, getMedicationPlanActions, getMedicationReminderAction, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
 import { buildDeliveryAddressPath } from '../services/delivery-address';
-import { buildDeliveryAddressPayload, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
+import { buildDeliveryAddressPayload, getDeliveryAddressInvalidFields, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
 import { getAssistantTabs, getCurrentFlowAction } from './assistant';
 import { buildMedicalRecordDetailPath, buildMedicalRecordListPath } from '../services/medical-record';
 import { buildLegacyReportRedirectPath, createMedicalRecordDisplayNumber, filterMedicalRecordsByDate, getRecentMedicalRecordRange, mergeMedicalRecordPages } from './medical-record';
@@ -29,7 +29,7 @@ import { isDuplicateDoctorAppointmentError } from './registration';
 import { buildDoctorBookingStatusPath } from '../services/registration';
 import { buildPrescriptionsPath } from '../services/consultation';
 import { buildAssistantPrescriptionDetailPath, buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, createPrescriptionDisplayNumber, filterPrescriptionsByDate, getPrescriptionDisplayNumber, getRecentPrescriptionRange, mergePrescriptionPages, type PrescriptionDisplayNumberStorage } from './prescription';
-import { buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderPaymentId } from './pharmacy-order';
+import { buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, formatDrugOrderLogisticsTime, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderPaymentId, shouldPollDrugOrderLogistics } from './pharmacy-order';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -39,6 +39,12 @@ describe('前端表单与联调规则', () => {
 
   it('禁止提交本人关系', () => {
     expect(validateFamilyMember({ name: '张三', relation: 'SELF' })).toBe('不能新增或编辑本人资料');
+  });
+
+  it('新增成员必须填写合法身份证号，编辑留空则保留原值', () => {
+    expect(validateFamilyMember({ name: '张三', relation: 'CHILD', idCardNo: undefined }, true)).toBe('请填写身份证号');
+    expect(validateFamilyMember({ name: '张三', relation: 'CHILD', idCardNo: '11010519491231002x' }, true)).toBeUndefined();
+    expect(validateFamilyMember({ name: '张三', relation: 'CHILD', idCardNo: undefined }, false)).toBeUndefined();
   });
 
   it('生成符合 UUID 格式的幂等键', () => {
@@ -71,6 +77,8 @@ describe('就诊人默认选择', () => {
 
 describe('购药处方跳转规则', () => {
   it('购药处方详情和库存页始终透传当前本地就诊人', () => {
+    expect(buildPharmacyHomePath(20001)).toBe('/pharmacy?patientId=20001');
+    expect(buildPharmacyHomePath()).toBe('/pharmacy');
     expect(buildPharmacyPrescriptionPath(13001, 20001)).toBe('/pharmacy/prescription/13001?patientId=20001');
     expect(buildPharmacyPrescriptionPath(13001, 20001, undefined, 30001)).toBe('/pharmacy/prescription/13001?patientId=20001&drugOrderId=30001');
     expect(buildPharmacyInventoryPath(13001, 20001)).toBe('/pharmacy/prescription/13001/inventory?patientId=20001');
@@ -160,9 +168,14 @@ describe('挂号资源展示规则', () => {
 });
 
 describe('购药订单展示规则', () => {
-  it('运输中同时包含已发货和运输中状态', () => {
+  it('运输中同时包含已发货和运输中状态，失效订单独立归类', () => {
     expect(matchesDrugOrderTab({ id: 1, prescriptionId: 11, orderName: '阿莫西林', pharmacyName: '健康药房', status: 'PAID', logisticsStatus: 'SHIPPED', amountCent: 100 }, 'TRANSIT')).toBe(true);
     expect(matchesDrugOrderTab({ id: 2, prescriptionId: 12, orderName: '维生素', pharmacyName: '健康药房', status: 'PAID', logisticsStatus: 'TO_RECEIVE', amountCent: 100 }, 'TRANSIT')).toBe(false);
+    const expiredOrder = { id: 3, prescriptionId: 13, orderName: '布洛芬', pharmacyName: '健康药房', status: 'EXPIRED', logisticsStatus: 'PENDING_SHIPMENT', amountCent: 100 };
+    expect(matchesDrugOrderTab(expiredOrder, 'INVALID')).toBe(true);
+    expect(matchesDrugOrderTab(expiredOrder, 'TRANSIT')).toBe(false);
+    expect(isInvalidDrugOrder(expiredOrder)).toBe(true);
+    expect(getDrugOrderCardStatusText(expiredOrder)).toBe('已失效');
   });
 
   it('订单名称关键词经过编码并传递给列表接口', () => {
@@ -196,6 +209,27 @@ describe('购药订单展示规则', () => {
     expect(purchased?.id).toBe(2);
     expect(buildDrugOrderLogisticsPath(purchased!.id)).toBe('/pharmacy/order/2/logistics');
   });
+
+  it('物流进度兼容已发货，并按四阶段标记当前步骤', () => {
+    expect(getDrugOrderLogisticsSteps('PENDING_SHIPMENT').map((item) => item.state)).toEqual(['active', 'pending', 'pending', 'pending']);
+    expect(getDrugOrderLogisticsSteps('SHIPPED').map((item) => item.state)).toEqual(['done', 'active', 'pending', 'pending']);
+    expect(getDrugOrderLogisticsSteps('TO_RECEIVE').map((item) => item.state)).toEqual(['done', 'done', 'active', 'pending']);
+    expect(getDrugOrderLogisticsSteps('RECEIVED').map((item) => item.state)).toEqual(['done', 'done', 'done', 'done']);
+  });
+
+  it('预计送达时间只展示后端模拟物流返回值', () => {
+    const detail = { id: 1, prescriptionId: 101, orderName: '药品订单', pharmacyName: '药房', status: 'PAID', amountCent: 100, pharmacy: { id: 1, name: '药房' }, items: [], delivery: { address: '演示地址', logisticsStatus: 'PENDING_SHIPMENT', expectedDeliveryAt: '2026-08-05T10:01:00+08:00', traces: [{ node: '支付成功，等待药房发货', occurredAt: '2026-08-05T10:00:00+08:00' }] } };
+    expect(formatDrugOrderLogisticsTime('2026-08-05T10:00:00+08:00')).toBe('2026/08/05 10:00');
+    expect(getDrugOrderExpectedDeliveryTime(detail)).toBe('2026/08/05 10:01');
+    expect(getDrugOrderExpectedDeliveryTime({ ...detail, delivery: { ...detail.delivery, expectedDeliveryAt: undefined } })).toBeUndefined();
+  });
+
+  it('仅已支付且未收货订单继续进行物流详情轮询', () => {
+    const detail = { id: 1, prescriptionId: 101, orderName: '药品订单', pharmacyName: '药房', status: 'PAID', amountCent: 100, pharmacy: { id: 1, name: '药房' }, items: [], delivery: { address: '演示地址', logisticsStatus: 'TO_RECEIVE', traces: [] } };
+    expect(shouldPollDrugOrderLogistics(detail)).toBe(true);
+    expect(shouldPollDrugOrderLogistics({ ...detail, delivery: { ...detail.delivery, logisticsStatus: 'RECEIVED' } })).toBe(false);
+    expect(shouldPollDrugOrderLogistics({ ...detail, status: 'PENDING_PAYMENT' })).toBe(false);
+  });
 });
 
 describe('首页科室与搜索规则', () => {
@@ -214,15 +248,21 @@ describe('首页科室与搜索规则', () => {
 });
 
 describe('个人资料更新规则', () => {
-  const values = { name: ' 张三 ', gender: 'MALE' as const, birthday: '2000-01-01', phone: '', emergencyContact: '' };
+  const values = { name: ' 张三 ', gender: 'MALE' as const, birthday: '2000-01-01', phone: '', idCardNo: '', emergencyContact: '' };
 
   it('校验姓名和手机号格式', () => {
     expect(validateProfileForm({ ...values, name: ' ' })).toBe('请填写姓名');
     expect(validateProfileForm({ ...values, phone: '123' })).toBe('手机号格式不正确');
+    expect(validateProfileForm({ ...values, idCardNo: 'invalid' })).toBe('身份证号格式不正确');
   });
 
   it('不提交空白的敏感资料字段', () => {
     expect(buildProfileUpdatePayload(values)).toEqual({ name: '张三', gender: 'MALE', birthday: '2000-01-01' });
+  });
+
+  it('规范化身份证号并提交大写校验位', () => {
+    expect(normalizeProfileIdCardNo('11010519491231002x')).toBe('11010519491231002X');
+    expect(buildProfileUpdatePayload({ ...values, idCardNo: '11010519491231002x' }).idCardNo).toBe('11010519491231002X');
   });
 
   it('网络重试复用首次生成的幂等键', () => {
@@ -404,6 +444,11 @@ describe('收货地址规则', () => {
   it('校验必填地址字段、手机号与后端支持地区', () => {
     expect(validateDeliveryAddress({ ...addressForm, receiverPhone: '123' })).toBe('收件人手机号格式不正确');
     expect(validateDeliveryAddress({ ...addressForm, province: 'SICHUAN', city: '成都市' })).toBe('当前地区暂不支持配送');
+  });
+
+  it('保存尝试后同时标红全部缺失或格式不正确的必填项', () => {
+    expect(getDeliveryAddressInvalidFields({ receiverName: '', receiverPhone: '', province: '', city: '', detailAddress: '' })).toEqual(['region', 'detailAddress', 'receiverName', 'receiverPhone']);
+    expect(getDeliveryAddressInvalidFields({ ...addressForm, receiverPhone: '123', detailAddress: '' })).toEqual(['detailAddress', 'receiverPhone']);
   });
 
   it('提交时保留编辑地址的区县并清理文本两侧空白', () => {

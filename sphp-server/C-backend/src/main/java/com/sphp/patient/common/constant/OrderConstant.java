@@ -41,6 +41,27 @@ public final class OrderConstant {
     /** 购药订单超时路由键 */
     public static final String DRUG_ORDER_TIMEOUT_ROUTING_KEY = "drug-order.timeout";
 
+    /** 购药物流延迟队列 */
+    public static final String DRUG_ORDER_LOGISTICS_DELAY_QUEUE = "cend.drug-order.logistics.delay.queue";
+
+    /** 购药物流状态推进队列 */
+    public static final String DRUG_ORDER_LOGISTICS_ADVANCE_QUEUE = "cend.drug-order.logistics.advance.queue";
+
+    /** 购药物流延迟投递路由键 */
+    public static final String DRUG_ORDER_LOGISTICS_SCHEDULE_ROUTING_KEY = "drug-order.logistics.schedule";
+
+    /** 购药物流状态推进路由键 */
+    public static final String DRUG_ORDER_LOGISTICS_ADVANCE_ROUTING_KEY = "drug-order.logistics.advance";
+
+    /** 购药支付完成后的待发货轨迹文案 */
+    public static final String DRUG_ORDER_PAYMENT_SUCCESS_TRACE = "支付成功，等待药房发货";
+
+    /** 购药订单进入运输中的轨迹文案 */
+    public static final String DRUG_ORDER_IN_TRANSIT_TRACE = "药房已发货，药品运输中";
+
+    /** 购药订单送达待收货的轨迹文案 */
+    public static final String DRUG_ORDER_TO_RECEIVE_TRACE = "药品已送达，等待确认收货";
+
 
     /**
      * 防止常量类被实例化。

@@ -105,6 +105,32 @@ public interface OrderDataMapper {
     /** 条件标记购药订单已支付。 */
     int markDrugOrderPaid(@Param("drugOrderId") Long drugOrderId, @Param("now") OffsetDateTime now);
 
+    /**
+     * 以订单已支付和当前物流状态为条件推进物流状态。
+     *
+     * @param drugOrderId 购药订单 ID
+     * @param expectedLogisticsStatus 期望的当前物流状态
+     * @param targetLogisticsStatus 目标物流状态
+     * @param now 状态推进时间
+     * @return 实际更新行数
+     */
+    int advanceDrugOrderLogistics(@Param("drugOrderId") Long drugOrderId,
+                                  @Param("expectedLogisticsStatus") String expectedLogisticsStatus,
+                                  @Param("targetLogisticsStatus") String targetLogisticsStatus,
+                                  @Param("now") OffsetDateTime now);
+
+    /**
+     * 写入购药订单物流轨迹。
+     *
+     * @param drugOrderId 购药订单 ID
+     * @param node 物流节点展示文案
+     * @param occurredAt 节点发生时间
+     * @return 实际写入行数
+     */
+    int insertDrugOrderLogisticsTrace(@Param("drugOrderId") Long drugOrderId,
+                                      @Param("node") String node,
+                                      @Param("occurredAt") OffsetDateTime occurredAt);
+
     /** 根据已支付购药订单创建用药计划。 */
     int createMedicationPlans(@Param("drugOrderId") Long drugOrderId, @Param("now") OffsetDateTime now);
 

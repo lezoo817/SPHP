@@ -19,6 +19,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Arrays;
+import java.util.Locale;
 
 import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
 
@@ -47,6 +48,7 @@ public class ProfileServiceImpl implements ProfileService {
                 .gender(profile.getGender())
                 .birthday(profile.getBirthday())
                 .phone(maskPhone(profile.getPhone()))
+                .idCardNo(maskIdCardNo(profile.getIdCardNo()))
                 .emergencyContact(maskEmergencyContact(profile.getEmergencyContact()))
                 .build();
     }
@@ -64,6 +66,10 @@ public class ProfileServiceImpl implements ProfileService {
         Long userId = CUserContext.getRequired().userId();
         // 参数校验
         validateUpdateRequest(request);
+        // 与家庭成员资料变更共用 C端用户行锁，避免并发绑定相同身份证号
+        if (profileMapper.lockUserForProfileMutation(userId) == null) {
+            throw new CAuthException(UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "当前登录状态无效");
+        }
         ProfileRecord existing = requireSelfProfile(userId);
         OffsetDateTime updatedAt = OffsetDateTime.now();
 
@@ -71,11 +77,18 @@ public class ProfileServiceImpl implements ProfileService {
         String gender = request.getGender() == null ? existing.getGender() : request.getGender();
         LocalDate birthday = request.getBirthday() == null ? existing.getBirthday() : request.getBirthday();
         String phone = request.getPhone() == null ? existing.getPhone() : request.getPhone();
+        String idCardNo = request.getIdCardNo() == null ? existing.getIdCardNo()
+                : normalizeIdCardNo(request.getIdCardNo());
         String emergencyContact = request.getEmergencyContact() == null
                 ? existing.getEmergencyContact() : request.getEmergencyContact();
+        // 仅在当前账号的有效就诊人范围内限制身份证号重复，不建立跨账号唯一约束
+        if (StringUtils.hasText(idCardNo)
+                && profileMapper.existsActiveIdCard(userId, idCardNo, existing.getPatientId())) {
+            throw new CAuthException(DUPLICATE_REQUEST, HttpStatus.CONFLICT, "身份证号已绑定有效家庭成员");
+        }
         // SQL 同时限定用户、SELF 关系与软删除状态，阻止跨账号或解绑后的资料更新
         if (profileMapper.updateSelfProfile(userId, existing.getPatientId(), request.getName().trim(), gender, birthday,
-                phone, emergencyContact, updatedAt) != 1) {
+                phone, idCardNo, emergencyContact, updatedAt) != 1) {
             throw new CAuthException(BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT,
                     "个人资料已发生变化，请刷新后重试");
         }
@@ -83,6 +96,7 @@ public class ProfileServiceImpl implements ProfileService {
                 .id(existing.getPatientId())
                 .name(request.getName().trim())
                 .phone(maskPhone(phone))
+                .idCardNo(maskIdCardNo(idCardNo))
                 .updatedAt(updatedAt)
                 .build();
     }
@@ -115,6 +129,10 @@ public class ProfileServiceImpl implements ProfileService {
         if (request.getBirthday() != null && request.getBirthday().isAfter(LocalDate.now())) {
             throw new CAuthException(INVALID_PARAMETER, HttpStatus.BAD_REQUEST, "出生日期不能晚于当天");
         }
+        if (request.getIdCardNo() != null
+                && !request.getIdCardNo().matches("^(\\d{15}|\\d{17}[0-9Xx])$")) {
+            throw new CAuthException(INVALID_PARAMETER, HttpStatus.BAD_REQUEST, "身份证号格式不正确");
+        }
     }
 
     /**
@@ -126,6 +144,16 @@ public class ProfileServiceImpl implements ProfileService {
     private boolean isGender(String gender) {
         return gender == null || Arrays.stream(GenderEnum.values())
                 .anyMatch(item -> item.getValue().equals(gender));
+    }
+
+    /**
+     * 规范化身份证号，统一使用大写校验位进行明文存储和重复校验。
+     *
+     * @param idCardNo 原始身份证号
+     * @return 规范化身份证号
+     */
+    private String normalizeIdCardNo(String idCardNo) {
+        return idCardNo.toUpperCase(Locale.ROOT);
     }
 
     /**
@@ -142,6 +170,23 @@ public class ProfileServiceImpl implements ProfileService {
             return "***";
         }
         return phone.substring(0, 3) + "****" + phone.substring(7);
+    }
+
+    /**
+     * 按身份证号脱敏规则保留前三位和后四位。
+     *
+     * @param idCardNo 身份证号原始值
+     * @return 脱敏身份证号或 null
+     */
+    private String maskIdCardNo(String idCardNo) {
+        if (!StringUtils.hasText(idCardNo)) {
+            return null;
+        }
+        if (idCardNo.length() <= 7) {
+            return "***";
+        }
+        return idCardNo.substring(0, 3) + "*".repeat(idCardNo.length() - 7)
+                + idCardNo.substring(idCardNo.length() - 4);
     }
 
     /**

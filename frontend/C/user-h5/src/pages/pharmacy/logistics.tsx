@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { MapPin, PackageCheck, Truck } from 'lucide-react';
 import { useNavigate, useParams } from 'umi';
 import { PageHeader } from '../../components/PageHeader';
+import { OrderDeliveryCard } from '../../components/OrderDeliveryCard';
 import { confirmReceipt, getDrugOrder } from '../../services/pharmacy';
 import type { DrugOrderDetail } from '../../typings/api';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
-import { formatAmount, getDemoArrival } from '../../utils/medical';
-import { canConfirmDrugOrderReceipt, formatDrugOrderItemPrice, getDrugOrderLogisticsText, isPendingDrugOrder } from '../../utils/pharmacy-order';
-import { getSession } from '../../models/session';
+import { formatAmount } from '../../utils/medical';
+import { canConfirmDrugOrderReceipt, formatDrugOrderItemPrice, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, shouldPollDrugOrderLogistics } from '../../utils/pharmacy-order';
 
 /** 展示支付完成后的购药配送状态、药品明细和确认收货操作。 */
 export default function DrugOrderLogisticsPage() {
@@ -19,24 +19,33 @@ export default function DrugOrderLogisticsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState('');
 
-  /** 读取物流详情；支付后的缓存已失效，因此优先读取服务端最新订单状态。 */
-  async function loadLogistics() {
+  /** 读取物流详情；后台轮询仅更新数据，避免反复显示加载态或错误提示。 */
+  const loadLogistics = useCallback(async (silently = false) => {
     if (!Number.isInteger(drugOrderId) || drugOrderId <= 0) {
-      setNotice('订单编号不正确');
-      setLoading(false);
+      if (!silently) {
+        setNotice('订单编号不正确');
+        setLoading(false);
+      }
       return;
     }
-    setLoading(true);
+    if (!silently) setLoading(true);
     try {
       setDetail(await getDrugOrder(drugOrderId));
     } catch (error) {
-      setNotice(getApiErrorMessage(error));
+      if (!silently) setNotice(getApiErrorMessage(error));
     } finally {
-      setLoading(false);
+      if (!silently) setLoading(false);
     }
-  }
+  }, [drugOrderId]);
 
-  useEffect(() => { void loadLogistics(); }, [drugOrderId]);
+  useEffect(() => { void loadLogistics(); }, [loadLogistics]);
+
+  useEffect(() => {
+    if (!shouldPollDrugOrderLogistics(detail)) return undefined;
+    // 后端每 30 秒推进一次物流，本页每 15 秒读取一次以更新当前阶段。
+    const timer = window.setInterval(() => { void loadLogistics(true); }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [detail, loadLogistics]);
 
   /** 仅在服务端订单进入待收货后允许确认，成功后刷新真实物流状态。 */
   async function receive() {
@@ -44,25 +53,27 @@ export default function DrugOrderLogisticsPage() {
     setSubmitting(true);
     try {
       await confirmReceipt(drugOrderId, createIdempotencyKey());
-      await loadLogistics();
+      await loadLogistics(true);
     } catch (error) {
       setNotice(getApiErrorMessage(error));
-      await loadLogistics();
+      await loadLogistics(true);
     } finally {
       setSubmitting(false);
     }
   }
 
-  const arrival = getDemoArrival(getSession()?.loginAt || new Date().toISOString());
+  const arrival = getDrugOrderExpectedDeliveryTime(detail);
   const logisticsText = getDrugOrderLogisticsText(detail);
-  const traces = detail?.delivery?.traces || [];
+  const logisticsStatus = detail?.delivery?.logisticsStatus || detail?.logisticsStatus;
+  const steps = getDrugOrderLogisticsSteps(logisticsStatus);
 
   return <main className="subpage pharmacy-logistics-page"><PageHeader title="物流详情" backPath="/pharmacy" /><section className="subpage-content">
     {loading && <p className="empty-state">正在读取物流详情...</p>}
     {!loading && detail && <>
-      {isPendingDrugOrder(detail.status) ? <section className="logistics-state-card"><Truck size={29} /><div><h2>订单待支付</h2><p>支付完成后将开始配送</p></div></section> : <section className="logistics-state-card"><Truck size={29} /><div><h2>{logisticsText}</h2><p>预计 {arrival} 送达</p></div></section>}
+      {isPendingDrugOrder(detail.status) ? <section className="logistics-state-card"><Truck size={29} /><div><h2>订单待支付</h2><p>支付完成后将开始配送</p></div></section> : <section className="logistics-state-card"><Truck size={29} /><div><h2>{logisticsText}</h2>{arrival ? <p>预计 {arrival} 送达</p> : <p>预计送达时间待确认</p>}</div></section>}
+      <OrderDeliveryCard patientName={detail.patientName} patientPhone={detail.patientPhone} address={detail.delivery?.address} />
       <section className="logistics-order-summary"><h2>{detail.pharmacy?.name || detail.pharmacyName || '药房待确认'}</h2><p>订单金额：{formatAmount(detail.amountCent)}</p>{detail.items.map((item) => <article className="logistics-order-item" key={item.drugId}><b>{item.drugName}</b><span>{formatDrugOrderItemPrice(item.quantity, item.unitPriceCent)}</span></article>)}</section>
-      {!isPendingDrugOrder(detail.status) && <section className="logistics-trace-card"><header><MapPin size={20} /><h2>配送轨迹</h2></header>{traces.length ? traces.map((trace) => <article key={`${trace.node}-${trace.occurredAt}`}><i /><div><b>{trace.node}</b><span>{new Date(trace.occurredAt).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span></div></article>) : <p>配送服务已启动，等待物流节点更新</p>}</section>}
+      {!isPendingDrugOrder(detail.status) && <section className="logistics-trace-card"><header><MapPin size={20} /><h2>配送轨迹</h2></header><ol className="logistics-progress">{steps.map((step) => <li className={`logistics-progress__step is-${step.state}`} key={step.label}><i className="logistics-progress__dot" aria-hidden="true" /><b>{step.label}</b></li>)}</ol></section>}
       {canConfirmDrugOrderReceipt(detail) && <button className="primary-button" disabled={submitting} type="button" onClick={() => void receive()}><PackageCheck size={19} />{submitting ? '确认中...' : '确认收货'}</button>}
     </>}
   </section>{notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}</main>;

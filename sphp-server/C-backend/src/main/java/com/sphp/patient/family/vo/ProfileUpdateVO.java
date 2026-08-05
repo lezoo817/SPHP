@@ -21,6 +21,9 @@ public class ProfileUpdateVO {
     /** 脱敏手机号 */
     private final String phone;
 
+    /** 脱敏身份证号 */
+    private final String idCardNo;
+
     /** 资料更新时间 */
     private final OffsetDateTime updatedAt;
 }

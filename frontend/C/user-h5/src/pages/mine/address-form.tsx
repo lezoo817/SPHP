@@ -1,11 +1,11 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { ChevronRight, MapPin } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { useNavigate, useParams } from 'umi';
 import { AddressRegionSheet, type DeliveryRegionValue } from '../../components/AddressRegionSheet';
 import { PageHeader } from '../../components/PageHeader';
 import { createDeliveryAddress, getDeliveryAddresses, setDefaultDeliveryAddress, updateDeliveryAddress } from '../../services/delivery-address';
 import type { DeliveryAddress, DeliveryAddressPayload } from '../../typings/api';
-import { buildDeliveryAddressPayload, isSupportedDeliveryProvince, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from '../../utils/delivery-address';
+import { buildDeliveryAddressPayload, getDeliveryAddressInvalidFields, isSupportedDeliveryProvince, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from '../../utils/delivery-address';
 import { getApiErrorMessage } from '../../utils/form';
 
 const emptyAddress: DeliveryAddressPayload = { receiverName: '', receiverPhone: '', province: '', city: '', detailAddress: '' };
@@ -23,6 +23,7 @@ export default function AddressFormPage() {
   const [regionOpen, setRegionOpen] = useState(false);
   const [loading, setLoading] = useState(isEditing);
   const [submitting, setSubmitting] = useState(false);
+  const [hasSubmitAttempted, setHasSubmitAttempted] = useState(false);
   const [notice, setNotice] = useState('');
   const saveKey = useRef<string>();
   const defaultKey = useRef<string>();
@@ -60,6 +61,8 @@ export default function AddressFormPage() {
   /** 提交新增或编辑地址，并在用户勾选时追加默认地址设置请求。 */
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // 首次保存尝试后同时标红全部不合规的必填项，便于一次完成修正。
+    setHasSubmitAttempted(true);
     const message = validateDeliveryAddress(form);
     if (message) return setNotice(message);
     setSubmitting(true);
@@ -84,12 +87,13 @@ export default function AddressFormPage() {
 
   const regionValue = form.province && form.city ? { province: form.province, provinceName, city: form.city } : undefined;
   const canChangeDefault = !address?.isDefault;
+  const invalidFields = hasSubmitAttempted ? getDeliveryAddressInvalidFields(form) : [];
   return <main className="subpage address-form-page"><PageHeader title={isEditing ? '编辑收货地址' : '新增收货地址'} backPath="/mine/addresses" /><form className="subpage-content address-form" onSubmit={submit}>
-    {loading ? <p className="empty-state">正在读取收货地址...</p> : <><button className="address-region-field" type="button" onClick={() => setRegionOpen(true)}><span><b>所在地区</b><small>请选择省份和城市</small></span><strong>{provinceName && form.city ? `${provinceName} ${form.city}` : '请选择所在地区'}</strong><ChevronRight size={19} /></button>{form.province && !isSupportedDeliveryProvince(form.province) && <p className="form-error">当前地区暂不支持配送，请重新选择地区</p>}
-      <label>详细地址<input value={form.detailAddress} maxLength={200} placeholder="街道、门牌号、楼栋等" onChange={(event) => setForm({ ...form, detailAddress: event.target.value })} /></label>
-      <label>收件人姓名<input value={form.receiverName} maxLength={64} placeholder="请填写收件人姓名" onChange={(event) => setForm({ ...form, receiverName: event.target.value })} /></label>
-      <label>手机号<input type="tel" inputMode="numeric" value={form.receiverPhone} maxLength={11} placeholder="请填写手机号" onChange={(event) => setForm({ ...form, receiverPhone: event.target.value.replace(/\D/g, '') })} /></label>
+    {loading ? <p className="empty-state">正在读取收货地址...</p> : <><button className={invalidFields.includes('region') ? 'address-region-field is-invalid' : 'address-region-field'} aria-invalid={invalidFields.includes('region')} type="button" onClick={() => setRegionOpen(true)}><span><b><i aria-hidden="true">*</i>所在地区</b><small>请选择省份和城市</small></span><strong>{provinceName && form.city ? `${provinceName} ${form.city}` : '请选择所在地区'}</strong><ChevronRight size={19} /></button>{form.province && !isSupportedDeliveryProvince(form.province) && <p className="form-error">当前地区暂不支持配送，请重新选择地区</p>}
+      <label className={invalidFields.includes('detailAddress') ? 'is-invalid' : ''}><b><i aria-hidden="true">*</i>详细地址</b><input aria-invalid={invalidFields.includes('detailAddress')} value={form.detailAddress} maxLength={200} placeholder="街道、门牌号、楼栋等" onChange={(event) => setForm({ ...form, detailAddress: event.target.value })} /></label>
+      <label className={invalidFields.includes('receiverName') ? 'is-invalid' : ''}><b><i aria-hidden="true">*</i>收件人姓名</b><input aria-invalid={invalidFields.includes('receiverName')} value={form.receiverName} maxLength={64} placeholder="请填写收件人姓名" onChange={(event) => setForm({ ...form, receiverName: event.target.value })} /></label>
+      <label className={invalidFields.includes('receiverPhone') ? 'is-invalid' : ''}><b><i aria-hidden="true">*</i>手机号</b><input aria-invalid={invalidFields.includes('receiverPhone')} type="tel" inputMode="numeric" value={form.receiverPhone} maxLength={11} placeholder="请填写手机号" onChange={(event) => setForm({ ...form, receiverPhone: event.target.value.replace(/\D/g, '') })} /></label>
       <label className="address-default-toggle"><span><b>设为默认地址</b><small>{address?.isDefault ? '当前地址已是默认地址' : '下单时优先使用此地址'}</small></span><input aria-label="设为默认地址" checked={address?.isDefault || makeDefault} disabled={!canChangeDefault} type="checkbox" onChange={(event) => setMakeDefault(event.target.checked)} /></label>
-      <div className="address-form__hint"><MapPin size={17} />仅可保存当前后端支持配送的省市</div><button className="primary-button address-form__submit" disabled={submitting} type="submit">{submitting ? '保存中...' : '保存地址'}</button></>}
+      <button className="primary-button address-form__submit" disabled={submitting} type="submit">{submitting ? '保存中...' : '保存地址'}</button></>}
   </form>{regionOpen && <AddressRegionSheet value={regionValue} onClose={() => setRegionOpen(false)} onSelect={selectRegion} />}{notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}</main>;
 }

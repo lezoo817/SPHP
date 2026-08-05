@@ -27,6 +27,7 @@ import com.sphp.patient.order.mapper.OrderPrescriptionItemRecord;
 import com.sphp.patient.order.mapper.OrderPrescriptionRecord;
 import com.sphp.patient.order.mapper.OrderStockRecord;
 import com.sphp.patient.order.mapper.OrderTraceRecord;
+import com.sphp.patient.order.mq.event.DrugOrderLogisticsAdvanceEvent;
 import com.sphp.patient.order.service.OrderService;
 import com.sphp.patient.order.service.DeliveryService;
 import com.sphp.patient.order.support.OrderStockLockService;
@@ -46,6 +47,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.OffsetDateTime;
 import java.util.Arrays;
@@ -264,6 +266,12 @@ public class OrderServiceImpl implements OrderService {
         }
         // 支付状态条件更新成功后才生成用药计划，重复支付不会重复创建。
         orderDataMapper.createMedicationPlans(payment.drugOrderId(), now);
+        // 支付成功后记录待发货节点，并在事务提交后安排首个物流推进消息。
+        if (orderDataMapper.insertDrugOrderLogisticsTrace(payment.drugOrderId(),
+                DRUG_ORDER_PAYMENT_SUCCESS_TRACE, now) != 1) {
+            throw systemError("购药订单待发货轨迹写入失败");
+        }
+        eventPublisher.publishEvent(DrugOrderLogisticsAdvanceEvent.toInTransit(payment.drugOrderId()));
         // 发送通知
         notificationEventProducer.publishNotification(
                 "DRUG_ORDER_PAYMENT_SUCCESS",  // 事件类型
@@ -508,6 +516,7 @@ public class OrderServiceImpl implements OrderService {
                 .latestLogisticsNode(record.latestLogisticsNode()) // 物流状态
                 .amountCent(record.amountCent())
                 .expireAt(record.expireAt())
+                .patientName(record.patientName()) // 列表展示当前处方就诊人
                 .build();
     }
 
@@ -521,6 +530,8 @@ public class OrderServiceImpl implements OrderService {
                 .id(record.id())
                 .prescriptionId(record.prescriptionId()) // 保留订单与处方的准确关联
                 .status(record.status())
+                .patientName(record.patientName())
+                .patientPhone(maskPhone(record.patientPhone())) // 详情仅返回脱敏手机号
                 .pharmacy(DrugOrderDetailVO.Pharmacy.builder()
                         .id(record.pharmacyId())
                         .name(record.pharmacyName())
@@ -531,6 +542,7 @@ public class OrderServiceImpl implements OrderService {
                         .company(record.logisticsCompany()) // 物流公司
                         .trackingNo(record.trackingNo()) // 物流单号
                         .logisticsStatus(record.logisticsStatus())
+                        .expectedDeliveryAt(record.expectedDeliveryAt()) // 后端模拟物流的预计送达时间
                         .traces(orderDataMapper.selectOrderTraces(record.id()).stream()
                                 .map(trace -> DrugOrderDetailVO.Trace.builder()
                                         .node(trace.node()) // 物流节点
@@ -551,6 +563,19 @@ public class OrderServiceImpl implements OrderService {
                         .status(record.paymentStatus())
                         .build())
                 .build();
+    }
+
+    /**
+     * 按 C 端展示规则脱敏就诊人手机号。
+     *
+     * @param phone 手机号原始值
+     * @return 脱敏手机号；未填写或格式异常时返回 null
+     */
+    private String maskPhone(String phone) {
+        if (!StringUtils.hasText(phone) || phone.length() != 11) {
+            return null;
+        }
+        return phone.substring(0, 3) + "****" + phone.substring(7);
     }
     /** 校验可选枚举筛选值。 */
     private <T extends Enum<T>> void validateEnum(String value, T[] values, String message) {

@@ -23,6 +23,8 @@ public class ProfileRecord {
     private LocalDate birthday;
     /** 手机号存储字段 */
     private String phone;
+    /** 身份证号存储字段，仅限服务层脱敏返回 */
+    private String idCardNo;
     /** 紧急联系人存储字段 */
     private String emergencyContact;
     /** 资料更新时间 */

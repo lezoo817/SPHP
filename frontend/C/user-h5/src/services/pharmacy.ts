@@ -1,6 +1,7 @@
-import type { DrugOrder, DrugOrderDetail, PageData, PharmacyInventory } from '../typings/api'; import { request } from './request';
+import type { DeliveryPharmacyRecommendation, DrugOrder, DrugOrderDetail, PageData, PharmacyInventory } from '../typings/api'; import { request } from './request';
 /** 查询处方的院内药房库存。 */ export function getInventory(patientId:number|undefined,prescriptionId:number):Promise<PharmacyInventory[]>{return request(`/c/v1/pharmacies/inventory?patientId=${patientId||''}&prescriptionId=${prescriptionId}`,{method:'GET'});}
-/** 创建固定演示地址的购药订单。 */ export function createDrugOrder(payload:{patientId?:number;prescriptionId:number;pharmacyId:number;deliveryAddress:string},key:string):Promise<{drugOrderId:number;paymentId:number}>{return request('/c/v1/drug-orders',{method:'POST',body:payload,headers:{'X-Idempotency-Key':key}});}
+/** 查询当前账号指定收货地址下可配送的处方药房推荐。 */ export function getPharmacyRecommendations(patientId:number|undefined,prescriptionId:number,addressId:number,sort='RECOMMENDED'):Promise<DeliveryPharmacyRecommendation[]>{const params=new URLSearchParams({prescriptionId:String(prescriptionId),addressId:String(addressId),sort});if(patientId)params.set('patientId',String(patientId));return request(`/c/v1/pharmacies/recommendations?${params.toString()}`,{method:'GET'});}
+/** 使用当前账号地址簿快照创建购药订单。 */ export function createDrugOrder(payload:{patientId?:number;prescriptionId:number;pharmacyId:number;addressId:number},key:string):Promise<{drugOrderId:number;paymentId:number}>{return request('/c/v1/drug-orders',{method:'POST',body:payload,headers:{'X-Idempotency-Key':key}});}
 /** 购药订单列表查询条件。 */
 export interface DrugOrderListQuery { patientId?:number; status?:string; logisticsStatus?:string; keyword?:string; pageNo?:number; pageSize?:number; }
 /**

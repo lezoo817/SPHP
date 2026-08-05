@@ -4,4 +4,5 @@ import java.time.OffsetDateTime;
 public record OrderDetailRecord(Long id, Long prescriptionId, Long patientId, Long pharmacyId, String pharmacyName, String status,
                                 String deliveryMethod, String deliveryAddress, String logisticsCompany,
                                 String trackingNo, String logisticsStatus, Integer amountCent, OffsetDateTime expireAt,
-                                Long paymentId, String paymentStatus) { }
+                                Long paymentId, String paymentStatus, String patientName, String patientPhone,
+                                OffsetDateTime expectedDeliveryAt) { }

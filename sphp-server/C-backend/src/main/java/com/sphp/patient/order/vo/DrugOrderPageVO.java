@@ -42,5 +42,7 @@ public class DrugOrderPageVO {
         private final Integer amountCent;
         // 支付到期时间
         private final OffsetDateTime expireAt;
+        // 就诊人姓名
+        private final String patientName;
     }
 }

@@ -27,6 +27,9 @@ public class ProfileVO {
     /** 脱敏手机号 */
     private final String phone;
 
+    /** 脱敏身份证号 */
+    private final String idCardNo;
+
     /** 脱敏紧急联系人 */
     private final String emergencyContact;
 }

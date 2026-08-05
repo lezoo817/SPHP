@@ -5,9 +5,9 @@ import { ApiError } from '../../services/request';
 import { getProfile, updateProfile } from '../../services/profile';
 import type { Profile } from '../../typings/api';
 import { getApiErrorMessage } from '../../utils/form';
-import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, type ProfileFormValues, validateProfileForm } from '../../utils/profile';
+import { buildProfileUpdatePayload, normalizeProfileIdCardNo, resolveProfileIdempotencyKey, type ProfileFormValues, validateProfileForm } from '../../utils/profile';
 
-const emptyForm: ProfileFormValues = { name: '', gender: '', birthday: '', phone: '', emergencyContact: '' };
+const emptyForm: ProfileFormValues = { name: '', gender: '', birthday: '', phone: '', idCardNo: '', emergencyContact: '' };
 
 /** 查询、展示并更新当前登录账号的本人资料。 */
 export default function ProfilePage() {
@@ -25,7 +25,7 @@ export default function ProfilePage() {
       const current = await getProfile();
       setProfile(current);
       // 脱敏手机号和紧急联系人不可回填为可编辑原值。
-      setForm({ name: current.name, gender: current.gender || '', birthday: current.birthday || '', phone: '', emergencyContact: '' });
+      setForm({ name: current.name, gender: current.gender || '', birthday: current.birthday || '', phone: '', idCardNo: '', emergencyContact: '' });
     } catch (error) {
       setNotice(getApiErrorMessage(error));
     } finally {
@@ -66,12 +66,13 @@ export default function ProfilePage() {
     <section className="subpage-content">
       {loading && <p className="empty-state">正在读取个人资料...</p>}
       {!loading && profile && <>
-        <section className="profile-safe-info"><ShieldCheck size={22} /><div><b>已保护的资料</b><span>手机号：{profile.phone || '暂未填写'}</span><span>紧急联系人：{profile.emergencyContact || '暂未填写'}</span></div></section>
+        <section className="profile-safe-info"><ShieldCheck size={22} /><div><b>已保护的资料</b><span>手机号：{profile.phone || '暂未填写'}</span><span>身份证号：{profile.idCardNo || '暂未填写'}</span><span>紧急联系人：{profile.emergencyContact || '暂未填写'}</span></div></section>
         <form className="form-stack profile-form" onSubmit={submit}>
           <label>姓名<input value={form.name} maxLength={64} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
           <label>性别<select value={form.gender} onChange={(event) => setForm({ ...form, gender: event.target.value as ProfileFormValues['gender'] })}><option value="">暂未填写</option><option value="MALE">男</option><option value="FEMALE">女</option><option value="UNKNOWN">未知</option></select></label>
           <label>出生日期<input type="date" max={new Date().toISOString().slice(0, 10)} value={form.birthday} onChange={(event) => setForm({ ...form, birthday: event.target.value })} /></label>
           <label>新手机号（可选）<input type="tel" inputMode="numeric" maxLength={11} placeholder="不修改请留空" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
+          <label>新身份证号（可选）<input inputMode="numeric" maxLength={18} placeholder="不修改请留空" value={form.idCardNo} onChange={(event) => setForm({ ...form, idCardNo: normalizeProfileIdCardNo(event.target.value) })} /></label>
           <label>新紧急联系人（可选）<textarea rows={3} maxLength={256} placeholder="不修改请留空" value={form.emergencyContact} onChange={(event) => setForm({ ...form, emergencyContact: event.target.value })} /></label>
           <button className="primary-button" disabled={submitting} type="submit">{submitting ? '保存中...' : '保存资料'}</button>
         </form>

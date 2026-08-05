@@ -33,6 +33,9 @@ public class FamilyMemberListVO {
     /** 脱敏手机号 */
     private final String phone;
 
+    /** 脱敏身份证号 */
+    private final String idCardNo;
+
     /** 是否为默认就诊人 */
     private final Boolean isDefault;
 }
