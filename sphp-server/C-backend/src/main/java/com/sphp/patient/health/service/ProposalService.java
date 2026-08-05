@@ -9,6 +9,8 @@ import com.sphp.patient.health.vo.ProposalReportCreateVO;
 import com.sphp.patient.health.vo.ProposalReportDetailVO;
 import com.sphp.patient.health.vo.ProposalReportInterpretationVO;
 import com.sphp.patient.health.vo.ProposalReportPageVO;
+import com.sphp.patient.health.vo.ProposalMedicalRecordPageVO;
+import com.sphp.patient.health.vo.ProposalMedicalRecordDetailVO;
 
 import java.util.List;
 
@@ -16,6 +18,24 @@ import java.util.List;
  * 健康报告、用药和随访服务。
  */
 public interface ProposalService {
+
+    /**
+     * 分页查询当前账号可访问就诊人的医生病历。
+     *
+     * @param patientId 可选就诊人 ID，未传时使用本人
+     * @param pageNo 可选页码
+     * @param pageSize 可选每页数量
+     * @return 病历分页结果
+     */
+    ProposalMedicalRecordPageVO proposalListMedicalRecords(Long patientId, Integer pageNo, Integer pageSize);
+
+    /**
+     * 查询单份当前账号可访问的医生病历。
+     *
+     * @param consultId 问诊记录 ID，即病历 ID
+     * @return 病历详情
+     */
+    ProposalMedicalRecordDetailVO proposalGetMedicalRecord(Long consultId);
 
     /**
      * 录入检查报告。
@@ -36,6 +56,7 @@ public interface ProposalService {
      * @param pageSize 可选每页数量
      * @return 报告分页结果
      */
+    @Deprecated(since = "2026-08", forRemoval = false)
     ProposalReportPageVO proposalListReports(Long patientId, Integer pageNo, Integer pageSize);
 
     /**
@@ -44,6 +65,7 @@ public interface ProposalService {
      * @param reportId 报告 ID
      * @return 报告详情
      */
+    @Deprecated(since = "2026-08", forRemoval = false)
     ProposalReportDetailVO proposalGetReport(Long reportId);
 
     /**
@@ -52,6 +74,7 @@ public interface ProposalService {
      * @param reportId 报告 ID
      * @return 报告解读
      */
+    @Deprecated(since = "2026-08", forRemoval = false)
     ProposalReportInterpretationVO proposalGetReportInterpretation(Long reportId);
 
     /**

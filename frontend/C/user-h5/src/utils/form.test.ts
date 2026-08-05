@@ -23,8 +23,8 @@ import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotifi
 import { buildDeliveryAddressPath } from '../services/delivery-address';
 import { buildDeliveryAddressPayload, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
 import { getAssistantTabs, getCurrentFlowAction } from './assistant';
-import { buildReportListPath } from '../services/report';
-import { createReportDisplayNumber, filterReportsByDate, getRecentReportRange, isReportInterpretationPending, mergeReportPages } from './report';
+import { buildMedicalRecordDetailPath, buildMedicalRecordListPath } from '../services/medical-record';
+import { buildLegacyReportRedirectPath, createMedicalRecordDisplayNumber, filterMedicalRecordsByDate, getRecentMedicalRecordRange, mergeMedicalRecordPages } from './medical-record';
 import { isDuplicateDoctorAppointmentError } from './registration';
 import { buildDoctorBookingStatusPath } from '../services/registration';
 
@@ -77,42 +77,43 @@ describe('就诊助手展示规则', () => {
   });
 });
 
-describe('报告查询规则', () => {
-  it('报告请求始终携带当前就诊人和最大分页大小', () => {
-    expect(buildReportListPath({ patientId: 20001 })).toBe('/c/v1/reports?patientId=20001&pageNo=1&pageSize=100');
+describe('病历报告查询规则', () => {
+  it('病历请求始终携带当前就诊人和最大分页大小', () => {
+    expect(buildMedicalRecordListPath({ patientId: 20001 })).toBe('/c/v1/medical-records?patientId=20001&pageNo=1&pageSize=100');
+    expect(buildMedicalRecordDetailPath(7001)).toBe('/c/v1/medical-records/7001');
   });
 
   it('最近 30、90、180 天均生成包含当天的日期范围', () => {
     const now = new Date('2026-08-04T10:00:00+08:00');
-    expect(getRecentReportRange(30, now)).toEqual({ startDate: '2026-07-06', endDate: '2026-08-04' });
-    expect(getRecentReportRange(90, now).startDate).toBe('2026-05-07');
-    expect(getRecentReportRange(180, now).startDate).toBe('2026-02-06');
+    expect(getRecentMedicalRecordRange(30, now)).toEqual({ startDate: '2026-07-06', endDate: '2026-08-04' });
+    expect(getRecentMedicalRecordRange(90, now).startDate).toBe('2026-05-07');
+    expect(getRecentMedicalRecordRange(180, now).startDate).toBe('2026-02-06');
   });
 
-  it('按完成日期筛选并保持报告倒序，不匹配范围不返回结果', () => {
-    const reports = [
+  it('按完成日期筛选并保持病历倒序，不匹配范围不返回结果', () => {
+    const medicalRecords = [
       { id: 1, patientId: 1, doctorName: '张医生', departmentName: '内科', completedAt: '2026-07-07T08:00:00+08:00', updatedAt: '2026-07-07T08:00:00+08:00' },
       { id: 2, patientId: 1, doctorName: '李医生', departmentName: '外科', completedAt: '2026-08-03T08:00:00+08:00', updatedAt: '2026-08-03T08:00:00+08:00' },
     ];
-    expect(filterReportsByDate(reports, { startDate: '2026-08-01', endDate: '2026-08-04' }).map((item) => item.id)).toEqual([2]);
-    expect(filterReportsByDate(reports, { startDate: '2026-08-05', endDate: '2026-08-04' })).toEqual([]);
+    expect(filterMedicalRecordsByDate(medicalRecords, { startDate: '2026-08-01', endDate: '2026-08-04' }).map((item) => item.id)).toEqual([2]);
+    expect(filterMedicalRecordsByDate(medicalRecords, { startDate: '2026-08-05', endDate: '2026-08-04' })).toEqual([]);
   });
 
-  it('加载更多时按报告 ID 去重并使用新页的最新记录', () => {
+  it('加载更多时按病历 ID 去重并使用新页的最新记录', () => {
     const base = { patientId: 1, doctorName: '张医生', departmentName: '内科', completedAt: '2026-08-03T08:00:00+08:00' };
-    const merged = mergeReportPages([{ id: 1, ...base, updatedAt: '2026-08-03T08:00:00+08:00' }], [{ id: 1, ...base, updatedAt: '2026-08-03T09:00:00+08:00' }, { id: 2, ...base, updatedAt: '2026-08-02T08:00:00+08:00' }]);
+    const merged = mergeMedicalRecordPages([{ id: 1, ...base, updatedAt: '2026-08-03T08:00:00+08:00' }], [{ id: 1, ...base, updatedAt: '2026-08-03T09:00:00+08:00' }, { id: 2, ...base, updatedAt: '2026-08-02T08:00:00+08:00' }]);
     expect(merged).toHaveLength(2);
     expect(merged.find((item) => item.id === 1)?.updatedAt).toBe('2026-08-03T09:00:00+08:00');
   });
 
-  it('报告解读未准备完成时映射为等待状态', () => {
-    expect(isReportInterpretationPending({ code: 'B0202', status: 409 })).toBe(true);
-    expect(isReportInterpretationPending({ code: 'A0402', status: 404 })).toBe(false);
+  it('报告编号由完成时间戳和固定六位随机尾号组成', () => {
+    expect(createMedicalRecordDisplayNumber('2026-08-04T10:00:00+08:00', 123)).toBe('1785808800000000123');
+    expect(createMedicalRecordDisplayNumber(undefined, 123)).toBe('暂未提供');
   });
 
-  it('报告编号由完成时间戳和固定六位随机尾号组成', () => {
-    expect(createReportDisplayNumber('2026-08-04T10:00:00+08:00', 123)).toBe('1785808800000000123');
-    expect(createReportDisplayNumber(undefined, 123)).toBe('暂未提供');
+  it('旧报告链接跳转时保留查询参数', () => {
+    expect(buildLegacyReportRedirectPath('7001', '?source=home&patientId=20001')).toBe('/medical-records/7001?source=home&patientId=20001');
+    expect(buildLegacyReportRedirectPath(undefined, '?source=mine')).toBe('/medical-records?source=mine');
   });
 });
 

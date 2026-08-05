@@ -12,6 +12,8 @@ import com.sphp.patient.health.dto.ProposalReportCreateRequest;
 import com.sphp.patient.health.entity.ProposalPatientReport;
 import com.sphp.patient.health.entity.ProposalReportIndicator;
 import com.sphp.patient.health.mapper.ConsultationReportListRecord;
+import com.sphp.patient.health.mapper.ConsultationMedicalRecordListRecord;
+import com.sphp.patient.health.mapper.ConsultationMedicalRecordRecord;
 import com.sphp.patient.health.mapper.ConsultationReportInterpretationRecord;
 import com.sphp.patient.health.mapper.ConsultationReportRecord;
 import com.sphp.patient.health.mapper.FollowUpRecord;
@@ -27,6 +29,8 @@ import com.sphp.patient.health.vo.ProposalReportCreateVO;
 import com.sphp.patient.health.vo.ProposalReportDetailVO;
 import com.sphp.patient.health.vo.ProposalReportInterpretationVO;
 import com.sphp.patient.health.vo.ProposalReportPageVO;
+import com.sphp.patient.health.vo.ProposalMedicalRecordPageVO;
+import com.sphp.patient.health.vo.ProposalMedicalRecordDetailVO;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -55,6 +59,77 @@ public class ProposalServiceImpl implements ProposalService {
     private final ProposalReportIndicatorMapper indicatorMapper;
     // 健康模块跨表查询数据
     private final ProposalDataMapper dataMapper;
+
+    /**
+     * 分页查询当前账号可访问就诊人的医生病历。
+     *
+     * @param patientId 可选就诊人 ID，未传时使用本人
+     * @param pageNo 可选页码
+     * @param pageSize 可选每页数量
+     * @return 病历分页结果
+     * @throws CAuthException 就诊人无权访问或分页参数越界时抛出
+     */
+    @Override
+    public ProposalMedicalRecordPageVO proposalListMedicalRecords(Long patientId, Integer pageNo, Integer pageSize) {
+        // 统一解析本人或当前账号已绑定的家庭成员，防止跨账号读取病历。
+        Long resolvedPatientId = proposalResolvePatientId(patientId);
+        int resolvedPageNo = pageNo == null ? DEFAULT_PAGE_NO : pageNo;
+        int resolvedPageSize = pageSize == null ? DEFAULT_PAGE_SIZE : pageSize;
+        if (resolvedPageSize > MAX_PAGE_SIZE) {
+            throw proposalBadRequest("pageSize 不能超过100");
+        }
+
+        long offset = (long) (resolvedPageNo - 1) * resolvedPageSize;
+        // 仅返回已完成且医生已保存正文的病历，不向患者暴露接诊过程中的草稿。
+        List<ConsultationMedicalRecordListRecord> medicalRecords =
+                dataMapper.proposalSelectConsultationMedicalRecords(resolvedPatientId, resolvedPageSize, offset);
+        List<ProposalMedicalRecordPageVO.Item> records = medicalRecords.stream()
+                .map(item -> ProposalMedicalRecordPageVO.Item.builder()
+                        .id(item.id())
+                        .patientId(item.patientId())
+                        .doctorName(item.doctorName())
+                        .departmentName(item.departmentName())
+                        .completedAt(item.completedAt())
+                        .updatedAt(item.updatedAt())
+                        .build())
+                .toList();
+        return ProposalMedicalRecordPageVO.builder()
+                .pageNo(resolvedPageNo)
+                .pageSize(resolvedPageSize)
+                .total(dataMapper.proposalCountConsultationMedicalRecords(resolvedPatientId))
+                .records(records)
+                .build();
+    }
+
+    /**
+     * 查询单份当前账号可访问的医生病历。
+     *
+     * @param consultId 问诊记录 ID，即病历 ID
+     * @return 病历详情
+     * @throws CAuthException 病历不存在、暂不可展示或当前账号无权访问时抛出
+     */
+    @Override
+    public ProposalMedicalRecordDetailVO proposalGetMedicalRecord(Long consultId) {
+        // 先以病历 ID 查询受可见性条件约束的问诊记录，避免返回未完成或空正文病历。
+        ConsultationMedicalRecordRecord medicalRecord =
+                dataMapper.proposalSelectConsultationMedicalRecord(consultId);
+        if (medicalRecord == null) {
+            throw proposalNotFound("病历不存在或暂不可查看");
+        }
+        // 由病历反查就诊人归属，禁止通过病历 ID 跨账号读取医疗记录。
+        proposalRequireAccessiblePatient(medicalRecord.patientId());
+        return ProposalMedicalRecordDetailVO.builder()
+                .id(medicalRecord.id())
+                .patientId(medicalRecord.patientId())
+                .doctorId(medicalRecord.doctorId())
+                .doctorName(medicalRecord.doctorName())
+                .departmentName(medicalRecord.departmentName())
+                .doctorNote(medicalRecord.doctorNote())
+                .startedAt(medicalRecord.startedAt())
+                .completedAt(medicalRecord.completedAt())
+                .updatedAt(medicalRecord.updatedAt())
+                .build();
+    }
 
     /**
      * 为当前账号可访问的就诊人录入检查报告及其指标。
@@ -108,6 +183,7 @@ public class ProposalServiceImpl implements ProposalService {
      * @throws CAuthException 就诊人无权访问或分页参数越界时抛出
      */
     @Override
+    @Deprecated(since = "2026-08", forRemoval = false)
     public ProposalReportPageVO proposalListReports(Long patientId, Integer pageNo, Integer pageSize) {
         // 解析并检查就诊人 ID
         Long resolvedPatientId = proposalResolvePatientId(patientId);
@@ -147,6 +223,7 @@ public class ProposalServiceImpl implements ProposalService {
      * @throws CAuthException 报告不存在或当前账号无权访问时抛出
      */
     @Override
+    @Deprecated(since = "2026-08", forRemoval = false)
     public ProposalReportDetailVO proposalGetReport(Long reportId) {
         // 资源反查并校验就诊人归属，禁止通过报告 ID 跨账号读取病历。
         ConsultationReportRecord report = proposalRequireConsultationReport(reportId);
@@ -171,6 +248,7 @@ public class ProposalServiceImpl implements ProposalService {
      * @throws CAuthException 报告无权访问或解读未准备完成时抛出
      */
     @Override
+    @Deprecated(since = "2026-08", forRemoval = false)
     public ProposalReportInterpretationVO proposalGetReportInterpretation(Long reportId) {
         // 先校验病历可展示及患者归属，解读记录不能单独绕过报告访问控制。
         proposalRequireConsultationReport(reportId);

@@ -12,6 +12,8 @@ import com.sphp.patient.health.entity.ProposalReportIndicator;
 import com.sphp.patient.health.mapper.ConsultationReportRecord;
 import com.sphp.patient.health.mapper.ConsultationReportInterpretationRecord;
 import com.sphp.patient.health.mapper.ConsultationReportListRecord;
+import com.sphp.patient.health.mapper.ConsultationMedicalRecordListRecord;
+import com.sphp.patient.health.mapper.ConsultationMedicalRecordRecord;
 import com.sphp.patient.health.mapper.FollowUpRecord;
 import com.sphp.patient.health.mapper.HealthPatientMapper;
 import com.sphp.patient.health.mapper.MedicationRecord;
@@ -23,6 +25,8 @@ import com.sphp.patient.health.vo.ProposalMedicationPlanVO;
 import com.sphp.patient.health.vo.ProposalReportCreateVO;
 import com.sphp.patient.health.vo.ProposalReportInterpretationVO;
 import com.sphp.patient.health.vo.ProposalReportPageVO;
+import com.sphp.patient.health.vo.ProposalMedicalRecordPageVO;
+import com.sphp.patient.health.vo.ProposalMedicalRecordDetailVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -107,6 +111,97 @@ class ProposalServiceImplTest {
         assertEquals("呼吸内科", result.getRecords().getFirst().getDepartmentName());
         assertEquals(completedAt, result.getRecords().getFirst().getCompletedAt());
         verify(dataMapper).proposalSelectConsultationReports(20001L, 20, 0L);
+    }
+
+    /**
+     * 验证病历列表只通过病历专用 Mapper 映射当前账号可访问患者的已完成问诊记录。
+     */
+    @Test
+    void proposalListMedicalRecordsMapsCompletedDoctorNotes() {
+        ProposalDataMapper dataMapper = mock(ProposalDataMapper.class);
+        OffsetDateTime completedAt = OffsetDateTime.parse("2026-08-02T09:30:00+08:00");
+        OffsetDateTime updatedAt = OffsetDateTime.parse("2026-08-02T09:35:00+08:00");
+        when(dataMapper.proposalSelectConsultationMedicalRecords(20001L, 20, 0L)).thenReturn(List.of(
+                new ConsultationMedicalRecordListRecord(7001L, 20001L, "张医生", "呼吸内科", completedAt, updatedAt)));
+        when(dataMapper.proposalCountConsultationMedicalRecords(20001L)).thenReturn(1L);
+        ProposalServiceImpl service = service(authorizedPatientMapper(), mock(ProposalReportMapper.class),
+                mock(ProposalReportIndicatorMapper.class), dataMapper);
+        setUserContext();
+
+        ProposalMedicalRecordPageVO result = service.proposalListMedicalRecords(null, null, null);
+
+        assertEquals(1, result.getPageNo());
+        assertEquals(20, result.getPageSize());
+        assertEquals(1L, result.getTotal());
+        assertEquals("张医生", result.getRecords().getFirst().getDoctorName());
+        assertEquals("呼吸内科", result.getRecords().getFirst().getDepartmentName());
+        assertEquals(completedAt, result.getRecords().getFirst().getCompletedAt());
+        verify(dataMapper).proposalSelectConsultationMedicalRecords(20001L, 20, 0L);
+    }
+
+    /**
+     * 验证病历详情映射医生正文，并在返回前校验当前账号的就诊人归属。
+     */
+    @Test
+    void proposalGetMedicalRecordMapsDoctorNoteForAccessiblePatient() {
+        ProposalDataMapper dataMapper = mock(ProposalDataMapper.class);
+        OffsetDateTime startedAt = OffsetDateTime.parse("2026-08-02T09:00:00+08:00");
+        OffsetDateTime completedAt = OffsetDateTime.parse("2026-08-02T09:30:00+08:00");
+        OffsetDateTime updatedAt = OffsetDateTime.parse("2026-08-02T09:35:00+08:00");
+        when(dataMapper.proposalSelectConsultationMedicalRecord(7001L)).thenReturn(
+                new ConsultationMedicalRecordRecord(7001L, 20001L, 30001L, "张医生", "呼吸内科",
+                        "医生病历正文", startedAt, completedAt, updatedAt));
+        ProposalServiceImpl service = service(authorizedPatientMapper(), mock(ProposalReportMapper.class),
+                mock(ProposalReportIndicatorMapper.class), dataMapper);
+        setUserContext();
+
+        ProposalMedicalRecordDetailVO result = service.proposalGetMedicalRecord(7001L);
+
+        assertEquals(7001L, result.getId());
+        assertEquals("医生病历正文", result.getDoctorNote());
+        assertEquals("呼吸内科", result.getDepartmentName());
+        assertEquals(completedAt, result.getCompletedAt());
+        verify(dataMapper).proposalSelectConsultationMedicalRecord(7001L);
+    }
+
+    /**
+     * 验证病历所属就诊人不属于当前账号时拒绝跨账号读取。
+     */
+    @Test
+    void proposalGetMedicalRecordRejectsForeignPatientResource() {
+        HealthPatientMapper patientMapper = mock(HealthPatientMapper.class);
+        ProposalDataMapper dataMapper = mock(ProposalDataMapper.class);
+        when(dataMapper.proposalSelectConsultationMedicalRecord(7001L)).thenReturn(
+                new ConsultationMedicalRecordRecord(7001L, 20002L, 30001L, "张医生", "呼吸内科",
+                        "医生病历正文", OffsetDateTime.parse("2026-08-02T09:00:00+08:00"),
+                        OffsetDateTime.parse("2026-08-02T09:30:00+08:00"),
+                        OffsetDateTime.parse("2026-08-02T09:35:00+08:00")));
+        when(patientMapper.existsActivePatient(20002L)).thenReturn(true);
+        when(patientMapper.hasActivePatientRelation(10001L, 20002L)).thenReturn(false);
+        ProposalServiceImpl service = service(patientMapper, mock(ProposalReportMapper.class),
+                mock(ProposalReportIndicatorMapper.class), dataMapper);
+        setUserContext();
+
+        CAuthException exception = assertThrows(CAuthException.class,
+                () -> service.proposalGetMedicalRecord(7001L));
+
+        assertEquals("A0301", exception.getCode());
+    }
+
+    /**
+     * 验证未完成、空正文或已删除病历被 Mapper 过滤后按不存在处理。
+     */
+    @Test
+    void proposalGetMedicalRecordRejectsInvisibleRecord() {
+        ProposalDataMapper dataMapper = mock(ProposalDataMapper.class);
+        ProposalServiceImpl service = service(authorizedPatientMapper(), mock(ProposalReportMapper.class),
+                mock(ProposalReportIndicatorMapper.class), dataMapper);
+        setUserContext();
+
+        CAuthException exception = assertThrows(CAuthException.class,
+                () -> service.proposalGetMedicalRecord(7001L));
+
+        assertEquals("A0402", exception.getCode());
     }
 
     /**
