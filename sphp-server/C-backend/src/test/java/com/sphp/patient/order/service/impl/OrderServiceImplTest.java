@@ -8,6 +8,9 @@ import com.sphp.patient.order.mapper.DrugOrderItemMapper;
 import com.sphp.patient.order.mapper.DrugOrderMapper;
 import com.sphp.patient.order.mapper.DrugOrderPaymentMapper;
 import com.sphp.patient.order.mapper.OrderDataMapper;
+import com.sphp.patient.order.mapper.DrugOrderPaymentRecord;
+import com.sphp.patient.order.mapper.OrderDetailRecord;
+import com.sphp.patient.order.mapper.OrderItemRecord;
 import com.sphp.patient.order.mapper.OrderListRecord;
 import com.sphp.patient.order.mapper.OrderPharmacyStockRecord;
 import com.sphp.patient.order.mapper.OrderPrescriptionItemRecord;
@@ -18,7 +21,10 @@ import com.sphp.patient.order.service.OrderService;
 import com.sphp.patient.order.support.OrderStockLockService;
 import com.sphp.patient.order.vo.DrugOrderPageVO;
 import com.sphp.patient.registration.config.RegistrationProperties;
+import com.sphp.patient.registration.dto.RegisteringPaymentSimulateRequest;
 import com.sphp.patient.notification.mq.producer.NotificationEventProducer;
+import com.sphp.patient.order.mq.event.DrugOrderLogisticsAdvanceEvent;
+import org.mindrot.jbcrypt.BCrypt;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
@@ -47,6 +53,18 @@ class OrderServiceImplTest {
         when(deliveryService.deliveryResolveOrderAddress(30001L,null)).thenReturn("张三 13800138000 河南省郑州市中心路1号"); when(stockLockService.executeWithStockLocks(anyList(),any())).thenAnswer(invocation -> ((Supplier<?>) invocation.getArgument(1)).get()); when(mapper.lockOrderStock(any(),any(),any(),any())).thenReturn(1); when(orderMapper.insert(any(DrugOrder.class))).thenAnswer(invocation -> { invocation.getArgument(0,DrugOrder.class).setId(15001L); return 1; }); when(itemMapper.insert(any(com.sphp.patient.order.entity.DrugOrderItem.class))).thenReturn(1); when(paymentMapper.insert(any(com.sphp.patient.order.entity.DrugOrderPayment.class))).thenAnswer(invocation -> { invocation.getArgument(0,com.sphp.patient.order.entity.DrugOrderPayment.class).setId(80001L); return 1; });
         service.createDrugOrder(request);
         verify(deliveryService).deliveryResolveOrderAddress(30001L,null); verify(orderMapper).insert(org.mockito.ArgumentMatchers.<DrugOrder>argThat(order -> "张三 13800138000 河南省郑州市中心路1号".equals(order.getDeliveryAddress())));
+    }
+    /** 验证购药支付成功后写入待发货轨迹并发布首条物流推进事件。 */ @Test void paymentSchedulesInitialLogisticsAdvance(){
+        OrderDataMapper mapper=mock(OrderDataMapper.class); ApplicationEventPublisher eventPublisher=mock(ApplicationEventPublisher.class); RegistrationProperties properties=new RegistrationProperties(); properties.setPaymentTimeout(900);
+        OrderService service=new OrderServiceImpl(mapper,mock(DrugOrderMapper.class),mock(DrugOrderItemMapper.class),mock(DrugOrderPaymentMapper.class),mock(OrderStockLockService.class),properties,eventPublisher,mock(NotificationEventProducer.class),mock(DeliveryService.class));
+        CUserContext.set(new CUserPrincipal(10001L,"patient",OffsetDateTime.now().plusHours(1),"session")); OffsetDateTime expireAt=OffsetDateTime.now().plusMinutes(5);
+        when(mapper.selectDrugOrderPayment(80001L)).thenReturn(new DrugOrderPaymentRecord(80001L,15001L,20001L,10001L,14001L,"PENDING","PENDING_PAYMENT",expireAt,BCrypt.hashpw("P@ssw0rd123",BCrypt.gensalt())));
+        when(mapper.existsOrderActivePatient(20001L)).thenReturn(true); when(mapper.hasOrderActivePatientRelation(10001L,20001L)).thenReturn(true); when(mapper.markDrugOrderPaymentSuccess(eq(80001L),any())).thenReturn(1); when(mapper.markDrugOrderPaid(eq(15001L),any())).thenReturn(1);
+        when(mapper.selectOrderDetail(15001L)).thenReturn(new OrderDetailRecord(15001L,12001L,20001L,14001L,"院内药房","PAID","COURIER","测试地址",null,null,"PENDING_SHIPMENT",7000,expireAt,80001L,"SUCCESS"));
+        when(mapper.selectOrderItems(15001L)).thenReturn(List.of(new OrderItemRecord(50001L,"阿莫西林",2,1200))); when(mapper.consumeOrderLockedStock(eq(14001L),eq(50001L),eq(2),any())).thenReturn(1); when(mapper.insertDrugOrderLogisticsTrace(eq(15001L),eq("支付成功，等待药房发货"),any())).thenReturn(1);
+        RegisteringPaymentSimulateRequest request=new RegisteringPaymentSimulateRequest(); request.setLoginPassword("P@ssw0rd123");
+        service.simulateDrugOrderPayment(80001L,request);
+        verify(eventPublisher).publishEvent(org.mockito.ArgumentMatchers.<Object>argThat(event -> event instanceof DrugOrderLogisticsAdvanceEvent logistics && logistics.expectedLogisticsStatus().name().equals("PENDING_SHIPMENT") && logistics.targetLogisticsStatus().name().equals("IN_TRANSIT")));
     }
     /** 创建购药服务测试对象。 */ private OrderService service(OrderDataMapper mapper){ RegistrationProperties properties=new RegistrationProperties(); properties.setPaymentTimeout(900); return new OrderServiceImpl(mapper,mock(DrugOrderMapper.class),mock(DrugOrderItemMapper.class),mock(DrugOrderPaymentMapper.class),mock(OrderStockLockService.class),properties,mock(ApplicationEventPublisher.class),mock(NotificationEventProducer.class),mock(DeliveryService.class)); }
 }

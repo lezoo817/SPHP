@@ -27,6 +27,7 @@ import com.sphp.patient.order.mapper.OrderPrescriptionItemRecord;
 import com.sphp.patient.order.mapper.OrderPrescriptionRecord;
 import com.sphp.patient.order.mapper.OrderStockRecord;
 import com.sphp.patient.order.mapper.OrderTraceRecord;
+import com.sphp.patient.order.mq.event.DrugOrderLogisticsAdvanceEvent;
 import com.sphp.patient.order.service.OrderService;
 import com.sphp.patient.order.service.DeliveryService;
 import com.sphp.patient.order.support.OrderStockLockService;
@@ -264,6 +265,12 @@ public class OrderServiceImpl implements OrderService {
         }
         // 支付状态条件更新成功后才生成用药计划，重复支付不会重复创建。
         orderDataMapper.createMedicationPlans(payment.drugOrderId(), now);
+        // 支付成功后记录待发货节点，并在事务提交后安排首个物流推进消息。
+        if (orderDataMapper.insertDrugOrderLogisticsTrace(payment.drugOrderId(),
+                DRUG_ORDER_PAYMENT_SUCCESS_TRACE, now) != 1) {
+            throw systemError("购药订单待发货轨迹写入失败");
+        }
+        eventPublisher.publishEvent(DrugOrderLogisticsAdvanceEvent.toInTransit(payment.drugOrderId()));
         // 发送通知
         notificationEventProducer.publishNotification(
                 "DRUG_ORDER_PAYMENT_SUCCESS",  // 事件类型
