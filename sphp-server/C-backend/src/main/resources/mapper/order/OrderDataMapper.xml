@@ -111,6 +111,21 @@
     </select>
     <update id="markDrugOrderPaymentSuccess">UPDATE payment_order SET status='SUCCESS', paid_at=#{now}, updated_at=#{now} WHERE id=#{paymentId} AND status='PENDING'</update>
     <update id="markDrugOrderPaid">UPDATE drug_order SET status='PAID', updated_at=#{now} WHERE id=#{drugOrderId} AND status='PENDING_PAYMENT' AND deleted_at IS NULL</update>
+    <update id="advanceDrugOrderLogistics">
+        UPDATE drug_order
+        SET logistics_status = #{targetLogisticsStatus},
+            shipped_at = CASE WHEN #{targetLogisticsStatus} = 'IN_TRANSIT' THEN #{now} ELSE shipped_at END,
+            delivered_at = CASE WHEN #{targetLogisticsStatus} = 'TO_RECEIVE' THEN #{now} ELSE delivered_at END,
+            updated_at = #{now}
+        WHERE id = #{drugOrderId}
+          AND status = 'PAID'
+          AND logistics_status = #{expectedLogisticsStatus}
+          AND deleted_at IS NULL
+    </update>
+    <insert id="insertDrugOrderLogisticsTrace">
+        INSERT INTO drug_order_logistics_trace (drug_order_id, node, occurred_at)
+        VALUES (#{drugOrderId}, #{node}, #{occurredAt})
+    </insert>
     <insert id="createMedicationPlans">
         INSERT INTO medication_plan (patient_id, prescription_item_id, drug_name_snapshot, frequency, usage_method, dosage, duration_days,
                                      status, reminder_enabled, created_at, updated_at)

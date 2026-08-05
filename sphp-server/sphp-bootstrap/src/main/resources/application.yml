@@ -118,6 +118,10 @@ sphp:
     # C端用药与随访提醒扫描间隔，单位毫秒。
     scan-interval-millis: ${dev.sphp.notification.scan-interval-millis}
 
+  order:
+    logistics:
+      # C端模拟购药物流每次状态推进的延迟，单位秒。
+      advance-interval-seconds: ${dev.sphp.order.logistics.advance-interval-seconds}
 
   delivery:
     # C端模拟配送省市组合距离系数，键按省市编码字典序拼接。
