@@ -16,6 +16,8 @@ export const QUERY_KEYS = {
   schedules: ['schedule', 'list'] as const,
   /** 排班时段配置（30s） */
   scheduleSlots: (id: number) => ['schedule', 'slots', id] as const,
+  /** 医院信息（5min） */
+  hospital: ['admin', 'hospital'] as const,
   /** 科室列表（5min） */
   departments: ['admin', 'departments'] as const,
   /** 医生列表（5min） */
@@ -38,6 +40,7 @@ export const STALE_TIME = {
   patientDetail: 60_000,
   schedules: 30_000,
   scheduleSlots: 30_000,
+  hospital: 5 * 60_000,
   departments: 5 * 60_000,
   doctors: 5 * 60_000,
   prescriptions: 30_000,
