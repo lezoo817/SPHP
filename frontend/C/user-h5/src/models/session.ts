@@ -1,4 +1,5 @@
 import type { LoginData, LoginUser, TokenPair } from '../typings/api';
+import { clearRequestCache } from '../query/request-cache';
 
 const SESSION_KEY = 'sphp_c_session';
 const REMEMBERED_ACCOUNT_KEY = 'sphp_c_remembered_account';
@@ -43,6 +44,8 @@ export function replaceTokenPair(tokens: TokenPair): void {
 
 /** 清除会话级 Token 和登录用户信息。 */
 export function clearSession(): void {
+  // 退出或账号切换时同步清除内存中的医疗和订单查询结果。
+  clearRequestCache();
   if (typeof window !== 'undefined') window.sessionStorage.removeItem(SESSION_KEY);
 }
 
