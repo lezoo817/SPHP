@@ -245,3 +245,10 @@ export interface AgentSession {
 export interface AgentSessionList {
   sessions: AgentSession[];
 }
+
+/** Agent 接口统一返回信封：code=00000 表示成功。 */
+export interface AgentApiEnvelope<T> {
+  code: string;
+  message?: string;
+  data?: T;
+}

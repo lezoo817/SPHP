@@ -8,11 +8,13 @@
  */
 import { AGENT_BASE_URL, AGENT_SCOPE } from '../constants/agent';
 import type {
+  AgentApiEnvelope,
   AgentChatContext,
   AgentChatRequest,
   AgentConfirmData,
   AgentConfirmRequest,
   AgentSession,
+  AgentSessionList,
   AgentSseEvent,
 } from '../typings/agent';
 
@@ -214,8 +216,8 @@ function parseSseFrame(frame: string): AgentSseEvent | null {
 /** 从非流式错误响应中提取用户可读信息。 */
 async function extractErrorMessage(response: Response): Promise<string> {
   try {
-    const payload = await response.json();
-    return (payload as any).message || '对话请求失败，请稍后重试';
+    const payload = (await response.json()) as AgentApiEnvelope<unknown>;
+    return payload.message || '对话请求失败，请稍后重试';
   } catch {
     return response.status === 429 ? '对话请求过于频繁，请稍后重试' : '服务暂时不可用，请稍后重试';
   }
@@ -252,9 +254,9 @@ export async function getSessions(): Promise<AgentSession[]> {
     throw new Error('登录已失效，请重新登录');
   }
 
-  let payload: any;
+  let payload: AgentApiEnvelope<AgentSessionList>;
   try {
-    payload = await response.json();
+    payload = (await response.json()) as AgentApiEnvelope<AgentSessionList>;
   } catch {
     throw new Error('获取会话列表失败，请稍后重试');
   }
@@ -295,9 +297,9 @@ export async function deleteSession(sessionId: string): Promise<void> {
     throw new Error('登录已失效，请重新登录');
   }
 
-  let payload: any;
+  let payload: AgentApiEnvelope<never>;
   try {
-    payload = await response.json();
+    payload = (await response.json()) as AgentApiEnvelope<never>;
   } catch {
     throw new Error('删除会话失败，请稍后重试');
   }
@@ -337,9 +339,9 @@ export async function getSessionMessages(sessionId: string): Promise<AgentHistor
     throw new Error('登录已失效，请重新登录');
   }
 
-  let payload: any;
+  let payload: AgentApiEnvelope<{ messages: AgentHistoryMessage[] }>;
   try {
-    payload = await response.json();
+    payload = (await response.json()) as AgentApiEnvelope<{ messages: AgentHistoryMessage[] }>;
   } catch {
     throw new Error('获取历史消息失败，请稍后重试');
   }
@@ -388,9 +390,9 @@ export async function confirmCard(payload: AgentConfirmRequest): Promise<AgentCo
     throw new Error('登录已失效，请重新登录');
   }
 
-  let payloadJson: any;
+  let payloadJson: AgentApiEnvelope<AgentConfirmData>;
   try {
-    payloadJson = await response.json();
+    payloadJson = (await response.json()) as AgentApiEnvelope<AgentConfirmData>;
   } catch {
     throw new Error('确认请求响应异常，请稍后重试');
   }

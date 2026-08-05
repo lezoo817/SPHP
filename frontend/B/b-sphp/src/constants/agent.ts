@@ -6,7 +6,9 @@
 
 /** Agent 服务基础地址（开发环境默认 8081）。 */
 export const AGENT_BASE_URL =
-  (typeof window !== 'undefined' && (window as any).__AGENT_BASE_URL__) || 'http://localhost:8081';
+  (typeof window !== 'undefined' &&
+    (window as { __AGENT_BASE_URL__?: string }).__AGENT_BASE_URL__) ||
+  'http://localhost:8081';
 
 /** B 端对话固定 scope。 */
 export const AGENT_SCOPE = 'b_end' as const;
