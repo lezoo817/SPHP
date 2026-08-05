@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ClipboardList, Package, PackageCheck, PackageOpen, RefreshCw, Truck } from 'lucide-react';
+import { ChevronRight, ClipboardList, Package, PackageCheck, PackageOpen, RefreshCw, Truck } from 'lucide-react';
 import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
@@ -54,13 +54,22 @@ export default function PharmacyPage() {
     nav(`/pharmacy/orders?patientId=${patientId}&tab=${tab}`);
   }
 
+  /** 跳转到“我的”处方查询页，并将购药页当前就诊人作为初始选择。 */
+  function openMinePrescriptions() {
+    if (!patientId) {
+      setNotice('暂未获取到就诊人信息');
+      return;
+    }
+    nav(`/mine/prescriptions?patientId=${patientId}`);
+  }
+
   return <main className="assistant-page">
     <header className="assistant-title"><h1>购药</h1></header>
     <section className="assistant-content">
       <button className="assistant-patient" type="button" onClick={() => setOpen(true)}>
         就诊人 <b>{current?.name || '未选择'}</b><span>{current?.phone || ''}</span><b>切换 <RefreshCw size={18} /></b>
       </button>
-      <h2>我的处方</h2>
+      <button className="pharmacy-section-link" type="button" onClick={openMinePrescriptions}><span>我的处方</span><ChevronRight size={22} /></button>
       {prescriptions.map((prescription) => {
         const purchasedOrder = findPurchasedDrugOrder(orders, prescription.id);
         return <button className="record-card" key={prescription.id} type="button" onClick={() => patientId && nav(buildPharmacyPrescriptionPath(prescription.id, patientId, prescription.issuedAt, purchasedOrder?.id))}>
