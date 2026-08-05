@@ -48,6 +48,11 @@ class AgentState(TypedDict):
     # 并对 schema 必填 patient_id 的工具做确定性补全。
     patient_id: int | None
 
+    # 用户收货地址 ID（context.address_id，对齐原始需求 §3 药店推荐）
+    # C 端前端选中配送地址后注入；recommend_pharmacies 工具必填，由
+    # _fill_missing_address_id 确定性补全、_build_address_context 注入 LLM 上下文。
+    address_id: int | None
+
     # LLM 决定调用的工具列表，由 tool_caller 节点写入
     tool_calls: list[dict[str, Any]] | None
 

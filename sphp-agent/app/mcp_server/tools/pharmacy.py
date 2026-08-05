@@ -21,6 +21,26 @@ async def query_pharmacy_stock(
     return await call_java_api(tool_name="query_pharmacy_stock", params=params, user_id=user_id)
 
 
+async def recommend_pharmacies(
+    prescription_id: int,
+    address_id: int,
+    patient_id: int | None = None,
+    sort: str | None = None,
+    user_id: int | None = None,
+) -> dict[str, Any]:
+    """推荐可配送院内药房（Java 服务端按价格/距离/配送时效加权排序）。
+
+    对齐原始需求 §3 药店推荐。address_id 为用户收货地址 ID（前端注入
+    state.address_id 或后续查地址列表获取）；返回 Java 加权排序后的药店列表。
+    """
+    params: dict[str, Any] = {"prescription_id": prescription_id, "address_id": address_id}
+    if patient_id is not None:
+        params["patient_id"] = patient_id
+    if sort:
+        params["sort"] = sort
+    return await call_java_api(tool_name="recommend_pharmacies", params=params, user_id=user_id)
+
+
 async def create_drug_order(
     prescription_id: int,
     pharmacy_id: int,

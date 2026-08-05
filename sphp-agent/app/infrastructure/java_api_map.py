@@ -197,6 +197,11 @@ JAVA_API_MAP: dict[str, dict[str, str]] = {
         "path": "/api/c/v1/pharmacies/inventory",
         "scope": "c_end",
     },
+    "recommend_pharmacies": {
+        "method": "GET",
+        "path": "/api/c/v1/pharmacies/recommendations",
+        "scope": "c_end",
+    },
     "create_drug_order": {
         "method": "POST",
         "path": "/api/c/v1/drug-orders",

@@ -113,6 +113,7 @@ _MCP_TOOL_FUNCS: dict[str, tuple[str, str]] = {
     "interpret_prescription": ("prescription", "interpret_prescription"),
     # 购药
     "query_pharmacy_stock": ("pharmacy", "query_pharmacy_stock"),
+    "recommend_pharmacies": ("pharmacy", "recommend_pharmacies"),
     "create_drug_order": ("pharmacy", "create_drug_order"),
     "query_drug_orders": ("pharmacy", "query_drug_orders"),
     "cancel_drug_order": ("pharmacy", "cancel_drug_order"),
