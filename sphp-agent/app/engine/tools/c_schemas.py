@@ -1,4 +1,4 @@
-"""C 端工具 Schema 定义（系分 §5.3，共 30 个）。
+"""C 端工具 Schema 定义（系分 §5.3，共 31 个）。
 
 启动时通过 register_c_tools() 注册到 ToolRegistry。
 所有 API 路径以 /api/c/v1 为前缀，MCP Server 内部拼接。
@@ -212,14 +212,19 @@ def _register_consultation_tools() -> None:
     ToolRegistry.register(
         ToolSchema(
             name="save_pre_consultation",
-            description="提交预问诊摘要（submit=true 提交，false 存草稿）",
+            description="提交预问诊摘要给选定的医生（submit=true 提交，false 存草稿）。"
+            "doctor_id 必须来自 query_doctors 结果，禁止编造。"
+            "过敏史由 Java 端按患者健康档案关联，无需传入。",
             parameters={
                 "properties": {
-                    "appointment_id": {"type": "integer", "description": "挂号记录ID"},
+                    "doctor_id": {
+                        "type": "integer",
+                        "description": "接诊医生ID（来自 query_doctors，禁止编造）",
+                    },
                     "chief_complaint": {"type": "string", "description": "主诉"},
                     "submit": {"type": "boolean", "description": "true=提交，false=存草稿"},
                 },
-                "required": ["appointment_id", "chief_complaint", "submit"],
+                "required": ["doctor_id", "chief_complaint", "submit"],
             },
             scope=ToolScope.C_END,
             security_level=SecurityLevel.L2,
@@ -299,7 +304,7 @@ def _register_prescription_tools() -> None:
 
 
 def _register_pharmacy_query_tools() -> None:
-    """注册购药查询与下单类工具（3 个）：库存查询、创建订单、订单查询。"""
+    """注册购药查询与下单类工具（4 个）：库存查询、药店推荐、创建订单、订单查询。"""
 
     ToolRegistry.register(
         ToolSchema(
@@ -311,6 +316,26 @@ def _register_pharmacy_query_tools() -> None:
                     "patient_id": {"type": "integer", "description": "就诊人ID（选填）"},
                 },
                 "required": ["prescription_id"],
+            },
+            scope=ToolScope.C_END,
+            security_level=SecurityLevel.L1,
+            executor="mcp",
+        )
+    )
+
+    ToolRegistry.register(
+        ToolSchema(
+            name="recommend_pharmacies",
+            description="推荐可配送院内药店（Java 服务端按价格/距离/配送时效加权排序）。"
+            "对齐原始需求 §3 药店推荐，优先于 query_pharmacy_stock 使用。",
+            parameters={
+                "properties": {
+                    "prescription_id": {"type": "integer", "description": "处方ID"},
+                    "address_id": {"type": "integer", "description": "用户收货地址ID"},
+                    "patient_id": {"type": "integer", "description": "就诊人ID（选填）"},
+                    "sort": {"type": "string", "description": "排序方式（选填）"},
+                },
+                "required": ["prescription_id", "address_id"],
             },
             scope=ToolScope.C_END,
             security_level=SecurityLevel.L1,

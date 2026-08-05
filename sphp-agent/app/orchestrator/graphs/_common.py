@@ -53,18 +53,22 @@ def route_continue(state: AgentState) -> str:
     return "end"
 
 
-def _bind_tool_caller(allowed_tools: list[str] | None) -> Any:
-    """构造绑定工具白名单的 tool_caller 节点函数（闭包，兼容 LangGraph 传参）。
+def _bind_tool_caller(
+    allowed_tools: list[str] | None, scene_prompt: str | None = None
+) -> Any:
+    """构造绑定工具白名单与场景提示词的 tool_caller 节点函数（闭包，兼容 LangGraph 传参）。
 
     Args:
         allowed_tools: 子图工具白名单；None 表示不限（绑定 scope 全量 L1/L2）。
+        scene_prompt: 场景专属指令（系分 §5.11），透传给 tool_caller 注入；
+            None 表示不注入（通用场景）。
 
     Returns:
         Callable: 接收 (state, config) 的异步节点函数。
     """
 
     async def _caller(state: AgentState, config: RunnableConfig | None = None) -> dict[str, Any]:
-        """子图入口节点：以绑定白名单调用 tool_caller（闭包兼容 LangGraph 传参）。
+        """子图入口节点：以绑定白名单与场景提示词调用 tool_caller（闭包兼容 LangGraph 传参）。
 
         Args:
             state: 图状态。
@@ -73,23 +77,30 @@ def _bind_tool_caller(allowed_tools: list[str] | None) -> Any:
         Returns:
             dict: tool_caller 的状态更新。
         """
-        return await tool_caller(state, allowed_tools=allowed_tools)
+        return await tool_caller(
+            state, allowed_tools=allowed_tools, scene_prompt=scene_prompt
+        )
 
     return _caller
 
 
-def build_tool_subgraph(tool_names: list[str] | None = None) -> Any:
+def build_tool_subgraph(
+    tool_names: list[str] | None = None, scene_prompt: str | None = None
+) -> Any:
     """构造 tool_caller -> safety -> tool_executor -> (循环/结束) 子图。
 
     Args:
         tool_names: 子图工具白名单（系分 §5.2.1 各业务场景专属工具集），
             各业务子图文件传入各自的工具名列表；None 表示不限定。
+        scene_prompt: 场景专属指令（系分 §5.11 场景指令），注入 tool_caller
+            引导 LLM 按场景流程推进（如问诊场景的预问诊/处方解读流程）；
+            None 表示不注入（通用场景，向后兼容）。
 
     Returns:
         Any: 编译后的 LangGraph CompiledGraph。
     """
     builder = StateGraph(AgentState)
-    builder.add_node("tool_caller", _bind_tool_caller(tool_names))
+    builder.add_node("tool_caller", _bind_tool_caller(tool_names, scene_prompt))
     builder.add_node("safety_check", safety_check)
     builder.add_node("tool_executor", tool_executor)
 
