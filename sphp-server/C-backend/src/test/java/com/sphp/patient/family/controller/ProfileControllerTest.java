@@ -97,9 +97,11 @@ class ProfileControllerTest {
         ProfileUpdateRequest request = new ProfileUpdateRequest();
         request.setName("张三");
         request.setPhone("13800138000");
+        request.setIdCardNo("110105194912311234");
         when(idempotencyService.execute(any(), any(), any(), any(), any(), any()))
                 .thenReturn(new IdempotencyPayload<>("个人资料已更新", ProfileUpdateVO.builder()
-                        .id(20001L).name("张三").phone("138****8000").updatedAt(OffsetDateTime.now()).build()));
+                        .id(20001L).name("张三").phone("138****8000")
+                        .idCardNo("110***********1234").updatedAt(OffsetDateTime.now()).build()));
 
         mockMvc.perform(put("/c/v1/profile")
                         .header("X-Idempotency-Key", "profile-key-001")
@@ -109,7 +111,8 @@ class ProfileControllerTest {
                 .andExpect(jsonPath("$.code").value("00000"))
                 .andExpect(jsonPath("$.message").value("个人资料已更新"))
                 .andExpect(jsonPath("$.data.id").value(20001L))
-                .andExpect(jsonPath("$.data.phone").value("138****8000"));
+                .andExpect(jsonPath("$.data.phone").value("138****8000"))
+                .andExpect(jsonPath("$.data.idCardNo").value("110***********1234"));
     }
 
     /**
@@ -142,6 +145,25 @@ class ProfileControllerTest {
 
         mockMvc.perform(put("/c/v1/profile")
                         .header("X-Idempotency-Key", "profile-key-002")
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("A0400"));
+    }
+
+    /**
+     * 验证更新资料的身份证号格式由 DTO 校验拒绝。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void updateProfileRejectsInvalidIdCardNo() throws Exception {
+        ProfileUpdateRequest request = new ProfileUpdateRequest();
+        request.setName("张三");
+        request.setIdCardNo("11010519491231");
+
+        mockMvc.perform(put("/c/v1/profile")
+                        .header("X-Idempotency-Key", "profile-key-003")
                         .contentType(APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
