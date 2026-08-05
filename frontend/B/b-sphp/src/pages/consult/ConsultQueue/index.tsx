@@ -105,7 +105,7 @@ export default function ConsultQueue() {
   const [endingConsult, setEndingConsult] = useState(false);
 
   // 病历
-  const [doctorNote, setDoctorNote] = useState('');
+  const [, setDoctorNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [noteChanged, setNoteChanged] = useState(false);
 
@@ -130,8 +130,8 @@ export default function ConsultQueue() {
   // 接诊历史
   const [historyItems, setHistoryItems] = useState<API.ConsultHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyTotal, setHistoryTotal] = useState(0);
-  const [historyPage, setHistoryPage] = useState(1);
+  const [, setHistoryTotal] = useState(0);
+  const [, setHistoryPage] = useState(1);
   const [historyDetail, setHistoryDetail] = useState<API.ConsultHistoryDetail | null>(null);
   const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
 
@@ -174,6 +174,30 @@ export default function ConsultQueue() {
   }, [queueTab, queuePage, loadQueue]);
 
   // ==================== 患者详情 ====================
+
+  /** 加载当前问诊的留言（消息板） */
+  const loadMessages = useCallback(async () => {
+    if (!selectedConsultId) return;
+    setMessagesLoading(true);
+    try {
+      const res = await getMessages(selectedConsultId, { page: 1, size: 100 });
+      setMessages(res.list ?? []);
+    } catch {
+      // 静默失败
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, [selectedConsultId]);
+
+  /** 加载当前问诊的处方列表 */
+  const loadConsultPrescriptions = useCallback(async (consultId: number) => {
+    try {
+      const res = await getPrescriptions({ consultId, page: 1, size: 20 });
+      setConsultPrescriptions(res.list ?? []);
+    } catch {
+      // 静默失败
+    }
+  }, []);
 
   const handleSelectItem = async (item: API.QueueItem) => {
     setSelectedConsultId(item.consultId);
@@ -315,29 +339,6 @@ export default function ConsultQueue() {
   };
 
   // ==================== 留言板 ====================
-
-  const loadMessages = useCallback(async () => {
-    if (!selectedConsultId) return;
-    setMessagesLoading(true);
-    try {
-      const res = await getMessages(selectedConsultId, { page: 1, size: 100 });
-      setMessages(res.list ?? []);
-    } catch {
-      // 静默失败
-    } finally {
-      setMessagesLoading(false);
-    }
-  }, [selectedConsultId]);
-
-  /** 加载当前问诊的处方列表 */
-  const loadConsultPrescriptions = useCallback(async (consultId: number) => {
-    try {
-      const res = await getPrescriptions({ consultId, page: 1, size: 20 });
-      setConsultPrescriptions(res.list ?? []);
-    } catch {
-      // 静默失败
-    }
-  }, []);
 
   useEffect(() => {
     if (selectedStatus === 'IN_PROGRESS' && selectedConsultId) {

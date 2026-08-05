@@ -3,7 +3,7 @@
  * - 日期范围筛选（必填）
  * - ProTable 展示每日挂号量/接诊量/处方量/收入
  */
-import { Tag, message, DatePicker, Space } from 'antd';
+import { message, DatePicker } from 'antd';
 import { ProTable } from '@ant-design/pro-components';
 import { useRef, useState } from 'react';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
@@ -58,7 +58,7 @@ export default function DailyReport() {
   ];
 
   return (
-    <ProTable<API.DailyStatItem, {}>
+    <ProTable<API.DailyStatItem>
       actionRef={actionRef}
       rowKey="date"
       columns={columns}

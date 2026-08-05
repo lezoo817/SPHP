@@ -202,9 +202,6 @@ export default function DepartmentList() {
         search={{
           labelWidth: 'auto',
           defaultCollapsed: true,
-          onReset: () => {
-            searchParamsRef.current = {};
-          },
         }}
         beforeSearchSubmit={(values) => {
           // 在 request 之前保存查询参数，供分页时使用

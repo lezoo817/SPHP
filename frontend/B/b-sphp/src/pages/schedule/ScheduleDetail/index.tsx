@@ -25,7 +25,6 @@ import { useModel, useNavigate, useParams, useSearchParams } from '@umijs/max';
 import { useEffect, useState } from 'react';
 import { getScheduleSlots, configureScheduleSlots } from '@/services/admin';
 import dayjs from 'dayjs';
-import type { Dayjs } from 'dayjs';
 
 /** 班次映射 */
 const SHIFT_MAP: Record<string, { text: string; color: string }> = {
@@ -191,7 +190,7 @@ export default function ScheduleDetail() {
       totalCount: values.count,
       remainCount: values.count,
     };
-    if (editingIndex == null) {
+    if (editingIndex === null) {
       setSlots((prev) => [...prev, item]);
     } else {
       setSlots((prev) => prev.map((s, i) => (i === editingIndex ? { ...s, ...item } : s)));
@@ -249,7 +248,7 @@ export default function ScheduleDetail() {
       width: 110,
       align: 'right' as const,
       render: (_: unknown, record: API.SlotConfig) =>
-        record.remainCount != null ? record.remainCount : '-',
+        record.remainCount ?? '-',
     },
     {
       title: '操作',
@@ -388,7 +387,7 @@ export default function ScheduleDetail() {
 
       {/* ====== 添加/编辑时段弹窗 ====== */}
       <Modal
-        title={editingIndex == null ? '添加时段' : '编辑时段'}
+        title={editingIndex === null ? '添加时段' : '编辑时段'}
         open={editOpen}
         onOk={handleSlotSubmit}
         onCancel={() => setEditOpen(false)}

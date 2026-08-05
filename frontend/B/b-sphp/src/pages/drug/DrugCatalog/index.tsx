@@ -3,7 +3,7 @@
  * - ProTable 列表，支持名称模糊搜索、状态筛选
  * - ADMIN 角色可新增/编辑/启用停用
  */
-import { Tag, Button, Modal, message, Switch, Select, Badge } from 'antd';
+import { Button, Modal, message, Switch, Select, Badge } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { ProTable, ProForm, ProFormText, ProFormSelect } from '@ant-design/pro-components';
 import { useModel } from '@umijs/max';
@@ -198,9 +198,6 @@ export default function DrugCatalog() {
         search={{
           labelWidth: 'auto',
           defaultCollapsed: true,
-          onReset: () => {
-            searchParamsRef.current = {};
-          },
         }}
         beforeSearchSubmit={(values) => {
           const used: Record<string, any> = {};

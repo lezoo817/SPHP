@@ -444,7 +444,6 @@ export default function ScheduleList() {
           // span=6 → 一行放 4 个筛选项；defaultFormItemsNumber=4 使全部默认展示（QueryFilter 默认 -1 预留提交按钮，会导致第 4 个被折叠出现「展开」）
           span: 6,
           defaultFormItemsNumber: 4,
-          onReset: () => formRef.current?.resetFields(),
         }}
         toolBarRender={() =>
           isAdmin

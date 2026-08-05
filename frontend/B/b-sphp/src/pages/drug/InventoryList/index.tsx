@@ -176,7 +176,7 @@ export default function InventoryList() {
       width: 200,
       hideInSearch: true,
       render: (_, record) => {
-        const { status, percent, color, label } = calcStatus(
+        const { percent, color, label } = calcStatus(
           record.availableCount,
           record.safetyStock,
         );

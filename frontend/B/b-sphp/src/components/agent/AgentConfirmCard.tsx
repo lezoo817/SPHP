@@ -62,11 +62,6 @@ export function AgentConfirmCardView({
 }) {
   const [expanded, setExpanded] = useState(false);
   const detailRows = renderDetails(card.details);
-  const disabled =
-    card.status === 'done' ||
-    card.status === 'error' ||
-    card.status === 'expired' ||
-    card.status === 'confirming';
   const expired = card.status === 'expired' || (!!card.expiresAt && Date.parse(card.expiresAt) <= Date.now());
 
   return (

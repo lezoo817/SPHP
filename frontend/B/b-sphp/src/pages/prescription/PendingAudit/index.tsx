@@ -51,9 +51,6 @@ export default function PendingAudit() {
   const [rejectReason, setRejectReason] = useState('');
   const [rejecting, setRejecting] = useState(false);
 
-  // 通过确认
-  const [approvingId, setApprovingId] = useState<number | null>(null);
-
   /** 查看详情 */
   const handleViewDetail = async (id: number) => {
     setDetailLoading(true);

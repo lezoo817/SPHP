@@ -1,8 +1,8 @@
 /**
  * AI 助手（Agent）相关类型定义。
  *
- * 与 sphp-agent 的 `app/api/routes/chat.py` SSE 事件格式对齐，覆盖系分 §9
- * 的七类事件：message / thought / action / observation / card / error / done，
+ * 与 sphp-agent 的 `app/api/routes/chat.py` SSE 事件格式对齐，覆盖
+ * 七类事件：message / thought / action / observation / card / error / done，
  * 以及 L2 确认回调的请求与响应结构。
  */
 

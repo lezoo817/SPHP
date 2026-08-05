@@ -2,7 +2,6 @@
  * B 端 AI 辅助面板常量：Agent 服务地址、scope、工具标签、错误码映射、欢迎语与快捷入口。
  *
  * Agent 服务独立部署于 :8081 端口，B 端通过 SSE 流式对话接入。
- * 对应系分：B 端前端系分 V2.0 §9（AI 辅助面板）、Agent 模块系分 V2.1 §6.2。
  */
 
 /** Agent 服务基础地址（开发环境默认 8081）。 */
@@ -33,7 +32,7 @@ export const AGENT_QUICK_PROMPTS: { label: string; content: string }[] = [
 ];
 
 /**
- * B 端工具英文标识符到中文标签的映射（与 Agent 模块系分 §3.2 / §5.3 对齐）。
+ * B 端工具英文标识符到中文标签的映射。
  *
  * Agent 编排层在 SSE action 事件中下发 tool 名，前端按此映射展示中文标签。
  * 包含 C/B 共用工具与 B 端专属工具。

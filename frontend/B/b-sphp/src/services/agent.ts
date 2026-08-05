@@ -31,12 +31,6 @@ export interface ChatStreamHandle {
   abort: () => void;
 }
 
-/** 统一访问令牌头。 */
-function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('b_access_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 /**
  * 确保本地 Access Token 有效。
  * @returns 有效访问令牌；不可用时返回 null

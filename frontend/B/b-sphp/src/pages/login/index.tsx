@@ -1,6 +1,6 @@
 import { Card, Form, Input, Button, Typography, message } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
-import { request, history } from '@umijs/max';
+import { request } from '@umijs/max';
 import { useState } from 'react';
 
 const { Title } = Typography;

@@ -143,6 +143,27 @@ export default function PrescriptionTemplates() {
     return m ? Number(m[1]) : null;
   };
 
+  /** 根据天数/频次/用量与药品规格自动回填最小充足数量：ceil(需求 / 单盒数量) */
+  const autoFillQuantity = (index: number) => {
+    const drugId: number | undefined = createForm.getFieldValue(['items', index, 'drugId']);
+    const days: number | undefined = createForm.getFieldValue(['items', index, 'days']);
+    const frequency: number | undefined = createForm.getFieldValue(['items', index, 'frequency']);
+    const dosage: number | undefined = createForm.getFieldValue(['items', index, 'dosage']);
+    const drug = drugId ? drugInfoMapRef.current[drugId] : undefined;
+    const specCount = drug ? parseSpecCount(drug.specification) : null;
+    if (days && frequency && dosage && specCount && specCount > 0) {
+      const computed = Math.ceil((days * frequency * dosage) / specCount);
+      const current = createForm.getFieldValue(['items', index, 'quantity']);
+      const lastAuto = lastAutoFillRef.current[index];
+      // 数量为空，或仍等于上次自动回填值（用户未手动改）→ 跟随剂量变化更新；
+      // 用户手动改过（≠上次自动值）→ 尊重手填值，不再覆盖（可自由调低）
+      if (!current || current === lastAuto) {
+        createForm.setFieldValue(['items', index, 'quantity'], computed);
+        lastAutoFillRef.current[index] = computed;
+      }
+    }
+  };
+
   /** 药品ID变更：自动查询并缓存药品（带出名称/规格），同时触发该行 ID 存在性校验 */
   const handleDrugIdChange = (index: number, value: number | null) => {
     if (!value) return;
@@ -187,27 +208,6 @@ export default function PrescriptionTemplates() {
     },
   });
 
-  /** 根据天数/频次/用量与药品规格自动回填最小充足数量：ceil(需求 / 单盒数量) */
-  const autoFillQuantity = (index: number) => {
-    const drugId: number | undefined = createForm.getFieldValue(['items', index, 'drugId']);
-    const days: number | undefined = createForm.getFieldValue(['items', index, 'days']);
-    const frequency: number | undefined = createForm.getFieldValue(['items', index, 'frequency']);
-    const dosage: number | undefined = createForm.getFieldValue(['items', index, 'dosage']);
-    const drug = drugId ? drugInfoMapRef.current[drugId] : undefined;
-    const specCount = drug ? parseSpecCount(drug.specification) : null;
-    if (days && frequency && dosage && specCount && specCount > 0) {
-      const computed = Math.ceil((days * frequency * dosage) / specCount);
-      const current = createForm.getFieldValue(['items', index, 'quantity']);
-      const lastAuto = lastAutoFillRef.current[index];
-      // 数量为空，或仍等于上次自动回填值（用户未手动改）→ 跟随剂量变化更新；
-      // 用户手动改过（≠上次自动值）→ 尊重手填值，不再覆盖（可自由调低）
-      if (!current || current === lastAuto) {
-        createForm.setFieldValue(['items', index, 'quantity'], computed);
-        lastAutoFillRef.current[index] = computed;
-      }
-    }
-  };
-
   /** 天数/频次/用量变化：自动回填数量并重校验该行数量（回填后满足需求则清除"数量不足"提示） */
   const handleDoseChange = (index: number) => {
     autoFillQuantity(index);
@@ -221,7 +221,7 @@ export default function PrescriptionTemplates() {
     const item = itemsWatch?.[index];
     const quantity = item?.quantity;
     const drug = item?.drugId ? drugInfoMap[item.drugId] : undefined;
-    if (quantity && drug?.availableStock != null && quantity > drug.availableStock) {
+    if (quantity && drug?.availableStock !== undefined && drug?.availableStock !== null && quantity > drug.availableStock) {
       return { quantity, stock: drug.availableStock };
     }
     return null;

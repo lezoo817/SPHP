@@ -3,7 +3,7 @@
  * - 日期范围筛选 + 可选科室过滤
  * - ProTable 展示各科室挂号量/接诊量/处方量/号源利用率
  */
-import { Tag, message, DatePicker, Space, Select } from 'antd';
+import { Tag, message, DatePicker, Select } from 'antd';
 import { ProTable } from '@ant-design/pro-components';
 import { useEffect, useRef, useState } from 'react';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
@@ -74,7 +74,7 @@ export default function DepartmentStats() {
   ];
 
   return (
-    <ProTable<API.DepartmentStatItem, {}>
+    <ProTable<API.DepartmentStatItem>
       actionRef={actionRef}
       rowKey="deptId"
       columns={columns}

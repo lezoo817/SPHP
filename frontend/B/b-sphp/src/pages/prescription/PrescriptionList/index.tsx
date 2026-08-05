@@ -21,7 +21,7 @@ import {
   SendOutlined,
 } from '@ant-design/icons';
 import { ProTable } from '@ant-design/pro-components';
-import { useModel, useNavigate, useLocation } from '@umijs/max';
+import { useNavigate, useLocation } from '@umijs/max';
 import { useRef, useState, useEffect, useMemo } from 'react';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
@@ -49,9 +49,6 @@ const STATUS_OPTIONS = [
 ];
 
 export default function PrescriptionList() {
-  const { initialState } = useModel('@@initialState');
-  const currentUser = initialState?.currentUser;
-  const isAdmin = currentUser?.roles?.includes('ADMIN') ?? false;
   const navigate = useNavigate();
   const location = useLocation();
   const actionRef = useRef<ActionType>();

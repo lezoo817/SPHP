@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation, useModel, history } from '@umijs/max';
-import { Layout, Menu, Button, Dropdown, Avatar, Space, Typography, Drawer } from 'antd';
+import { Layout, Menu, Dropdown, Avatar, Space, Typography, Drawer } from 'antd';
 import {
   UserOutlined,
   LogoutOutlined,
@@ -8,12 +8,7 @@ import {
   MedicineBoxOutlined,
   FileTextOutlined,
   BarChartOutlined,
-  AuditOutlined,
   HomeOutlined,
-  SettingOutlined,
-  AlertOutlined,
-  ContainerOutlined,
-  ProfileOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
