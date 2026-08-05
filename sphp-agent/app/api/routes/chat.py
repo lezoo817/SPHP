@@ -170,6 +170,9 @@ def _build_initial_state(
         # C 端就诊人切换可选），JWT 鉴权无此字段，故不做中间件回退。
         # 供 tool_caller 注入 LLM 上下文并对必填 patient_id 工具确定性补全。
         "patient_id": (req.context or {}).get("patient_id"),
+        # 对齐原始需求 §3：用户收货地址 ID 只来自请求 context（前端页面选中的配送地址），
+        # 供 recommend_pharmacies 工具确定性补全与 LLM 上下文注入。
+        "address_id": (req.context or {}).get("address_id"),
         "tool_calls": None,
         "tool_results": None,
         "pending_confirmations": None,
@@ -834,7 +837,7 @@ _TOOL_LABELS = {
     # ---- L2 确认类（card 标题，系分 §6.2.2）----
     "create_appointment": "确认挂号",
     "cancel_appointment": "确认取消挂号",
-    "save_pre_consultation": "确认提交预问诊",
+    "save_pre_consultation": "确认提交预问诊给医生",
     "send_consultation_message": "确认发送问诊消息",
     "create_drug_order": "确认创建购药订单",
     "cancel_drug_order": "确认取消购药订单",
@@ -890,7 +893,7 @@ def _build_card(pending: dict[str, Any]) -> dict[str, Any]:
 _CARD_DETAILS_FIELDS: dict[str, tuple[str, ...]] = {
     "confirm_appointment": ("slot_id", "hospital_id", "patient_id"),
     "confirm_cancel_appointment": ("appointment_id",),
-    "confirm_pre_consultation": ("appointment_id", "chief_complaint"),
+    "confirm_pre_consultation": ("doctor_id", "chief_complaint"),
     "confirm_send_message": ("consultation_id", "content"),
     "confirm_drug_order": ("prescription_id", "pharmacy_id", "delivery_address"),
     "confirm_cancel_drug_order": ("drug_order_id",),
@@ -1059,7 +1062,7 @@ def _success_message(tool_name: str) -> str:
     messages = {
         "create_appointment": "挂号成功，请及时完成支付",
         "cancel_appointment": "挂号已取消",
-        "save_pre_consultation": "预问诊已提交",
+        "save_pre_consultation": "预问诊已提交给医生",
         "send_consultation_message": "消息已发送",
         "create_drug_order": "购药订单已创建",
         "cancel_drug_order": "购药订单已取消",

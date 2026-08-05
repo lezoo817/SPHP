@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 INTENT_LABELS = {
     "triage": "分诊导诊：症状描述、科室推荐、医生推荐",
     "registration": "挂号预约：查询科室/医生/号源、创建/取消挂号订单",
-    "consultation": "在线问诊：预问诊、消息发送、处方查询、病历解读",
+    "consultation": "在线问诊：预问诊、选医生、发送病情摘要给医生、处方查询与解读",
     "pharmacy": "购药服务：药品查询、药店查询、创建/取消购药订单",
     "qa": "医疗咨询：疾病知识、用药指导、检查报告解读（需RAG检索）",
     "chitchat": "闲聊：非医疗话题、打招呼、确认回复",
@@ -73,7 +73,7 @@ async def intent_node(state: AgentState) -> dict[str, Any]:
         if any(kw in user_message for kw in ["买药", "购药", "下单", "配送"]):
             logger.info("关键词快速通道: pharmacy")
             return {"intent": "pharmacy"}
-        if any(kw in user_message for kw in ["问诊", "咨询", "医生"]):
+        if any(kw in user_message for kw in ["问诊", "咨询", "医生", "复诊"]):
             logger.info("关键词快速通道: consultation")
             return {"intent": "consultation"}
         if any(kw in user_message for kw in ["头疼", "发烧", "咳嗽", "症状"]):
