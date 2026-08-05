@@ -29,7 +29,7 @@ import { isDuplicateDoctorAppointmentError } from './registration';
 import { buildDoctorBookingStatusPath } from '../services/registration';
 import { buildPrescriptionsPath } from '../services/consultation';
 import { buildAssistantPrescriptionDetailPath, buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, createPrescriptionDisplayNumber, filterPrescriptionsByDate, getPrescriptionDisplayNumber, getRecentPrescriptionRange, mergePrescriptionPages, type PrescriptionDisplayNumberStorage } from './prescription';
-import { buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderPaymentId } from './pharmacy-order';
+import { buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, formatDrugOrderLogisticsTime, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderPaymentId, shouldPollDrugOrderLogistics } from './pharmacy-order';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -201,6 +201,27 @@ describe('购药订单展示规则', () => {
     ], 101);
     expect(purchased?.id).toBe(2);
     expect(buildDrugOrderLogisticsPath(purchased!.id)).toBe('/pharmacy/order/2/logistics');
+  });
+
+  it('物流进度兼容已发货，并按四阶段标记当前步骤', () => {
+    expect(getDrugOrderLogisticsSteps('PENDING_SHIPMENT').map((item) => item.state)).toEqual(['active', 'pending', 'pending', 'pending']);
+    expect(getDrugOrderLogisticsSteps('SHIPPED').map((item) => item.state)).toEqual(['done', 'active', 'pending', 'pending']);
+    expect(getDrugOrderLogisticsSteps('TO_RECEIVE').map((item) => item.state)).toEqual(['done', 'done', 'active', 'pending']);
+    expect(getDrugOrderLogisticsSteps('RECEIVED').map((item) => item.state)).toEqual(['done', 'done', 'done', 'done']);
+  });
+
+  it('预计收货时间使用完整年月日时分，并以首条物流轨迹加一分钟计算', () => {
+    const detail = { id: 1, prescriptionId: 101, orderName: '药品订单', pharmacyName: '药房', status: 'PAID', amountCent: 100, pharmacy: { id: 1, name: '药房' }, items: [], delivery: { address: '演示地址', logisticsStatus: 'PENDING_SHIPMENT', traces: [{ node: '支付成功，等待药房发货', occurredAt: '2026-08-05T10:00:00+08:00' }] } };
+    expect(formatDrugOrderLogisticsTime('2026-08-05T10:00:00+08:00')).toBe('2026/08/05 10:00');
+    expect(getDrugOrderExpectedDeliveryTime(detail, new Date('2026-01-01T00:00:00+08:00'))).toBe('2026/08/05 10:01');
+    expect(getDrugOrderExpectedDeliveryTime({ ...detail, delivery: { ...detail.delivery, traces: [] } }, new Date('2026-08-05T10:00:00+08:00'))).toBe('2026/08/05 10:01');
+  });
+
+  it('仅已支付且未收货订单继续进行物流详情轮询', () => {
+    const detail = { id: 1, prescriptionId: 101, orderName: '药品订单', pharmacyName: '药房', status: 'PAID', amountCent: 100, pharmacy: { id: 1, name: '药房' }, items: [], delivery: { address: '演示地址', logisticsStatus: 'TO_RECEIVE', traces: [] } };
+    expect(shouldPollDrugOrderLogistics(detail)).toBe(true);
+    expect(shouldPollDrugOrderLogistics({ ...detail, delivery: { ...detail.delivery, logisticsStatus: 'RECEIVED' } })).toBe(false);
+    expect(shouldPollDrugOrderLogistics({ ...detail, status: 'PENDING_PAYMENT' })).toBe(false);
   });
 });
 
