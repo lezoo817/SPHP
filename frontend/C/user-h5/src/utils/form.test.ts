@@ -29,6 +29,7 @@ import { isDuplicateDoctorAppointmentError } from './registration';
 import { buildDoctorBookingStatusPath } from '../services/registration';
 import { buildPrescriptionsPath } from '../services/consultation';
 import { buildAssistantPrescriptionDetailPath, buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, createPrescriptionDisplayNumber, filterPrescriptionsByDate, getPrescriptionDisplayNumber, getRecentPrescriptionRange, mergePrescriptionPages, type PrescriptionDisplayNumberStorage } from './prescription';
+import { buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, formatDrugOrderItemPrice, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderPaymentId } from './pharmacy-order';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -165,6 +166,25 @@ describe('购药订单展示规则', () => {
 
   it('订单名称关键词经过编码并传递给列表接口', () => {
     expect(buildDrugOrderListPath({ patientId: 20001, keyword: '阿莫 西林', pageSize: 100 })).toContain('keyword=%E9%98%BF%E8%8E%AB+%E8%A5%BF%E6%9E%97');
+  });
+
+  it('待支付订单只进入购买弹窗，药品明细展示数量和单价', () => {
+    expect(isPendingDrugOrder('PENDING_PAYMENT')).toBe(true);
+    expect(isPendingDrugOrder('PAID')).toBe(false);
+    expect(formatDrugOrderItemPrice(2, 2800)).toBe('2 x 28.00 元');
+  });
+
+  it('支付单优先使用详情返回值，并可回退到创建订单上下文', () => {
+    const detail = { id: 1, orderName: '药品订单', pharmacyName: '药房', status: 'PENDING_PAYMENT', amountCent: 100, pharmacy: { id: 1, name: '药房' }, payment: { id: 99, status: 'PENDING' }, items: [] };
+    expect(resolveDrugOrderPaymentId(detail, 88)).toBe(99);
+    expect(resolveDrugOrderPaymentId({ ...detail, payment: undefined }, 88)).toBe(88);
+  });
+
+  it('支付后无真实物流状态时显示配送中，并按后端状态允许确认收货', () => {
+    const detail = { id: 1, orderName: '药品订单', pharmacyName: '药房', status: 'PAID', amountCent: 100, pharmacy: { id: 1, name: '药房' }, items: [] };
+    expect(getDrugOrderLogisticsText(detail)).toBe('配送中');
+    expect(canConfirmDrugOrderReceipt({ ...detail, delivery: { address: '演示地址', logisticsStatus: 'TO_RECEIVE', traces: [] } })).toBe(true);
+    expect(buildDrugOrderLogisticsPath(1001)).toBe('/pharmacy/order/1001/logistics');
   });
 });
 

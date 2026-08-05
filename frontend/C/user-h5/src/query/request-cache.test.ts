@@ -44,4 +44,11 @@ describe('请求缓存规则', () => {
     expect(queryClient.getQueryState(appointmentsKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(slotsKey)?.isInvalidated).toBe(true);
   });
+
+  it('购药支付成功后失效购药订单缓存，物流页读取最新状态', async () => {
+    const drugOrderKey = buildRequestQueryKey(1, '/c/v1/drug-orders/1');
+    queryClient.setQueryData(drugOrderKey, { id: 1, status: 'PENDING_PAYMENT' });
+    await invalidateByMutationPath('/c/v1/payments/99/simulate-pay', 1);
+    expect(queryClient.getQueryState(drugOrderKey)?.isInvalidated).toBe(true);
+  });
 });
