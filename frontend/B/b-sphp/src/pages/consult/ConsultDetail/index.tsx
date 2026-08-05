@@ -17,6 +17,7 @@ import { Card, Col, Empty, Row, Typography } from 'antd';
 import { AiPanel } from '@/components/agent/AiPanel';
 import { buildAgentContext } from '@/models/agent';
 import { useModel } from '@umijs/max';
+import type { AgentChatContext } from '@/typings/agent';
 
 const { Text, Title } = Typography;
 
@@ -25,7 +26,7 @@ export default function ConsultDetailPage() {
   const consultId = Number(params.id);
   const { initialState } = useModel('@@initialState');
   const currentUser = initialState?.currentUser;
-  const [context, setContext] = useState<Agent.ChatContext>({ page: 'consultation' });
+  const [context, setContext] = useState<AgentChatContext>({ page: 'consultation' });
 
   // 构造 AI 辅助面板上下文（携带 consultation_id / patient_id / hospital_id / doctor_id）
   useEffect(() => {
