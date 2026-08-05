@@ -29,6 +29,24 @@ export function matchesDrugOrderTab(order:DrugOrder,tab:DrugOrderTab):boolean{
 }
 
 /**
+ * 判断订单是否已取消或支付超时，失效订单不可继续查看物流详情。
+ * @param order 后端订单列表项
+ * @returns 订单已失效时返回 true
+ */
+export function isInvalidDrugOrder(order: DrugOrder): boolean {
+  return order.status === 'CANCELLED' || order.status === 'EXPIRED';
+}
+
+/**
+ * 获取订单列表卡片右上角状态，失效状态优先于遗留物流状态。
+ * @param order 后端订单列表项
+ * @returns 面向患者的订单状态文案
+ */
+export function getDrugOrderCardStatusText(order: DrugOrder): string {
+  return isInvalidDrugOrder(order) ? '已失效' : getLogisticsStatusText(order.logisticsStatus);
+}
+
+/**
  * 获取面向患者的物流状态文案。
  * @param logisticsStatus 后端物流状态编码
  * @returns 页面显示文案

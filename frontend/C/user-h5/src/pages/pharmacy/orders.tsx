@@ -4,7 +4,7 @@ import { useNavigate } from 'umi';
 import { getDrugOrders } from '../../services/pharmacy';
 import type { DrugOrder } from '../../typings/api';
 import { formatAmount } from '../../utils/medical';
-import { buildPharmacyHomePath, drugOrderTabs, getLogisticsStatusText, matchesDrugOrderTab, type DrugOrderTab } from '../../utils/pharmacy';
+import { buildPharmacyHomePath, drugOrderTabs, getDrugOrderCardStatusText, isInvalidDrugOrder, matchesDrugOrderTab, type DrugOrderTab } from '../../utils/pharmacy';
 import { getApiErrorMessage } from '../../utils/form';
 
 /** 将地址栏的 Tab 参数转换为受控物流分类。 */
@@ -70,10 +70,13 @@ export default function PharmacyOrdersPage() {
       </form>
       <nav className="order-tabs" aria-label="订单物流状态">{drugOrderTabs.map((item) => <button className={tab === item.key ? 'active' : ''} key={item.key} type="button" onClick={() => setTab(item.key)}>{item.label}</button>)}</nav>
       {loading && <p className="empty-state">订单加载中...</p>}
-      {!loading && visibleOrders.map((order) => <button className="order-list-card" key={order.id} type="button" onClick={() => nav(`/pharmacy/order/${order.id}`)}>
-        <div><b>{order.orderName || '药品订单'}</b><span>{order.pharmacyName}</span><small>就诊人：{order.patientName || '待确认'}</small></div>
-        <aside><em>{getLogisticsStatusText(order.logisticsStatus)}</em><strong>{formatAmount(order.amountCent)}</strong></aside>
-      </button>)}
+      {!loading && visibleOrders.map((order) => {
+        const invalidOrder = isInvalidDrugOrder(order);
+        return <button className={invalidOrder ? 'order-list-card is-invalid' : 'order-list-card'} disabled={invalidOrder} key={order.id} type="button" onClick={() => nav(`/pharmacy/order/${order.id}`)}>
+          <div><b>{order.orderName || '药品订单'}</b><span>{order.pharmacyName}</span><small>就诊人：{order.patientName || '待确认'}</small></div>
+          <aside><em>{getDrugOrderCardStatusText(order)}</em><strong>{formatAmount(order.amountCent)}</strong></aside>
+        </button>;
+      })}
       {!loading && !visibleOrders.length && <p className="empty-state">暂无符合条件的订单</p>}
     </section>
     {notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}

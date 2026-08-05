@@ -10,7 +10,7 @@ import {
 import { filterHospitals, formatAmount, getAppointmentStatusText, sortHospitals } from './medical';
 import { resolveSelfPatientId } from '../models/selection';
 import { buildDrugOrderListPath } from '../services/pharmacy';
-import { buildPharmacyHomePath, buildPharmacyInventoryPath, buildPharmacyPrescriptionPath, matchesDrugOrderTab, resolvePharmacyPatientId } from './pharmacy';
+import { buildPharmacyHomePath, buildPharmacyInventoryPath, buildPharmacyPrescriptionPath, getDrugOrderCardStatusText, isInvalidDrugOrder, matchesDrugOrderTab, resolvePharmacyPatientId } from './pharmacy';
 import { hasSearchKeyword, matchesDepartmentKeyword, resolveInitialDepartment } from './home-search';
 import { buildProfileUpdatePayload, normalizeProfileIdCardNo, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
 import { resolveMinePatientId } from '../models/mine-patient';
@@ -174,6 +174,8 @@ describe('购药订单展示规则', () => {
     const expiredOrder = { id: 3, prescriptionId: 13, orderName: '布洛芬', pharmacyName: '健康药房', status: 'EXPIRED', logisticsStatus: 'PENDING_SHIPMENT', amountCent: 100 };
     expect(matchesDrugOrderTab(expiredOrder, 'INVALID')).toBe(true);
     expect(matchesDrugOrderTab(expiredOrder, 'TRANSIT')).toBe(false);
+    expect(isInvalidDrugOrder(expiredOrder)).toBe(true);
+    expect(getDrugOrderCardStatusText(expiredOrder)).toBe('已失效');
   });
 
   it('订单名称关键词经过编码并传递给列表接口', () => {
