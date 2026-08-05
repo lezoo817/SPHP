@@ -1,5 +1,5 @@
 /**
- * useAgentStream —— B 端 AI 辅助面板流式对话核心 Hook。
+ * useAgentStream —— AI 助手流式对话核心 Hook。
  *
  * 职责：
  * 1. 维护会话条目列表（消息、思考、工具卡片、确认卡片），按到达顺序排列。
@@ -9,26 +9,30 @@
  *    - action 创建 loading 工具卡片，observation 按 tool 配对更新；
  *    - card 创建待确认卡片，确认后更新为 done / error；
  *    - error 展示错误并保留输入，done 结束本轮并保存 session_id。
- * 3. 暴露 send / confirm / cancel / reset / loadSession，供页面调用。
+ * 3. 暴露 send / confirm / cancel / reset，供页面调用。
  *
  * 与 sphp-agent `app/api/routes/chat.py` 的 SSE 事件契约对齐。
- * B 端会话策略：一次问诊一个会话（切换患者时清除）。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  chatStream,
-  confirmCard,
-  deleteSession,
-  getSessions,
-  getSessionMessages,
-  type ChatStreamHandle,
-} from '../services/agent';
+import { chatStream, confirmCard, getSessions, deleteSession, getSessionMessages, type ChatStreamHandle } from '../services/agent';
 import { AGENT_TOOL_LABELS, AGENT_ERROR_TEXT } from '../constants/agent';
 import {
   clearAgentSessionId,
   getAgentSessionId,
   saveAgentSessionId,
 } from '../models/agent';
+import type {
+  AgentCardEvent,
+  AgentChatContext,
+  AgentConfirmCard,
+  AgentConnectionState,
+  AgentEntry,
+  AgentMessage,
+  AgentSession,
+  AgentSseEvent,
+  AgentThought,
+  AgentToolCard,
+} from '../typings/agent';
 
 /** 生成稳定的前端 ID。 */
 function genId(prefix: string): string {
@@ -43,45 +47,45 @@ function labelOf(tool: string): string {
 /** Hook 返回值。 */
 export interface UseAgentStream {
   /** 会话条目（消息、思考、工具卡片、确认卡片），按顺序渲染 */
-  entries: Agent.Entry[];
+  entries: AgentEntry[];
   /** 连接状态 */
-  connection: Agent.ConnectionState;
-  /** 最近一次错误提示（用于面板顶部提示） */
+  connection: AgentConnectionState;
+  /** 最近一次错误提示（用于页面顶部提示） */
   errorMessage: string;
   /** 当前会话 ID */
   sessionId: string | undefined;
   /** 是否正在流式接收 */
   isStreaming: boolean;
+  /** 历史会话列表 */
+  sessions: AgentSession[];
+  /** 历史会话加载状态 */
+  sessionsLoading: boolean;
   /** 发送一条用户消息并开启流式对话 */
-  send: (content: string, context?: Agent.ChatContext) => void;
+  send: (content: string, context?: AgentChatContext) => void;
   /** 确认一张 L2 卡片 */
-  confirm: (card: Agent.ConfirmCard) => Promise<void>;
+  confirm: (card: AgentConfirmCard) => Promise<void>;
   /** 中断当前流式请求 */
   cancel: () => void;
   /** 清空会话并重置状态 */
   reset: () => void;
   /** 加载指定历史会话 */
   loadSession: (sessionId: string) => Promise<void>;
-  /** 历史会话列表 */
-  sessions: Agent.Session[];
-  /** 历史会话加载状态 */
-  sessionsLoading: boolean;
   /** 刷新历史会话列表 */
   refreshSessions: () => Promise<void>;
-  /** 删除历史会话 */
+  /** 删除指定历史会话 */
   removeSession: (sessionId: string) => Promise<void>;
 }
 
 /**
- * 管理 B 端 AI 辅助面板流式对话状态。
+ * 管理 AI 助手流式对话状态。
  * @returns 会话状态与操作方法
  */
 export function useAgentStream(): UseAgentStream {
-  const [entries, setEntries] = useState<Agent.Entry[]>([]);
-  const [connection, setConnection] = useState<Agent.ConnectionState>('idle');
+  const [entries, setEntries] = useState<AgentEntry[]>([]);
+  const [connection, setConnection] = useState<AgentConnectionState>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [sessionId, setSessionId] = useState<string | undefined>(getAgentSessionId());
-  const [sessions, setSessions] = useState<Agent.Session[]>([]);
+  const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
 
   const handleRef = useRef<ChatStreamHandle | null>(null);
@@ -110,8 +114,55 @@ export function useAgentStream(): UseAgentStream {
     currentThoughtIdRef.current = null;
   }, [cancel]);
 
+  /** 确认一张 L2 卡片：调用确认回调并按结果更新卡片状态。 */
+  const confirm = useCallback(
+    async (card: AgentConfirmCard) => {
+      // 令牌过期校验：到期后禁用卡片，不再调用确认接口
+      if (card.expiresAt && Date.parse(card.expiresAt) <= Date.now()) {
+        updateConfirmCard(card.id, {
+          status: 'expired',
+          errorCode: 'CONFIRM_EXPIRED',
+          errorMessage: '确认已超时，请重新发起操作',
+        });
+        return;
+      }
+      updateConfirmCard(card.id, { status: 'confirming' });
+      try {
+        const result = await confirmCard({
+          confirm_token: card.confirmToken,
+          session_id: card.sessionId,
+        });
+        updateConfirmCard(card.id, {
+          status: 'done',
+          resultMessage: result.message || '操作成功',
+        });
+      } catch (error) {
+        const code = (error as Error & { code?: string }).code;
+        // 鉴权失败：清理登录态由服务层完成，这里仅更新卡片
+        const text =
+          (code && AGENT_ERROR_TEXT[code]) ||
+          (code === 'CONFIRM_EXPIRED' && '确认已超时，请重新发起操作') ||
+          (code === 'CONFIRM_CONSUMED' && '已处理，无需重复确认') ||
+          (code === 'CONFIRM_INVALID' && '确认参数无效，请重新发起操作') ||
+          (code === 'SESSION_MISMATCH' && '会话不匹配，请重新发起操作') ||
+          (code === 'TOOL_FAILED' && '操作执行失败，请稍后重试') ||
+          (error as Error).message ||
+          '确认失败，请稍后重试';
+        updateConfirmCard(card.id, {
+          status: 'error',
+          errorCode: code,
+          errorMessage: text,
+        });
+      }
+    },
+    [], // updateConfirmCard 通过 setEntries 闭包稳定引用
+  );
+
   /** 更新指定确认卡片的部分字段。 */
-  function updateConfirmCard(cardId: string, patch: Partial<Agent.ConfirmCard>): void {
+  function updateConfirmCard(
+    cardId: string,
+    patch: Partial<AgentConfirmCard>,
+  ): void {
     setEntries((prev) =>
       prev.map((entry) =>
         entry.kind === 'card' && entry.data.id === cardId
@@ -121,49 +172,9 @@ export function useAgentStream(): UseAgentStream {
     );
   }
 
-  /** 确认一张 L2 卡片：调用确认回调并按结果更新卡片状态。 */
-  const confirm = useCallback(async (card: Agent.ConfirmCard) => {
-    // 令牌过期校验：到期后禁用卡片，不再调用确认接口
-    if (card.expiresAt && Date.parse(card.expiresAt) <= Date.now()) {
-      updateConfirmCard(card.id, {
-        status: 'expired',
-        errorCode: 'CONFIRM_EXPIRED',
-        errorMessage: '确认已超时，请重新发起操作',
-      });
-      return;
-    }
-    updateConfirmCard(card.id, { status: 'confirming' });
-    try {
-      const result = await confirmCard({
-        confirm_token: card.confirmToken,
-        session_id: card.sessionId,
-      });
-      updateConfirmCard(card.id, {
-        status: 'done',
-        resultMessage: result.message || '操作成功',
-      });
-    } catch (error) {
-      const code = (error as Error & { code?: string }).code;
-      const text =
-        (code && AGENT_ERROR_TEXT[code]) ||
-        (code === 'CONFIRM_EXPIRED' && '确认已超时，请重新发起操作') ||
-        (code === 'CONFIRM_CONSUMED' && '已处理，无需重复确认') ||
-        (code === 'CONFIRM_INVALID' && '确认参数无效，请重新发起操作') ||
-        (code === 'SESSION_MISMATCH' && '会话不匹配，请重新发起操作') ||
-        (code === 'TOOL_FAILED' && '操作执行失败，请稍后重试') ||
-        (error as Error).message ||
-        '确认失败，请稍后重试';
-      updateConfirmCard(card.id, {
-        status: 'error',
-        errorCode: code,
-        errorMessage: text,
-      });
-    }
-  }, []);
-
   /** 发送一条用户消息并开启流式对话。 */
   const send = useCallback(
-    (content: string, context?: Agent.ChatContext) => {
+    (content: string, context?: AgentChatContext) => {
       const text = content.trim();
       if (!text) return;
       // 连接中禁止重复发送
@@ -175,7 +186,7 @@ export function useAgentStream(): UseAgentStream {
       currentThoughtIdRef.current = null;
 
       // 追加用户消息
-      const userMessage: Agent.Message = {
+      const userMessage: AgentMessage = {
         id: genId('u'),
         role: 'user',
         content: text,
@@ -188,7 +199,7 @@ export function useAgentStream(): UseAgentStream {
 
       handleRef.current = chatStream(
         text,
-        (event) => handleSseEvent(event),
+        (event) => handleSseEvent(event, currentSessionId),
         (message, code) => {
           setConnection('error');
           setErrorMessage(AGENT_ERROR_TEXT[code || ''] || message || '对话异常，请重试');
@@ -205,7 +216,7 @@ export function useAgentStream(): UseAgentStream {
   );
 
   /** 处理单条 SSE 事件，更新对应条目。 */
-  function handleSseEvent(event: Agent.SseEvent): void {
+  function handleSseEvent(event: AgentSseEvent, currentSessionId?: string): void {
     switch (event.event) {
       case 'message':
         setConnection('streaming');
@@ -248,17 +259,19 @@ export function useAgentStream(): UseAgentStream {
         }
         break;
     }
+    void currentSessionId;
   }
 
   /** 追加 message.delta 到当前 AI 消息，无则新建。 */
   function appendMessageDelta(delta: string): void {
     if (!delta) return;
     setEntries((prev) => {
+      // 复用当前轮 AI 消息 ID
       let messageId = currentMessageIdRef.current;
       if (!messageId) {
         messageId = genId('a');
         currentMessageIdRef.current = messageId;
-        const aiMessage: Agent.Message = {
+        const aiMessage: AgentMessage = {
           id: messageId,
           role: 'assistant',
           content: delta,
@@ -283,7 +296,7 @@ export function useAgentStream(): UseAgentStream {
       if (!thoughtId) {
         thoughtId = genId('t');
         currentThoughtIdRef.current = thoughtId;
-        const thought: Agent.Thought = {
+        const thought: AgentThought = {
           id: thoughtId,
           content: delta,
           streaming: true,
@@ -301,7 +314,7 @@ export function useAgentStream(): UseAgentStream {
 
   /** 创建一张 loading 工具卡片。 */
   function appendToolCard(action: { tool: string; arguments?: Record<string, unknown> }): void {
-    const toolCard: Agent.ToolCard = {
+    const toolCard: AgentToolCard = {
       id: genId('tool'),
       tool: action.tool,
       label: labelOf(action.tool),
@@ -322,6 +335,7 @@ export function useAgentStream(): UseAgentStream {
     error?: string;
   }): void {
     setEntries((prev) => {
+      // 从后往前找最近一张同 tool 且仍 loading 的卡片
       let matchedIndex = -1;
       for (let i = prev.length - 1; i >= 0; i -= 1) {
         const entry = prev[i];
@@ -332,7 +346,7 @@ export function useAgentStream(): UseAgentStream {
       }
       if (matchedIndex === -1) {
         // 未匹配到 action：直接创建一张已完成卡片，避免结果丢失
-        const fallback: Agent.ToolCard = {
+        const fallback: AgentToolCard = {
           id: genId('tool'),
           tool: observation.tool,
           label: labelOf(observation.tool),
@@ -345,8 +359,8 @@ export function useAgentStream(): UseAgentStream {
         };
         return [...prev, { kind: 'tool', data: fallback }];
       }
-      const matched = prev[matchedIndex] as { kind: 'tool'; data: Agent.ToolCard };
-      const updated: Agent.ToolCard = {
+      const matched = prev[matchedIndex] as { kind: 'tool'; data: AgentToolCard };
+      const updated: AgentToolCard = {
         ...matched.data,
         status: observation.status,
         summary: observation.summary,
@@ -361,8 +375,8 @@ export function useAgentStream(): UseAgentStream {
   }
 
   /** 追加一张待确认卡片。 */
-  function appendConfirmCard(card: Agent.CardEvent): void {
-    const confirmCardEntry: Agent.ConfirmCard = {
+  function appendConfirmCard(card: AgentCardEvent): void {
+    const confirmCardEntry: AgentConfirmCard = {
       id: genId('card'),
       cardType: card.card_type,
       confirmToken: card.confirm_token,
@@ -399,6 +413,31 @@ export function useAgentStream(): UseAgentStream {
   // 组件卸载时中断未完成的流式请求，避免内存泄漏
   useEffect(() => () => cancel(), [cancel]);
 
+  /** 刷新历史会话列表。 */
+  const refreshSessions = useCallback(async () => {
+    setSessionsLoading(true);
+    try {
+      const list = await getSessions();
+      setSessions(list);
+    } catch (err) {
+      // 静默处理，仅记录
+      console.warn('获取会话列表失败：', (err as Error).message);
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, []);
+
+  /** 删除指定历史会话。 */
+  const removeSession = useCallback(async (targetSessionId: string) => {
+    try {
+      await deleteSession(targetSessionId);
+      setSessions((prev) => prev.filter((s) => s.session_id !== targetSessionId));
+    } catch (err) {
+      // 静默处理，仅记录
+      console.warn('删除会话失败：', (err as Error).message);
+    }
+  }, []);
+
   /** 加载指定历史会话：获取历史消息并显示。 */
   const loadSession = useCallback(
     async (targetSessionId: string) => {
@@ -410,12 +449,16 @@ export function useAgentStream(): UseAgentStream {
       currentMessageIdRef.current = null;
       currentThoughtIdRef.current = null;
 
+      // 设置目标 session_id
       saveAgentSessionId(targetSessionId);
       setSessionId(targetSessionId);
 
       try {
+        // 获取历史消息
         const messages = await getSessionMessages(targetSessionId);
-        const historyEntries: Agent.Entry[] = messages.map((msg) => ({
+
+        // 将历史消息转换为 AgentEntry 格式
+        const historyEntries: AgentEntry[] = messages.map((msg) => ({
           kind: 'message' as const,
           data: {
             id: genId(msg.role === 'user' ? 'u' : 'a'),
@@ -424,6 +467,7 @@ export function useAgentStream(): UseAgentStream {
             createdAt: Date.now(),
           },
         }));
+
         setEntries(historyEntries);
         setConnection('idle');
       } catch (err) {
@@ -434,40 +478,19 @@ export function useAgentStream(): UseAgentStream {
     [cancel],
   );
 
-  /** 刷新历史会话列表。 */
-  const refreshSessions = useCallback(async () => {
-    setSessionsLoading(true);
-    try {
-      const list = await getSessions();
-      setSessions(list);
-    } catch (err) {
-      // 静默失败，仅记录日志，不打断对话
-      // eslint-disable-next-line no-console
-      console.warn('刷新历史会话失败：', (err as Error).message);
-    } finally {
-      setSessionsLoading(false);
-    }
-  }, []);
-
-  /** 删除历史会话。 */
-  const removeSession = useCallback(async (targetSessionId: string) => {
-    await deleteSession(targetSessionId);
-    setSessions((prev) => prev.filter((s) => s.session_id !== targetSessionId));
-  }, []);
-
   return {
     entries,
     connection,
     errorMessage,
     sessionId,
     isStreaming: connection === 'connecting' || connection === 'streaming',
+    sessions,
+    sessionsLoading,
     send,
     confirm,
     cancel,
     reset,
     loadSession,
-    sessions,
-    sessionsLoading,
     refreshSessions,
     removeSession,
   };
