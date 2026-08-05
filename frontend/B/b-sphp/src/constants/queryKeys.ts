@@ -7,11 +7,21 @@
  * 写操作成功后调用 queryClient.invalidateQueries({ queryKey }) 刷新对应列表。
  */
 export const QUERY_KEYS = {
-  /** 待接诊队列（15s） */
-  queue: ['consult', 'queue'] as const,
+  /** 待接诊队列（15s，按状态 Tab 区分） */
+  consultQueue: (status: string) => ['consult', 'queue', status] as const,
   /** 患者详情（60s） */
   patientDetail: (consultId: number) =>
     ['consult', 'patient-detail', consultId] as const,
+  /** 接诊历史列表（30s） */
+  consultHistory: ['consult', 'history'] as const,
+  /** 接诊历史详情（30s） */
+  consultHistoryDetail: (consultId: number) =>
+    ['consult', 'history-detail', consultId] as const,
+  /** 问诊消息（60s） */
+  consultMessages: (consultId: number) => ['consult', 'messages', consultId] as const,
+  /** 当前问诊的处方列表（30s） */
+  consultPrescriptions: (consultId: number) =>
+    ['consult', 'prescriptions', consultId] as const,
   /** 排班列表（30s） */
   schedules: ['schedule', 'list'] as const,
   /** 排班时段配置（30s） */
@@ -46,8 +56,11 @@ export const QUERY_KEYS = {
 
 /** 各查询的 staleTime（毫秒）。 */
 export const STALE_TIME = {
-  queue: 15_000,
   patientDetail: 60_000,
+  consultHistory: 30_000,
+  consultHistoryDetail: 30_000,
+  consultMessages: 60_000,
+  consultPrescriptions: 30_000,
   schedules: 30_000,
   scheduleSlots: 30_000,
   hospital: 5 * 60_000,
