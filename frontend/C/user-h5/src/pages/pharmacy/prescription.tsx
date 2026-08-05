@@ -10,7 +10,7 @@ import { buildPharmacyInventoryPath, resolvePharmacyPatientId } from '../../util
 import { buildDrugOrderLogisticsPath } from '../../utils/pharmacy-order';
 import { getPrescriptionDisplayNumber } from '../../utils/prescription';
 
-/** 展示购药场景的已批准处方，并引导用户进入药房库存选择。 */
+/** 展示购药场景的已批准处方，并按购买状态进入药房库存或物流详情。 */
 export default function PharmacyPrescriptionPage() {
   const { prescriptionId: prescriptionIdText } = useParams();
   const location = useLocation();
@@ -42,7 +42,7 @@ export default function PharmacyPrescriptionPage() {
 
   useEffect(() => { void loadPrescription(); }, [prescriptionId]);
 
-  /** 进入库存页时显式透传购药页本地就诊人，避免使用其他页面的选择状态。 */
+  /** 未购买时进入库存页；已购买时直接查看关联订单物流。 */
   function purchaseNow() {
     if (purchasedOrderId) {
       // 已购买处方直接进入其订单物流，避免再次创建同一处方订单。
