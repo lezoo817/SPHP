@@ -19,5 +19,13 @@
 - SSE 格式：`event: <name>\ndata: <json>\n\n`，七类事件 message/thought/action/observation/card/error/done
 - 后端 observation 用 `success` 布尔，前端在 service 层归一化为 `status: 'success'|'error'`
 - 后端 card 当前不下发 details，前端按可选处理
-- 悬浮球在 Layout 全局挂载，跳转 `/agent` 全屏页
+- 悬浮球在 Layout 全局挂载，可拖动、贴边吸附、位置持久化到 localStorage
 - 联调需在 sphp-agent 配置 CORS 允许 `localhost:8001`
+
+## Agent 对话上下文（2026-08-05 补全 address_id）
+- `AgentChatContext` 字段：page / hospital_id / patient_id / appointment_id / consultation_id / **address_id**
+- `buildAgentContext(pathname)` 同步构造基础字段（路由/选择）
+- `resolveAgentContext(pathname)` 异步版：在 `buildAgentContext` 基础上补 `address_id`
+- `loadDefaultAddressId()` 调 `getDeliveryAddresses()`，优先 `isDefault`，无默认取首条
+- 错误降级：地址接口失败仅缺 `address_id`，其他字段不受影响
+- AgentPage 用 `useState + useEffect` 异步加载 context，cancelled 标志防卸载后写状态

@@ -1,14 +1,25 @@
+import { useEffect, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useLocation, useNavigate } from 'umi';
 import { AgentChat } from '../../components/agent/AgentChat';
-import { buildAgentContext } from '../../models/agent';
+import { resolveAgentContext } from '../../models/agent';
+import type { AgentChatContext } from '../../typings/agent';
 
 /** AI 助手全屏会话页。 */
 export default function AgentPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  // 基于来源页路径构造上下文（医院、就诊人、当前页面）
-  const context = buildAgentContext((location.state as { from?: string } | null)?.from || location.pathname);
+  const fromPath = (location.state as { from?: string } | null)?.from || location.pathname;
+  // 异步加载完整对话上下文（默认收货地址 + 基础字段）
+  const [context, setContext] = useState<AgentChatContext | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    resolveAgentContext(fromPath).then((next) => {
+      if (!cancelled) setContext(next);
+    });
+    return () => { cancelled = true; };
+  }, [fromPath]);
 
   return (
     <main className="agent-page">
