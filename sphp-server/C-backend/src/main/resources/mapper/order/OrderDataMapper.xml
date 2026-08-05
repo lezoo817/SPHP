@@ -112,9 +112,10 @@
     <update id="markDrugOrderPaymentSuccess">UPDATE payment_order SET status='SUCCESS', paid_at=#{now}, updated_at=#{now} WHERE id=#{paymentId} AND status='PENDING'</update>
     <update id="markDrugOrderPaid">UPDATE drug_order SET status='PAID', updated_at=#{now} WHERE id=#{drugOrderId} AND status='PENDING_PAYMENT' AND deleted_at IS NULL</update>
     <insert id="createMedicationPlans">
-        INSERT INTO medication_plan (patient_id, prescription_item_id, drug_name_snapshot, frequency, usage_method, dosage, duration_days, status, created_at, updated_at)
+        INSERT INTO medication_plan (patient_id, prescription_item_id, drug_name_snapshot, frequency, usage_method, dosage, duration_days,
+                                     status, reminder_enabled, created_at, updated_at)
         SELECT o.patient_id, pi.id, LEFT(doi.drug_name_snapshot, 128), COALESCE(pi.frequency, '按医嘱'), pi.usage_method,
-               pi.dosage, pi.days, 'ACTIVE', #{now}, #{now}
+               pi.dosage, pi.days, 'ACTIVE', false, #{now}, #{now}
         FROM drug_order o INNER JOIN drug_order_item doi ON doi.drug_order_id=o.id
         INNER JOIN prescription_item pi ON pi.prescription_id=o.prescription_id AND pi.drug_id=doi.drug_id
         WHERE o.id=#{drugOrderId}

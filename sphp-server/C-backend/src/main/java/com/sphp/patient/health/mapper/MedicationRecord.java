@@ -9,6 +9,8 @@ import java.time.OffsetDateTime;
  * @param dosage 用药剂量
  * @param frequency 用药频次
  * @param nextReminderAt 下次提醒时间
+ * @param reminderEnabled 是否已开启提醒
+ * @param reminderTimesJson 每日提醒时刻 JSON 数组
  * @param status 用药计划状态
  */
 public record MedicationRecord(
@@ -18,5 +20,7 @@ public record MedicationRecord(
         String dosage,
         String frequency,
         OffsetDateTime nextReminderAt,
+        boolean reminderEnabled,
+        String reminderTimesJson,
         String status
 ){}

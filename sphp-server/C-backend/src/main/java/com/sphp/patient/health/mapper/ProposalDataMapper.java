@@ -102,6 +102,8 @@ public interface ProposalDataMapper {
      * @param status 更新后的状态
      * @param expectedStatus 读取时的原状态
      * @param nextRemindAt 更新后的下次提醒时间
+     * @param reminderEnabled 更新后的提醒开关
+     * @param reminderTimesJson 更新后的每日提醒时刻 JSON 数组
      * @param endAt 更新后的结束时间
      * @param now 当前更新时间
      * @return 受影响行数
@@ -111,6 +113,8 @@ public interface ProposalDataMapper {
                                  @Param("status") String status,
                                  @Param("expectedStatus") String expectedStatus,
                                  @Param("nextRemindAt") OffsetDateTime nextRemindAt,
+                                 @Param("reminderEnabled") boolean reminderEnabled,
+                                 @Param("reminderTimesJson") String reminderTimesJson,
                                  @Param("endAt") OffsetDateTime endAt,
                                  @Param("now") OffsetDateTime now);
 
