@@ -6,10 +6,11 @@ import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
 import com.sphp.patient.consultation.dto.PreConsultationSaveRequest;
 import com.sphp.patient.consultation.entity.ConsultationRecord;
-import com.sphp.patient.consultation.mapper.ConsultationAppointmentRecord;
+import com.sphp.patient.consultation.mapper.ConsultationAllergySnapshotRecord;
 import com.sphp.patient.consultation.mapper.ConsultationDataMapper;
 import com.sphp.patient.consultation.mapper.ConsultationListRecord;
 import com.sphp.patient.consultation.mapper.ConsultationDetailRecord;
+import com.sphp.patient.consultation.mapper.ConsultationMedicalHistorySnapshotRecord;
 import com.sphp.patient.consultation.mapper.ConsultationMessageRecord;
 import com.sphp.patient.consultation.mapper.ConsultationMessageMapper;
 import com.sphp.patient.consultation.mapper.ConsultationPrescriptionRecord;
@@ -33,9 +34,11 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,20 +56,23 @@ class ConsultationServiceImplTest {
     }
 
     /**
-     * 验证已支付预约能够创建草稿，且草稿没有提交时间。
+     * 验证当前用户无需挂号即可提交本人预问诊，并保存健康档案快照。
      */
     @Test
-    void savePreConsultationCreatesDraftForPaidAppointment() {
+    void savePreConsultationCreatesPendingRecordForSelfPatient() {
         ConsultationDataMapper dataMapper = mock(ConsultationDataMapper.class);
         ConsultationServiceImpl service = newService(dataMapper);
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
-        PreConsultationSaveRequest request = request(false);
+        PreConsultationSaveRequest request = request();
+        when(dataMapper.lockConsultationUser(10001L)).thenReturn(10001L);
         when(dataMapper.selectConsultationSelfPatientId(10001L)).thenReturn(20001L);
         when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
-        when(dataMapper.hasConsultationActivePatientRelation(10001L, 20001L)).thenReturn(true);
-        when(dataMapper.lockConsultationAppointment(7001L))
-                .thenReturn(new ConsultationAppointmentRecord(7001L, 20001L, 30001L, "PAID"));
-        when(dataMapper.selectConsultationByAppointmentForUpdate(7001L)).thenReturn(null);
+        when(dataMapper.existsConsultationAvailableDoctor(30001L)).thenReturn(true);
+        when(dataMapper.existsConsultationActiveRecord(20001L, 30001L)).thenReturn(false);
+        when(dataMapper.selectConsultationAllergySnapshots(20001L))
+                .thenReturn(List.of(new ConsultationAllergySnapshotRecord("青霉素", "皮疹")));
+        when(dataMapper.selectConsultationMedicalHistorySnapshots(20001L))
+                .thenReturn(List.of(new ConsultationMedicalHistorySnapshotRecord("高血压病史三年", null)));
         doAnswer(invocation -> {
             ConsultationRecord record = invocation.getArgument(0);
             record.setId(11001L);
@@ -76,29 +82,37 @@ class ConsultationServiceImplTest {
         PreConsultationSaveVO result = service.savePreConsultation(request);
 
         assertEquals(11001L, result.getConsultationId());
-        assertEquals("DRAFT", result.getStatus());
-        assertNull(result.getSubmittedAt());
+        assertEquals("PENDING", result.getStatus());
+        assertTrue(result.getSubmittedAt() != null);
         verify(dataMapper).insertConsultationRecord(any(ConsultationRecord.class));
+        org.mockito.ArgumentCaptor<ConsultationRecord> captor = org.mockito.ArgumentCaptor.forClass(ConsultationRecord.class);
+        verify(dataMapper).insertConsultationRecord(captor.capture());
+        assertNull(captor.getValue().getAppointmentId());
+        assertEquals(20001L, captor.getValue().getPatientId());
+        assertEquals(30001L, captor.getValue().getDoctorId());
+        assertTrue(captor.getValue().getAiSummaryJson().contains("青霉素"));
+        assertTrue(captor.getValue().getAiSummaryJson().contains("高血压病史三年"));
     }
 
     /**
-     * 验证未支付预约不能保存预问诊。
+     * 验证同一医生存在待接诊预问诊时不能再次提交。
      */
     @Test
-    void savePreConsultationRejectsUnpaidAppointment() {
+    void savePreConsultationRejectsWhenSameDoctorHasPendingRecord() {
         ConsultationDataMapper dataMapper = mock(ConsultationDataMapper.class);
         ConsultationServiceImpl service = newService(dataMapper);
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        when(dataMapper.lockConsultationUser(10001L)).thenReturn(10001L);
         when(dataMapper.selectConsultationSelfPatientId(10001L)).thenReturn(20001L);
         when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
-        when(dataMapper.hasConsultationActivePatientRelation(10001L, 20001L)).thenReturn(true);
-        when(dataMapper.lockConsultationAppointment(7001L))
-                .thenReturn(new ConsultationAppointmentRecord(7001L, 20001L, 30001L, "UNPAID"));
+        when(dataMapper.existsConsultationAvailableDoctor(30001L)).thenReturn(true);
+        when(dataMapper.existsConsultationActiveRecord(20001L, 30001L)).thenReturn(true);
 
         CAuthException exception = assertThrows(CAuthException.class,
-                () -> service.savePreConsultation(request(true)));
+                () -> service.savePreConsultation(request()));
 
         assertEquals("A0443", exception.getCode());
+        verify(dataMapper, never()).insertConsultationRecord(any());
     }
 
     /**
@@ -244,16 +258,14 @@ class ConsultationServiceImplTest {
     }
 
     /**
-     * 创建预问诊请求测试数据。
+     * 创建直接提交预问诊请求测试数据。
      *
-     * @param submit 是否提交
      * @return 预问诊请求
      */
-    private PreConsultationSaveRequest request(boolean submit) {
+    private PreConsultationSaveRequest request() {
         PreConsultationSaveRequest request = new PreConsultationSaveRequest();
-        request.setAppointmentId(7001L);
+        request.setDoctorId(30001L);
         request.setChiefComplaint("咳嗽发热三天");
-        request.setSubmit(submit);
         return request;
     }
 }

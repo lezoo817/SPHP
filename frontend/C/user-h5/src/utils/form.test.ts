@@ -29,6 +29,7 @@ import { isDuplicateDoctorAppointmentError } from './registration';
 import { buildDoctorBookingStatusPath } from '../services/registration';
 import { buildPrescriptionsPath } from '../services/consultation';
 import { buildAssistantPrescriptionDetailPath, buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, createPrescriptionDisplayNumber, filterPrescriptionsByDate, getPrescriptionDisplayNumber, getRecentPrescriptionRange, mergePrescriptionPages, type PrescriptionDisplayNumberStorage } from './prescription';
+import { buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderPaymentId } from './pharmacy-order';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -71,6 +72,7 @@ describe('就诊人默认选择', () => {
 describe('购药处方跳转规则', () => {
   it('购药处方详情和库存页始终透传当前本地就诊人', () => {
     expect(buildPharmacyPrescriptionPath(13001, 20001)).toBe('/pharmacy/prescription/13001?patientId=20001');
+    expect(buildPharmacyPrescriptionPath(13001, 20001, undefined, 30001)).toBe('/pharmacy/prescription/13001?patientId=20001&drugOrderId=30001');
     expect(buildPharmacyInventoryPath(13001, 20001)).toBe('/pharmacy/prescription/13001/inventory?patientId=20001');
   });
 
@@ -159,12 +161,40 @@ describe('挂号资源展示规则', () => {
 
 describe('购药订单展示规则', () => {
   it('运输中同时包含已发货和运输中状态', () => {
-    expect(matchesDrugOrderTab({ id: 1, orderName: '阿莫西林', pharmacyName: '健康药房', status: 'PAID', logisticsStatus: 'SHIPPED', amountCent: 100 }, 'TRANSIT')).toBe(true);
-    expect(matchesDrugOrderTab({ id: 2, orderName: '维生素', pharmacyName: '健康药房', status: 'PAID', logisticsStatus: 'TO_RECEIVE', amountCent: 100 }, 'TRANSIT')).toBe(false);
+    expect(matchesDrugOrderTab({ id: 1, prescriptionId: 11, orderName: '阿莫西林', pharmacyName: '健康药房', status: 'PAID', logisticsStatus: 'SHIPPED', amountCent: 100 }, 'TRANSIT')).toBe(true);
+    expect(matchesDrugOrderTab({ id: 2, prescriptionId: 12, orderName: '维生素', pharmacyName: '健康药房', status: 'PAID', logisticsStatus: 'TO_RECEIVE', amountCent: 100 }, 'TRANSIT')).toBe(false);
   });
 
   it('订单名称关键词经过编码并传递给列表接口', () => {
     expect(buildDrugOrderListPath({ patientId: 20001, keyword: '阿莫 西林', pageSize: 100 })).toContain('keyword=%E9%98%BF%E8%8E%AB+%E8%A5%BF%E6%9E%97');
+  });
+
+  it('待支付订单只进入购买弹窗，药品明细展示数量和单价', () => {
+    expect(isPendingDrugOrder('PENDING_PAYMENT')).toBe(true);
+    expect(isPendingDrugOrder('PAID')).toBe(false);
+    expect(formatDrugOrderItemPrice(2, 2800)).toBe('2 x 28.00 元');
+  });
+
+  it('支付单优先使用详情返回值，并可回退到创建订单上下文', () => {
+    const detail = { id: 1, prescriptionId: 101, orderName: '药品订单', pharmacyName: '药房', status: 'PENDING_PAYMENT', amountCent: 100, pharmacy: { id: 1, name: '药房' }, payment: { id: 99, status: 'PENDING' }, items: [] };
+    expect(resolveDrugOrderPaymentId(detail, 88)).toBe(99);
+    expect(resolveDrugOrderPaymentId({ ...detail, payment: undefined }, 88)).toBe(88);
+  });
+
+  it('支付后无真实物流状态时显示配送中，并按后端状态允许确认收货', () => {
+    const detail = { id: 1, prescriptionId: 101, orderName: '药品订单', pharmacyName: '药房', status: 'PAID', amountCent: 100, pharmacy: { id: 1, name: '药房' }, items: [] };
+    expect(getDrugOrderLogisticsText(detail)).toBe('配送中');
+    expect(canConfirmDrugOrderReceipt({ ...detail, delivery: { address: '演示地址', logisticsStatus: 'TO_RECEIVE', traces: [] } })).toBe(true);
+    expect(buildDrugOrderLogisticsPath(1001)).toBe('/pharmacy/order/1001/logistics');
+  });
+
+  it('处方只关联已支付订单，并使用该订单进入物流详情', () => {
+    const purchased = findPurchasedDrugOrder([
+      { id: 1, prescriptionId: 101, orderName: '布洛芬', pharmacyName: '药房', status: 'PENDING_PAYMENT', amountCent: 2800 },
+      { id: 2, prescriptionId: 101, orderName: '布洛芬', pharmacyName: '药房', status: 'PAID', amountCent: 2800 },
+    ], 101);
+    expect(purchased?.id).toBe(2);
+    expect(buildDrugOrderLogisticsPath(purchased!.id)).toBe('/pharmacy/order/2/logistics');
   });
 });
 

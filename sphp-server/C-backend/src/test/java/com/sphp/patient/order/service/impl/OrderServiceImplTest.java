@@ -34,9 +34,9 @@ class OrderServiceImplTest {
     /** 验证订单列表使用本人患者和默认分页。 */ @Test void listOrdersUsesDefaultPatientAndPage(){
         OrderDataMapper mapper=mock(OrderDataMapper.class); OrderService service=service(mapper); CUserContext.set(new CUserPrincipal(10001L,"patient", OffsetDateTime.now().plusHours(1),"session"));
         when(mapper.selectOrderSelfPatientId(10001L)).thenReturn(20001L); when(mapper.existsOrderActivePatient(20001L)).thenReturn(true); when(mapper.hasOrderActivePatientRelation(10001L,20001L)).thenReturn(true);
-        when(mapper.selectOrderList(20001L,"PENDING_PAYMENT",null,"阿莫西林",20,0)).thenReturn(List.of(new OrderListRecord(15001L,"阿莫西林等 2 种药品","健康药房","PENDING_PAYMENT","PENDING_SHIPMENT",null,7000,OffsetDateTime.now()))); when(mapper.countOrderList(20001L,"PENDING_PAYMENT",null,"阿莫西林")).thenReturn(1L);
+        when(mapper.selectOrderList(20001L,"PENDING_PAYMENT",null,"阿莫西林",20,0)).thenReturn(List.of(new OrderListRecord(15001L,12001L,"阿莫西林等 2 种药品","健康药房","PENDING_PAYMENT","PENDING_SHIPMENT",null,7000,OffsetDateTime.now()))); when(mapper.countOrderList(20001L,"PENDING_PAYMENT",null,"阿莫西林")).thenReturn(1L);
         DrugOrderPageVO result=service.listDrugOrders(null,"PENDING_PAYMENT",null," 阿莫西林 ",null,null);
-        assertEquals(1L,result.getTotal()); assertEquals(15001L,result.getRecords().getFirst().getId()); assertEquals("阿莫西林等 2 种药品",result.getRecords().getFirst().getOrderName()); assertEquals(20,result.getPageSize());
+        assertEquals(1L,result.getTotal()); assertEquals(15001L,result.getRecords().getFirst().getId()); assertEquals(12001L,result.getRecords().getFirst().getPrescriptionId()); assertEquals("阿莫西林等 2 种药品",result.getRecords().getFirst().getOrderName()); assertEquals(20,result.getPageSize());
     }
     /** 验证地址簿 ID 下单时使用服务端解析出的不可变地址快照。 */ @Test void createOrderUsesDeliveryAddressSnapshot(){
         OrderDataMapper mapper=mock(OrderDataMapper.class); DrugOrderMapper orderMapper=mock(DrugOrderMapper.class); DrugOrderItemMapper itemMapper=mock(DrugOrderItemMapper.class); DrugOrderPaymentMapper paymentMapper=mock(DrugOrderPaymentMapper.class); OrderStockLockService stockLockService=mock(OrderStockLockService.class); DeliveryService deliveryService=mock(DeliveryService.class);
