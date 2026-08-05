@@ -10,7 +10,7 @@ import {
 import { filterHospitals, formatAmount, getAppointmentStatusText, sortHospitals } from './medical';
 import { resolveSelfPatientId } from '../models/selection';
 import { buildDrugOrderListPath } from '../services/pharmacy';
-import { matchesDrugOrderTab } from './pharmacy';
+import { buildPharmacyInventoryPath, buildPharmacyPrescriptionPath, matchesDrugOrderTab, resolvePharmacyPatientId } from './pharmacy';
 import { hasSearchKeyword, matchesDepartmentKeyword, resolveInitialDepartment } from './home-search';
 import { buildProfileUpdatePayload, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
 import { resolveMinePatientId } from '../models/mine-patient';
@@ -27,6 +27,8 @@ import { buildMedicalRecordDetailPath, buildMedicalRecordListPath } from '../ser
 import { buildLegacyReportRedirectPath, createMedicalRecordDisplayNumber, filterMedicalRecordsByDate, getRecentMedicalRecordRange, mergeMedicalRecordPages } from './medical-record';
 import { isDuplicateDoctorAppointmentError } from './registration';
 import { buildDoctorBookingStatusPath } from '../services/registration';
+import { buildPrescriptionsPath } from '../services/consultation';
+import { buildAssistantPrescriptionDetailPath, buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, createPrescriptionDisplayNumber, filterPrescriptionsByDate, getPrescriptionDisplayNumber, getRecentPrescriptionRange, mergePrescriptionPages, type PrescriptionDisplayNumberStorage } from './prescription';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -63,6 +65,20 @@ describe('重复预约联调规则', () => {
 describe('就诊人默认选择', () => {
   it('优先选择本人而非全局家属选择', () => {
     expect(resolveSelfPatientId([{ patientId: 2, relation: 'CHILD' }, { patientId: 1, relation: 'SELF' }])).toBe(1);
+  });
+});
+
+describe('购药处方跳转规则', () => {
+  it('购药处方详情和库存页始终透传当前本地就诊人', () => {
+    expect(buildPharmacyPrescriptionPath(13001, 20001)).toBe('/pharmacy/prescription/13001?patientId=20001');
+    expect(buildPharmacyInventoryPath(13001, 20001)).toBe('/pharmacy/prescription/13001/inventory?patientId=20001');
+  });
+
+  it('缺失或非法就诊人参数时不解析为库存请求患者', () => {
+    expect(resolvePharmacyPatientId('20001')).toBe(20001);
+    expect(resolvePharmacyPatientId(null)).toBeUndefined();
+    expect(resolvePharmacyPatientId('0')).toBeUndefined();
+    expect(resolvePharmacyPatientId('patient')).toBeUndefined();
   });
 });
 
@@ -243,6 +259,56 @@ describe('医生个人挂号页规则', () => {
     ]);
     expect(summary.availableCount).toBe(5);
     expect(summary.targetSlot?.slotId).toBe(2);
+  });
+});
+
+describe('我的处方查询规则', () => {
+  it('处方列表请求省略未选择的就诊人参数', () => {
+    expect(buildPrescriptionsPath({ pageNo: 2, pageSize: 100 })).toBe('/c/v1/prescriptions?pageNo=2&pageSize=100');
+    expect(buildPrescriptionsPath({ patientId: 20001 })).toContain('patientId=20001');
+  });
+
+  it('最近处方日期范围包含当天且支持日期筛选', () => {
+    const range = getRecentPrescriptionRange(30, new Date(2026, 7, 5));
+    expect(range).toEqual({ startDate: '2026-07-07', endDate: '2026-08-05' });
+    const filtered = filterPrescriptionsByDate([
+      { id: 1, consultationId: 11, doctorName: '张医生', status: 'APPROVED', issuedAt: '2026-08-03T10:00:00+08:00' },
+      { id: 2, consultationId: 12, doctorName: '李医生', status: 'APPROVED', issuedAt: '2026-08-04T10:00:00+08:00' },
+      { id: 3, consultationId: 13, doctorName: '王医生', status: 'APPROVED', issuedAt: '2026-07-01T10:00:00+08:00' },
+    ], range);
+    expect(filtered.map((item) => item.id)).toEqual([2, 1]);
+  });
+
+  it('处方分页按编号去重，并保留新页中的更新数据', () => {
+    const records = mergePrescriptionPages(
+      [{ id: 1, consultationId: 11, doctorName: '张医生', status: 'APPROVED', issuedAt: '2026-08-01T10:00:00+08:00' }],
+      [{ id: 1, consultationId: 11, doctorName: '张主任', status: 'APPROVED', issuedAt: '2026-08-01T10:00:00+08:00' }, { id: 2, consultationId: 12, doctorName: '李医生', status: 'APPROVED', issuedAt: '2026-08-02T10:00:00+08:00' }],
+    );
+    expect(records).toHaveLength(2);
+    expect(records.find((item) => item.id === 1)?.doctorName).toBe('张主任');
+  });
+
+  it('处方详情往返保留患者和日期筛选上下文', () => {
+    const path = buildMinePrescriptionDetailPath(1001, 2001, { startDate: '2026-07-01', endDate: '2026-08-05' }, '2026-08-05T10:00:00+08:00');
+    expect(path).toBe('/assistant/prescription/1001?source=mine-prescriptions&startDate=2026-07-01&endDate=2026-08-05&patientId=2001&issuedAt=2026-08-05T10%3A00%3A00%2B08%3A00');
+    expect(buildMinePrescriptionListPath(new URLSearchParams(path.split('?')[1]))).toBe('/mine/prescriptions?patientId=2001&startDate=2026-07-01&endDate=2026-08-05');
+    expect(buildAssistantPrescriptionDetailPath(1001, 2001, '2026-08-05T10:00:00+08:00')).toBe('/assistant/prescription/1001?source=assistant&patientId=2001&issuedAt=2026-08-05T10%3A00%3A00%2B08%3A00');
+  });
+
+  it('处方展示编号使用开具时间戳和四位随机尾号', () => {
+    expect(createPrescriptionDisplayNumber('2026-08-05T10:00:00+08:00', 7)).toBe(`${Date.parse('2026-08-05T10:00:00+08:00')}0007`);
+    expect(createPrescriptionDisplayNumber('2026-08-05T10:00:00+08:00', 12345)).toBe(`${Date.parse('2026-08-05T10:00:00+08:00')}9999`);
+  });
+
+  it('同一会话内同处方复用展示编号，不同处方独立生成', () => {
+    const values = new Map<string, string>();
+    const storage: PrescriptionDisplayNumberStorage = {
+      getItem: (key) => values.get(key) || null,
+      setItem: (key, value) => { values.set(key, value); },
+    };
+    const first = getPrescriptionDisplayNumber(1, '2026-08-05T10:00:00+08:00', 12, storage);
+    expect(getPrescriptionDisplayNumber(1, '2026-08-05T10:00:00+08:00', 99, storage)).toBe(first);
+    expect(getPrescriptionDisplayNumber(2, '2026-08-05T10:00:00+08:00', 34, storage)).not.toBe(first);
   });
 });
 

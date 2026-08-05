@@ -4,7 +4,8 @@ import { useNavigate } from 'umi';
 import { Dialog } from '../../components/Dialog';
 import { PageHeader } from '../../components/PageHeader';
 import { getMinePatientId, resolveMinePatientId, saveMinePatientId } from '../../models/mine-patient';
-import { createFamilyMember, getFamilyMembers, unbindFamilyMember, updateFamilyMember } from '../../services/family';
+import { createFamilyMember, unbindFamilyMember, updateFamilyMember } from '../../services/family';
+import { useFamilyMembers } from '../../hooks/useFamilyMembers';
 import type { FamilyMember, FamilyMemberPayload } from '../../typings/api';
 import { createIdempotencyKey, getApiErrorMessage, getRelationLabel, validateFamilyMember } from '../../utils/form';
 
@@ -13,31 +14,31 @@ const emptyMember: FamilyMemberPayload = { name: '', relation: 'CHILD', gender: 
 /** 管理家庭成员，并选择“我的”页面当前就诊人。 */
 export default function FamilyMembersPage() {
   const navigate = useNavigate();
-  const [members, setMembers] = useState<FamilyMember[]>([]);
   const [minePatientId, setMinePatientId] = useState<number>();
   const [editing, setEditing] = useState<FamilyMember | null | undefined>(undefined);
   const [form, setForm] = useState<FamilyMemberPayload>(emptyMember);
   const [notice, setNotice] = useState('');
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const operationKey = useRef<string>();
+  const { data: members = [], isLoading: loading, error: membersError, refetch: refetchMembers } = useFamilyMembers();
 
-  /** 刷新家庭成员并在被选成员失效后回退到本人。 */
-  async function loadMembers() {
-    setLoading(true);
-    try {
-      const nextMembers = await getFamilyMembers();
-      setMembers(nextMembers);
-      const resolvedId = resolveMinePatientId(nextMembers, getMinePatientId());
-      if (resolvedId) {
-        saveMinePatientId(resolvedId);
-        setMinePatientId(resolvedId);
-      }
-    } catch (requestError) { setNotice(getApiErrorMessage(requestError)); }
-    finally { setLoading(false); }
+  /** 根据共享成员数据恢复“我的”页面就诊人，解绑后自动回退本人。 */
+  function syncMinePatient(nextMembers: FamilyMember[]) {
+    const resolvedId = resolveMinePatientId(nextMembers, getMinePatientId());
+    if (resolvedId) {
+      saveMinePatientId(resolvedId);
+      setMinePatientId(resolvedId);
+    }
   }
 
-  useEffect(() => { void loadMembers(); }, []);
+  useEffect(() => { syncMinePatient(members); }, [members]);
+  useEffect(() => { if (membersError) setNotice(getApiErrorMessage(membersError)); }, [membersError]);
+
+  /** 写操作成功后主动刷新家庭成员，立即同步最新绑定关系。 */
+  async function refreshMembers() {
+    const result = await refetchMembers();
+    syncMinePatient(result.data || []);
+  }
 
   /** 选择成员作为“我的”页面当前就诊人后返回资料卡。 */
   function chooseMinePatient(member: FamilyMember) {
@@ -64,7 +65,7 @@ export default function FamilyMembersPage() {
       else await createFamilyMember(form, key);
       operationKey.current = undefined;
       setEditing(undefined);
-      await loadMembers();
+      await refreshMembers();
     } catch (requestError) { setNotice(getApiErrorMessage(requestError)); }
     finally { setSubmitting(false); }
   }
@@ -74,7 +75,7 @@ export default function FamilyMembersPage() {
     if (member.relation === 'SELF' || !window.confirm(`确认解绑${member.name}吗？`)) return;
     setSubmitting(true);
     const key = createIdempotencyKey();
-    try { await unbindFamilyMember(member.patientId, key); await loadMembers(); }
+    try { await unbindFamilyMember(member.patientId, key); await refreshMembers(); }
     catch (requestError) { setNotice(getApiErrorMessage(requestError)); }
     finally { setSubmitting(false); }
   }

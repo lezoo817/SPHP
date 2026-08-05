@@ -1,4 +1,5 @@
 import { getSession, isSessionTokenExpired, redirectToLogin, replaceTokenPair } from '../models/session';
+import { buildRequestQueryKey, getRequestCacheStaleTime, invalidateByMutationPath, readWithStaleCache } from '../query/request-cache';
 import type { ApiResponse, TokenPair } from '../typings/api';
 
 export const API_BASE_URL = 'http://localhost:8080/api';
@@ -21,6 +22,8 @@ interface RequestOptions extends Omit<RequestInit, 'body' | 'headers'> {
   headers?: Record<string, string>;
   skipAuth?: boolean;
   skipRefresh?: boolean;
+  /** 内部刷新请求跳过读缓存，避免缓存函数递归调用。 */
+  skipCache?: boolean;
 }
 
 /**
@@ -46,7 +49,7 @@ function failAuthentication(message: string, options: { code?: string; traceId?:
 
 /** 发送 C 端 API 请求并统一处理 Token 刷新与失效跳转。 */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { body, headers, skipAuth, skipRefresh, ...init } = options;
+  const { body, headers, skipAuth, skipRefresh, skipCache, ...init } = options;
   const session = getSession();
 
   // 登录、注册和刷新接口不参与全局登录态判断。
@@ -55,6 +58,13 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     const refreshed = await refreshSession(session.refreshToken);
     if (refreshed) return request<T>(path, { ...options, skipRefresh: true });
     return failAuthentication('登录状态已失效，请重新登录', { status: 401, code: 'A0301' });
+  }
+
+  if (!skipAuth && !skipCache && (init.method || 'GET').toUpperCase() === 'GET') {
+    const queryKey = buildRequestQueryKey(session?.user.id, path);
+    const staleTime = getRequestCacheStaleTime(queryKey[2]);
+    // 首次进入等待网络结果；二次进入直接返回缓存并在过期后后台更新。
+    return readWithStaleCache(queryKey, () => request<T>(path, { ...options, skipCache: true }), staleTime);
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -67,7 +77,13 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const payload = await parseResponse<T>(response);
-  if (payload.code === '00000') return payload.data;
+  if (payload.code === '00000') {
+    if (!skipAuth && (init.method || 'GET').toUpperCase() !== 'GET') {
+      // 写操作成功后失效关联资源，避免下次切换页面继续展示旧订单或旧资料。
+      void invalidateByMutationPath(path, session?.user.id);
+    }
+    return payload.data;
+  }
 
   if (!skipAuth && isAuthenticationFailure(response.status, payload.code)) {
     // Access Token 失效仅刷新一次，刷新后仍失败说明会话已不可用。
