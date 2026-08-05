@@ -36,6 +36,24 @@ function redirectToLogin(): void {
 }
 
 /**
+ * 构造发往 Agent 的统一请求头。
+ *
+ * 必须携带 `X-Scope: b_end`：Agent 的 JWT 鉴权中间件按该头路由到 B 端
+ * `GET /api/b/auth/token/parse` 校验 JWT（默认 c_end 会调 C 端 token/parse，
+ * C/B 端 JWT 密钥互不通用，校验必然失败 → 401 → 前端误判 token 失效跳登录）。
+ *
+ * @param token B 端 access token
+ * @param extra 附加请求头（如 Accept）
+ */
+function buildAgentHeaders(token: string, extra: Record<string, string> = {}): Record<string, string> {
+  return {
+    'X-Scope': AGENT_SCOPE,
+    Authorization: `Bearer ${token}`,
+    ...extra,
+  };
+}
+
+/**
  * 发起流式对话（POST /api/chat/stream）。
  *
  * 使用 Fetch 读取响应体流，按 `\n\n` 切分 SSE 帧，解析 `event:` 与 `data:`
@@ -79,11 +97,10 @@ export function chatStream(
     try {
       response = await fetch(`${AGENT_BASE_URL}/api/chat/stream`, {
         method: 'POST',
-        headers: {
+        headers: buildAgentHeaders(token, {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
-          Authorization: `Bearer ${token}`,
-        },
+        }),
         body: JSON.stringify(body),
         signal: controller.signal,
       });
@@ -228,7 +245,7 @@ export async function confirmCard(payload: Agent.ConfirmRequest): Promise<Agent.
   try {
     response = await fetch(`${AGENT_BASE_URL}/api/chat/confirm`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: buildAgentHeaders(token, { 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
   } catch {
@@ -273,7 +290,7 @@ export async function getSessions(): Promise<Agent.Session[]> {
   try {
     response = await fetch(`${AGENT_BASE_URL}/api/chat/sessions`, {
       method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: buildAgentHeaders(token),
     });
   } catch {
     throw new Error('网络连接失败，请稍后重试');
@@ -312,7 +329,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
   try {
     response = await fetch(`${AGENT_BASE_URL}/api/chat/sessions/${encodeURIComponent(sessionId)}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: buildAgentHeaders(token),
     });
   } catch {
     throw new Error('网络连接失败，请稍后重试');
@@ -351,7 +368,7 @@ export async function getSessionMessages(sessionId: string): Promise<Agent.Histo
   try {
     response = await fetch(`${AGENT_BASE_URL}/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
       method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: buildAgentHeaders(token),
     });
   } catch {
     throw new Error('网络连接失败，请稍后重试');
