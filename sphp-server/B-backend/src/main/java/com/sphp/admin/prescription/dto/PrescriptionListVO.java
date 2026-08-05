@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 /**
  * 处方列表项 VO（系分 §5.6.2）。
@@ -38,6 +39,9 @@ public class PrescriptionListVO {
 
     @Schema(description = "药品项数")
     private Integer itemCount;
+
+    @Schema(description = "风险规则快照（命中时返回，含 level/rule/message）")
+    private List<RiskWarningVO> riskWarnings;
 
     @Schema(description = "签发时间")
     private OffsetDateTime issuedAt;
