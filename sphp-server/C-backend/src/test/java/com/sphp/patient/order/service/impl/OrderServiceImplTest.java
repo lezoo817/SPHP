@@ -40,9 +40,9 @@ class OrderServiceImplTest {
     /** 验证订单列表使用本人患者和默认分页。 */ @Test void listOrdersUsesDefaultPatientAndPage(){
         OrderDataMapper mapper=mock(OrderDataMapper.class); OrderService service=service(mapper); CUserContext.set(new CUserPrincipal(10001L,"patient", OffsetDateTime.now().plusHours(1),"session"));
         when(mapper.selectOrderSelfPatientId(10001L)).thenReturn(20001L); when(mapper.existsOrderActivePatient(20001L)).thenReturn(true); when(mapper.hasOrderActivePatientRelation(10001L,20001L)).thenReturn(true);
-        when(mapper.selectOrderList(20001L,"PENDING_PAYMENT",null,"阿莫西林",20,0)).thenReturn(List.of(new OrderListRecord(15001L,12001L,"阿莫西林等 2 种药品","健康药房","PENDING_PAYMENT","PENDING_SHIPMENT",null,7000,OffsetDateTime.now()))); when(mapper.countOrderList(20001L,"PENDING_PAYMENT",null,"阿莫西林")).thenReturn(1L);
+        when(mapper.selectOrderList(20001L,"PENDING_PAYMENT",null,"阿莫西林",20,0)).thenReturn(List.of(new OrderListRecord(15001L,12001L,"阿莫西林等 2 种药品","健康药房","PENDING_PAYMENT","PENDING_SHIPMENT",null,7000,OffsetDateTime.now(),"张三"))); when(mapper.countOrderList(20001L,"PENDING_PAYMENT",null,"阿莫西林")).thenReturn(1L);
         DrugOrderPageVO result=service.listDrugOrders(null,"PENDING_PAYMENT",null," 阿莫西林 ",null,null);
-        assertEquals(1L,result.getTotal()); assertEquals(15001L,result.getRecords().getFirst().getId()); assertEquals(12001L,result.getRecords().getFirst().getPrescriptionId()); assertEquals("阿莫西林等 2 种药品",result.getRecords().getFirst().getOrderName()); assertEquals(20,result.getPageSize());
+        assertEquals(1L,result.getTotal()); assertEquals(15001L,result.getRecords().getFirst().getId()); assertEquals(12001L,result.getRecords().getFirst().getPrescriptionId()); assertEquals("阿莫西林等 2 种药品",result.getRecords().getFirst().getOrderName()); assertEquals("张三",result.getRecords().getFirst().getPatientName()); assertEquals(20,result.getPageSize());
     }
     /** 验证地址簿 ID 下单时使用服务端解析出的不可变地址快照。 */ @Test void createOrderUsesDeliveryAddressSnapshot(){
         OrderDataMapper mapper=mock(OrderDataMapper.class); DrugOrderMapper orderMapper=mock(DrugOrderMapper.class); DrugOrderItemMapper itemMapper=mock(DrugOrderItemMapper.class); DrugOrderPaymentMapper paymentMapper=mock(DrugOrderPaymentMapper.class); OrderStockLockService stockLockService=mock(OrderStockLockService.class); DeliveryService deliveryService=mock(DeliveryService.class);
@@ -60,7 +60,7 @@ class OrderServiceImplTest {
         CUserContext.set(new CUserPrincipal(10001L,"patient",OffsetDateTime.now().plusHours(1),"session")); OffsetDateTime expireAt=OffsetDateTime.now().plusMinutes(5);
         when(mapper.selectDrugOrderPayment(80001L)).thenReturn(new DrugOrderPaymentRecord(80001L,15001L,20001L,10001L,14001L,"PENDING","PENDING_PAYMENT",expireAt,BCrypt.hashpw("P@ssw0rd123",BCrypt.gensalt())));
         when(mapper.existsOrderActivePatient(20001L)).thenReturn(true); when(mapper.hasOrderActivePatientRelation(10001L,20001L)).thenReturn(true); when(mapper.markDrugOrderPaymentSuccess(eq(80001L),any())).thenReturn(1); when(mapper.markDrugOrderPaid(eq(15001L),any())).thenReturn(1);
-        when(mapper.selectOrderDetail(15001L)).thenReturn(new OrderDetailRecord(15001L,12001L,20001L,14001L,"院内药房","PAID","COURIER","测试地址",null,null,"PENDING_SHIPMENT",7000,expireAt,80001L,"SUCCESS"));
+        when(mapper.selectOrderDetail(15001L)).thenReturn(new OrderDetailRecord(15001L,12001L,20001L,14001L,"院内药房","PAID","COURIER","测试地址",null,null,"PENDING_SHIPMENT",7000,expireAt,80001L,"SUCCESS","张三","13800138000",OffsetDateTime.now().plusMinutes(1)));
         when(mapper.selectOrderItems(15001L)).thenReturn(List.of(new OrderItemRecord(50001L,"阿莫西林",2,1200))); when(mapper.consumeOrderLockedStock(eq(14001L),eq(50001L),eq(2),any())).thenReturn(1); when(mapper.insertDrugOrderLogisticsTrace(eq(15001L),eq("支付成功，等待药房发货"),any())).thenReturn(1);
         RegisteringPaymentSimulateRequest request=new RegisteringPaymentSimulateRequest(); request.setLoginPassword("P@ssw0rd123");
         service.simulateDrugOrderPayment(80001L,request);

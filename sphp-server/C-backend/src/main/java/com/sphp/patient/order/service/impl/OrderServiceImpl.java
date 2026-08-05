@@ -47,6 +47,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.OffsetDateTime;
 import java.util.Arrays;
@@ -515,6 +516,7 @@ public class OrderServiceImpl implements OrderService {
                 .latestLogisticsNode(record.latestLogisticsNode()) // 物流状态
                 .amountCent(record.amountCent())
                 .expireAt(record.expireAt())
+                .patientName(record.patientName()) // 列表展示当前处方就诊人
                 .build();
     }
 
@@ -528,6 +530,8 @@ public class OrderServiceImpl implements OrderService {
                 .id(record.id())
                 .prescriptionId(record.prescriptionId()) // 保留订单与处方的准确关联
                 .status(record.status())
+                .patientName(record.patientName())
+                .patientPhone(maskPhone(record.patientPhone())) // 详情仅返回脱敏手机号
                 .pharmacy(DrugOrderDetailVO.Pharmacy.builder()
                         .id(record.pharmacyId())
                         .name(record.pharmacyName())
@@ -538,6 +542,7 @@ public class OrderServiceImpl implements OrderService {
                         .company(record.logisticsCompany()) // 物流公司
                         .trackingNo(record.trackingNo()) // 物流单号
                         .logisticsStatus(record.logisticsStatus())
+                        .expectedDeliveryAt(record.expectedDeliveryAt()) // 后端模拟物流的预计送达时间
                         .traces(orderDataMapper.selectOrderTraces(record.id()).stream()
                                 .map(trace -> DrugOrderDetailVO.Trace.builder()
                                         .node(trace.node()) // 物流节点
@@ -558,6 +563,19 @@ public class OrderServiceImpl implements OrderService {
                         .status(record.paymentStatus())
                         .build())
                 .build();
+    }
+
+    /**
+     * 按 C 端展示规则脱敏就诊人手机号。
+     *
+     * @param phone 手机号原始值
+     * @return 脱敏手机号；未填写或格式异常时返回 null
+     */
+    private String maskPhone(String phone) {
+        if (!StringUtils.hasText(phone) || phone.length() != 11) {
+            return null;
+        }
+        return phone.substring(0, 3) + "****" + phone.substring(7);
     }
     /** 校验可选枚举筛选值。 */
     private <T extends Enum<T>> void validateEnum(String value, T[] values, String message) {
