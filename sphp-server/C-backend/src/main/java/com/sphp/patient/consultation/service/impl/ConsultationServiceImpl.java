@@ -93,7 +93,9 @@ public class ConsultationServiceImpl implements ConsultationService {
         OffsetDateTime now = OffsetDateTime.now();
         // 使用 JSONB 存储附件信息，避免 JSON 字符串长度超出数据库字段限制。
         String attachmentsJson = serializeAttachments(request);
+        // 使用 JSONB 存储 AI 预问诊总结，避免 JSON 字符串长度超出数据库字段限制。
         String aiSummaryJson = serializeAiSummary(request, patientId, now);
+        // 构建问诊记录
         ConsultationRecord record = buildConsultationRecord(request, patientId, attachmentsJson, aiSummaryJson, now);
         // 每次提交均插入独立记录，绝不覆盖历史 AI 总结。
         if (consultationDataMapper.insertConsultationRecord(record) != 1) {

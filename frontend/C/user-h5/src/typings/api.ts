@@ -192,9 +192,9 @@ export interface PrescriptionDetail extends Prescription { doctor: { id: number;
 /** 用药计划当前状态。 */
 export type MedicationPlanStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED';
 /** 用药计划允许的状态变更动作。 */
-export type MedicationPlanAction = 'PAUSE' | 'RESUME' | 'COMPLETE';
+export type MedicationPlanAction = 'ENABLE_REMINDER' | 'DISABLE_REMINDER' | 'PAUSE' | 'RESUME' | 'COMPLETE';
 /** 当前就诊人的用药计划。 */
-export interface MedicationPlan { id: number; drugName: string; dosage: string; frequency: string; nextReminderAt?: string; status: MedicationPlanStatus; }
+export interface MedicationPlan { id: number; drugName: string; dosage: string; frequency: string; nextReminderAt?: string; reminderEnabled: boolean; reminderTimes: string[]; status: MedicationPlanStatus; }
 /** 随访计划当前状态。 */
 export type FollowUpStatus = 'PENDING_CONFIRM' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
 /** 当前就诊人的随访计划。 */

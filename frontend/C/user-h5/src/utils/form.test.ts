@@ -19,7 +19,7 @@ import { buildDoctorPagePath, findDoctorById, getDoctorScheduleDates } from './d
 import { groupSlotsByHalfDay, summarizeHalfDaySlots } from './doctor';
 import { buildAppointmentsPath } from '../services/registration';
 import { buildNotificationsPath } from '../services/notification';
-import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotification, getMedicationPlanActions, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
+import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotification, formatMedicationReminderTimes, getMedicationPlanActions, getMedicationReminderAction, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
 import { buildDeliveryAddressPath } from '../services/delivery-address';
 import { buildDeliveryAddressPayload, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
 import { getAssistantTabs, getCurrentFlowAction } from './assistant';
@@ -369,7 +369,7 @@ describe('健康待办、提醒与通知规则', () => {
 
   it('只聚合待处理项目并按时间升序关联就诊人', () => {
     const todos = buildHealthTodos([
-      { patientId: 2, patientName: '小明', appointments: [{ id: 1, doctorName: '张医生', departmentName: '内科', startTime: '2026-08-05T10:00:00+08:00', status: 'COMPLETED', amountCent: 100 }], medicationPlans: [{ id: 2, drugName: '维生素', dosage: '1片', frequency: '每日一次', nextReminderAt: '2026-08-04T08:00:00+08:00', status: 'ACTIVE' }], followUps: [] },
+      { patientId: 2, patientName: '小明', appointments: [{ id: 1, doctorName: '张医生', departmentName: '内科', startTime: '2026-08-05T10:00:00+08:00', status: 'COMPLETED', amountCent: 100 }], medicationPlans: [{ id: 2, drugName: '维生素', dosage: '1片', frequency: '每日一次', nextReminderAt: '2026-08-04T08:00:00+08:00', reminderEnabled: true, reminderTimes: ['08:00'], status: 'ACTIVE' }], followUps: [] },
       { patientId: 1, patientName: '张三', appointments: [{ id: 3, doctorName: '李医生', departmentName: '心内科', departmentLocation: '门诊楼2层201室', startTime: '2026-08-03T14:30:00+08:00', status: 'PAID', amountCent: 200 }], medicationPlans: [], followUps: [{ id: 4, type: '复诊', content: '携带检查报告', dueAt: '2026-08-06T09:00:00+08:00', status: 'CANCELLED' }] },
     ]);
     expect(todos.map((item) => [item.type, item.patientName])).toEqual([['APPOINTMENT', '张三'], ['MEDICATION', '小明']]);
@@ -382,6 +382,15 @@ describe('健康待办、提醒与通知规则', () => {
     expect(getMedicationPlanActions('COMPLETED')).toEqual([]);
     expect(canConfirmFollowUp('PENDING_CONFIRM')).toBe(true);
     expect(canConfirmFollowUp('CONFIRMED')).toBe(false);
+  });
+
+  it('仅执行中计划显示提醒开关，并使用后端返回的固定时刻', () => {
+    expect(getMedicationReminderAction({ status: 'ACTIVE', reminderEnabled: false })).toBe('ENABLE_REMINDER');
+    expect(getMedicationReminderAction({ status: 'ACTIVE', reminderEnabled: true })).toBe('DISABLE_REMINDER');
+    expect(getMedicationReminderAction({ status: 'PAUSED', reminderEnabled: true })).toBeUndefined();
+    expect(getMedicationReminderAction({ status: 'COMPLETED', reminderEnabled: false })).toBeUndefined();
+    expect(formatMedicationReminderTimes(['08:00', '20:00'])).toBe('08:00、20:00');
+    expect(formatMedicationReminderTimes([])).toBe('');
   });
 });
 

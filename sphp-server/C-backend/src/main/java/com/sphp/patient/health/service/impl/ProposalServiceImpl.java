@@ -23,6 +23,7 @@ import com.sphp.patient.health.mapper.ProposalDataMapper;
 import com.sphp.patient.health.mapper.ProposalReportIndicatorMapper;
 import com.sphp.patient.health.mapper.ProposalReportMapper;
 import com.sphp.patient.health.service.ProposalService;
+import com.sphp.patient.health.support.ProposalMedicationReminderSupport;
 import com.sphp.patient.health.vo.ProposalFollowUpVO;
 import com.sphp.patient.health.vo.ProposalMedicationPlanVO;
 import com.sphp.patient.health.vo.ProposalReportCreateVO;
@@ -38,11 +39,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.List;
 
 import static com.sphp.patient.common.constant.ProposalConstant.*;
 import static com.sphp.patient.common.enums.ProposalMedicationActionEnum.*;
+import static com.sphp.patient.health.support.ProposalMedicationReminderSupport.proposalCalculateNextReminderAt;
+import static com.sphp.patient.health.support.ProposalMedicationReminderSupport.proposalParseReminderTimes;
+import static com.sphp.patient.health.support.ProposalMedicationReminderSupport.proposalResolveReminderTimes;
+import static com.sphp.patient.health.support.ProposalMedicationReminderSupport.proposalSerializeReminderTimes;
 import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
 
 /**
@@ -306,24 +312,47 @@ public class ProposalServiceImpl implements ProposalService {
         OffsetDateTime now = OffsetDateTime.now();
         String targetStatus;
         OffsetDateTime nextReminderAt;
+        boolean reminderEnabled = medication.reminderEnabled();
+        String reminderTimesJson = medication.reminderTimesJson();
         OffsetDateTime endAt;
 
-        //如果当前状态是 ACTIVE 或 PAUSED，则允许暂停、恢复或完成
-        if (request.getAction() == PAUSE && "ACTIVE".equals(medication.status())) {
+        // 用户开启时按处方频次生成固定日间时刻，并从当前时间计算首个提醒。
+        if (request.getAction() == ENABLE_REMINDER && "ACTIVE".equals(medication.status()) && !reminderEnabled) {
+            List<LocalTime> reminderTimes = proposalResolveReminderTimes(medication.frequency());
+            targetStatus = "ACTIVE";
+            reminderEnabled = true;
+            reminderTimesJson = proposalSerializeReminderTimes(reminderTimes);
+            nextReminderAt = proposalCalculateNextReminderAt(reminderTimes, now);
+            endAt = null;
+        }
+        // 关闭提醒不影响当前用药计划的执行状态。
+        else if (request.getAction() == DISABLE_REMINDER
+                && ("ACTIVE".equals(medication.status()) || "PAUSED".equals(medication.status()))
+                && reminderEnabled) {
+            targetStatus = medication.status();
+            reminderEnabled = false;
+            nextReminderAt = null;
+            endAt = null;
+        }
+        // 暂停计划时停止扫描，但保留用户已开启的提醒偏好和时刻快照。
+        else if (request.getAction() == PAUSE && "ACTIVE".equals(medication.status())) {
             targetStatus = "PAUSED";
             nextReminderAt = null;
             endAt = null;
         }
-        //如果当前状态是 PAUSED，则允许恢复或完成
+        // 恢复计划后仅在用户此前已开启提醒时恢复下一个日间提醒。
         else if (request.getAction() == RESUME && "PAUSED".equals(medication.status())) {
             targetStatus = "ACTIVE";
-            nextReminderAt = now;
+            nextReminderAt = reminderEnabled
+                    ? proposalCalculateNextReminderAt(proposalParseReminderTimes(reminderTimesJson), now)
+                    : null;
             endAt = null;
         }
-        //如果当前状态是 ACTIVE 或 PAUSED，则允许完成
+        // 完成计划后停止后续提醒，不删除历史提醒时刻快照。
         else if (request.getAction() == COMPLETE
                 && ("ACTIVE".equals(medication.status()) || "PAUSED".equals(medication.status()))) {
             targetStatus = "COMPLETED";
+            reminderEnabled = false;
             nextReminderAt = null;
             endAt = now;
         } else {
@@ -332,17 +361,10 @@ public class ProposalServiceImpl implements ProposalService {
 
         // 将读取时状态带入条件更新，避免并发请求覆盖既有状态转换。
         if (dataMapper.proposalUpdateMedication(planId, patientId, targetStatus, medication.status(),
-                nextReminderAt, endAt, now) != 1) {
+                nextReminderAt, reminderEnabled, reminderTimesJson, endAt, now) != 1) {
             throw proposalConflict("当前用药计划状态已变化");
         }
-        return ProposalMedicationPlanVO.builder()
-                .id(planId)
-                .drugName(medication.drugName())
-                .dosage(medication.dosage())
-                .frequency(medication.frequency())
-                .nextReminderAt(nextReminderAt)
-                .status(targetStatus)
-                .build();
+        return proposalToMedicationVO(medication, targetStatus, nextReminderAt, reminderEnabled, reminderTimesJson);
     }
 
     /**
@@ -457,13 +479,33 @@ public class ProposalServiceImpl implements ProposalService {
      * @return 用药计划对象
      */
     private ProposalMedicationPlanVO proposalToMedicationVO(MedicationRecord medication) {
+        return proposalToMedicationVO(medication, medication.status(), medication.nextReminderAt(),
+                medication.reminderEnabled(), medication.reminderTimesJson());
+    }
+
+    /**
+     * 将用药计划及其最新提醒状态转换为对外对象。
+     *
+     * @param medication 原始用药计划投影
+     * @param status 最新计划状态
+     * @param nextReminderAt 最新下次提醒时间
+     * @param reminderEnabled 最新提醒开关
+     * @param reminderTimesJson 每日提醒时刻 JSON 数组
+     * @return 用药计划对象
+     */
+    private ProposalMedicationPlanVO proposalToMedicationVO(MedicationRecord medication, String status,
+                                                             OffsetDateTime nextReminderAt, boolean reminderEnabled,
+                                                             String reminderTimesJson) {
         return ProposalMedicationPlanVO.builder()
                 .id(medication.id())
                 .drugName(medication.drugName())
                 .dosage(medication.dosage())
                 .frequency(medication.frequency())
-                .nextReminderAt(medication.nextReminderAt())
-                .status(medication.status())
+                .nextReminderAt(nextReminderAt)
+                .reminderEnabled(reminderEnabled)
+                .reminderTimes(reminderTimesJson == null || reminderTimesJson.isBlank() ? List.of()
+                        : proposalParseReminderTimes(reminderTimesJson).stream().map(LocalTime::toString).toList())
+                .status(status)
                 .build();
     }
 

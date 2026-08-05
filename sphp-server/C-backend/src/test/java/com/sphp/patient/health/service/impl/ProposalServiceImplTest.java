@@ -40,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
@@ -282,11 +283,12 @@ class ProposalServiceImplTest {
 
         assertEquals("PAUSED", result.getStatus());
         assertNull(result.getNextReminderAt());
-        verify(dataMapper).proposalUpdateMedication(eq(8001L), eq(20001L), eq("PAUSED"), eq("ACTIVE"), isNull(), isNull(), any());
+        verify(dataMapper).proposalUpdateMedication(eq(8001L), eq(20001L), eq("PAUSED"), eq("ACTIVE"),
+                isNull(), eq(false), isNull(), isNull(), any());
     }
 
     /**
-     * 验证恢复动作只允许暂停计划，并重新设置提醒时间。
+     * 验证未开启提醒的暂停计划恢复后不会自动进入扫描。
      */
     @Test
     void proposalUpdateMedicationPlanResumesPausedPlan() {
@@ -299,8 +301,9 @@ class ProposalServiceImplTest {
                 ProposalMedicationActionEnum.RESUME));
 
         assertEquals("ACTIVE", result.getStatus());
-        assertTrue(result.getNextReminderAt().isBefore(OffsetDateTime.now().plusSeconds(1)));
-        verify(dataMapper).proposalUpdateMedication(eq(8001L), eq(20001L), eq("ACTIVE"), eq("PAUSED"), any(), isNull(), any());
+        assertNull(result.getNextReminderAt());
+        verify(dataMapper).proposalUpdateMedication(eq(8001L), eq(20001L), eq("ACTIVE"), eq("PAUSED"),
+                isNull(), eq(false), isNull(), isNull(), any());
     }
 
     /**
@@ -318,7 +321,48 @@ class ProposalServiceImplTest {
 
         assertEquals("COMPLETED", result.getStatus());
         assertNull(result.getNextReminderAt());
-        verify(dataMapper).proposalUpdateMedication(eq(8001L), eq(20001L), eq("COMPLETED"), eq("ACTIVE"), isNull(), any(), any());
+        verify(dataMapper).proposalUpdateMedication(eq(8001L), eq(20001L), eq("COMPLETED"), eq("ACTIVE"),
+                isNull(), eq(false), isNull(), any(), any());
+    }
+
+    /**
+     * 验证用户开启提醒后根据每日三次处方频次生成固定日间时刻。
+     */
+    @Test
+    void proposalUpdateMedicationPlanEnablesReminderFromFrequency() {
+        ProposalDataMapper dataMapper = medicationMapper("ACTIVE");
+        ProposalServiceImpl service = service(authorizedPatientMapper(), mock(ProposalReportMapper.class),
+                mock(ProposalReportIndicatorMapper.class), dataMapper);
+        setUserContext();
+
+        ProposalMedicationPlanVO result = service.proposalUpdateMedicationPlan(8001L, medicationRequest(
+                ProposalMedicationActionEnum.ENABLE_REMINDER));
+
+        assertTrue(result.isReminderEnabled());
+        assertEquals(List.of("08:00", "14:00", "20:00"), result.getReminderTimes());
+        assertTrue(result.getNextReminderAt().isAfter(OffsetDateTime.now().minusSeconds(1)));
+        verify(dataMapper).proposalUpdateMedication(eq(8001L), eq(20001L), eq("ACTIVE"), eq("ACTIVE"),
+                any(), eq(true), eq("[\"08:00\",\"14:00\",\"20:00\"]"), isNull(), any());
+    }
+
+    /**
+     * 验证关闭提醒不会暂停当前用药计划。
+     */
+    @Test
+    void proposalUpdateMedicationPlanDisablesReminderWithoutPausingPlan() {
+        ProposalDataMapper dataMapper = medicationMapper("ACTIVE", true, "[\"08:00\",\"14:00\",\"20:00\"]");
+        ProposalServiceImpl service = service(authorizedPatientMapper(), mock(ProposalReportMapper.class),
+                mock(ProposalReportIndicatorMapper.class), dataMapper);
+        setUserContext();
+
+        ProposalMedicationPlanVO result = service.proposalUpdateMedicationPlan(8001L, medicationRequest(
+                ProposalMedicationActionEnum.DISABLE_REMINDER));
+
+        assertEquals("ACTIVE", result.getStatus());
+        assertTrue(!result.isReminderEnabled());
+        assertNull(result.getNextReminderAt());
+        verify(dataMapper).proposalUpdateMedication(eq(8001L), eq(20001L), eq("ACTIVE"), eq("ACTIVE"),
+                isNull(), eq(false), eq("[\"08:00\",\"14:00\",\"20:00\"]"), isNull(), any());
     }
 
     /**
@@ -327,7 +371,7 @@ class ProposalServiceImplTest {
     @Test
     void proposalUpdateMedicationPlanRejectsConcurrentStateChange() {
         ProposalDataMapper dataMapper = medicationMapper("ACTIVE");
-        when(dataMapper.proposalUpdateMedication(any(), any(), any(), any(), any(), any(), any())).thenReturn(0);
+        when(dataMapper.proposalUpdateMedication(any(), any(), any(), any(), any(), anyBoolean(), any(), any(), any())).thenReturn(0);
         ProposalServiceImpl service = service(authorizedPatientMapper(), mock(ProposalReportMapper.class),
                 mock(ProposalReportIndicatorMapper.class), dataMapper);
         setUserContext();
@@ -379,10 +423,23 @@ class ProposalServiceImplTest {
      * @return 带有条件更新成功结果的 Mapper
      */
     private ProposalDataMapper medicationMapper(String status) {
+        return medicationMapper(status, false, null);
+    }
+
+    /**
+     * 创建指定提醒状态的用药计划 Mapper 模拟对象。
+     *
+     * @param status 用药计划状态
+     * @param reminderEnabled 是否已开启提醒
+     * @param reminderTimesJson 每日提醒时刻 JSON
+     * @return 带有条件更新成功结果的 Mapper
+     */
+    private ProposalDataMapper medicationMapper(String status, boolean reminderEnabled, String reminderTimesJson) {
         ProposalDataMapper dataMapper = mock(ProposalDataMapper.class);
         when(dataMapper.proposalSelectMedication(8001L)).thenReturn(new MedicationRecord(8001L, 20001L,
-                "阿莫西林", "0.5g", "每日三次", OffsetDateTime.now().plusHours(1), status));
-        when(dataMapper.proposalUpdateMedication(any(), any(), any(), any(), any(), any(), any())).thenReturn(1);
+                "阿莫西林", "0.5g", "每日3次", OffsetDateTime.now().plusHours(1), reminderEnabled,
+                reminderTimesJson, status));
+        when(dataMapper.proposalUpdateMedication(any(), any(), any(), any(), any(), anyBoolean(), any(), any(), any())).thenReturn(1);
         return dataMapper;
     }
 

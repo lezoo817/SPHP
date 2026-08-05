@@ -5,6 +5,7 @@ import com.sphp.patient.notification.mapper.NotificationMapper;
 import com.sphp.patient.notification.mq.config.NotificationRabbitMqConfig;
 import com.sphp.patient.notification.mq.consumer.NotificationCreateConsumer;
 import com.sphp.patient.notification.mq.event.NotificationCreateEvent;
+import com.sphp.patient.notification.mq.event.MedicationReminderEvent;
 import com.sphp.patient.notification.mq.producer.NotificationEventRelay;
 import com.sphp.patient.notification.mq.producer.NotificationReminderProducer;
 import com.sphp.patient.notification.mq.scheduler.NotificationReminderScheduler;
@@ -14,8 +15,11 @@ import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
+import java.time.OffsetDateTime;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -79,7 +83,7 @@ class NotificationMqTest {
     }
 
     /**
-     * 验证到期扫描发送确定性事件 ID 的用药与随访提醒消息。
+     * 验证到期扫描为已开启提醒的用药计划发送确定性推进事件。
      */
     @Test
     void reminderSchedulerPublishesDueRemindersWithoutRequestContext() {
@@ -95,9 +99,31 @@ class NotificationMqTest {
         scheduler.scanFollowUpReminders();
 
         verify(producer).publishMedicationReminder(org.mockito.ArgumentMatchers.argThat(event ->
-                event.eventId().startsWith("REMINDER:7001:") && "MEDICATION_REMINDER".equals(event.type())));
+                event.eventId().startsWith("REMINDER:7001:")
+                        && event.nextRemindAt().isAfter(event.dueAt())));
         verify(producer).publishFollowUpReminder(org.mockito.ArgumentMatchers.argThat(event ->
                 event.eventId().startsWith("FOLLOW_UP:8001:") && "FOLLOW_UP_REMINDER".equals(event.type())));
+    }
+
+    /**
+     * 验证用药提醒通知落库后按原到期时间条件推进下一次提醒。
+     */
+    @Test
+    void medicationReminderConsumerAdvancesNextReminderAfterPersistingNotification() {
+        NotificationMapper mapper = mock(NotificationMapper.class);
+        NotificationCreateConsumer notificationConsumer = new NotificationCreateConsumer(mapper);
+        com.sphp.patient.notification.mq.consumer.MedicationReminderConsumer consumer =
+                new com.sphp.patient.notification.mq.consumer.MedicationReminderConsumer(notificationConsumer, mapper);
+        OffsetDateTime dueAt = OffsetDateTime.parse("2026-08-05T08:00:00+08:00");
+        OffsetDateTime nextRemindAt = OffsetDateTime.parse("2026-08-05T14:00:00+08:00");
+        MedicationReminderEvent event = new MedicationReminderEvent("REMINDER:7001:1", 7001L, 10001L, 20001L,
+                "张三", dueAt, nextRemindAt, OffsetDateTime.now());
+
+        consumer.consumeMedicationReminder(event);
+
+        verify(mapper).insertNotificationIfAbsent(org.mockito.ArgumentMatchers.argThat(notification ->
+                "REMINDER:7001:1".equals(notification.getEventId()) && notification.getUserId().equals(10001L)));
+        verify(mapper).advanceMedicationReminder(eq(7001L), eq(dueAt), eq(nextRemindAt), any());
     }
 
     /**
@@ -115,6 +141,7 @@ class NotificationMqTest {
         record.setPatientId(patientId);
         record.setPatientName("张三");
         record.setDueAt(java.time.OffsetDateTime.now().minusMinutes(1));
+        record.setReminderTimesJson("[\"08:00\",\"14:00\",\"20:00\"]");
         return record;
     }
 }

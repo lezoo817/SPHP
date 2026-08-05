@@ -23,4 +23,7 @@ public class NotificationReminderRecord {
 
     /** 计划提醒时间 */
     private OffsetDateTime dueAt;
+
+    /** 每日提醒时刻 JSON 数组，仅用于用药提醒 */
+    private String reminderTimesJson;
 }
