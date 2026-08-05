@@ -1,27 +1,21 @@
 /**
  * 库存预警页
- * - 展示 availableCount < safetyStock 的低库存药品列表
+ * - 展示库存状态为 ALERT(告警) / LOW(偏低) 的药品库存列表
+ * - 支持按药房筛选
  * - 只读视图，不可编辑
  */
-import { Tag, message, Progress, Space } from 'antd';
+import { Tag, message, Progress, Space, Select } from 'antd';
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns } from '@ant-design/pro-components';
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import type { ActionType } from '@ant-design/pro-components';
-import { getInventoryAlerts } from '@/services/admin';
+import { getInventoryAlerts, getPharmacies } from '@/services/admin';
 
-/** 计算库存状态（仅告警级别） */
-function calcAlert(available: number, safety: number) {
-  if (safety <= 0) {
-    return { percent: 0, color: '#ff4d4f', label: '告警', severity: 'error' as const };
-  }
-  const ratio = available / safety;
-  const percent = Math.min(100, (available / safety) * 100);
-  if (ratio < 0.5) {
-    return { percent, color: '#ff4d4f', label: '严重告警', severity: 'error' as const };
-  }
-  return { percent, color: '#faad14', label: '偏低告警', severity: 'warning' as const };
-}
+/** 库存状态映射 */
+const STATUS_MAP: Record<string, { color: string; label: string }> = {
+  ALERT: { color: '#ff4d4f', label: '告警' },
+  LOW: { color: '#faad14', label: '偏低' },
+};
 
 /** 分转元显示 */
 function formatPrice(cent: number): string {
@@ -30,8 +24,20 @@ function formatPrice(cent: number): string {
 
 export default function StockAlerts() {
   const actionRef = useRef<ActionType>();
+  const [pharmacyId, setPharmacyId] = useState<number | undefined>(undefined);
+  const [pharmacies, setPharmacies] = useState<API.PharmacyItem[]>([]);
+
+  useEffect(() => {
+    getPharmacies().then(setPharmacies).catch(() => {});
+  }, []);
 
   const columns: ProColumns<API.InventoryItem>[] = [
+    {
+      title: '药房',
+      dataIndex: 'pharmacyName',
+      width: 120,
+      ellipsis: true,
+    },
     {
       title: '药品名称',
       dataIndex: 'drugName',
@@ -51,11 +57,6 @@ export default function StockAlerts() {
       sorter: true,
     },
     {
-      title: '锁定数量',
-      dataIndex: 'lockedCount',
-      width: 100,
-    },
-    {
       title: '安全库存',
       dataIndex: 'safetyStock',
       width: 100,
@@ -64,19 +65,19 @@ export default function StockAlerts() {
       title: '库存状态',
       width: 200,
       render: (_, record) => {
-        const { percent, color, label, severity } = calcAlert(
-          record.availableCount,
-          record.safetyStock,
-        );
+        const status = STATUS_MAP[record.status] || { color: '#52c41a', label: '正常' };
+        const ratio = record.safetyStock > 0
+          ? Math.min(100, (record.availableCount / record.safetyStock) * 100)
+          : 0;
         return (
           <Space>
             <Progress
-              percent={Math.round(percent)}
+              percent={Math.round(ratio)}
               size="small"
-              strokeColor={color}
+              strokeColor={status.color}
               style={{ width: 100 }}
             />
-            <Tag color={color}>{label}</Tag>
+            <Tag color={status.color}>{status.label}</Tag>
           </Space>
         );
       },
@@ -104,7 +105,7 @@ export default function StockAlerts() {
   /** 手动请求，不依赖 ProTable 的自动分页模式 */
   const fetchAlerts = async () => {
     try {
-      const list = await getInventoryAlerts();
+      const list = await getInventoryAlerts(pharmacyId !== undefined ? { pharmacyId } : undefined);
       return {
         data: list,
         total: list.length,
@@ -123,8 +124,19 @@ export default function StockAlerts() {
       columns={columns}
       request={fetchAlerts}
       search={false}
+      params={{ pharmacyId }}
       pagination={{ pageSize: 10, showTotal: (total) => `共 ${total} 条预警` }}
-      toolBarRender={false}
+      toolBarRender={() => [
+        <Select
+          key="pharmacy"
+          allowClear
+          placeholder="全部药房"
+          style={{ width: 160 }}
+          value={pharmacyId}
+          onChange={(val) => setPharmacyId(val)}
+          options={pharmacies.map((p) => ({ label: p.name, value: p.id }))}
+        />,
+      ]}
     />
   );
 }

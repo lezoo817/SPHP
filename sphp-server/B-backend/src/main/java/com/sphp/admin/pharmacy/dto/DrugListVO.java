@@ -36,4 +36,7 @@ public class DrugListVO {
 
     @Schema(description = "状态：ENABLED / DISABLED")
     private String status;
+
+    @Schema(description = "可用库存（当前医院各药房 available_count 之和；列表接口不返回）")
+    private Long availableStock;
 }

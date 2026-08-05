@@ -16,6 +16,12 @@ public class InventoryAlertVO {
     @Schema(description = "库存记录ID")
     private Long id;
 
+    @Schema(description = "药房ID")
+    private Long pharmacyId;
+
+    @Schema(description = "药房名称")
+    private String pharmacyName;
+
     @Schema(description = "药品ID")
     private Long drugId;
 
@@ -28,9 +34,15 @@ public class InventoryAlertVO {
     @Schema(description = "可售库存")
     private Integer availableCount;
 
+    @Schema(description = "锁定库存")
+    private Integer lockedCount;
+
     @Schema(description = "安全库存")
     private Integer safetyStock;
 
     @Schema(description = "单价（分）")
     private Integer unitPriceCent;
+
+    @Schema(description = "库存状态：ALERT / LOW")
+    private String status;
 }
