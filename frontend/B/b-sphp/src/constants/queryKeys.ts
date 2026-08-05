@@ -32,6 +32,14 @@ export const QUERY_KEYS = {
   pharmacies: ['admin', 'pharmacies'] as const,
   /** 患者列表（30s） */
   patients: ['patient', 'list'] as const,
+  /** 患者详情（60s） */
+  patientInfo: (patientId: number) => ['patient', 'detail', patientId] as const,
+  /** 患者当前用药与随访（60s） */
+  patientMedications: (patientId: number) =>
+    ['patient', 'medications', patientId] as const,
+  /** 运营总览（5min，按日期范围） */
+  statisticsOverview: (startDate: string, endDate: string) =>
+    ['statistics', 'overview', startDate, endDate] as const,
   /** 统计报表（5min） */
   statistics: ['statistics'] as const,
 } as const;
@@ -50,5 +58,8 @@ export const STALE_TIME = {
   inventory: 30_000,
   pharmacies: 5 * 60_000,
   patients: 30_000,
+  patientInfo: 60_000,
+  patientMedications: 60_000,
+  statisticsOverview: 5 * 60_000,
   statistics: 5 * 60_000,
 } as const;

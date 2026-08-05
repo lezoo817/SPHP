@@ -10,9 +10,10 @@ import { useRef } from 'react';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { history } from '@umijs/max';
 import { getPatientList } from '@/services/admin';
+import { getErrorMessage } from '@/utils/error';
 
 /** 性别映射 */
-const genderMap: Record<string, { text: string; color: string }> = {
+const genderMap: Record<API.PatientListItem['gender'], { text: string; color: string }> = {
   MALE: { text: '男', color: 'blue' },
   FEMALE: { text: '女', color: 'magenta' },
   UNKNOWN: { text: '未知', color: 'default' },
@@ -76,8 +77,8 @@ export default function PatientList() {
             total: res.total,
             success: true,
           };
-        } catch (err: any) {
-          message.error(err?.message || '查询失败，请重试');
+        } catch (err: unknown) {
+          message.error(getErrorMessage(err, '查询失败，请重试'));
           return { data: [], total: 0, success: true };
         }
       }}

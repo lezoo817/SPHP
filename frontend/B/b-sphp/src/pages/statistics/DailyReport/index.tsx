@@ -8,6 +8,7 @@ import { ProTable } from '@ant-design/pro-components';
 import { useRef, useState } from 'react';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { getDailyStats } from '@/services/admin';
+import { getErrorMessage } from '@/utils/error';
 import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -70,8 +71,8 @@ export default function DailyReport() {
             endDate: dates[1].format('YYYY-MM-DD'),
           });
           return { data: list, total: list.length, success: true };
-        } catch (err: any) {
-          message.error(err?.message || '查询日报统计失败');
+        } catch (err: unknown) {
+          message.error(getErrorMessage(err, '查询日报统计失败'));
           return { data: [], total: 0, success: true };
         }
       }}
