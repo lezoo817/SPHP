@@ -10,6 +10,7 @@
  * useAgentStream 在内存中维护。
  */
 import { AGENT_SESSION_KEY } from '../constants/agent';
+import type { AgentChatContext } from '../typings/agent';
 
 /**
  * 读取当前 Agent 会话 ID。
@@ -48,8 +49,8 @@ export function clearAgentSessionId(): void {
 export function buildAgentContext(
   pathname: string,
   options: { consultationId?: number; patientId?: number; doctorId?: number; hospitalId?: number } = {},
-): Agent.ChatContext {
-  let page: Agent.ChatContext['page'];
+): AgentChatContext {
+  let page: AgentChatContext['page'];
   if (pathname.startsWith('/consult')) page = 'consultation';
   else if (pathname.startsWith('/prescription')) page = 'prescription';
   else if (pathname.startsWith('/drug')) page = 'pharmacy';
@@ -57,7 +58,7 @@ export function buildAgentContext(
   else if (pathname.startsWith('/schedule')) page = 'triage';
   else page = 'doctor_workbench';
 
-  const context: Agent.ChatContext = { page };
+  const context: AgentChatContext = { page };
   if (options.hospitalId) context.hospital_id = options.hospitalId;
   if (options.doctorId) context.doctor_id = options.doctorId;
   if (options.patientId) context.patient_id = options.patientId;

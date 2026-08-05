@@ -1,0 +1,737 @@
+/**
+ * B 端 Agent 组件样式
+ *
+ * 适配 Ant Design 风格，桌面端体验
+ */
+
+/* ==================== 悬浮球 ==================== */
+.agent-float {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.4);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  user-select: none;
+  touch-action: none;
+}
+
+.agent-float:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(24, 144, 255, 0.5);
+}
+
+.agent-float:active {
+  transform: scale(0.95);
+}
+
+.agent-float.is-dragging {
+  cursor: grabbing;
+  transform: scale(1.1);
+  box-shadow: 0 8px 20px rgba(24, 144, 255, 0.6);
+}
+
+.agent-float__label {
+  font-size: 10px;
+  font-weight: 500;
+  margin-top: 2px;
+  line-height: 1;
+}
+
+/* ==================== 聊天面板 ==================== */
+.agent-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #fff;
+}
+
+.agent-chat__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+
+.agent-chat__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #595959;
+}
+
+.agent-chat__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-chat__action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #fff;
+  color: #595959;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.agent-chat__action-btn:hover {
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+.agent-chat__action-btn--active {
+  background: #1890ff;
+  border-color: #1890ff;
+  color: #fff;
+}
+
+.agent-chat__action-btn--active:hover {
+  background: #40a9ff;
+  border-color: #40a9ff;
+  color: #fff;
+}
+
+/* ==================== 消息列表 ==================== */
+.agent-chat__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.agent-chat__welcome {
+  padding: 24px 0;
+  text-align: center;
+}
+
+.agent-chat__welcome-text {
+  margin: 0 0 20px;
+  color: #595959;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.agent-chat__quick {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.agent-chat__quick-item {
+  padding: 8px 16px;
+  border: 1px solid #1890ff;
+  border-radius: 4px;
+  background: #fff;
+  color: #1890ff;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.agent-chat__quick-item:hover {
+  background: #1890ff;
+  color: #fff;
+}
+
+.agent-chat__quick-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==================== 消息气泡 ==================== */
+.agent-msg {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.agent-msg--user {
+  flex-direction: row-reverse;
+}
+
+.agent-msg__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.agent-msg__bubble {
+  max-width: 75%;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #f5f5f5;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.agent-msg--user .agent-msg__bubble {
+  background: #1890ff;
+  color: #fff;
+}
+
+.agent-msg__text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.agent-msg__disclaimer {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px dashed #f0f0f0;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+/* ==================== 思考过程 ==================== */
+.agent-thought {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #fffbe6;
+  border: 1px solid #ffe58f;
+}
+
+.agent-thought__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #d48806;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.agent-thought__chevron {
+  transition: transform 0.2s;
+  font-size: 12px;
+}
+
+.agent-thought__chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.agent-thought__content {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: #8c6800;
+}
+
+/* ==================== 工具卡片 ==================== */
+.agent-tool {
+  margin: 8px 0;
+  padding: 12px 14px;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid #f0f0f0;
+}
+
+.agent-tool--loading {
+  border-color: #1890ff;
+}
+
+.agent-tool--error {
+  border-color: #ff4d4f;
+}
+
+.agent-tool__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-tool__icon {
+  display: inline-flex;
+  align-items: center;
+  color: #1890ff;
+}
+
+.agent-tool__label {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: #262626;
+}
+
+.agent-tool__status {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.agent-tool--success .agent-tool__status {
+  color: #52c41a;
+}
+
+.agent-tool--error .agent-tool__status {
+  color: #ff4d4f;
+}
+
+.agent-tool__toggle {
+  border: 0;
+  background: transparent;
+  color: #8c8c8c;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.agent-tool__chevron {
+  transition: transform 0.2s;
+  font-size: 12px;
+}
+
+.agent-tool__chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.agent-tool__summary {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #595959;
+}
+
+.agent-tool__error {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #ff4d4f;
+}
+
+.agent-tool__detail {
+  margin-top: 10px;
+}
+
+.agent-tool__section {
+  margin-top: 8px;
+}
+
+.agent-tool__section-title {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.agent-tool__code {
+  margin: 0;
+  padding: 10px;
+  border-radius: 4px;
+  background: #f5f5f5;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 200px;
+}
+
+/* ==================== 确认卡片 ==================== */
+.agent-card {
+  margin: 12px 0;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f0f0f0;
+}
+
+.agent-card--done {
+  border-color: #b7eb8f;
+}
+
+.agent-card--error,
+.agent-card--expired {
+  border-color: #ffa39e;
+  background: #fff2f0;
+}
+
+.agent-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-card__icon {
+  display: inline-flex;
+  align-items: center;
+  color: #1890ff;
+}
+
+.agent-card--done .agent-card__icon {
+  color: #52c41a;
+}
+
+.agent-card--error .agent-card__icon,
+.agent-card--expired .agent-card__icon {
+  color: #ff4d4f;
+}
+
+.agent-card__title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.agent-card__summary {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: #595959;
+  line-height: 1.5;
+}
+
+.agent-card__toggle {
+  margin-top: 8px;
+  border: 0;
+  background: transparent;
+  color: #1890ff;
+  font-size: 13px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.agent-card__details {
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.agent-card__detail-row {
+  display: flex;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f5f5f5;
+  font-size: 13px;
+}
+
+.agent-card__detail-row:last-child {
+  border-bottom: 0;
+}
+
+.agent-card__detail-row dt {
+  flex: 0 0 auto;
+  color: #8c8c8c;
+  margin: 0;
+}
+
+.agent-card__detail-row dd {
+  margin: 0;
+  color: #262626;
+  word-break: break-word;
+}
+
+.agent-card__expire {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.agent-card__result {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: #f6ffed;
+  color: #52c41a;
+  font-size: 13px;
+}
+
+.agent-card__error-text {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: #fff2f0;
+  color: #ff4d4f;
+  font-size: 13px;
+}
+
+.agent-card__actions {
+  margin-top: 12px;
+}
+
+.agent-card__confirm {
+  width: 100%;
+  min-height: 36px;
+  border: 0;
+  border-radius: 4px;
+  background: #1890ff;
+  color: #fff;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.agent-card__confirm:hover {
+  background: #40a9ff;
+}
+
+.agent-card__confirm:disabled {
+  background: #d9d9d9;
+  cursor: not-allowed;
+}
+
+/* ==================== 输入框 ==================== */
+.agent-chat__input-bar {
+  display: flex;
+  padding: 12px 16px;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+
+.agent-chat__input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  resize: none;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.agent-chat__input:focus {
+  border-color: #1890ff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.agent-chat__input:disabled {
+  background: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.agent-chat__send {
+  margin-left: 8px;
+  padding: 8px 16px;
+  background: #1890ff;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.agent-chat__send:hover {
+  background: #40a9ff;
+}
+
+.agent-chat__send:disabled {
+  background: #d9d9d9;
+  cursor: not-allowed;
+}
+
+/* ==================== 停止按钮 ==================== */
+.agent-chat__stop {
+  display: block;
+  margin: 12px auto 4px;
+  padding: 6px 16px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  background: #fff;
+  color: #595959;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.agent-chat__stop:hover {
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+/* ==================== 错误提示 ==================== */
+.agent-chat__error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 16px 8px;
+  padding: 10px 14px;
+  border-radius: 4px;
+  background: #fff2f0;
+  border: 1px solid #ffa39e;
+  color: #ff4d4f;
+  font-size: 14px;
+}
+
+.agent-chat__retry {
+  border: 0;
+  background: transparent;
+  color: #1890ff;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* ==================== 历史会话 ==================== */
+.agent-chat__history {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fafafa;
+}
+
+.agent-chat__history-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.agent-chat__history-header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  color: #262626;
+}
+
+.agent-chat__history-close {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: #262626;
+  cursor: pointer;
+}
+
+.agent-chat__history-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.agent-chat__history-loading,
+.agent-chat__history-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 48px 16px;
+  color: #8c8c8c;
+}
+
+.agent-chat__history-item {
+  display: flex;
+  align-items: stretch;
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.agent-chat__history-item:hover {
+  border-color: #1890ff;
+}
+
+.agent-chat__history-item-main {
+  flex: 1;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.agent-chat__history-item-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #262626;
+  margin-bottom: 4px;
+}
+
+.agent-chat__history-item-preview {
+  font-size: 13px;
+  color: #8c8c8c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-chat__history-item-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #bfbfbf;
+}
+
+.agent-chat__history-item-count {
+  color: #8c8c8c;
+}
+
+.agent-chat__history-item-time {
+  color: #bfbfbf;
+}
+
+.agent-chat__history-item-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  border: 0;
+  border-left: 1px solid #f0f0f0;
+  background: transparent;
+  color: #bfbfbf;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.agent-chat__history-item-delete:hover {
+  background: #fff2f0;
+  color: #ff4d4f;
+}
+
+/* ==================== 旋转动画 ==================== */
+.agent-spin {
+  animation: agent-spin 1s linear infinite;
+}
+
+@keyframes agent-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ==================== 响应式 ==================== */
+@media (max-width: 768px) {
+  .agent-float {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+  }
+
+  .agent-float__label {
+    font-size: 9px;
+  }
+}

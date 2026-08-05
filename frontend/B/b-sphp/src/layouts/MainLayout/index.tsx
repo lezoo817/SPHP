@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation, useModel, history } from '@umijs/max';
-import { Layout, Menu, Button, Dropdown, Avatar, Space, Typography } from 'antd';
+import { Layout, Menu, Button, Dropdown, Avatar, Space, Typography, Drawer } from 'antd';
 import {
   UserOutlined,
   LogoutOutlined,
@@ -19,6 +19,9 @@ import {
 import type { MenuProps } from 'antd';
 import { request } from '@umijs/max';
 import { useState, useEffect } from 'react';
+import { AgentFloatingButton } from '@/components/agent/AgentFloatingButton';
+import { AiPanel } from '@/components/agent/AiPanel';
+import { buildAgentContext } from '@/models/agent';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -122,6 +125,7 @@ export default function MainLayout() {
   const { initialState, setInitialState } = useModel('@@initialState');
   const [collapsed, setCollapsed] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [showAgentDrawer, setShowAgentDrawer] = useState(false);
 
   const currentUser = initialState?.currentUser;
   const roles = currentUser?.roles ?? [];
@@ -169,6 +173,18 @@ export default function MainLayout() {
     setInitialState({ currentUser: undefined });
     history.push('/login');
   };
+
+  /** 构建 Agent 上下文 */
+  const agentContext = buildAgentContext(location.pathname, {
+    hospitalId: currentUser?.hospitalId,
+    doctorId: currentUser?.id,
+  });
+
+  /** 需要隐藏悬浮球的页面 */
+  const hideAgentPages = ['/login', '/agent'];
+  const shouldHideAgent = hideAgentPages.some((path) =>
+    location.pathname.startsWith(path),
+  );
 
   const userMenuItems: MenuProps['items'] = [
     {
@@ -245,6 +261,23 @@ export default function MainLayout() {
           <Outlet />
         </Content>
       </Layout>
+
+      {/* Agent 悬浮球 */}
+      {!shouldHideAgent && (
+        <AgentFloatingButton onClick={() => setShowAgentDrawer(true)} />
+      )}
+
+      {/* Agent 聊天面板抽屉 */}
+      <Drawer
+        title="AI 助手"
+        placement="right"
+        width={480}
+        open={showAgentDrawer}
+        onClose={() => setShowAgentDrawer(false)}
+        styles={{ body: { padding: 0, overflow: 'hidden' } }}
+      >
+        <AiPanel context={agentContext} embedded={true} />
+      </Drawer>
     </Layout>
   );
 }

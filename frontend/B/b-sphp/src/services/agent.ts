@@ -4,13 +4,26 @@
  * 直连 Python Agent（:8081），与 B 端 Java 业务接口（/api/b）分离。
  * 对话使用 Fetch 响应流读取七类 SSE 事件，不使用浏览器原生 EventSource。
  *
- * 对应系分：B 端前端系分 V2.0 §9、Agent 模块系分 V2.1 §6.2。
+ * 认证方式：使用 B 端 Sa-Token JWT（存储在 localStorage 的 b_access_token）。
  */
 import { AGENT_BASE_URL, AGENT_SCOPE } from '../constants/agent';
-import { history } from '@umijs/max';
+import type {
+  AgentChatContext,
+  AgentChatRequest,
+  AgentConfirmData,
+  AgentConfirmRequest,
+  AgentSession,
+  AgentSseEvent,
+} from '../typings/agent';
+
+/** 历史消息条目 */
+export interface AgentHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
 
 /** SSE 解析回调：每解析出一条事件触发一次。 */
-export type SseEventHandler = (event: Agent.SseEvent) => void;
+export type SseEventHandler = (event: AgentSseEvent) => void;
 
 /** 终止信号：调用 AbortController.abort() 可中断流读取。 */
 export interface ChatStreamHandle {
@@ -18,39 +31,26 @@ export interface ChatStreamHandle {
   abort: () => void;
 }
 
-/** B 端 access token localStorage 键名（与 app.ts / login 保持一致）。 */
-const B_ACCESS_TOKEN_KEY = 'b_access_token';
-
-/** 读取 B 端 access token。 */
-function getAccessToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(B_ACCESS_TOKEN_KEY);
-}
-
-/** 清理登录态并跳转登录页。 */
-function redirectToLogin(): void {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem(B_ACCESS_TOKEN_KEY);
-  }
-  history.push('/login');
+/** 统一访问令牌头。 */
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem('b_access_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 /**
- * 构造发往 Agent 的统一请求头。
- *
- * 必须携带 `X-Scope: b_end`：Agent 的 JWT 鉴权中间件按该头路由到 B 端
- * `GET /api/b/auth/token/parse` 校验 JWT（默认 c_end 会调 C 端 token/parse，
- * C/B 端 JWT 密钥互不通用，校验必然失败 → 401 → 前端误判 token 失效跳登录）。
- *
- * @param token B 端 access token
- * @param extra 附加请求头（如 Accept）
+ * 确保本地 Access Token 有效。
+ * @returns 有效访问令牌；不可用时返回 null
  */
-function buildAgentHeaders(token: string, extra: Record<string, string> = {}): Record<string, string> {
-  return {
-    'X-Scope': AGENT_SCOPE,
-    Authorization: `Bearer ${token}`,
-    ...extra,
-  };
+function ensureAccessToken(): string | null {
+  return localStorage.getItem('b_access_token');
+}
+
+/**
+ * 跳转到 B 端登录页。
+ */
+function redirectToLogin(): void {
+  localStorage.removeItem('b_access_token');
+  window.location.href = '/login';
 }
 
 /**
@@ -69,7 +69,7 @@ export function chatStream(
   content: string,
   onEvent: SseEventHandler,
   onError: (message: string, code?: string) => void,
-  options: { sessionId?: string; context?: Agent.ChatContext; signal?: AbortSignal } = {},
+  options: { sessionId?: string; context?: AgentChatContext; signal?: AbortSignal } = {},
 ): ChatStreamHandle {
   const controller = new AbortController();
   // 外部 signal 中断时同步终止内部 controller
@@ -79,14 +79,14 @@ export function chatStream(
   }
 
   void (async () => {
-    const token = getAccessToken();
+    const token = ensureAccessToken();
     if (!token) {
       redirectToLogin();
       onError('登录状态已失效，请重新登录', 'AUTH_EXPIRED');
       return;
     }
 
-    const body: Agent.ChatRequest = {
+    const body: AgentChatRequest = {
       content,
       scope: AGENT_SCOPE,
       ...(options.sessionId ? { session_id: options.sessionId } : {}),
@@ -97,10 +97,12 @@ export function chatStream(
     try {
       response = await fetch(`${AGENT_BASE_URL}/api/chat/stream`, {
         method: 'POST',
-        headers: buildAgentHeaders(token, {
+        headers: {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
-        }),
+          Authorization: `Bearer ${token}`,
+          'X-Scope': AGENT_SCOPE,
+        },
         body: JSON.stringify(body),
         signal: controller.signal,
       });
@@ -174,7 +176,7 @@ async function readSseStream(stream: ReadableStream<Uint8Array>, onEvent: SseEve
  * @param frame 单帧文本（不含结尾空行）
  * @returns 解析后的事件，格式异常时返回 null
  */
-function parseSseFrame(frame: string): Agent.SseEvent | null {
+function parseSseFrame(frame: string): AgentSseEvent | null {
   let eventName = 'message';
   const dataLines: string[] = [];
   for (const line of frame.split('\n')) {
@@ -218,69 +220,21 @@ function parseSseFrame(frame: string): Agent.SseEvent | null {
 /** 从非流式错误响应中提取用户可读信息。 */
 async function extractErrorMessage(response: Response): Promise<string> {
   try {
-    const payload = (await response.json()) as API.Result<unknown>;
-    return payload.message || '对话请求失败，请稍后重试';
+    const payload = await response.json();
+    return (payload as any).message || '对话请求失败，请稍后重试';
   } catch {
     return response.status === 429 ? '对话请求过于频繁，请稍后重试' : '服务暂时不可用，请稍后重试';
   }
 }
 
 /**
- * L2 确认回调（POST /api/chat/confirm）。
- *
- * 独立同步 JSON 请求，携带 confirm_token + session_id。成功（code=00000）
- * 返回 action_result 与 message；失败时抛出含错误码的异常。
- *
- * @param payload 确认令牌与会话 ID
- * @returns 确认结果数据
- */
-export async function confirmCard(payload: Agent.ConfirmRequest): Promise<Agent.ConfirmData> {
-  const token = getAccessToken();
-  if (!token) {
-    redirectToLogin();
-    throw new Error('登录状态已失效，请重新登录');
-  }
-
-  let response: Response;
-  try {
-    response = await fetch(`${AGENT_BASE_URL}/api/chat/confirm`, {
-      method: 'POST',
-      headers: buildAgentHeaders(token, { 'Content-Type': 'application/json' }),
-      body: JSON.stringify(payload),
-    });
-  } catch {
-    throw new Error('网络连接失败，请稍后重试');
-  }
-
-  // 401 鉴权失败：清理登录态并跳转
-  if (response.status === 401) {
-    redirectToLogin();
-    throw new Error('登录已失效，请重新登录');
-  }
-
-  let payloadJson: API.Result<Agent.ConfirmData>;
-  try {
-    payloadJson = (await response.json()) as API.Result<Agent.ConfirmData>;
-  } catch {
-    throw new Error('确认请求响应异常，请稍后重试');
-  }
-
-  if (payloadJson.code === '00000') {
-    return payloadJson.data || { message: '操作成功' };
-  }
-
-  // 业务错误：抛出含 code 的异常，由调用方按错误码处理卡片状态
-  const error = new Error(payloadJson.message || '确认请求失败') as Error & { code?: string };
-  error.code = payloadJson.code;
-  throw error;
-}
-
-/**
  * 获取历史会话列表（GET /api/chat/sessions）。
+ *
+ * 返回当前用户的所有 B 端 AI 会话，按最后更新时间倒序。
  * @returns 会话列表
  */
-export async function getSessions(): Promise<Agent.Session[]> {
-  const token = getAccessToken();
+export async function getSessions(): Promise<AgentSession[]> {
+  const token = ensureAccessToken();
   if (!token) {
     redirectToLogin();
     throw new Error('登录状态已失效，请重新登录');
@@ -290,7 +244,10 @@ export async function getSessions(): Promise<Agent.Session[]> {
   try {
     response = await fetch(`${AGENT_BASE_URL}/api/chat/sessions`, {
       method: 'GET',
-      headers: buildAgentHeaders(token),
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Scope': AGENT_SCOPE,
+      },
     });
   } catch {
     throw new Error('网络连接失败，请稍后重试');
@@ -301,9 +258,9 @@ export async function getSessions(): Promise<Agent.Session[]> {
     throw new Error('登录已失效，请重新登录');
   }
 
-  let payload: API.Result<Agent.SessionList>;
+  let payload: any;
   try {
-    payload = (await response.json()) as API.Result<Agent.SessionList>;
+    payload = await response.json();
   } catch {
     throw new Error('获取会话列表失败，请稍后重试');
   }
@@ -311,6 +268,7 @@ export async function getSessions(): Promise<Agent.Session[]> {
   if (payload.code === '00000' && payload.data?.sessions) {
     return payload.data.sessions;
   }
+
   throw new Error(payload.message || '获取会话列表失败');
 }
 
@@ -319,7 +277,7 @@ export async function getSessions(): Promise<Agent.Session[]> {
  * @param sessionId 会话 ID
  */
 export async function deleteSession(sessionId: string): Promise<void> {
-  const token = getAccessToken();
+  const token = ensureAccessToken();
   if (!token) {
     redirectToLogin();
     throw new Error('登录状态已失效，请重新登录');
@@ -329,7 +287,10 @@ export async function deleteSession(sessionId: string): Promise<void> {
   try {
     response = await fetch(`${AGENT_BASE_URL}/api/chat/sessions/${encodeURIComponent(sessionId)}`, {
       method: 'DELETE',
-      headers: buildAgentHeaders(token),
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Scope': AGENT_SCOPE,
+      },
     });
   } catch {
     throw new Error('网络连接失败，请稍后重试');
@@ -340,9 +301,9 @@ export async function deleteSession(sessionId: string): Promise<void> {
     throw new Error('登录已失效，请重新登录');
   }
 
-  let payload: API.Result<unknown>;
+  let payload: any;
   try {
-    payload = (await response.json()) as API.Result<unknown>;
+    payload = await response.json();
   } catch {
     throw new Error('删除会话失败，请稍后重试');
   }
@@ -357,8 +318,8 @@ export async function deleteSession(sessionId: string): Promise<void> {
  * @param sessionId 会话 ID
  * @returns 消息列表（role + content）
  */
-export async function getSessionMessages(sessionId: string): Promise<Agent.HistoryMessage[]> {
-  const token = getAccessToken();
+export async function getSessionMessages(sessionId: string): Promise<AgentHistoryMessage[]> {
+  const token = ensureAccessToken();
   if (!token) {
     redirectToLogin();
     throw new Error('登录状态已失效，请重新登录');
@@ -368,7 +329,10 @@ export async function getSessionMessages(sessionId: string): Promise<Agent.Histo
   try {
     response = await fetch(`${AGENT_BASE_URL}/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
       method: 'GET',
-      headers: buildAgentHeaders(token),
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Scope': AGENT_SCOPE,
+      },
     });
   } catch {
     throw new Error('网络连接失败，请稍后重试');
@@ -379,9 +343,9 @@ export async function getSessionMessages(sessionId: string): Promise<Agent.Histo
     throw new Error('登录已失效，请重新登录');
   }
 
-  let payload: API.Result<{ messages: Agent.HistoryMessage[] }>;
+  let payload: any;
   try {
-    payload = (await response.json()) as API.Result<{ messages: Agent.HistoryMessage[] }>;
+    payload = await response.json();
   } catch {
     throw new Error('获取历史消息失败，请稍后重试');
   }
@@ -389,5 +353,60 @@ export async function getSessionMessages(sessionId: string): Promise<Agent.Histo
   if (payload.code === '00000' && payload.data?.messages) {
     return payload.data.messages;
   }
+
   throw new Error(payload.message || '获取历史消息失败');
+}
+
+/**
+ * L2 确认回调（POST /api/chat/confirm）。
+ *
+ * 独立同步 JSON 请求，携带 confirm_token + session_id。成功（code=00000）
+ * 返回 action_result 与 message；失败时抛出含错误码的 ApiError。
+ *
+ * @param payload 确认令牌与会话 ID
+ * @returns 确认结果数据
+ */
+export async function confirmCard(payload: AgentConfirmRequest): Promise<AgentConfirmData> {
+  const token = ensureAccessToken();
+  if (!token) {
+    redirectToLogin();
+    throw new Error('登录状态已失效，请重新登录');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${AGENT_BASE_URL}/api/chat/confirm`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'X-Scope': AGENT_SCOPE,
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error('网络连接失败，请稍后重试');
+  }
+
+  // 401 鉴权失败：清理登录态并跳转
+  if (response.status === 401) {
+    redirectToLogin();
+    throw new Error('登录已失效，请重新登录');
+  }
+
+  let payloadJson: any;
+  try {
+    payloadJson = await response.json();
+  } catch {
+    throw new Error('确认请求响应异常，请稍后重试');
+  }
+
+  if (payloadJson.code === '00000') {
+    return payloadJson.data || { message: '操作成功' };
+  }
+
+  // 业务错误：抛出含 code 的异常，由调用方按错误码处理卡片状态
+  const error = new Error(payloadJson.message || '确认请求失败') as Error & { code?: string };
+  error.code = payloadJson.code;
+  throw error;
 }

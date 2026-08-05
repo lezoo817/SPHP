@@ -41,6 +41,8 @@ import { AgentMessageBubble } from './AgentMessage';
 import { AgentThoughtPanel } from './AgentThought';
 import { AgentToolCardView } from './AgentToolCard';
 import { AgentConfirmCardView } from './AgentConfirmCard';
+import type { AgentChatContext, AgentSession } from '../../typings/agent';
+import './agent.css';
 
 const { Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -60,7 +62,7 @@ function formatSessionTime(isoString: string): string {
 
 export interface AiPanelProps {
   /** 对话上下文（接诊台场景携带 consultation_id / patient_id） */
-  context?: Agent.ChatContext;
+  context?: AgentChatContext;
   /** 是否嵌入式渲染（接诊台侧栏）。默认 false（全屏页形态）。 */
   embedded?: boolean;
   /** 嵌入式场景下，切换患者时由父组件触发会话重置（传入新的 consultationId 即重置） */
@@ -359,7 +361,7 @@ export function AiPanel({ context, embedded = false, consultationId }: AiPanelPr
           <Empty description="暂无历史会话" style={{ marginTop: 48 }} />
         ) : (
           <div>
-            {sessions.map((session) => (
+            {sessions.map((session: AgentSession) => (
               <div
                 key={session.session_id}
                 style={{
