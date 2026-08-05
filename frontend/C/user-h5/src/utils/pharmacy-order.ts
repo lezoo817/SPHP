@@ -1,4 +1,4 @@
-import type { DrugOrderDetail } from '../typings/api';
+import type { DrugOrder, DrugOrderDetail } from '../typings/api';
 import { formatAmount } from './medical';
 import { getLogisticsStatusText } from './pharmacy';
 
@@ -9,6 +9,26 @@ import { getLogisticsStatusText } from './pharmacy';
  */
 export function isPendingDrugOrder(status?: string): boolean {
   return status === 'PENDING_PAYMENT';
+}
+
+/**
+ * 判断购药订单是否已经完成购买。
+ * @param status 后端购药订单状态
+ * @returns 已支付并可进入物流详情时返回 true
+ */
+export function isPurchasedDrugOrder(status?: string): boolean {
+  return status === 'PAID';
+}
+
+/**
+ * 从后端时间倒序订单中定位处方对应的最新已购买订单。
+ * @param orders 当前就诊人的购药订单列表
+ * @param prescriptionId 当前处方 ID
+ * @returns 已支付订单；不存在时返回 undefined
+ */
+export function findPurchasedDrugOrder(orders: DrugOrder[], prescriptionId: number): DrugOrder | undefined {
+  // 仅已支付订单允许从处方详情直接查看物流，待支付订单仍须先完成购买。
+  return orders.find((order) => order.prescriptionId === prescriptionId && isPurchasedDrugOrder(order.status));
 }
 
 /**

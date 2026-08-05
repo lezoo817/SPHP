@@ -71,6 +71,10 @@ export async function readWithStaleCache<T>(queryKey: readonly unknown[], queryF
   const cached = queryClient.getQueryData<T>(queryKey);
   if (cached !== undefined) {
     const state = queryClient.getQueryState(queryKey);
+    if (state?.isInvalidated) {
+      // 支付等写操作后等待最新响应，避免物流页和购药首页短暂展示旧状态。
+      return queryClient.fetchQuery({ queryKey, queryFn, staleTime, retry: false });
+    }
     const isStale = !state?.dataUpdatedAt || Date.now() - state.dataUpdatedAt >= staleTime;
     if (isStale) {
       // 后台请求失败时保留页面已显示的缓存，避免切换页面时出现空白。

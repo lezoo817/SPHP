@@ -45,6 +45,15 @@ describe('请求缓存规则', () => {
     expect(queryClient.getQueryState(slotsKey)?.isInvalidated).toBe(true);
   });
 
+  it('主动失效的缓存等待最新响应，不能返回旧订单状态', async () => {
+    const key = buildRequestQueryKey(1, '/c/v1/drug-orders/1');
+    queryClient.setQueryData(key, { id: 1, status: 'PENDING_PAYMENT' });
+    await queryClient.invalidateQueries({ queryKey: key });
+    const loader = vi.fn().mockResolvedValue({ id: 1, status: 'PAID' });
+    await expect(readWithStaleCache(key, loader, 30_000)).resolves.toEqual({ id: 1, status: 'PAID' });
+    expect(loader).toHaveBeenCalledTimes(1);
+  });
+
   it('购药支付成功后失效购药订单缓存，物流页读取最新状态', async () => {
     const drugOrderKey = buildRequestQueryKey(1, '/c/v1/drug-orders/1');
     queryClient.setQueryData(drugOrderKey, { id: 1, status: 'PENDING_PAYMENT' });
