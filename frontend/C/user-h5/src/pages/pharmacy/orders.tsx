@@ -1,10 +1,11 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Search, X } from 'lucide-react';
 import { useNavigate } from 'umi';
 import { getDrugOrders } from '../../services/pharmacy';
 import type { DrugOrder } from '../../typings/api';
 import { formatAmount } from '../../utils/medical';
 import { drugOrderTabs, getLogisticsStatusText, matchesDrugOrderTab, type DrugOrderTab } from '../../utils/pharmacy';
+import { getApiErrorMessage } from '../../utils/form';
 
 /** 将地址栏的 Tab 参数转换为受控物流分类。 */
 function resolveTab(value: string | null): DrugOrderTab {
@@ -23,24 +24,29 @@ export default function PharmacyOrdersPage() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState('');
 
-  /** 根据当前患者和已提交关键词重新查询订单。 */
-  async function load(nextKeyword = searchedKeyword) {
+  /** 根据当前患者和已提交关键词重新查询订单，后台刷新不打断页面浏览。 */
+  const load = useCallback(async (silently = false) => {
     if (!Number.isInteger(patientId) || patientId <= 0) {
-      setNotice('就诊人信息无效');
+      if (!silently) setNotice('就诊人信息无效');
       return;
     }
     try {
-      setLoading(true);
-      const page = await getDrugOrders({ patientId, keyword: nextKeyword, pageNo: 1, pageSize: 100 });
+      if (!silently) setLoading(true);
+      const page = await getDrugOrders({ patientId, keyword: searchedKeyword, pageNo: 1, pageSize: 100 });
       setOrders(page.records);
-    } catch (error: any) {
-      setNotice(error.message || '订单加载失败');
+    } catch (error) {
+      if (!silently) setNotice(getApiErrorMessage(error));
     } finally {
-      setLoading(false);
+      if (!silently) setLoading(false);
     }
-  }
+  }, [patientId, searchedKeyword]);
 
-  useEffect(() => { void load(); }, [patientId, searchedKeyword]);
+  useEffect(() => {
+    void load();
+    // 物流状态由后端自动推进，订单页定时读取服务端最新状态。
+    const timer = window.setInterval(() => { void load(true); }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [load]);
 
   /** 提交订单名称模糊搜索。 */
   function search(event: FormEvent) {
