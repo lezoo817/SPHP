@@ -1,10 +1,13 @@
 package com.sphp.patient.notification.mq.consumer;
 
-import com.sphp.patient.common.constant.NotificationConstant;
-import com.sphp.patient.notification.mq.event.NotificationCreateEvent;
+import com.sphp.patient.notification.mapper.NotificationMapper;
+import com.sphp.patient.notification.mq.event.MedicationReminderEvent;
 import lombok.RequiredArgsConstructor;
+import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
+
+import java.time.OffsetDateTime;
 
 import static com.sphp.patient.common.constant.NotificationConstant.REMINDER_QUEUE;
 
@@ -13,15 +16,22 @@ import static com.sphp.patient.common.constant.NotificationConstant.REMINDER_QUE
 @RequiredArgsConstructor
 public class MedicationReminderConsumer {
     private final NotificationCreateConsumer notificationCreateConsumer;
+    private final NotificationMapper notificationMapper;
 
     /**
      * 消费用药提醒并复用通知表幂等写入逻辑。
      *
-     * @param event 用药提醒通知事件
+     * @param event 用药提醒推进事件
      */
     @RabbitListener(queues = REMINDER_QUEUE)
-    public void consumeMedicationReminder(NotificationCreateEvent event) {
-        // 复用通知表幂等写入逻辑
-        notificationCreateConsumer.consumeNotificationCreate(event);
+    public void consumeMedicationReminder(MedicationReminderEvent event) {
+        try {
+            // 通知落库成功后才推进下一次提醒，避免消息失败造成提醒丢失。
+            notificationCreateConsumer.persistNotification(event.toNotificationCreateEvent());
+            notificationMapper.advanceMedicationReminder(event.planId(), event.dueAt(), event.nextRemindAt(),
+                    OffsetDateTime.now());
+        } catch (RuntimeException exception) {
+            throw new AmqpRejectAndDontRequeueException("C端用药提醒消费失败", exception);
+        }
     }
 }

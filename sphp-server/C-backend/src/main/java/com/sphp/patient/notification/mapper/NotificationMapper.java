@@ -48,6 +48,19 @@ public interface NotificationMapper extends BaseMapper<Notification> {
     List<NotificationReminderRecord> selectDueMedicationReminders(@Param("now") OffsetDateTime now);
 
     /**
+     * 在用药提醒通知持久化后条件推进下一次提醒时间。
+     *
+     * @param planId 用药计划 ID
+     * @param dueAt 当前已通知的到期时间
+     * @param nextRemindAt 下一次提醒时间
+     * @param now 当前更新时间
+     * @return 实际推进的计划行数，重复消费或状态变化时为 0
+     */
+    int advanceMedicationReminder(@Param("planId") Long planId, @Param("dueAt") OffsetDateTime dueAt,
+                                  @Param("nextRemindAt") OffsetDateTime nextRemindAt,
+                                  @Param("now") OffsetDateTime now);
+
+    /**
      * 查询尚未生成通知的到期随访计划及有效接收账号。
      *
      * @param now 当前时间

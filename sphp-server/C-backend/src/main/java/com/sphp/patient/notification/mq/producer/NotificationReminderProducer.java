@@ -1,6 +1,6 @@
 package com.sphp.patient.notification.mq.producer;
 
-import com.sphp.patient.common.constant.NotificationConstant;
+import com.sphp.patient.notification.mq.event.MedicationReminderEvent;
 import com.sphp.patient.notification.mq.event.NotificationCreateEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -17,9 +17,9 @@ public class NotificationReminderProducer {
     /**
      * 发布到期用药提醒消息。
      *
-     * @param event 用药提醒通知事件
+     * @param event 用药提醒推进事件
      */
-    public void publishMedicationReminder(NotificationCreateEvent event) {
+    public void publishMedicationReminder(MedicationReminderEvent event) {
         publish(event, REMINDER_DUE_ROUTING_KEY);
     }
 
@@ -38,7 +38,7 @@ public class NotificationReminderProducer {
      * @param event 提醒通知事件
      * @param routingKey 既定提醒路由键
      */
-    private void publish(NotificationCreateEvent event, String routingKey) {
+    private void publish(Object event, String routingKey) {
         rabbitTemplate.convertAndSend(BUSINESS_EXCHANGE, routingKey, event);
     }
 }
