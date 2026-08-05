@@ -1,20 +1,25 @@
 import { useEffect, useState } from 'react';
-import { useLocation, useParams } from 'umi';
+import { ShoppingCart } from 'lucide-react';
+import { useLocation, useNavigate, useParams } from 'umi';
 import { PageHeader } from '../../components/PageHeader';
+import { PrescriptionPaper } from '../../components/PrescriptionPaper';
 import { getPrescription } from '../../services/consultation';
 import type { PrescriptionDetail } from '../../typings/api';
 import { getApiErrorMessage } from '../../utils/form';
-import { buildMinePrescriptionListPath } from '../../utils/prescription';
+import { buildPharmacyInventoryPath, resolvePharmacyPatientId } from '../../utils/pharmacy';
+import { buildMinePrescriptionListPath, getPrescriptionDisplayNumber } from '../../utils/prescription';
 
 /** 展示已批准处方及药品用法。 */
 export default function PrescriptionPage() {
   const { prescriptionId } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const [detail, setDetail] = useState<PrescriptionDetail>();
   const [notice, setNotice] = useState('');
   const query = new URLSearchParams(location.search);
+  const patientId = resolvePharmacyPatientId(query.get('patientId'));
   // 仅“我的处方”入口恢复其筛选条件，避免影响就诊助手既有详情返回行为。
-  const backPath = query.get('source') === 'mine-prescriptions' ? buildMinePrescriptionListPath(query) : '/mine';
+  const backPath = query.get('source') === 'mine-prescriptions' ? buildMinePrescriptionListPath(query) : query.get('source') === 'assistant' ? '/assistant' : '/mine';
 
   /** 按路由处方编号读取已批准处方详情。 */
   async function loadPrescription() {
@@ -28,5 +33,14 @@ export default function PrescriptionPage() {
 
   useEffect(() => { void loadPrescription(); }, [prescriptionId]);
 
-  return <main className="subpage"><PageHeader title="处方详情" backPath={backPath} /><section className="subpage-content"><h2>{detail?.doctorName}医生处方</h2>{detail?.items.map((item) => <article className="record-card" key={item.drugId}><b>{item.drugName} {item.specification}</b><span>{item.dosage} · {item.frequency} · {item.usage}</span><em>{item.durationDays ? `${item.durationDays}天` : ''}</em></article>)}</section>{notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}</main>;
+  /** 使用来源页面传入的本地就诊人进入真实库存页。 */
+  function purchaseNow() {
+    if (!patientId || !Number.isInteger(Number(prescriptionId))) {
+      setNotice('请返回来源页面重新选择就诊人');
+      return;
+    }
+    navigate(buildPharmacyInventoryPath(Number(prescriptionId), patientId));
+  }
+
+  return <main className="subpage pharmacy-prescription-detail-page"><PageHeader title="处方详情" backPath={backPath} /><section className="subpage-content">{!patientId && <p className="form-error">请返回来源页面重新选择就诊人</p>}{!detail && !notice && <p className="empty-state">正在读取处方详情...</p>}{detail && <PrescriptionPaper detail={detail} displayNumber={getPrescriptionDisplayNumber(detail.id, detail.issuedAt)} />}</section><footer className="pharmacy-purchase-bar"><button className="primary-button" type="button" disabled={!detail || !patientId} onClick={purchaseNow}><ShoppingCart size={19} />立即购药</button></footer>{notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}</main>;
 }

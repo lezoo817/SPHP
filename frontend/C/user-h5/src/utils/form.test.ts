@@ -28,7 +28,7 @@ import { buildLegacyReportRedirectPath, createMedicalRecordDisplayNumber, filter
 import { isDuplicateDoctorAppointmentError } from './registration';
 import { buildDoctorBookingStatusPath } from '../services/registration';
 import { buildPrescriptionsPath } from '../services/consultation';
-import { buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, filterPrescriptionsByDate, getRecentPrescriptionRange, mergePrescriptionPages } from './prescription';
+import { buildAssistantPrescriptionDetailPath, buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, createPrescriptionDisplayNumber, filterPrescriptionsByDate, getPrescriptionDisplayNumber, getRecentPrescriptionRange, mergePrescriptionPages, type PrescriptionDisplayNumberStorage } from './prescription';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -292,6 +292,23 @@ describe('我的处方查询规则', () => {
     const path = buildMinePrescriptionDetailPath(1001, 2001, { startDate: '2026-07-01', endDate: '2026-08-05' });
     expect(path).toBe('/assistant/prescription/1001?source=mine-prescriptions&startDate=2026-07-01&endDate=2026-08-05&patientId=2001');
     expect(buildMinePrescriptionListPath(new URLSearchParams(path.split('?')[1]))).toBe('/mine/prescriptions?patientId=2001&startDate=2026-07-01&endDate=2026-08-05');
+    expect(buildAssistantPrescriptionDetailPath(1001, 2001)).toBe('/assistant/prescription/1001?source=assistant&patientId=2001');
+  });
+
+  it('处方展示编号使用开具时间戳和四位随机尾号', () => {
+    expect(createPrescriptionDisplayNumber('2026-08-05T10:00:00+08:00', 7)).toBe(`${Date.parse('2026-08-05T10:00:00+08:00')}0007`);
+    expect(createPrescriptionDisplayNumber('2026-08-05T10:00:00+08:00', 12345)).toBe(`${Date.parse('2026-08-05T10:00:00+08:00')}9999`);
+  });
+
+  it('同一会话内同处方复用展示编号，不同处方独立生成', () => {
+    const values = new Map<string, string>();
+    const storage: PrescriptionDisplayNumberStorage = {
+      getItem: (key) => values.get(key) || null,
+      setItem: (key, value) => { values.set(key, value); },
+    };
+    const first = getPrescriptionDisplayNumber(1, '2026-08-05T10:00:00+08:00', 12, storage);
+    expect(getPrescriptionDisplayNumber(1, '2026-08-05T10:00:00+08:00', 99, storage)).toBe(first);
+    expect(getPrescriptionDisplayNumber(2, '2026-08-05T10:00:00+08:00', 34, storage)).not.toBe(first);
   });
 });
 
