@@ -47,6 +47,7 @@ public class ProfileServiceImpl implements ProfileService {
                 .gender(profile.getGender())
                 .birthday(profile.getBirthday())
                 .phone(maskPhone(profile.getPhone()))
+                .idCardNo(maskIdCardNo(profile.getIdCardNo()))
                 .emergencyContact(maskEmergencyContact(profile.getEmergencyContact()))
                 .build();
     }
@@ -142,6 +143,23 @@ public class ProfileServiceImpl implements ProfileService {
             return "***";
         }
         return phone.substring(0, 3) + "****" + phone.substring(7);
+    }
+
+    /**
+     * 按身份证号脱敏规则保留前三位和后四位。
+     *
+     * @param idCardNo 身份证号原始值
+     * @return 脱敏身份证号或 null
+     */
+    private String maskIdCardNo(String idCardNo) {
+        if (!StringUtils.hasText(idCardNo)) {
+            return null;
+        }
+        if (idCardNo.length() <= 7) {
+            return "***";
+        }
+        return idCardNo.substring(0, 3) + "*".repeat(idCardNo.length() - 7)
+                + idCardNo.substring(idCardNo.length() - 4);
     }
 
     /**

@@ -51,6 +51,7 @@ class ProfileServiceImplTest {
         assertEquals(20001L, result.getId());
         assertEquals("张三", result.getName());
         assertEquals("138****8000", result.getPhone());
+        assertEquals("110***********1234", result.getIdCardNo());
         assertEquals("李四 139****9000", result.getEmergencyContact());
     }
 
@@ -151,6 +152,7 @@ class ProfileServiceImplTest {
         record.setGender("MALE");
         record.setBirthday(LocalDate.of(1990, 5, 20));
         record.setPhone("13800138000");
+        record.setIdCardNo("110105194912311234");
         record.setEmergencyContact("李四 13900139000");
         return record;
     }

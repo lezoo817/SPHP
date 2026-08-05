@@ -71,6 +71,7 @@ class ProfileControllerTest {
                 .gender("MALE")
                 .birthday(LocalDate.of(1990, 5, 20))
                 .phone("138****8000")
+                .idCardNo("110***********1234")
                 .emergencyContact("李四 139****9000")
                 .build());
 
@@ -80,6 +81,7 @@ class ProfileControllerTest {
                 .andExpect(jsonPath("$.message").value("查询成功"))
                 .andExpect(jsonPath("$.data.id").value(20001L))
                 .andExpect(jsonPath("$.data.phone").value("138****8000"))
+                .andExpect(jsonPath("$.data.idCardNo").value("110***********1234"))
                 .andExpect(jsonPath("$.data.emergencyContact").value("李四 139****9000"));
     }
 
