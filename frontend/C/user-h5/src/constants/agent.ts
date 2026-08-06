@@ -95,6 +95,8 @@ export const AGENT_ERROR_TEXT: Record<string, string> = {
   TOOL_DENIED: '该操作暂不支持',
   TOOL_FAILED: '服务暂时不可用，请稍后重试',
   SERVER_ERROR: '服务异常，请稍后重试',
+  NETWORK_ERROR: '网络连接失败，请检查网络后重试',
+  STREAM_ERROR: '对话连接中断，请重试',
 };
 
 /** 医疗免责声明（导诊、报告、处方解读与 AI 回复均展示）。 */
