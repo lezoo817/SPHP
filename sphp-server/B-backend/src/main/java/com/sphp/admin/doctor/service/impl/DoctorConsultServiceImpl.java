@@ -27,6 +27,7 @@ import com.sphp.admin.doctor.entity.PatientMedicalHistory;
 import com.sphp.admin.doctor.mapper.BConsultationMessageMapper;
 import com.sphp.admin.doctor.mapper.BPatientMapper;
 import com.sphp.admin.doctor.mapper.ConsultRecordMapper;
+import com.sphp.admin.doctor.mapper.BAppointmentMapper;
 import com.sphp.admin.doctor.mapper.BPatientAllergyMapper;
 import com.sphp.admin.doctor.mapper.BPatientMedicalHistoryMapper;
 import com.sphp.admin.doctor.mapper.QueueRow;
@@ -79,6 +80,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     private final BPatientAllergyMapper patientAllergyMapper;
     private final BPatientMedicalHistoryMapper patientMedicalHistoryMapper;
     private final BConsultationMessageMapper consultationMessageMapper;
+    private final BAppointmentMapper appointmentMapper;
     private final PrescriptionMapper prescriptionMapper;
     private final PrescriptionItemMapper prescriptionItemMapper;
     private final DoctorMapper doctorMapper;
@@ -243,6 +245,9 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
         record.setEndedAt(OffsetDateTime.now());
         record.setUpdatedAt(OffsetDateTime.now());
         consultRecordMapper.updateById(record);
+
+        // 同步更新挂号订单状态，确保 C 端就诊助手能正确反映就诊完成
+        appointmentMapper.completeStatus(record.getAppointmentId(), OffsetDateTime.now());
 
         log.info("结束问诊 consultId={}, doctorId={}", consultId, record.getDoctorId());
         return ConsultEndVO.builder()
