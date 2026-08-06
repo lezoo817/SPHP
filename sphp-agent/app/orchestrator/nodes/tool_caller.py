@@ -505,9 +505,11 @@ def _match_doctor_choice(
             if m.get("role") == "user":
                 user_text = str(m.get("content", ""))
                 break
-        elif getattr(m, "role", None) == "user":
-            user_text = str(getattr(m, "content", ""))
-            break
+        else:
+            # LangChain BaseMessage：dict 化后 role 为 user；或 type 为 human
+            if getattr(m, "type", "") == "human" or str(getattr(m, "role", "")).lower() == "user":
+                user_text = str(getattr(m, "content", ""))
+                break
     if not user_text:
         return None
     for c in candidates:
@@ -523,6 +525,25 @@ def _match_doctor_choice(
         if str_id and str_id in user_text:
             return c
     return None
+
+
+def _latest_user_text(messages: list[Any]) -> str:
+    """取 messages 中最新一条 user 消息文本（诊断用）。
+
+    Args:
+        messages: 消息列表（dict 或 LangChain BaseMessage）。
+
+    Returns:
+        str: 最新 user 消息内容；无 user 消息返回空串。
+    """
+    for m in reversed(messages):
+        if isinstance(m, dict):
+            if m.get("role") == "user":
+                return str(m.get("content", ""))
+        else:
+            if getattr(m, "type", "") == "human" or str(getattr(m, "role", "")).lower() == "user":
+                return str(getattr(m, "content", ""))
+    return ""
 
 
 def _build_doctor_choice_context(choice: dict[str, Any]) -> str:
@@ -605,6 +626,14 @@ async def tool_caller(
                 "用户已选医生: %s(id=%s)",
                 selected_choice.get("name"),
                 selected_choice.get("doctor_id"),
+            )
+        else:
+            # 用户消息含选择意图但未匹配候选（如输入了候选外的医生名）：
+            # 保留 pending 不清空，LLM 可基于场景提示词重新列医生让用户再选。
+            logger.info(
+                "已选医生匹配失败: pending=%s, 最近user消息=%s",
+                [c.get("name") for c in pending_choices],
+                _latest_user_text(state.get("messages", [])),
             )
 
     # 取 L1+L2 工具（L3/L4 不注册；L2 由 safety_check 拦截生成确认），转 OpenAI schema
