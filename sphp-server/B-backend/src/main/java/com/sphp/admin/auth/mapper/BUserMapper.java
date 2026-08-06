@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.sphp.admin.auth.entity.BUser;
 
 /**
- * B端用户表 Mapper。
+ * B 端用户表 Mapper。
  */
 public interface BUserMapper extends BaseMapper<BUser> {
 }

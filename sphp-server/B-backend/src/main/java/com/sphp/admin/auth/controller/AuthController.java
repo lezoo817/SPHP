@@ -19,14 +19,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * B端认证接口：登录、刷新令牌、Token 解析（供 Agent）、退出登录。
+ * B 端认证接口：登录、刷新令牌、Token 解析（供 Agent）、退出登录。
  *
- * <p>注意：application.yml 已配置 {@code server.servlet.context-path=/api}，
- * 因此控制器映射路径为相对路径 {@code /b/auth}，外部完整 URL 为 {@code /api/b/auth}。
+ * <p>请求路径：{@code /b/auth/**}（外部 URL 由 {@code server.servlet.context-path=/api} 前缀补全）。
  */
 @RestController
 @RequestMapping("/b/auth")
-@Tag(name = "1-认证", description = "登录 / 刷新令牌 / Token 解析 / 退出登录")
+@Tag(name = "认证模块", description = "登录 / 刷新令牌 / Token 解析 / 退出登录")
 @RequiredArgsConstructor
 public class AuthController {
 

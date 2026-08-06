@@ -8,27 +8,41 @@ import com.sphp.admin.auth.vo.RefreshTokenVO;
 import com.sphp.admin.auth.vo.TokenParseVO;
 
 /**
- * B端认证服务。
+ * B 端认证服务。
+ *
+ * <p>负责账号密码登录、refreshToken 轮换、Agent 通道的 Token 解析，以及 logout 时的
+ * refreshToken 全量吊销。accessToken 由 Sa-Token 签发，详见
+ * {@link com.sphp.admin.auth.service.impl.AuthServiceImpl} 类注释。
  */
 public interface AuthService {
 
     /**
-     * 登录：校验账号密码，签发 accessToken + refreshToken（入库），返回用户信息。
+     * 账号密码登录，签发 accessToken + refreshToken 并返回用户信息。
+     *
+     * @param request 登录请求（账号 / 密码）
+     * @return 登录响应
      */
     LoginVO login(LoginRequest request);
 
     /**
-     * 刷新令牌：校验旧 refreshToken，轮换签发新 token 对。
+     * 校验旧 refreshToken 后轮换签发新 token 对（旧 refreshToken 自动吊销）。
+     *
+     * @param request 刷新请求（旧 refreshToken）
+     * @return 新 token 对
      */
     RefreshTokenVO refresh(RefreshTokenRequest request);
 
     /**
-     * 解析当前请求 Token（供 Agent 调用），返回用户上下文。
+     * 解析当前请求 Token，返回用户上下文（供 Agent 通道调用）。
+     *
+     * @return Token 解析响应
      */
     TokenParseVO parseToken();
 
     /**
-     * 退出登录：注销当前会话并吊销该用户全部有效刷新令牌。
+     * 退出登录：吊销当前用户全部有效 refreshToken，阻断后续续期。
+     *
+     * @return 退出结果
      */
     LogoutVO logout();
 }

@@ -1,7 +1,6 @@
 package com.sphp.admin.auth.service.impl;
 
 import cn.dev33.satoken.SaManager;
-import cn.dev33.satoken.exception.NotLoginException;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.sphp.admin.auth.dto.LoginRequest;
@@ -18,6 +17,9 @@ import com.sphp.admin.auth.vo.LogoutVO;
 import com.sphp.admin.auth.vo.RefreshTokenVO;
 import com.sphp.admin.auth.vo.TokenParseVO;
 import com.sphp.admin.auth.vo.UserInfoVO;
+import com.sphp.admin.common.CurrentUserService;
+import com.sphp.admin.common.enums.BUserStatusEnum;
+import com.sphp.shared.common.enums.ErrorCodeEnum;
 import com.sphp.shared.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,49 +37,70 @@ import java.util.HexFormat;
 import java.util.List;
 
 /**
- * B端认证服务实现。
+ * B 端认证服务实现。
  *
- * <p>accessToken 由 Sa-Token 签发（无状态 JWT，有效期 7200s）；refreshToken 为自产不透明令牌，
- * 仅 SHA-256 哈希入库 {@code b_refresh_token}，刷新时校验+轮换。
+ * <p>令牌签发策略：
+ * <ul>
+ *   <li>accessToken — 由 Sa-Token 签发的无状态 JWT，有效期与 Sa-Token 配置一致（默认 7200s）。</li>
+ *   <li>refreshToken — 自产不透明令牌（{@code rt_} + 32 字节 Base64Url），仅 SHA-256 哈希入库
+ *       {@code b_refresh_token}；原文仅返回客户端，刷新时校验 + 轮换。</li>
+ * </ul>
+ *
+ * <p>退出登录说明：accessToken 为无状态 JWT，服务端无法主动失效；当前实现仅吊销该用户全部有效
+ * refreshToken，accessToken 等待其剩余有效期自然过期。如需 accessToken 立即失效，
+ * 需引入黑名单（建议 Redis），不在本模块范围内。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
-    /** 刷新令牌有效期：30 天（秒） */
+    /** 刷新令牌有效期：30 天（秒）。 */
     private static final long REFRESH_TOKEN_TTL_SECONDS = 30L * 24 * 3600;
+
+    /** 刷新令牌前缀标识。 */
+    private static final String REFRESH_TOKEN_PREFIX = "rt_";
+
+    /** 刷新令牌随机字节长度（256 bit，熵充足）。 */
+    private static final int REFRESH_TOKEN_RANDOM_BYTES = 32;
 
     private final BUserMapper bUserMapper;
     private final BRefreshTokenMapper bRefreshTokenMapper;
     private final DoctorMapper doctorMapper;
+    private final CurrentUserService currentUserService;
 
+    /**
+     * 账号密码登录。
+     *
+     * <p>校验流程：账号存在性 → 密码（BCrypt） → 账号状态 → 签发 token 对。
+     * 为避免账号枚举，账号不存在与密码错误统一提示。
+     *
+     * @param request 登录请求（账号 / 密码）
+     * @return 登录响应（accessToken + refreshToken + 用户信息）
+     * @throws BusinessException 账号或密码错误 / 账号已停用
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public LoginVO login(LoginRequest request) {
-        // 1. 按账号查询有效用户（软删过滤）
+        // 软删过滤：仅查询未删除账号
         BUser user = bUserMapper.selectOne(Wrappers.<BUser>lambdaQuery()
                 .eq(BUser::getAccount, request.getUsername())
                 .isNull(BUser::getDeletedAt));
 
-        // 2. 账号不存在或密码错误统一提示，避免账号枚举
+        // 账号不存在与密码错误统一提示，避免账号枚举
         if (user == null || !BCrypt.checkpw(request.getPassword(), user.getPasswordHash())) {
-            throw new BusinessException("A0301", "账号或密码错误");
+            throw new BusinessException(ErrorCodeEnum.UNAUTHORIZED, "账号或密码错误");
         }
-        // 3. 账号状态校验
-        if (!"ENABLED".equals(user.getStatus())) {
-            throw new BusinessException("A0301", "账号已停用，请联系管理员");
+        if (!BUserStatusEnum.isEnabled(user.getStatus())) {
+            throw new BusinessException(ErrorCodeEnum.UNAUTHORIZED, "账号已停用，请联系管理员");
         }
 
-        // 4. Sa-Token 登录，签发 accessToken（JWT）
         StpUtil.login(user.getId());
         String accessToken = StpUtil.getTokenValue();
 
-        // 5. 生成刷新令牌并入库（仅存哈希）
         String refreshToken = generateRefreshToken();
         saveRefreshToken(user.getId(), refreshToken);
 
-        // 6. 组装用户信息
         UserInfoVO userInfo = buildUserInfo(user);
 
         log.info("用户登录成功 userId={}, account={}", user.getId(), user.getAccount());
@@ -89,28 +112,36 @@ public class AuthServiceImpl implements AuthService {
                 .build();
     }
 
+    /**
+     * 刷新令牌。
+     *
+     * <p>校验旧 refreshToken（哈希 + 未吊销 + 未过期）→ 校验用户有效 → 轮换签发新 token 对。
+     * 旧 refreshToken 在签发新令牌后立即吊销，保证一次性使用。
+     *
+     * @param request 刷新请求（旧 refreshToken）
+     * @return 新 token 对
+     * @throws BusinessException refreshToken 无效 / 过期 / 用户失效 / 账号已停用
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public RefreshTokenVO refresh(RefreshTokenRequest request) {
-        // 1. 按哈希查有效（未吊销且未过期）刷新令牌
         BRefreshToken refreshToken = bRefreshTokenMapper.selectOne(Wrappers.<BRefreshToken>lambdaQuery()
                 .eq(BRefreshToken::getTokenHash, sha256Hex(request.getRefreshToken()))
                 .isNull(BRefreshToken::getRevokedAt)
                 .gt(BRefreshToken::getExpiredAt, OffsetDateTime.now()));
         if (refreshToken == null) {
-            throw new BusinessException("A0301", "刷新令牌无效或已过期");
+            throw new BusinessException(ErrorCodeEnum.UNAUTHORIZED, "刷新令牌无效或已过期");
         }
 
-        // 2. 校验用户仍存在且启用
         BUser user = bUserMapper.selectById(refreshToken.getUserId());
         if (user == null || user.getDeletedAt() != null) {
-            throw new BusinessException("A0301", "用户不存在");
+            throw new BusinessException(ErrorCodeEnum.UNAUTHORIZED, "用户不存在");
         }
-        if (!"ENABLED".equals(user.getStatus())) {
-            throw new BusinessException("A0301", "账号已停用，请联系管理员");
+        if (!BUserStatusEnum.isEnabled(user.getStatus())) {
+            throw new BusinessException(ErrorCodeEnum.UNAUTHORIZED, "账号已停用，请联系管理员");
         }
 
-        // 3. 轮换：吊销旧刷新令牌，签发新 token 对
+        // 轮换：吊销旧 refreshToken，签发新 token 对
         refreshToken.setRevokedAt(OffsetDateTime.now());
         bRefreshTokenMapper.updateById(refreshToken);
 
@@ -127,32 +158,28 @@ public class AuthServiceImpl implements AuthService {
                 .build();
     }
 
+    /**
+     * 解析当前请求 Token，返回用户上下文。
+     *
+     * <p>供 Agent 通道调用：依赖 Sa-Token 自动剥离 Bearer 前缀，取出当前登录用户并按需补全
+     * 医生维度（deptId）。令牌剩余有效期由 Sa-Token 推算。
+     *
+     * @return Token 解析响应（用户身份 + 角色 + 医生/科室维度 + 过期时间）
+     */
     @Override
     public TokenParseVO parseToken() {
-        // 1. 解析当前请求 Token（token-prefix 已配置，自动剥离 Bearer）
-        Long userId;
-        try {
-            userId = StpUtil.getLoginIdAsLong();
-        } catch (NotLoginException e) {
-            throw new BusinessException("A0301", "Token无效或已过期");
-        }
+        BUser user = currentUserService.getCurrentUser();
 
-        // 2. 加载用户上下文
-        BUser user = bUserMapper.selectById(userId);
-        if (user == null || user.getDeletedAt() != null) {
-            throw new BusinessException("A0301", "用户不存在或已停用");
-        }
-
-        // 3. 医生维度补全（name 已含于 userInfo，此处取 deptId）
+        // 医生维度补全：b_user 不含 dept_id，经 doctor_id 联查 doctor 表
         Long deptId = null;
         if (user.getDoctorId() != null) {
             Doctor doctor = doctorMapper.selectById(user.getDoctorId());
-            deptId = doctor == null ? null : doctor.getDeptId();
+            deptId = (doctor == null) ? null : doctor.getDeptId();
         }
 
-        // 4. 令牌剩余有效期
+        // Sa-Token：getTokenTimeout 返回秒；负数表示无超时或已过期
         long timeout = StpUtil.getTokenTimeout();
-        OffsetDateTime tokenExpiresAt = timeout < 0 ? null : OffsetDateTime.now().plusSeconds(timeout);
+        OffsetDateTime tokenExpiresAt = (timeout < 0) ? null : OffsetDateTime.now().plusSeconds(timeout);
 
         return TokenParseVO.builder()
                 .userId(user.getId())
@@ -165,36 +192,42 @@ public class AuthServiceImpl implements AuthService {
                 .build();
     }
 
+    /**
+     * 退出登录。
+     *
+     * <p>安全语义：吊销该用户全部有效 refreshToken，阻断后续续期。
+     * accessToken 为无状态 JWT，服务端无会话可注销，等待自然过期（见类注释）。
+     *
+     * @return 退出结果（始终为 loggedOut=true，除非 token 已失效）
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public LogoutVO logout() {
-        // 1. 解析当前登录用户（无效 token 抛 NotLoginException）
-        Long userId;
-        try {
-            userId = StpUtil.getLoginIdAsLong();
-        } catch (NotLoginException e) {
-            throw new BusinessException("A0301", "Token无效或已过期");
-        }
-
-        // 2. 吊销该用户全部有效刷新令牌（阻断续期，logout 的实质安全动作）
+        // 复用 CurrentUserService 统一异常处理（无效 token 抛 A0301）
+        Long userId = currentUserService.getCurrentUser().getId();
         int revoked = revokeAllRefreshTokens(userId);
-        // 3. 无状态 JWT（StpLogicJwtForStateless）不支持服务端注销会话：
-        //    StpUtil.logout() 内部访问会话 DAO 属禁用 API，会抛 ApiDisabledException。
-        //    故 logout 只吊销刷新令牌，accessToken 于 7200s 到期后自然失效；
-        //    如需 accessToken 立即失效，需引入黑名单（如 Redis），不在本次范围。
 
         log.info("用户退出登录 userId={}, 吊销刷新令牌数={}", userId, revoked);
         return LogoutVO.builder().loggedOut(true).build();
     }
 
-    /** 组装登录用户信息：姓名/科室经 doctor_id 联查，ADMIN 无医生维度时姓名取账号 */
+    /**
+     * 组装登录用户信息 VO。
+     *
+     * <p>b_user 表无姓名 / 科室列，姓名与科室需经 doctor_id 联查 doctor 表补全；
+     * 管理员（{@code doctorId == null}）姓名取登录账号，deptId 为 null。
+     *
+     * @param user 登录用户实体
+     * @return 登录用户信息 VO
+     * @throws BusinessException 关联了 doctorId 但未查到医生记录（数据异常）
+     */
     private UserInfoVO buildUserInfo(BUser user) {
         String name = user.getAccount();
         Long deptId = null;
         if (user.getDoctorId() != null) {
             Doctor doctor = doctorMapper.selectById(user.getDoctorId());
             if (doctor == null) {
-                throw new BusinessException("A0400", "账号未关联有效的医生信息");
+                throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "账号未关联有效的医生信息");
             }
             name = doctor.getName();
             deptId = doctor.getDeptId();
@@ -209,14 +242,29 @@ public class AuthServiceImpl implements AuthService {
                 .build();
     }
 
-    /** 生成不透明刷新令牌：rt_ + 32 字节 Base64Url（无填充） */
+    /**
+     * 生成不透明刷新令牌。
+     *
+     * <p>格式：{@code rt_<Base64Url 编码的 32 字节随机数>}。使用 {@link SecureRandom} 保证熵，
+     * 原文仅在签发瞬间返回给客户端一次。
+     *
+     * @return 新 refreshToken 原文
+     */
     private String generateRefreshToken() {
-        byte[] bytes = new byte[32];
+        byte[] bytes = new byte[REFRESH_TOKEN_RANDOM_BYTES];
         new SecureRandom().nextBytes(bytes);
-        return "rt_" + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        return REFRESH_TOKEN_PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    /** 刷新令牌入库（仅存 SHA-256 哈希，原文只返回客户端） */
+    /**
+     * 刷新令牌入库。
+     *
+     * <p>仅存储 SHA-256 哈希（{@code tokenHash}），原文绝不落库；过期时间取当前时间 +
+     * {@link #REFRESH_TOKEN_TTL_SECONDS}。
+     *
+     * @param userId  关联 b_user.id
+     * @param rawToken 原始 refreshToken 原文
+     */
     private void saveRefreshToken(Long userId, String rawToken) {
         BRefreshToken entity = new BRefreshToken();
         entity.setUserId(userId);
@@ -225,7 +273,12 @@ public class AuthServiceImpl implements AuthService {
         bRefreshTokenMapper.insert(entity);
     }
 
-    /** 吊销用户全部有效刷新令牌，返回受影响行数 */
+    /**
+     * 吊销指定用户全部有效刷新令牌。
+     *
+     * @param userId b_user.id
+     * @return 受影响行数
+     */
     private int revokeAllRefreshTokens(Long userId) {
         BRefreshToken update = new BRefreshToken();
         update.setRevokedAt(OffsetDateTime.now());
@@ -234,7 +287,15 @@ public class AuthServiceImpl implements AuthService {
                 .isNull(BRefreshToken::getRevokedAt));
     }
 
-    /** SHA-256 十六进制摘要（刷新令牌哈希） */
+    /**
+     * SHA-256 十六进制摘要（用于刷新令牌哈希）。
+     *
+     * <p>SHA-256 在 JDK 中为强制实现，{@link NoSuchAlgorithmException} 仅在极端环境
+     * （如安全策略文件禁用）下抛出，故包装为 {@link IllegalStateException}。
+     *
+     * @param input 原始字符串
+     * @return 小写十六进制摘要
+     */
     private static String sha256Hex(String input) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
