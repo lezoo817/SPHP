@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { BellRing, CalendarPlus, ChevronRight, ClipboardPlus, FileChartColumn, HeartPulse, Pill, Search, Stethoscope, X } from 'lucide-react';
+import { useEffect, useRef, useState, type TouchEvent } from 'react';
+import { BellRing, CalendarPlus, ChevronRight, ClipboardPlus, FileChartColumn, HeartPulse, MapPin, MessageCircleMore, Pill, Search, Stethoscope, X } from 'lucide-react';
 import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
@@ -12,6 +12,13 @@ import { getAppointments, getHospitals } from '../../services/registration';
 import type { FamilyMember, Hospital, NotificationItem } from '../../typings/api';
 import { buildHealthTodos, findLatestWaitlistPromotionNotification, type HealthTodo, type PatientHealthSource } from '../../utils/health-notification';
 import { formatMedicalTime, sortHospitals } from '../../utils/medical';
+import appointmentBanner from '../../assets/home-banner-appointment.png';
+import consultationBanner from '../../assets/home-banner-consultation.png';
+
+const homeBanners = [
+  { image: appointmentBanner, label: '预约挂号服务', action: '/home/departments' },
+  { image: consultationBanner, label: '在线问诊服务', action: '/assistant' },
+];
 
 /** 展示医院入口、就诊人、快捷服务和全账号健康待办的首页。 */
 export default function HomePage() {
@@ -23,7 +30,10 @@ export default function HomePage() {
   const [notice, setNotice] = useState('');
   const [todos, setTodos] = useState<HealthTodo[]>([]);
   const [waitlistNotification, setWaitlistNotification] = useState<NotificationItem>();
-  const bannerTimer = useRef<number>();
+  const [activeBannerIndex, setActiveBannerIndex] = useState(0);
+  const waitlistTimer = useRef<number>();
+  const swipeStartX = useRef<number>();
+  const swipeMoved = useRef(false);
 
   /** 读取单个就诊人的三类待办，供首页统一展示。 */
   async function loadPatientHealthSource(member: FamilyMember): Promise<PatientHealthSource> {
@@ -73,9 +83,16 @@ export default function HomePage() {
   useEffect(() => {
     if (!waitlistNotification) return undefined;
     // 候补提醒仅短暂展示，未读状态仍由通知消息页统一维护。
-    bannerTimer.current = window.setTimeout(() => setWaitlistNotification(undefined), 5000);
-    return () => { if (bannerTimer.current) window.clearTimeout(bannerTimer.current); };
+    waitlistTimer.current = window.setTimeout(() => setWaitlistNotification(undefined), 5000);
+    return () => { if (waitlistTimer.current) window.clearTimeout(waitlistTimer.current); };
   }, [waitlistNotification?.id]);
+
+  useEffect(() => {
+    // 减弱动态效果偏好下不自动轮换，避免影响阅读与操作。
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
+    const timer = window.setInterval(() => setActiveBannerIndex((index) => (index + 1) % homeBanners.length), 5200);
+    return () => window.clearInterval(timer);
+  }, []);
 
   /** 关闭顶部候补提醒，不调用已读接口以保留通知入口的未读红点。 */
   function dismissWaitlistNotification() {
@@ -101,6 +118,36 @@ export default function HomePage() {
     else navigate('/mine/follow-ups');
   }
 
+  /** 切换宣传窗页码，并确保页码始终落在现有宣传内容范围内。 */
+  function changeBanner(offset: number) {
+    setActiveBannerIndex((index) => (index + offset + homeBanners.length) % homeBanners.length);
+  }
+
+  /** 记录宣传窗手势起点，用于区分点击按钮与左右滑动。 */
+  function startBannerSwipe(event: TouchEvent<HTMLElement>) {
+    swipeStartX.current = event.touches[0]?.clientX;
+    swipeMoved.current = false;
+  }
+
+  /** 根据横向位移切换宣传页，短距离触摸不会误触发页面跳转。 */
+  function endBannerSwipe(event: TouchEvent<HTMLElement>) {
+    const startX = swipeStartX.current;
+    const endX = event.changedTouches[0]?.clientX;
+    swipeStartX.current = undefined;
+    if (startX === undefined || endX === undefined || Math.abs(startX - endX) < 42) return;
+    swipeMoved.current = true;
+    changeBanner(startX > endX ? 1 : -1);
+  }
+
+  /** 打开当前宣传页对应的服务入口，滑动结束后忽略一次合成点击。 */
+  function openBanner(path: string) {
+    if (swipeMoved.current) {
+      swipeMoved.current = false;
+      return;
+    }
+    navigate(path);
+  }
+
   const currentHospital = hospitals.find((item) => item.hospitalId === selected.hospitalId);
   const currentPatient = members.find((item) => item.patientId === selected.patientId);
   const services = [
@@ -113,6 +160,22 @@ export default function HomePage() {
   ];
 
   return <main className="home-page">
+    <section className="home-overview">
+      <header className="home-appbar">
+        <button className="home-appbar__hospital" type="button" onClick={() => navigate('/home/hospitals')}>
+          <MapPin size={20} /><span>{currentHospital?.name || '选择医院'}</span><ChevronRight size={17} />
+        </button>
+        <span className="home-appbar__brand">智慧先锋</span>
+        <button className="home-appbar__notice" type="button" aria-label="查看通知" onClick={() => navigate('/mine/notifications')}><MessageCircleMore size={24} /></button>
+      </header>
+      <button className="home-search-bar" type="button" onClick={() => navigate('/home/departments')}><Search size={22} /><span>搜索医院、科室、疾病、医生</span></button>
+      <section className="home-promo" aria-label="医疗服务宣传" onTouchStart={startBannerSwipe} onTouchEnd={endBannerSwipe}>
+        <div className="home-promo__track" style={{ transform: `translateX(-${activeBannerIndex * 100}%)` }}>
+          {homeBanners.map((banner) => <button className="home-promo__slide" key={banner.label} type="button" aria-label={banner.label} onClick={() => openBanner(banner.action)}><img src={banner.image} alt="" /></button>)}
+        </div>
+        <div className="home-promo__pager" aria-hidden="true">{homeBanners.map((banner, index) => <i className={index === activeBannerIndex ? 'is-active' : ''} key={banner.label} />)}</div>
+      </section>
+    </section>
     {waitlistNotification && <section className="waitlist-banner" aria-label="候补可预约提醒"><button className="waitlist-banner__body" type="button" onClick={openWaitlistNotification}><span className="waitlist-banner__icon"><BellRing size={23} /></span><span className="waitlist-banner__content"><b>{waitlistNotification.title}</b><span>{waitlistNotification.content}</span><small>{waitlistNotification.patientName || '当前就诊人'}</small></span></button><button className="waitlist-banner__close" type="button" aria-label="关闭候补提醒" onClick={dismissWaitlistNotification}><X size={18} /></button></section>}
     <header className="home-hero"><div className="home-brand"><b>智</b><div><strong>智愈先锋</strong><span>省人民医院智慧医疗服务</span></div></div><p>让每一次就医，都更清晰、更安心</p></header>
     <section className="home-content">
