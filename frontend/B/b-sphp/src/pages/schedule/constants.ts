@@ -4,6 +4,8 @@
  * 说明：排班元信息可能以「字符串」形式出现（如详情页 query 参数、列表行字段），
  * 直接用 Record<Shift, ...> 索引会因类型不匹配报错，统一经 getShiftConfig / getStatusConfig 收窄。
  */
+import dayjs from 'dayjs';
+
 /** 班次类型（取自全局 API 命名空间） */
 type Shift = API.Schedule['shift'];
 /** 排班状态类型 */
@@ -62,4 +64,10 @@ export function getStatusConfig(
     return STATUS_MAP[status];
   }
   return undefined;
+}
+
+/** 判断排班是否已过期：PUBLISHED 且排班日期 < 今天 */
+export function isScheduleExpired(record: { status: string; scheduleDate: string }): boolean {
+  if (record.status !== 'PUBLISHED') return false;
+  return record.scheduleDate < dayjs().format('YYYY-MM-DD');
 }
