@@ -423,9 +423,11 @@ describe('健康待办、提醒与通知规则', () => {
     const todos = buildHealthTodos([
       { patientId: 2, patientName: '小明', appointments: [{ id: 1, doctorName: '张医生', departmentName: '内科', startTime: '2026-08-05T10:00:00+08:00', status: 'COMPLETED', amountCent: 100 }], medicationPlans: [{ id: 2, drugName: '维生素', dosage: '1片', frequency: '每日一次', nextReminderAt: '2026-08-04T08:00:00+08:00', reminderEnabled: true, reminderTimes: ['08:00'], status: 'ACTIVE' }], followUps: [] },
       { patientId: 1, patientName: '张三', appointments: [{ id: 3, doctorName: '李医生', departmentName: '心内科', departmentLocation: '门诊楼2层201室', startTime: '2026-08-03T14:30:00+08:00', status: 'PAID', amountCent: 200 }], medicationPlans: [], followUps: [{ id: 4, type: '复诊', content: '携带检查报告', dueAt: '2026-08-06T09:00:00+08:00', status: 'CANCELLED' }] },
-    ]);
+    ], Date.parse('2026-08-06T10:00:00+08:00'));
     expect(todos.map((item) => [item.type, item.patientName])).toEqual([['APPOINTMENT', '张三'], ['MEDICATION', '小明']]);
     expect(todos[0].departmentLocation).toBe('门诊楼2层201室');
+    expect(todos[0].isExpired).toBe(true);
+    expect(todos[0].detail).toBe('已过期');
     expect(todos[1].departmentLocation).toBeUndefined();
   });
 

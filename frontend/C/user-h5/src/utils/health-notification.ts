@@ -4,7 +4,7 @@ import { createIdempotencyKey } from './form';
 /** 首页跨就诊人查询到的原始待办数据。 */
 export interface PatientHealthSource { patientId: number; patientName: string; appointments: Appointment[]; medicationPlans: MedicationPlan[]; followUps: FollowUpPlan[]; }
 /** 首页统一展示的健康待办卡片数据。 */
-export interface HealthTodo { id: number; type: 'APPOINTMENT' | 'MEDICATION' | 'FOLLOW_UP'; patientId: number; patientName: string; title: string; detail: string; departmentLocation?: string; occurredAt?: string; }
+export interface HealthTodo { id: number; type: 'APPOINTMENT' | 'MEDICATION' | 'FOLLOW_UP'; patientId: number; patientName: string; title: string; detail: string; departmentLocation?: string; occurredAt?: string; isExpired?: boolean; }
 
 /** 将通知类型映射为患者可理解的页面文案。 */
 export function getNotificationTypeText(type: NotificationType): string {
@@ -80,12 +80,18 @@ export function getMedicationActionText(action: MedicationPlanAction): string {
 /**
  * 聚合全部就诊人的待处理挂号、用药和随访计划。
  * @param sources 按就诊人读取的服务端数据
+ * @param nowMillis 用于判定预约是否过期的当前时间戳
  * @returns 按处理时间升序排列的首页健康待办
  */
-export function buildHealthTodos(sources: PatientHealthSource[]): HealthTodo[] {
+export function buildHealthTodos(sources: PatientHealthSource[], nowMillis = Date.now()): HealthTodo[] {
   const todos = sources.flatMap((source) => [
     // 挂号待办保留服务端返回的科室位置，供首页卡片展示实际就诊地点。
-    ...source.appointments.filter((item) => item.status === 'UNPAID' || item.status === 'PAID').map((item) => ({ id: item.id, type: 'APPOINTMENT' as const, patientId: source.patientId, patientName: source.patientName, title: `${item.departmentName} · ${item.doctorName}`, detail: item.status === 'UNPAID' ? '挂号待支付' : '挂号待就诊', departmentLocation: item.departmentLocation, occurredAt: item.startTime })),
+    ...source.appointments.filter((item) => item.status === 'UNPAID' || item.status === 'PAID').map((item) => {
+      const appointmentStartAt = Date.parse(item.startTime);
+      // 已超过预约开始时间的待支付或待就诊记录只保留为可关闭的过期提醒。
+      const isExpired = !Number.isNaN(appointmentStartAt) && appointmentStartAt <= nowMillis;
+      return { id: item.id, type: 'APPOINTMENT' as const, patientId: source.patientId, patientName: source.patientName, title: `${item.departmentName} · ${item.doctorName}`, detail: isExpired ? '已过期' : item.status === 'UNPAID' ? '挂号待支付' : '挂号待就诊', departmentLocation: item.departmentLocation, occurredAt: item.startTime, isExpired };
+    }),
     ...source.medicationPlans.filter((item) => item.status === 'ACTIVE').map((item) => ({ id: item.id, type: 'MEDICATION' as const, patientId: source.patientId, patientName: source.patientName, title: item.drugName, detail: `${item.dosage} · ${item.frequency}`, occurredAt: item.nextReminderAt })),
     ...source.followUps.filter((item) => item.status === 'PENDING_CONFIRM' || item.status === 'CONFIRMED').map((item) => ({ id: item.id, type: 'FOLLOW_UP' as const, patientId: source.patientId, patientName: source.patientName, title: item.type || '随访计划', detail: item.content, occurredAt: item.remindAt || item.dueAt })),
   ]);

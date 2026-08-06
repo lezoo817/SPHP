@@ -45,6 +45,12 @@ label { display: grid; gap: 8px; margin: 18px 0; color: #1e293c; font-weight: 70
 /* 已取消和超时订单只保留历史摘要，使用灰阶并禁用详情入口。 */
 .order-list-card.is-invalid,.order-list-card.is-invalid:disabled{cursor:not-allowed;opacity:1;background:#f1f1f1;box-shadow:none}.order-list-card.is-invalid b{color:#777}.order-list-card.is-invalid span,.order-list-card.is-invalid small{color:#999}.order-list-card.is-invalid em,.order-list-card.is-invalid strong{color:#969696}
 
+/* 过期挂号待办保留一次关闭入口，但以灰阶提示其已不能继续就诊。 */
+.health-todo-card.is-expired{background:#f1f1f1;color:#8a8588;box-shadow:none}.health-todo-card.is-expired .health-todo-card__icon{background:#dedbdd;color:#8a8588}.health-todo-card.is-expired b,.health-todo-card.is-expired span,.health-todo-card.is-expired small,.health-todo-card.is-expired svg{color:#8a8588}
+
+/* 用药计划页的就诊人入口显示当前选择，并触发页面内计划重新加载。 */
+.plan-page__patient-switch{display:flex;width:100%;align-items:center;gap:12px;padding:0;border:0;background:transparent;text-align:left}.plan-page__patient-switch>div{min-width:0;flex:1}.plan-page__patient-switch>svg:last-child{color:#b33444}.plan-page__patient-switch h2{margin:0}.plan-page__patient-switch p{margin:5px 0 0;color:#756d72}
+
 /* AI 助手悬浮球：可拖动，位置持久化，登录页与 AI 助手页不展示。 */
 .agent-float{position:fixed;z-index:50;display:grid;place-items:center;gap:1px;width:56px;height:56px;border:0;border-radius:50%;background:linear-gradient(135deg,#b33444,#c9505e);color:#fff;box-shadow:0 8px 22px rgba(179,52,68,.42);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;transition:box-shadow .2s,transform .15s}.agent-float.is-dragging{box-shadow:0 12px 30px rgba(179,52,68,.55);transform:scale(1.06);cursor:grabbing}.agent-float__label{font-size:11px;font-weight:700;letter-spacing:1px}
 
