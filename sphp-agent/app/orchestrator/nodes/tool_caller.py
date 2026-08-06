@@ -709,13 +709,21 @@ async def tool_caller(
                 messages.append({"role": "system", "content": _build_doctor_choice_context(choice)})
                 result_extra["pending_doctor_choices"] = None
                 logger.info("用户已选医生: %s(id=%s)", choice.get("name"), choice.get("doctor_id"))
-        # 问诊场景拦截：同轮 query_doctors + save_pre_consultation -> 缓存候选、
-        # 剔除 save_pre_consultation（改由 SSE 发 options 卡让用户点选）。
-        tool_calls, new_candidates = _intercept_save_pre_consultation(
+        # 问诊场景拦截：同轮 query_doctors + save_pre_consultation -> 剔除
+        # save_pre_consultation（改由 SSE 发 options 卡让用户点选，防 LLM 替用户选）。
+        tool_calls, intercepted_candidates = _intercept_save_pre_consultation(
             tool_calls, state.get("tool_results") or []
         )
-        if new_candidates:
-            result_extra["pending_doctor_choices"] = new_candidates
+        # 确定性发卡（M8-7）：只要 query_doctors 返回了候选医生（无论 LLM 本轮
+        # 是否调 save_pre_consultation），就缓存候选供 SSE 发选择卡。修复日志
+        # "LLM 老实了不调 save -> 拦截器静默 -> 不发卡、只给文字回复"的漏卡问题。
+        candidates = (
+            intercepted_candidates
+            if intercepted_candidates is not None
+            else _parse_doctor_candidates(state.get("tool_results") or [])
+        )
+        if candidates:
+            result_extra["pending_doctor_choices"] = candidates
         logger.info(
             "工具决策: scope=%s, 选择 %d 个工具: %s",
             scope,
