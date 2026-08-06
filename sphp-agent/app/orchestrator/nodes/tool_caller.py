@@ -22,6 +22,30 @@ from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
 
+# C 端项目固定的科室清单（2026-08-06 定稿）：15 个常见科室（3-科室医生种子数据.sql，
+# id 100-114）+ 内科/外科（种子 id 1/2）。分诊/问诊/挂号推荐科室时，query_departments
+# 的 keyword 只能从这些名称中选择，禁止使用别名（如"心内科"→"心血管内科"、
+# "消化科"→"消化内科"），否则 keyword 查不到科室。
+DEPARTMENT_LIST = [
+    "全科",
+    "内科",
+    "外科",
+    "呼吸内科",
+    "消化内科",
+    "心血管内科",
+    "神经内科",
+    "内分泌科",
+    "普通外科",
+    "骨科",
+    "泌尿外科",
+    "妇产科",
+    "儿科",
+    "眼科",
+    "耳鼻喉科",
+    "口腔科",
+    "皮肤科",
+]
+
 # 工具决策系统提示词
 TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的工具调用助手。
 
@@ -169,6 +193,25 @@ def _build_hospital_context(state: AgentState) -> str | None:
     return (
         f"当前医院 ID：{hospital_id}。涉及医院维度的工具（查科室/查医生/查排班/"
         "创建挂号/导诊分诊等）必须携带此 hospital_id，直接使用，不要向用户索要医院 ID。"
+    )
+
+
+def _build_department_context() -> str:
+    """构造项目固定科室清单上下文（注入 tool_caller 的 LLM 输入）。
+
+    项目现有科室固定为 ``DEPARTMENT_LIST``（17 个）。C 端工具 query_departments
+    的 keyword 参数若用清单外的别名（如"心内科"/"消化科"），keyword 查询查不到
+    科室（医院维度 LIKE 匹配）。此提示告知 LLM 可用科室名称，推荐/映射科室时
+    必须从清单中选择，禁止编造清单外的名称。
+
+    Returns:
+        str: 科室清单约束提示。
+    """
+    names = "、".join(DEPARTMENT_LIST)
+    return (
+        f"当前项目可用的科室（仅以下 {len(DEPARTMENT_LIST)} 个，医院维度）：{names}。"
+        "涉及科室的工具（query_departments 的 keyword）必须使用以上名称或其完整子串，"
+        "禁止使用别名（如'心内科'→'心血管内科'、'消化科'→'消化内科'）或清单外的科室名。"
     )
 
 
@@ -380,6 +423,12 @@ async def tool_caller(
     address_ctx = _build_address_context(state)
     if address_ctx:
         messages.append({"role": "system", "content": address_ctx})
+
+    # C 端注入项目固定科室清单（B 端医生工作台科室由 Java 端管理，不适用 C 端
+    # 17 科室清单）：约束 query_departments 的 keyword 只能用清单内科室名，
+    # 避免 LLM 用别名（心内科/消化科等）查不到科室。
+    if tool_scope == ToolScope.C_END:
+        messages.append({"role": "system", "content": _build_department_context()})
 
     # 注入已执行工具的结果（子图循环累积了前面所有轮次，LLM 分步决策可见）
     tool_results = state.get("tool_results")
