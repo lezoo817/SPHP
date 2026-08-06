@@ -202,7 +202,7 @@ export default function HomePage() {
       <button className="home-search-bar" type="button" onClick={() => navigate('/home/departments')}><Search size={22} /><span>搜索医院、科室、疾病、医生</span></button>
       <section className="home-promo" aria-label="医疗服务宣传" onTouchStart={startBannerSwipe} onTouchEnd={endBannerSwipe}>
         <div className="home-promo__track" style={{ transform: `translateX(-${bannerSlideIndex * 100}%)`, transition: bannerTransitionEnabled ? undefined : 'none' }} onTransitionEnd={normalizeBannerSlide}>
-          {circularHomeBanners.map((banner, index) => <button className="home-promo__slide" key={`${banner.label}-${index}`} type="button" aria-label={banner.label} onClick={() => openBanner(banner.action)}><img src={banner.image} alt="" /></button>)}
+          {circularHomeBanners.map((banner, index) => <button className={`home-promo__slide${banner.label === '在线问诊服务' ? ' home-promo__slide--consultation' : ''}`} key={`${banner.label}-${index}`} type="button" aria-label={banner.label} onClick={() => openBanner(banner.action)}><img src={banner.image} alt="" /></button>)}
         </div>
         <div className="home-promo__pager" aria-hidden="true">{homeBanners.map((banner, index) => <i className={index === (bannerSlideIndex - 1 + homeBanners.length) % homeBanners.length ? 'is-active' : ''} key={banner.label} />)}</div>
       </section>
