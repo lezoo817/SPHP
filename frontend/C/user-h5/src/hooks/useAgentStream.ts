@@ -89,6 +89,10 @@ export function useAgentStream(): UseAgentStream {
       handleRef.current.abort();
       handleRef.current = null;
     }
+    // 标记当前 AI 消息与思考为非流式状态
+    finalizeStreaming();
+    // 重置连接状态为 idle，允许用户继续发送消息
+    setConnection('idle');
   }, []);
 
   /** 清空会话并重置全部状态。 */
