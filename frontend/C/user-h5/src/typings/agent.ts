@@ -6,6 +6,22 @@
  * 以及 L2 确认回调的请求与响应结构。
  */
 
+/** 受控预设动作：用于从业务页面直接发起确定性的 Agent 查询。 */
+export interface AgentPresetAction {
+  /** 当前仅支持固定调用处方解读工具。 */
+  type: 'interpret_prescription';
+  /** 服务端真实处方 ID，不使用仅供展示的处方编号。 */
+  prescriptionId: number;
+}
+
+/** 跳转 AI 页面时携带的路由状态。 */
+export interface AgentNavigationState {
+  /** 进入 AI 页前的完整地址，用于返回原详情页。 */
+  from: string;
+  /** 首次进入后自动执行的一次性预设动作。 */
+  presetAction?: AgentPresetAction;
+}
+
 /** 对话上下文：描述当前页面业务状态，辅助 Agent 决策。 */
 export interface AgentChatContext {
   /** 当前页面：triage、appointment、consultation、pharmacy、health */
@@ -22,6 +38,10 @@ export interface AgentChatContext {
   consultation_id?: number;
   /** 当前默认收货地址 ID（用于 Agent 推荐药店等需要收货地址的服务） */
   address_id?: number;
+  /** 受控预设动作，仅业务页面一键入口发送。 */
+  preset_action?: AgentPresetAction['type'];
+  /** 受控预设动作关联的真实处方 ID。 */
+  prescription_id?: number;
 }
 
 /** 发起流式对话的请求体（POST /api/chat/stream）。 */

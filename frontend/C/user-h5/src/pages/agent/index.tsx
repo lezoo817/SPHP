@@ -3,13 +3,15 @@ import { ArrowLeft } from 'lucide-react';
 import { useLocation, useNavigate } from 'umi';
 import { AgentChat } from '../../components/agent/AgentChat';
 import { resolveAgentContext } from '../../models/agent';
-import type { AgentChatContext } from '../../typings/agent';
+import type { AgentChatContext, AgentNavigationState, AgentPresetAction } from '../../typings/agent';
 
 /** AI 助手全屏会话页。 */
 export default function AgentPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const fromPath = (location.state as { from?: string } | null)?.from || location.pathname;
+  const routeState = location.state as AgentNavigationState | null;
+  const fromPath = routeState?.from || location.pathname;
+  const presetAction = resolvePresetAction(routeState?.presetAction);
   // 异步加载完整对话上下文（默认收货地址 + 基础字段）
   const [context, setContext] = useState<AgentChatContext | undefined>(undefined);
 
@@ -29,7 +31,19 @@ export default function AgentPage() {
         </button>
         <h1>AI 助手</h1>
       </header>
-      <AgentChat context={context} />
+      <AgentChat context={context} presetAction={presetAction} />
     </main>
   );
+}
+
+/**
+ * 校验路由状态中的一次性预设动作。
+ * @param action 路由状态传入的候选动作
+ * @returns 合法预设动作；非法数据不触发自动调用
+ */
+function resolvePresetAction(action: AgentPresetAction | undefined): AgentPresetAction | undefined {
+  if (action?.type !== 'interpret_prescription' || !Number.isInteger(action.prescriptionId) || action.prescriptionId <= 0) {
+    return undefined;
+  }
+  return action;
 }

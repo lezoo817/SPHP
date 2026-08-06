@@ -4,7 +4,7 @@ AgentState 是图中唯一的共享状态对象，
 通过 LangGraph 的 add_messages reducer 自动累积对话历史。
 """
 
-from typing import Annotated, Any, NotRequired
+from typing import Annotated, Any, Literal, NotRequired
 
 from langgraph.graph import add_messages
 from typing_extensions import TypedDict
@@ -54,6 +54,12 @@ class AgentState(TypedDict):
     # C 端前端选中配送地址后注入；recommend_pharmacies 工具必填，由
     # _fill_missing_address_id 确定性补全、_build_address_context 注入 LLM 上下文。
     address_id: int | None
+
+    # 前端受控预设动作，仅用于完成鉴权后直接执行允许的 L1 查询。
+    preset_action: NotRequired[Literal["interpret_prescription"] | None]
+
+    # 预设处方解读对应的处方 ID，由接入层完成格式校验后写入。
+    preset_prescription_id: NotRequired[int | None]
 
     # LLM 决定调用的工具列表，由 tool_caller 节点写入
     tool_calls: list[dict[str, Any]] | None

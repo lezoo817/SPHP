@@ -1,7 +1,21 @@
 import type { Prescription } from '../typings/api';
+import type { AgentNavigationState } from '../typings/agent';
 
 const PRESCRIPTION_DISPLAY_NUMBER_PREFIX = 'sphp:prescription-display-number:';
 const fallbackDisplayNumberStorage = new Map<string, string>();
+
+/**
+ * 构建“AI 一键解读”跳转状态。
+ * @param from 处方详情页的完整地址
+ * @param prescriptionId 服务端真实处方 ID
+ * @returns 跳转 AI 页面时使用的路由状态
+ */
+export function buildPrescriptionInterpretationAgentState(from: string, prescriptionId: number): AgentNavigationState {
+  return {
+    from,
+    presetAction: { type: 'interpret_prescription', prescriptionId },
+  };
+}
 
 /** 用于读取和写入浏览器会话缓存的最小存储接口。 */
 export interface PrescriptionDisplayNumberStorage {
