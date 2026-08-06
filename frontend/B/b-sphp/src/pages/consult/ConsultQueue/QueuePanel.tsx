@@ -150,8 +150,8 @@ export default function QueuePanel({
                             <ClockCircleOutlined /> #{item.queueNumber}
                           </Text>
                           <Text type="secondary" style={{ fontSize: 12 }}>
-                            {item.appointmentTime
-                              ? dayjs(item.appointmentTime).format('HH:mm')
+                            {item.slotStartTime && item.slotEndTime
+                              ? `${item.slotStartTime} - ${item.slotEndTime}`
                               : '-'}
                           </Text>
                         </Space>

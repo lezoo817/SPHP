@@ -72,6 +72,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     private static final String STATUS_PENDING = "PENDING";
     private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
     private static final String STATUS_COMPLETED = "COMPLETED";
+    private static final String STATUS_NO_SHOW = "NO_SHOW";
 
     private static final String PRESCRIPTION_DRAFT = "DRAFT";
 
@@ -107,6 +108,13 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
 
         // 自动补建缺失的 consult_record：C端挂号成功后未创建问诊记录时，查询前幂等补齐
         ensureConsultRecordsExist(doctorIds);
+
+        // 批量过期已过期的 PENDING 记录与 PAID 挂号订单，保持队列干净
+        int expiredCount = consultRecordMapper.batchExpireOldPending(doctorIds);
+        int expiredApptCount = appointmentMapper.batchExpireOldPaid(doctorIds, OffsetDateTime.now());
+        if (expiredCount > 0 || expiredApptCount > 0) {
+            log.info("过期处理：consult_record NO_SHOW {} 条, appointment EXPIRED {} 条", expiredCount, expiredApptCount);
+        }
 
         // 对于 ADMIN/DEPT_HEAD，deptId 可传参过滤；DOCTOR 只看本人
         Long queryDeptId = (ROLE_ADMIN.equals(scope.role()) && deptId != null) ? deptId
