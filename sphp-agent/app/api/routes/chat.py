@@ -286,13 +286,13 @@ def _call_signature(kind: str, name: str, arguments: dict[str, Any] | None) -> t
 def _handle_updates_chunk(
     chunk: dict[str, Any], seen: set[tuple[str, str, str]] | None = None
 ) -> list[tuple[str, dict[str, Any]]]:
-    """updates 分支处理：从子图更新重建 action / observation / card 事件。
+    """updates 分支处理：从子图更新重建 action / observation / card / options 事件。
 
     subgraphs=True（方案 B 实时上报）：子图内部节点（tool_caller /
     safety_check / tool_executor）的 updates 逐节点实时上浮到主图流，每轮
-    工具完成即推 action/observation、L2 即推 card。因 tool_results /
-    pending_confirmations 自累积（tool_executor 保留前序轮次结果）+ 子图
-    结束后主图层级再上报整体更新，同一结果会被重复上报，需 seen 签名去重。
+    工具完成即推 action/observation、L2 即推 card、问诊选医生即推 options。
+    因 tool_results / pending_confirmations / pending_doctor_choices 自累积
+    + 子图结束后主图层级再上报整体更新，同一结果会被重复上报，需 seen 签名去重。
 
     去重粒度（kind 区分，配对事件不互相挡）：
         - action：``("action", tool_name, arguments)``--tool_caller 已推过
@@ -301,6 +301,8 @@ def _handle_updates_chunk(
           重复结果只推一次
         - card：``("card", confirm_token or tool_name, arguments)``--
           子图与主图层级重复上报只推一次
+        - options：``("options", options_id, "")``--按 options_id 去重，
+          选医生候选只在首次写入时推一次
 
     seen 为 None 时内部新建空集，保持单参调用兼容（现有单测无需改）。
 
@@ -310,7 +312,7 @@ def _handle_updates_chunk(
 
     Returns:
         list[tuple[str, dict[str, Any]]]：(event, payload) 事件列表，
-            event ∈ {"action", "observation", "card"}。
+            event ∈ {"action", "observation", "card", "options"}。
     """
     if seen is None:
         seen = set()
@@ -353,7 +355,65 @@ def _handle_updates_chunk(
                 continue
             seen.add(card_sig)
             events.append(("card", _build_card(p)))
+        # 问诊选医生候选：options 按 options_id 去重（M8-6）
+        choices = node_update.get("pending_doctor_choices")
+        if choices:
+            options_id = f"opt_{_hash_choices(choices)}"
+            opt_sig = _call_signature("options", options_id, {})
+            if opt_sig not in seen:
+                seen.add(opt_sig)
+                events.append(("options", _build_options(choices, options_id)))
     return events
+
+
+def _hash_choices(choices: list[dict[str, Any]]) -> str:
+    """候选医生列表生成稳定哈希（options_id 后缀，去重键）。
+
+    用 doctor_id 列表拼接哈希，保证同候选只推一次 options；候选变化（换医生）
+    则生成不同 options_id 触发新卡。
+    """
+    import hashlib as _hashlib
+
+    key = ",".join(str(c.get("doctor_id", "")) for c in choices)
+    return _hashlib.md5(key.encode()).hexdigest()[:8]
+
+
+def _build_options(choices: list[dict[str, Any]], options_id: str) -> dict[str, Any]:
+    """构造 options 事件（M8-6 问诊选医生卡片）。
+
+    候选医生（来自 query_doctors 经 _parse_doctor_candidates 解析）映射为前端
+    select_doctor 卡片所需 items。value 用 doctor_id（稳定键），label 用医生姓名，
+    subtitle 含科室与职称，detail 含擅长领域，extra 含挂号费（如有）。
+
+    Args:
+        choices: pending_doctor_choices 候选医生列表。
+        options_id: 选项组标识（去重键）。
+
+    Returns:
+        dict: options 事件负载，与 card 事件平级、由前端单独渲染。
+    """
+    items: list[dict[str, Any]] = []
+    for c in choices:
+        subtitle_parts = []
+        if c.get("dept_name"):
+            subtitle_parts.append(c["dept_name"])
+        if c.get("title"):
+            subtitle_parts.append(c["title"])
+        items.append(
+            {
+                "value": str(c.get("doctor_id", "")),
+                "label": c.get("name", ""),
+                "subtitle": " · ".join(subtitle_parts) if subtitle_parts else "",
+                "detail": c.get("specialty") or "",
+                "extra": {"fee_cent": c.get("fee_cent")} if c.get("fee_cent") is not None else {},
+            }
+        )
+    return {
+        "type": "select_doctor",
+        "options_id": options_id,
+        "title": "请选择您想咨询的医生",
+        "items": items,
+    }
 
 
 async def _sse_generator(
@@ -403,6 +463,10 @@ async def _sse_generator(
     # subgraphs=True 去重签名集：跨帧累积，防止子图自累积 + 主图层级重复
     # 上报导致同一工具结果/确认卡片被重复推送（方案 B 实时上报）
     seen: set[tuple[str, str, str]] = set()
+    # 延迟事件缓冲（M8-6 时序）：options / card 在子图执行中产生，但需在
+    # 回复文本流式完毕后再推给前端，保证「先回复说明、再弹卡」的体验。
+    # action / observation 仍即时推（工具执行进度需实时反馈）。
+    deferred: list[tuple[str, dict[str, Any]]] = []
 
     # P1-9 会话级串行锁：同 session 并发请求排队执行，防止交错读写同一
     # checkpoint 互相覆盖（checkpointer 锁 per-instance，无法跨请求协调）。
@@ -438,14 +502,24 @@ async def _sse_generator(
                         yield _sse(event, payload)
                 elif mode == "updates":
                     for event, payload in _handle_updates_chunk(chunk, seen):
-                        yield _sse(event, payload)
+                        # options / card 缓冲到回复之后；action / observation 即时推
+                        if event in ("options", "card"):
+                            deferred.append((event, payload))
+                        else:
+                            yield _sse(event, payload)
                     # reply_node 完成但未流式时，兜底推送完整回复
                     if "reply_node" in chunk and not streamed_reply:
                         content = _extract_last_content(chunk.get("reply_node", {}))
                         if content:
                             yield _sse("message", {"delta": content})
+                            streamed_reply = True
 
             logger.info("[SSE] 流程完成, thread_id=%s", thread_key)
+
+            # 回复流式结束后，按序推送延迟事件（options / card），保证
+            # 「先回复说明、再弹卡」的体验（M8-6 时序修正）。
+            for event, payload in deferred:
+                yield _sse(event, payload)
 
             # 会话元数据落库（历史会话列表）：增强功能，失败仅 log，不阻塞 done
             # 主流程。仅正常完成路径执行——异常/断开路径提前 return，不落库
