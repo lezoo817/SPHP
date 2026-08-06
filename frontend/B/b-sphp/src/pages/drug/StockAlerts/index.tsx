@@ -6,69 +6,55 @@
  */
 import { Tag, message, Progress, Space, Select } from 'antd';
 import { ProTable } from '@ant-design/pro-components';
-import type { ProColumns } from '@ant-design/pro-components';
-import { useRef, useState, useEffect } from 'react';
-import type { ActionType } from '@ant-design/pro-components';
+import type { ActionType, ProColumns } from '@ant-design/pro-components';
+import { useQuery } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
 import { getInventoryAlerts, getPharmacies } from '@/services/admin';
+import { getErrorMessage } from '@/utils/error';
+import { formatPrice } from '@/utils/price';
+import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 
-/** 库存状态映射 */
-const STATUS_MAP: Record<string, { color: string; label: string }> = {
+/** 预警状态展示配置（ALERT/LOW） */
+const STATUS_MAP: Record<'ALERT' | 'LOW', { color: string; label: string }> = {
   ALERT: { color: '#ff4d4f', label: '告警' },
   LOW: { color: '#faad14', label: '偏低' },
 };
 
-/** 分转元显示 */
-function formatPrice(cent: number): string {
-  return (cent / 100).toFixed(2);
+/** 取库存状态的展示配置；NORMAL（正常）回退为绿色正常态 */
+function getStatusConfig(
+  status: API.InventoryItem['status'],
+): { color: string; label: string } {
+  return status === 'ALERT' || status === 'LOW'
+    ? STATUS_MAP[status]
+    : { color: '#52c41a', label: '正常' };
 }
 
 export default function StockAlerts() {
   const actionRef = useRef<ActionType>();
   const [pharmacyId, setPharmacyId] = useState<number | undefined>(undefined);
-  const [pharmacies, setPharmacies] = useState<API.PharmacyItem[]>([]);
 
-  useEffect(() => {
-    getPharmacies().then(setPharmacies).catch(() => {});
-  }, []);
+  /** 药房下拉选项：React Query 缓存，切换页签/刷新不重复请求 */
+  const { data: pharmacies = [] } = useQuery({
+    queryKey: QUERY_KEYS.pharmacies,
+    queryFn: getPharmacies,
+    staleTime: STALE_TIME.pharmacies,
+  });
 
   const columns: ProColumns<API.InventoryItem>[] = [
-    {
-      title: '药房',
-      dataIndex: 'pharmacyName',
-      width: 120,
-      ellipsis: true,
-    },
-    {
-      title: '药品名称',
-      dataIndex: 'drugName',
-      width: 180,
-      ellipsis: true,
-    },
-    {
-      title: '规格',
-      dataIndex: 'specification',
-      width: 130,
-      ellipsis: true,
-    },
-    {
-      title: '当前库存',
-      dataIndex: 'availableCount',
-      width: 100,
-      sorter: true,
-    },
-    {
-      title: '安全库存',
-      dataIndex: 'safetyStock',
-      width: 100,
-    },
+    { title: '药房', dataIndex: 'pharmacyName', width: 120, ellipsis: true },
+    { title: '药品名称', dataIndex: 'drugName', width: 180, ellipsis: true },
+    { title: '规格', dataIndex: 'specification', width: 130, ellipsis: true },
+    { title: '当前库存', dataIndex: 'availableCount', width: 100, sorter: true },
+    { title: '安全库存', dataIndex: 'safetyStock', width: 100 },
     {
       title: '库存状态',
       width: 200,
       render: (_, record) => {
-        const status = STATUS_MAP[record.status] || { color: '#52c41a', label: '正常' };
-        const ratio = record.safetyStock > 0
-          ? Math.min(100, (record.availableCount / record.safetyStock) * 100)
-          : 0;
+        const status = getStatusConfig(record.status);
+        const ratio =
+          record.safetyStock > 0
+            ? Math.min(100, (record.availableCount / record.safetyStock) * 100)
+            : 0;
         return (
           <Space>
             <Progress
@@ -94,7 +80,12 @@ export default function StockAlerts() {
       render: (_, record) => {
         const shortage = Math.max(0, record.safetyStock - record.availableCount);
         return (
-          <span style={{ color: shortage > 0 ? '#ff4d4f' : undefined, fontWeight: 'bold' }}>
+          <span
+            style={{
+              color: shortage > 0 ? '#ff4d4f' : undefined,
+              fontWeight: 'bold',
+            }}
+          >
             {shortage}
           </span>
         );
@@ -105,14 +96,12 @@ export default function StockAlerts() {
   /** 手动请求，不依赖 ProTable 的自动分页模式 */
   const fetchAlerts = async () => {
     try {
-      const list = await getInventoryAlerts(pharmacyId !== undefined ? { pharmacyId } : undefined);
-      return {
-        data: list,
-        total: list.length,
-        success: true,
-      };
-    } catch (err: any) {
-      message.error(err?.message || '查询预警失败');
+      const list = await getInventoryAlerts(
+        pharmacyId !== undefined ? { pharmacyId } : undefined,
+      );
+      return { data: list, total: list.length, success: true };
+    } catch (err: unknown) {
+      message.error(getErrorMessage(err, '查询预警失败'));
       return { data: [], total: 0, success: true };
     }
   };

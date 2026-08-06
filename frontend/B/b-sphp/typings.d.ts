@@ -189,7 +189,7 @@ declare global {
 
     /** 号源时段配置项（后端返回） */
     interface SlotConfig {
-      id: number;
+      id?: number; // 本地新增时段在保存前无 id
       startTime: string; // HH:mm
       endTime: string; // HH:mm
       totalCount: number;
@@ -500,6 +500,8 @@ declare global {
       name: string;
       deptId?: number;
       deptName?: string;
+      doctorName?: string; // 创建人（列表接口返回）
+      itemCount?: number; // 药品项数（列表接口返回）
       items: {
         drugId: number;
         drugName: string;
@@ -734,8 +736,8 @@ declare global {
   /**
    * ============ AI 辅助面板（Agent）相关类型 ============
    * 与 sphp-agent 的 `app/api/routes/chat.py` SSE 事件格式对齐，覆盖
-   * Agent 模块系分 V2.1 §6.2 七类事件：message / thought / action / observation /
-   * card / error / done，以及 L2 确认回调的请求与响应结构。
+   * 七类事件：message / thought / action / observation / card / error / done，
+   * 以及 L2 确认回调的请求与响应结构。
    */
   namespace Agent {
     /** B 端对话上下文：描述当前页面业务状态，辅助 Agent 决策。 */

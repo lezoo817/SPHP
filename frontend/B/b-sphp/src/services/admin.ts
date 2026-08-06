@@ -1,17 +1,19 @@
 /**
- * 医院/科室/医生管理 API 服务层
+ * B 端业务 API 服务层（医院/科室/医生、排班、接诊、处方、药品、患者、统计）。
+ *
+ * 统一走 Umi request：需要返回体的接口经 requestData 自动解包 Result<T> 的 data；
+ * 写操作不关心返回体时直接调用 request。
  */
 import { request } from '@umijs/max';
+import { requestData } from './http';
 
 /** 查询医院信息 */
-export async function getHospitalInfo(): Promise<API.HospitalInfo> {
-  const res = await request('/api/b/admin/hospitals');
-  // 后端返回 Result<HospitalVO>，提取 data 字段
-  return (res as API.Result<API.HospitalInfo>).data;
+export function getHospitalInfo(): Promise<API.HospitalInfo> {
+  return requestData<API.HospitalInfo>('/api/b/admin/hospitals');
 }
 
 /** 编辑医院信息 */
-export async function updateHospital(
+export function updateHospital(
   id: number,
   data: API.UpdateHospitalReq,
 ): Promise<void> {
@@ -22,15 +24,16 @@ export async function updateHospital(
 }
 
 /** 查询科室列表（分页） */
-export async function getDepartments(
+export function getDepartments(
   params: API.DepartmentListParams,
 ): Promise<API.PageResult<API.Department>> {
-  const res = await request('/api/b/admin/departments', { params });
-  return (res as API.Result<API.PageResult<API.Department>>).data;
+  return requestData<API.PageResult<API.Department>>('/api/b/admin/departments', {
+    params,
+  });
 }
 
 /** 新增科室 */
-export async function createDepartment(
+export function createDepartment(
   data: API.UpsertDepartmentReq,
 ): Promise<void> {
   return request('/api/b/admin/departments', {
@@ -40,7 +43,7 @@ export async function createDepartment(
 }
 
 /** 编辑科室 */
-export async function updateDepartment(
+export function updateDepartment(
   id: number,
   data: Partial<API.UpsertDepartmentReq>,
 ): Promise<void> {
@@ -51,7 +54,7 @@ export async function updateDepartment(
 }
 
 /** 启用/停用科室 */
-export async function updateDepartmentStatus(
+export function updateDepartmentStatus(
   id: number,
   status: 'ENABLED' | 'DISABLED',
 ): Promise<void> {
@@ -62,15 +65,16 @@ export async function updateDepartmentStatus(
 }
 
 /** 查询医生列表（分页） */
-export async function getDoctors(
+export function getDoctors(
   params: API.DoctorListParams,
 ): Promise<API.PageResult<API.Doctor>> {
-  const res = await request('/api/b/admin/doctors', { params });
-  return (res as API.Result<API.PageResult<API.Doctor>>).data;
+  return requestData<API.PageResult<API.Doctor>>('/api/b/admin/doctors', {
+    params,
+  });
 }
 
 /** 新增医生（自动开通登录账号） */
-export async function createDoctor(
+export function createDoctor(
   data: API.CreateDoctorReq,
 ): Promise<void> {
   return request('/api/b/admin/doctors', {
@@ -80,7 +84,7 @@ export async function createDoctor(
 }
 
 /** 编辑医生基本信息 */
-export async function updateDoctorProfile(
+export function updateDoctorProfile(
   id: number,
   data: API.UpdateDoctorProfileReq,
 ): Promise<void> {
@@ -91,7 +95,7 @@ export async function updateDoctorProfile(
 }
 
 /** 修改医生登录账号 */
-export async function updateDoctorAccount(
+export function updateDoctorAccount(
   id: number,
   account: string,
 ): Promise<void> {
@@ -102,7 +106,7 @@ export async function updateDoctorAccount(
 }
 
 /** 重置医生密码 */
-export async function resetDoctorPassword(
+export function resetDoctorPassword(
   id: number,
   password: string,
 ): Promise<void> {
@@ -113,7 +117,7 @@ export async function resetDoctorPassword(
 }
 
 /** 启用/停用/暂停医生 */
-export async function updateDoctorStatus(
+export function updateDoctorStatus(
   id: number,
   status: 'ENABLED' | 'DISABLED' | 'SUSPENDED',
 ): Promise<void> {
@@ -126,201 +130,202 @@ export async function updateDoctorStatus(
 // ===================== 排班与号源管理 =====================
 
 /** 查询排班列表（分页） */
-export async function getSchedules(
+export function getSchedules(
   params: API.ScheduleListParams,
 ): Promise<API.PageResult<API.Schedule>> {
-  const res = await request('/api/b/admin/schedules', { params });
-  return (res as API.Result<API.PageResult<API.Schedule>>).data;
+  return requestData<API.PageResult<API.Schedule>>('/api/b/admin/schedules', {
+    params,
+  });
 }
 
 /** 创建排班（仅 ADMIN） */
-export async function createSchedule(data: API.CreateScheduleReq): Promise<void> {
-  await request('/api/b/admin/schedules', { method: 'POST', data });
+export function createSchedule(data: API.CreateScheduleReq): Promise<void> {
+  return request('/api/b/admin/schedules', { method: 'POST', data });
 }
 
 /** 查询排班号源时段配置 */
-export async function getScheduleSlots(id: number): Promise<API.SlotConfig[]> {
-  const res = await request(`/api/b/admin/schedules/${id}/slots`);
-  return (res as API.Result<API.SlotConfig[]>).data;
+export function getScheduleSlots(id: number): Promise<API.SlotConfig[]> {
+  return requestData<API.SlotConfig[]>(`/api/b/admin/schedules/${id}/slots`);
 }
 
 /** 配置号源时段（仅 ADMIN，仅 DRAFT） */
-export async function configureScheduleSlots(
+export function configureScheduleSlots(
   id: number,
   slotConfigs: API.SlotConfigItem[],
 ): Promise<void> {
-  await request(`/api/b/admin/schedules/${id}/slots`, {
+  return request(`/api/b/admin/schedules/${id}/slots`, {
     method: 'PUT',
     data: { slotConfigs },
   });
 }
 
 /** 发布排班（仅 ADMIN） */
-export async function publishSchedule(id: number): Promise<void> {
-  await request(`/api/b/admin/schedules/${id}/publish`, { method: 'PUT' });
+export function publishSchedule(id: number): Promise<void> {
+  return request(`/api/b/admin/schedules/${id}/publish`, { method: 'PUT' });
 }
 
 /** 取消发布（PUBLISHED）或作废（DRAFT）排班（仅 ADMIN） */
-export async function unpublishSchedule(id: number): Promise<void> {
-  await request(`/api/b/admin/schedules/${id}/unpublish`, { method: 'PUT' });
+export function unpublishSchedule(id: number): Promise<void> {
+  return request(`/api/b/admin/schedules/${id}/unpublish`, { method: 'PUT' });
 }
 
 /** 查询锁定号源看板（分页，date 必填） */
-export async function getLockedSlots(
+export function getLockedSlots(
   params: API.LockedSlotsParams,
 ): Promise<API.PageResult<API.LockedSlot>> {
-  const res = await request('/api/b/admin/slots/locked', { params });
-  return (res as API.Result<API.PageResult<API.LockedSlot>>).data;
+  return requestData<API.PageResult<API.LockedSlot>>('/api/b/admin/slots/locked', {
+    params,
+  });
 }
 
 /** 手动释放锁定号源（仅 ADMIN） */
-export async function forceReleaseSlot(slotId: number): Promise<void> {
-  await request(`/api/b/admin/slots/${slotId}/force-release`, { method: 'POST' });
+export function forceReleaseSlot(slotId: number): Promise<void> {
+  return request(`/api/b/admin/slots/${slotId}/force-release`, { method: 'POST' });
 }
 
 /** 查询号源池（按日期+班次汇总，仅 PUBLISHED，按数据权限过滤） */
-export async function getSourcePool(
+export function getSourcePool(
   params: API.SourcePoolParams,
 ): Promise<API.PageResult<API.SourcePoolVO>> {
-  const res = await request('/api/b/admin/source-pool', { params });
-  return (res as API.Result<API.PageResult<API.SourcePoolVO>>).data;
+  return requestData<API.PageResult<API.SourcePoolVO>>('/api/b/admin/source-pool', {
+    params,
+  });
 }
 
 // ===================== 接诊台 =====================
 
 /** 查询待接诊队列 */
-export async function getQueue(
+export function getQueue(
   params: API.QueueListParams,
 ): Promise<API.PageResult<API.QueueItem>> {
-  const res = await request('/api/b/doctor/queue', { params });
-  return (res as API.Result<API.PageResult<API.QueueItem>>).data;
+  return requestData<API.PageResult<API.QueueItem>>('/api/b/doctor/queue', {
+    params,
+  });
 }
 
 /** 患者详情 */
-export async function getPatientDetail(
+export function getPatientDetail(
   consultId: number,
 ): Promise<API.PatientDetail> {
-  const res = await request(`/api/b/doctor/queue/${consultId}`);
-  return (res as API.Result<API.PatientDetail>).data;
+  return requestData<API.PatientDetail>(`/api/b/doctor/queue/${consultId}`);
 }
 
 /** 开始接诊 */
-export async function startConsult(
+export function startConsult(
   consultId: number,
 ): Promise<API.ConsultStart> {
-  const res = await request(`/api/b/doctor/consult/${consultId}/start`, {
+  return requestData<API.ConsultStart>(`/api/b/doctor/consult/${consultId}/start`, {
     method: 'POST',
   });
-  return (res as API.Result<API.ConsultStart>).data;
 }
 
 /** 结束问诊 */
-export async function endConsult(
+export function endConsult(
   consultId: number,
 ): Promise<API.ConsultEnd> {
-  const res = await request(`/api/b/doctor/consult/${consultId}/end`, {
+  return requestData<API.ConsultEnd>(`/api/b/doctor/consult/${consultId}/end`, {
     method: 'POST',
   });
-  return (res as API.Result<API.ConsultEnd>).data;
 }
 
 /** 保存病历 */
-export async function saveNote(
+export function saveNote(
   consultId: number,
   data: API.NoteSaveReq,
 ): Promise<API.NoteSave> {
-  const res = await request(`/api/b/doctor/consult/${consultId}/note`, {
+  return requestData<API.NoteSave>(`/api/b/doctor/consult/${consultId}/note`, {
     method: 'PUT',
     data,
   });
-  return (res as API.Result<API.NoteSave>).data;
 }
 
 /** 查询消息历史 */
-export async function getMessages(
+export function getMessages(
   consultationId: number,
   params?: { page?: number; size?: number },
 ): Promise<API.PageResult<API.MessageVO>> {
-  const res = await request(
+  return requestData<API.PageResult<API.MessageVO>>(
     `/api/b/doctor/consult/${consultationId}/messages`,
     { params },
   );
-  return (res as API.Result<API.PageResult<API.MessageVO>>).data;
 }
 
 /** 发送问诊消息（B端代理） */
-export async function sendMessage(
+export function sendMessage(
   consultationId: number,
   data: API.MessageSendReq,
 ): Promise<API.MessageVO> {
-  const res = await request(
+  return requestData<API.MessageVO>(
     `/api/b/doctor/consult/${consultationId}/message`,
     { method: 'POST', data },
   );
-  return (res as API.Result<API.MessageVO>).data;
 }
 
 // ===================== 接诊历史 =====================
 
 /** 查询当前医生的历史接诊记录 */
-export async function getConsultHistory(
+export function getConsultHistory(
   params?: { page?: number; size?: number },
 ): Promise<API.PageResult<API.ConsultHistoryItem>> {
-  const res = await request('/api/b/doctor/consult/history', { params });
-  return (res as API.Result<API.PageResult<API.ConsultHistoryItem>>).data;
+  return requestData<API.PageResult<API.ConsultHistoryItem>>(
+    '/api/b/doctor/consult/history',
+    { params },
+  );
 }
 
 /** 查询历史接诊详情（病历全文 + 关联处方） */
-export async function getConsultHistoryDetail(
+export function getConsultHistoryDetail(
   consultId: number,
 ): Promise<API.ConsultHistoryDetail> {
-  const res = await request(`/api/b/doctor/consult/${consultId}/history-detail`);
-  return (res as API.Result<API.ConsultHistoryDetail>).data;
+  return requestData<API.ConsultHistoryDetail>(
+    `/api/b/doctor/consult/${consultId}/history-detail`,
+  );
 }
 
 // ===================== 处方管理 =====================
 
 /** 查询处方列表（分页） */
-export async function getPrescriptions(
+export function getPrescriptions(
   params: API.PrescriptionListParams,
 ): Promise<API.PageResult<API.Prescription>> {
-  const res = await request('/api/b/prescriptions', { params });
-  return (res as API.Result<API.PageResult<API.Prescription>>).data;
+  return requestData<API.PageResult<API.Prescription>>('/api/b/prescriptions', {
+    params,
+  });
 }
 
 /** 处方详情 */
-export async function getPrescriptionDetail(
+export function getPrescriptionDetail(
   id: number,
 ): Promise<API.PrescriptionDetail> {
-  const res = await request(`/api/b/prescriptions/${id}`);
-  return (res as API.Result<API.PrescriptionDetail>).data;
+  return requestData<API.PrescriptionDetail>(`/api/b/prescriptions/${id}`);
 }
 
 /** 提交处方 */
-export async function submitPrescription(
+export function submitPrescription(
   data: API.PrescriptionSubmitReq,
 ): Promise<API.PrescriptionSubmitResult> {
-  const res = await request('/api/b/prescriptions', {
+  return requestData<API.PrescriptionSubmitResult>('/api/b/prescriptions', {
     method: 'POST',
     data,
   });
-  return (res as API.Result<API.PrescriptionSubmitResult>).data;
 }
 
 /** 查询待审核处方列表（分页） */
-export async function getPendingAudits(
+export function getPendingAudits(
   params: API.PageParams,
 ): Promise<API.PageResult<API.PendingAuditItem>> {
-  const res = await request('/api/b/prescriptions/pending-audit', { params });
-  return (res as API.Result<API.PageResult<API.PendingAuditItem>>).data;
+  return requestData<API.PageResult<API.PendingAuditItem>>(
+    '/api/b/prescriptions/pending-audit',
+    { params },
+  );
 }
 
 /** 审核处方 */
-export async function auditPrescription(
+export function auditPrescription(
   id: number,
   data: API.AuditReq,
 ): Promise<void> {
-  await request(`/api/b/prescriptions/${id}/audit`, {
+  return request(`/api/b/prescriptions/${id}/audit`, {
     method: 'PUT',
     data,
   });
@@ -329,27 +334,28 @@ export async function auditPrescription(
 // ===================== 处方模板 =====================
 
 /** 查询处方模板列表（分页） */
-export async function getTemplates(
+export function getTemplates(
   params: API.TemplateListParams,
 ): Promise<API.PageResult<API.PrescriptionTemplate>> {
-  const res = await request('/api/b/prescription-templates', { params });
-  return (res as API.Result<API.PageResult<API.PrescriptionTemplate>>).data;
+  return requestData<API.PageResult<API.PrescriptionTemplate>>(
+    '/api/b/prescription-templates',
+    { params },
+  );
 }
 
 /** 保存处方模板 */
-export async function saveTemplate(
+export function saveTemplate(
   data: API.SaveTemplateReq,
 ): Promise<API.PrescriptionTemplate> {
-  const res = await request('/api/b/prescription-templates', {
-    method: 'POST',
-    data,
-  });
-  return (res as API.Result<API.PrescriptionTemplate>).data;
+  return requestData<API.PrescriptionTemplate>(
+    '/api/b/prescription-templates',
+    { method: 'POST', data },
+  );
 }
 
 /** 删除处方模板 */
-export async function deleteTemplate(id: number): Promise<void> {
-  await request(`/api/b/prescription-templates/${id}`, {
+export function deleteTemplate(id: number): Promise<void> {
+  return request(`/api/b/prescription-templates/${id}`, {
     method: 'DELETE',
   });
 }
@@ -357,88 +363,89 @@ export async function deleteTemplate(id: number): Promise<void> {
 // ===================== 药品库存管理 =====================
 
 /** 查询药品目录（分页） */
-export async function getDrugs(
+export function getDrugs(
   params: API.DrugListParams,
 ): Promise<API.PageResult<API.Drug>> {
-  const res = await request('/api/b/admin/drugs', { params });
-  return (res as API.Result<API.PageResult<API.Drug>>).data;
+  return requestData<API.PageResult<API.Drug>>('/api/b/admin/drugs', {
+    params,
+  });
 }
 
 /** 查询单个药品（新建处方模板自动带出药品名称/规格） */
-export async function getDrugById(id: number): Promise<API.Drug> {
-  const res = await request(`/api/b/prescription-templates/drugs/${id}`);
-  return (res as API.Result<API.Drug>).data;
+export function getDrugById(id: number): Promise<API.Drug> {
+  return requestData<API.Drug>(`/api/b/prescription-templates/drugs/${id}`);
 }
 
 /** 新增药品 */
-export async function createDrug(data: API.CreateDrugReq): Promise<void> {
-  await request('/api/b/admin/drugs', {
+export function createDrug(data: API.CreateDrugReq): Promise<void> {
+  return request('/api/b/admin/drugs', {
     method: 'POST',
     data,
   });
 }
 
 /** 更新药品 */
-export async function updateDrug(
+export function updateDrug(
   id: number,
   data: Partial<API.CreateDrugReq>,
 ): Promise<void> {
-  await request(`/api/b/admin/drugs/${id}`, {
+  return request(`/api/b/admin/drugs/${id}`, {
     method: 'PUT',
     data,
   });
 }
 
 /** 启用/停用药品 */
-export async function updateDrugStatus(
+export function updateDrugStatus(
   id: number,
   status: 'ENABLED' | 'DISABLED',
 ): Promise<void> {
-  await request(`/api/b/admin/drugs/${id}/status`, {
+  return request(`/api/b/admin/drugs/${id}/status`, {
     method: 'PUT',
     data: { status },
   });
 }
 
 /** 查询库存列表（分页） */
-export async function getInventoryList(
+export function getInventoryList(
   params: API.InventoryListParams,
 ): Promise<API.PageResult<API.InventoryItem>> {
-  const res = await request('/api/b/admin/inventory', { params });
-  return (res as API.Result<API.PageResult<API.InventoryItem>>).data;
+  return requestData<API.PageResult<API.InventoryItem>>('/api/b/admin/inventory', {
+    params,
+  });
 }
 
 /** 更新库存 */
-export async function updateInventory(
+export function updateInventory(
   id: number,
   data: API.UpdateInventoryReq,
 ): Promise<void> {
-  await request(`/api/b/admin/inventory/${id}`, {
+  return request(`/api/b/admin/inventory/${id}`, {
     method: 'PUT',
     data,
   });
 }
 
 /** 查询低库存预警列表 */
-export async function getInventoryAlerts(
+export function getInventoryAlerts(
   params?: { pharmacyId?: number },
 ): Promise<API.InventoryItem[]> {
-  const res = await request('/api/b/admin/inventory/alerts', { params });
-  return (res as API.Result<API.InventoryItem[]>).data;
+  return requestData<API.InventoryItem[]>('/api/b/admin/inventory/alerts', {
+    params,
+  });
 }
 
 /** 查询药房列表（供下拉筛选） */
-export async function getPharmacies(): Promise<API.PharmacyItem[]> {
-  const res = await request('/api/b/admin/pharmacies');
-  return (res as API.Result<API.PharmacyItem[]>).data;
+export function getPharmacies(): Promise<API.PharmacyItem[]> {
+  return requestData<API.PharmacyItem[]>('/api/b/admin/pharmacies');
 }
 
 /** 手动释放锁定库存（仅 ADMIN） */
-export async function unlockInventory(
+export function unlockInventory(
   id: number,
   data: API.UnlockInventoryReq,
 ): Promise<void> {
-  await request(`/api/b/admin/inventory/${id}/unlock`, {
+  return request(`/api/b/admin/inventory/${id}/unlock`, {
     method: 'POST',
     data,
   });
@@ -447,69 +454,78 @@ export async function unlockInventory(
 // ===================== 患者管理 =====================
 
 /** 查询患者列表（分页） */
-export async function getPatientList(
+export function getPatientList(
   params: API.PatientListParams,
 ): Promise<API.PageResult<API.PatientListItem>> {
-  const res = await request('/api/b/admin/patients', { params });
-  return (res as API.Result<API.PageResult<API.PatientListItem>>).data;
+  return requestData<API.PageResult<API.PatientListItem>>('/api/b/admin/patients', {
+    params,
+  });
 }
 
 /** 患者详情 */
-export async function getPatientInfo(
+export function getPatientInfo(
   id: number,
 ): Promise<API.PatientDetailInfo> {
-  const res = await request(`/api/b/admin/patients/${id}`);
-  return (res as API.Result<API.PatientDetailInfo>).data;
+  return requestData<API.PatientDetailInfo>(`/api/b/admin/patients/${id}`);
 }
 
 /** 查询患者就诊记录（分页） */
-export async function getPatientVisits(
+export function getPatientVisits(
   id: number,
   params: API.PageParams,
 ): Promise<API.PageResult<API.PatientVisitItem>> {
-  const res = await request(`/api/b/admin/patients/${id}/visits`, { params });
-  return (res as API.Result<API.PageResult<API.PatientVisitItem>>).data;
+  return requestData<API.PageResult<API.PatientVisitItem>>(
+    `/api/b/admin/patients/${id}/visits`,
+    { params },
+  );
 }
 
 /** 查询患者历史处方（分页） */
-export async function getPatientPrescriptions(
+export function getPatientPrescriptions(
   id: number,
   params: API.PageParams,
 ): Promise<API.PageResult<API.PatientPrescriptionItem>> {
-  const res = await request(`/api/b/admin/patients/${id}/prescriptions`, { params });
-  return (res as API.Result<API.PageResult<API.PatientPrescriptionItem>>).data;
+  return requestData<API.PageResult<API.PatientPrescriptionItem>>(
+    `/api/b/admin/patients/${id}/prescriptions`,
+    { params },
+  );
 }
 
 /** 查询患者当前用药与随访 */
-export async function getPatientMedications(
+export function getPatientMedications(
   id: number,
 ): Promise<API.PatientMedicationResult> {
-  const res = await request(`/api/b/admin/patients/${id}/medications`);
-  return (res as API.Result<API.PatientMedicationResult>).data;
+  return requestData<API.PatientMedicationResult>(
+    `/api/b/admin/patients/${id}/medications`,
+  );
 }
 
 // ===================== 统计报表 =====================
 
 /** 运营总览 */
-export async function getStatisticsOverview(
+export function getStatisticsOverview(
   params?: API.StatisticsParams,
 ): Promise<API.StatisticsOverview> {
-  const res = await request('/api/b/admin/statistics/overview', { params });
-  return (res as API.Result<API.StatisticsOverview>).data;
+  return requestData<API.StatisticsOverview>('/api/b/admin/statistics/overview', {
+    params,
+  });
 }
 
 /** 按科室统计 */
-export async function getDepartmentStats(
+export function getDepartmentStats(
   params?: API.StatisticsParams,
 ): Promise<API.DepartmentStatItem[]> {
-  const res = await request('/api/b/admin/statistics/department', { params });
-  return (res as API.Result<API.DepartmentStatItem[]>).data;
+  return requestData<API.DepartmentStatItem[]>(
+    '/api/b/admin/statistics/department',
+    { params },
+  );
 }
 
 /** 按日期统计 */
-export async function getDailyStats(
+export function getDailyStats(
   params: API.StatisticsParams,
 ): Promise<API.DailyStatItem[]> {
-  const res = await request('/api/b/admin/statistics/daily', { params });
-  return (res as API.Result<API.DailyStatItem[]>).data;
+  return requestData<API.DailyStatItem[]>('/api/b/admin/statistics/daily', {
+    params,
+  });
 }

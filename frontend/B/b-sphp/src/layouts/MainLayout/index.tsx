@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation, useModel, history } from '@umijs/max';
-import { Layout, Menu, Button, Dropdown, Avatar, Space, Typography, Drawer } from 'antd';
+import { Layout, Menu, Dropdown, Avatar, Space, Typography, Drawer } from 'antd';
 import {
   UserOutlined,
   LogoutOutlined,
@@ -8,17 +8,12 @@ import {
   MedicineBoxOutlined,
   FileTextOutlined,
   BarChartOutlined,
-  AuditOutlined,
   HomeOutlined,
-  SettingOutlined,
-  AlertOutlined,
-  ContainerOutlined,
-  ProfileOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { request } from '@umijs/max';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AgentFloatingButton } from '@/components/agent/AgentFloatingButton';
 import { AiPanel } from '@/components/agent/AiPanel';
 import { buildAgentContext } from '@/models/agent';
@@ -129,7 +124,8 @@ export default function MainLayout() {
   const [showAgentDrawer, setShowAgentDrawer] = useState(false);
 
   const currentUser = initialState?.currentUser;
-  const roles = currentUser?.roles ?? [];
+  // 固定引用：避免 ?? [] 每次渲染生成新数组，导致下方 useEffect 依赖变化
+  const roles = useMemo(() => currentUser?.roles ?? [], [currentUser]);
 
   // 未登录跳转登录页；已登录时根据角色做首次路由修正
   useEffect(() => {

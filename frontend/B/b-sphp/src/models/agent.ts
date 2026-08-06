@@ -1,7 +1,7 @@
 /**
  * B 端 AI 辅助面板会话状态：当前 sessionId 与对话上下文快照。
  *
- * 会话策略（Agent 模块系分 V2.1 §5.9 B 端会话管理）：
+ * 会话策略：
  * - 医生每次开始接诊对应一个独立的 Agent 会话；
  * - 切换患者（consultation_id 变化）时前端不传 session_id，Agent 创建新会话；
  * - 结束问诊时前端丢弃 session_id，旧会话按 TTL 自然过期。
@@ -39,7 +39,7 @@ export function clearAgentSessionId(): void {
 /**
  * 基于当前页面路径和接诊上下文构造对话上下文。
  *
- * 接诊台详情页携带 consultation_id / patient_id（系分 §9.2 病历草稿生成的上下文参数），
+ * 接诊台详情页携带 consultation_id / patient_id（病历草稿生成的上下文参数），
  * 其他页面按业务域映射 page 标识。
  *
  * @param pathname 当前路由路径
