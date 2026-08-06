@@ -156,6 +156,11 @@ export default function PatientPanel({
                             {r.date}
                           </Text>
                           <Tag>{r.type}</Tag>
+                          {r.doctorName && (
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              医生：{r.doctorName}
+                            </Text>
+                          )}
                           <Tag color={STATUS_MAP[r.status]?.color}>
                             {STATUS_MAP[r.status]?.text ?? r.status}
                           </Tag>

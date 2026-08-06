@@ -158,7 +158,8 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
         List<PatientDetailVO.RecentPrescriptionInfo> recentPrescriptions = loadRecentPrescriptions(patient.getId());
 
         // 历史就诊记录
-        List<PatientDetailVO.HistoryRecordInfo> historyRecords = loadHistoryRecords(patient.getId());
+        DataScope scope = currentUserService.getCurrentDataScope();
+        List<PatientDetailVO.HistoryRecordInfo> historyRecords = loadHistoryRecords(patient.getId(), scope.hospitalId());
 
         // 脱敏
         String phone = maskPhone(patient.getPhoneCiphertext());
@@ -543,19 +544,40 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     }
 
     /**
-     * 加载患者历史就诊记录。
+     * 加载患者在本医院的历史就诊记录（跨医生，不限当前医生）。
+     *
+     * <p>通过 doctor 表过滤同医院 + 关联医生姓名，让医生了解患者在本院的其他就诊情况。
      */
-    private List<PatientDetailVO.HistoryRecordInfo> loadHistoryRecords(Long patientId) {
+    private List<PatientDetailVO.HistoryRecordInfo> loadHistoryRecords(Long patientId, Long hospitalId) {
         List<ConsultRecord> records = consultRecordMapper.selectList(
                 Wrappers.<ConsultRecord>lambdaQuery()
                         .eq(ConsultRecord::getPatientId, patientId)
                         .isNull(ConsultRecord::getDeletedAt)
                         .orderByDesc(ConsultRecord::getCreatedAt)
-                        .last("LIMIT 10"));
+                        .last("LIMIT 20"));
+        if (records.isEmpty()) {
+            return List.of();
+        }
+
+        // 批量查询关联医生，只保留本院医生 + 构建医生姓名映射
+        List<Long> doctorIds = records.stream()
+                .map(ConsultRecord::getDoctorId)
+                .distinct()
+                .toList();
+        Map<Long, String> doctorNameMap = doctorMapper.selectList(
+                        Wrappers.<Doctor>lambdaQuery()
+                                .in(Doctor::getId, doctorIds)
+                                .eq(Doctor::getHospitalId, hospitalId)
+                                .isNull(Doctor::getDeletedAt))
+                .stream()
+                .collect(Collectors.toMap(Doctor::getId, Doctor::getName));
+
         return records.stream()
+                .filter(r -> doctorNameMap.containsKey(r.getDoctorId()))
                 .map(r -> PatientDetailVO.HistoryRecordInfo.builder()
                         .date(r.getCreatedAt() != null ? r.getCreatedAt().toLocalDate().toString() : null)
                         .type("病历")
+                        .doctorName(doctorNameMap.get(r.getDoctorId()))
                         .summary(r.getDoctorNote() != null
                                 ? r.getDoctorNote().substring(0, Math.min(r.getDoctorNote().length(), 50))
                                 : null)

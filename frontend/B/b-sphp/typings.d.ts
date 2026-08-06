@@ -345,6 +345,7 @@ declare global {
     interface HistoryRecord {
       date: string;
       type: string;
+      doctorName?: string;
       summary: string;
       status: string;
     }
