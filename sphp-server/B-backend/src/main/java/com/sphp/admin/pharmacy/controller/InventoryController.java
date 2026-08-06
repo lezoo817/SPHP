@@ -24,9 +24,10 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * 药品库存管理接口（管理员，系分 §5.7.3~5.7.6）。
+ * 药品库存管理接口（管理员视角）。
  *
- * <p>外部完整 URL 前缀为 {@code /api/b/admin/inventory}。
+ * <p>外部完整 URL 前缀为 {@code /api/b/admin/inventory}。所有接口按当前登录管理员
+ * 所属医院（{@code hospital_id}）做数据隔离；库存按药房归属（{@code pharmacy.hospital_id}）间接过滤。
  */
 @RestController
 @RequestMapping("/b/admin/inventory")

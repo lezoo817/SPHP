@@ -13,9 +13,10 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * 药房管理接口（管理员）。
+ * 药房管理接口（管理员视角）。
  *
- * <p>外部完整 URL 前缀为 {@code /api/b/admin/pharmacies}。
+ * <p>外部完整 URL 前缀为 {@code /api/b/admin/pharmacies}。所有接口按当前登录管理员
+ * 所属医院（{@code hospital_id}）做数据隔离，仅返回本院启用状态的药房。
  */
 @RestController
 @RequestMapping("/b/admin/pharmacies")
