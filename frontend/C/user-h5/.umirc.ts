@@ -26,6 +26,7 @@ export default defineConfig({
     { path: '/reports', component: 'reports/redirect' },
     { path: '/reports/:reportId', component: 'reports/redirect' },
     { path: '/mine/prescriptions', component: 'mine/prescriptions' },
+    { path: '/mine/appointments', component: 'mine/appointments' },
     { path: '/mine', component: 'mine/index' },
     { path: '/mine/profile', component: 'mine/profile' },
     { path: '/mine/family-members', component: 'mine/family-members' },
