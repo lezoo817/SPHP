@@ -625,6 +625,26 @@ async def tool_caller(
         messages.append({"role": "system", "content": scene_prompt})
     messages += history
 
+    # M8-6 问诊选医生：用户已从 options 卡回传选择（"我选择X医生"）时，**在
+    # LLM 推理前**确定性匹配候选并注入 doctor_id 上下文，让 LLM 本轮就知道
+    # "已选医生、直接调 save_pre_consultation"，避免 LLM 把点选误当成普通消息
+    # 而重跑预问诊流程（查档案/科室/医生）或卡死。
+    # 注：注入必须发生在 ainvoke 之前，否则 LLM 看不到已选信息（此前 bug——
+    # 匹配逻辑在 ainvoke 之后才 append，LLM 推理时上下文无"已选医生"指令）。
+    selected_choice: dict[str, Any] | None = None
+    pending_choices = state.get("pending_doctor_choices")
+    if pending_choices:
+        selected_choice = _match_doctor_choice(state.get("messages", []), pending_choices)
+        if selected_choice:
+            messages.append(
+                {"role": "system", "content": _build_doctor_choice_context(selected_choice)}
+            )
+            logger.info(
+                "用户已选医生: %s(id=%s)",
+                selected_choice.get("name"),
+                selected_choice.get("doctor_id"),
+            )
+
     # M8-5：注入当前接诊患者上下文（前端 context.patient_id 非空时），
     # LLM 直接携带该 ID，避免 B 端必填 patient_id 工具反复向医生索要患者 ID。
     # 独立 system 消息而非拼进主提示词——无患者时零侵入，有患者时显式可见。
@@ -699,16 +719,12 @@ async def tool_caller(
             state.get("tool_results") or [],
             state.get("pending_confirmations") or [],
         )
-        # M8-6 问诊选医生：若用户已从 options 卡回传选择，确定性匹配候选并
-        # 注入 doctor_id 上下文，清空 pending_doctor_choices（选完即收窗）。
+        # M8-6 问诊选医生收窗：用户已从 options 卡回传选择（选择上下文已在
+        # ainvoke 前注入），此处清空 pending_doctor_choices（选完即收窗，防止
+        # 下一轮重复匹配/重复发卡）。
         result_extra: dict[str, Any] = {}
-        candidates = state.get("pending_doctor_choices")
-        if candidates:
-            choice = _match_doctor_choice(state.get("messages", []), candidates)
-            if choice:
-                messages.append({"role": "system", "content": _build_doctor_choice_context(choice)})
-                result_extra["pending_doctor_choices"] = None
-                logger.info("用户已选医生: %s(id=%s)", choice.get("name"), choice.get("doctor_id"))
+        if selected_choice is not None:
+            result_extra["pending_doctor_choices"] = None
         # 问诊场景拦截：同轮 query_doctors + save_pre_consultation -> 剔除
         # save_pre_consultation（改由 SSE 发 options 卡让用户点选，防 LLM 替用户选）。
         tool_calls, intercepted_candidates = _intercept_save_pre_consultation(
