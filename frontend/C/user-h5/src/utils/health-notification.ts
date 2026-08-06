@@ -87,9 +87,9 @@ export function buildHealthTodos(sources: PatientHealthSource[], nowMillis = Dat
   const todos = sources.flatMap((source) => [
     // 挂号待办保留服务端返回的科室位置，供首页卡片展示实际就诊地点。
     ...source.appointments.filter((item) => item.status === 'UNPAID' || item.status === 'PAID').map((item) => {
-      const appointmentStartAt = Date.parse(item.startTime);
-      // 已超过预约开始时间的待支付或待就诊记录只保留为可关闭的过期提醒。
-      const isExpired = !Number.isNaN(appointmentStartAt) && appointmentStartAt <= nowMillis;
+      const appointmentEndAt = item.endTime ? new Date(item.endTime).getTime() : Number.NaN;
+      // 仅在服务端返回的号源结束时间已过时，才将待支付或待就诊记录标记为过期。
+      const isExpired = !Number.isNaN(appointmentEndAt) && appointmentEndAt <= nowMillis;
       return { id: item.id, type: 'APPOINTMENT' as const, patientId: source.patientId, patientName: source.patientName, title: `${item.departmentName} · ${item.doctorName}`, detail: isExpired ? '已过期' : item.status === 'UNPAID' ? '挂号待支付' : '挂号待就诊', departmentLocation: item.departmentLocation, occurredAt: item.startTime, isExpired };
     }),
     ...source.medicationPlans.filter((item) => item.status === 'ACTIVE').map((item) => ({ id: item.id, type: 'MEDICATION' as const, patientId: source.patientId, patientName: source.patientName, title: item.drugName, detail: `${item.dosage} · ${item.frequency}`, occurredAt: item.nextReminderAt })),
