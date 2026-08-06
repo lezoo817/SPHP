@@ -13,7 +13,7 @@ import java.time.LocalDate;
  *
  * <p>数据来源：schedule / slot / slot_snapshot 三表实时聚合，只读，不落新表。
  * 科室（诊室）取 {@code schedule.dept_id → department.name}。
- * 剩余号源口径与排班列表一致：已发布时段取 AVAILABLE 快照数（C 端可预约）。
+ * 剩余号源口径与排班列表一致：已发布时段取 AVAILABLE + RELEASED 快照数（C 端可预约）。
  */
 @Data
 @Builder
@@ -40,7 +40,7 @@ public class SourcePoolVO {
     @Schema(description = "总号源数（排班 total_slots）")
     private Long totalSlots;
 
-    @Schema(description = "剩余可约号源数（AVAILABLE 快照数）")
+    @Schema(description = "剩余可约号源数（AVAILABLE + RELEASED 快照数，与 C 端可约口径一致）")
     private Long remainSlots;
 
     @Schema(description = "已约号源数（SOLD 快照数）")
