@@ -19,11 +19,14 @@ import org.springframework.data.redis.core.ValueOperations;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 /**
@@ -86,7 +89,7 @@ class RegistrationServiceImplTest {
         when(resourceMapper.selectAvailableHospital(101L)).thenReturn(
                 new HospitalRecord(101L, "智慧先锋第一医院", "三级甲等", "北京市东城区示例路1号", "010-12345678"));
         when(resourceMapper.selectAvailableDepartmentLink(301L)).thenReturn(new DepartmentLinkRecord(301L, 101L));
-        when(resourceMapper.selectAvailableDoctors(101L, 301L, date, 2, 2)).thenReturn(List.of(
+        when(resourceMapper.selectAvailableDoctors(eq(101L), eq(301L), eq(date), any(OffsetDateTime.class), eq(2), eq(2L))).thenReturn(List.of(
                 new DoctorRecord(501L, "张医生", "主任医师", "呼吸内科", 5000, 8L)
         ));
         when(resourceMapper.countAvailableDoctors(101L, 301L)).thenReturn(3L);
@@ -130,7 +133,7 @@ class RegistrationServiceImplTest {
         LocalDate date = LocalDate.now(com.sphp.patient.common.constant.RegistrationConstant.BUSINESS_ZONE_ID);
         when(resourceMapper.selectAvailableDoctorLink(501L)).thenReturn(new DoctorLinkRecord(501L, 101L));
         when(resourceMapper.hasPublishedSchedule(501L, date)).thenReturn(true);
-        when(resourceMapper.selectPublishedSlots(501L, date)).thenReturn(List.of(
+        when(resourceMapper.selectPublishedSlots(eq(501L), eq(date), any(OffsetDateTime.class))).thenReturn(List.of(
                 new SlotRecord(1001L, LocalTime.of(8, 0), LocalTime.of(8, 30), 5000, 5L, "PUBLISHED")
         ));
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
@@ -155,7 +158,7 @@ class RegistrationServiceImplTest {
         LocalDate date = LocalDate.now(com.sphp.patient.common.constant.RegistrationConstant.BUSINESS_ZONE_ID);
         when(resourceMapper.selectAvailableDoctorLink(501L)).thenReturn(new DoctorLinkRecord(501L, 101L));
         when(resourceMapper.hasPublishedSchedule(501L, date)).thenReturn(true);
-        when(resourceMapper.selectPublishedSlots(501L, date)).thenReturn(List.of(
+        when(resourceMapper.selectPublishedSlots(eq(501L), eq(date), any(OffsetDateTime.class))).thenReturn(List.of(
                 new SlotRecord(1001L, LocalTime.of(8, 0), LocalTime.of(8, 30), 5000, 5L, "PUBLISHED")
         ));
         when(redisTemplate.opsForValue()).thenThrow(new RuntimeException("Redis 不可用"));

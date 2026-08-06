@@ -2,6 +2,7 @@ package com.sphp.patient.registration.controller;
 
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.registration.dto.RegisteringAppointmentCreateRequest;
+import com.sphp.patient.registration.dto.RegisteringAppointmentCancelRequest;
 import com.sphp.patient.registration.service.RegisteringService;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
 import com.sphp.patient.registration.dto.RegisteringWaitlistCreateRequest;
@@ -113,21 +114,24 @@ public class RegisteringController {
     }
 
     /**
-     * 取消未支付挂号订单。
+     * 取消挂号订单。
      * @param appointmentId 挂号订单ID
      * @param idempotencyKey 幂等键
+     * @param request 已支付挂号的登录密码；未支付订单可不传请求体
      * @return 挂号订单取消结果
      */
-    @PostMapping("/appointments/{appointmentId}/cancel") @Operation(summary = "取消未支付挂号订单")
+    @PostMapping("/appointments/{appointmentId}/cancel") @Operation(summary = "取消挂号订单")
     public Result<RegisteringAppointmentCancelVO> registeringCancelAppointment(
             @PathVariable @Positive Long appointmentId,
-            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @Valid @RequestBody(required = false) RegisteringAppointmentCancelRequest request) {
         Long userId = CUserContext.getRequired().userId();
         // 幂等键按用户和接口隔离，成功重放时复用首次取消结果。
         IdempotencyPayload<RegisteringAppointmentCancelVO> payload = idempotencyService.execute(userId,
-                "/c/v1/appointments/" + appointmentId + "/cancel", idempotencyKey, appointmentId,
+                "/c/v1/appointments/" + appointmentId + "/cancel", idempotencyKey,
+                request == null ? appointmentId : request,
                 RegisteringAppointmentCancelVO.class, () -> new IdempotencyPayload<>("挂号订单已取消",
-                        registeringService.registeringCancelAppointment(appointmentId)));
+                        registeringService.registeringCancelAppointment(appointmentId, request)));
         return Result.success(payload.message(), payload.data());
     }
 

@@ -14,6 +14,9 @@ public enum RegisteringAppointmentStatusEnum {
     /** 已完成挂号订单 */
     COMPLETED,
 
+    /** 时段结束前未开始接诊的挂号订单展示状态 */
+    NO_SHOW,
+
     /** 已取消挂号订单 */
     CANCELLED
 }

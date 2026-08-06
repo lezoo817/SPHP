@@ -4,6 +4,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -51,6 +52,7 @@ public interface RegistrationResourceMapper {
      * @param hospitalId 医院 ID
      * @param departmentId 科室 ID
      * @param date 出诊日期
+     * @param now 当前业务时间，用于排除已结束时段
      * @param limit 页大小
      * @param offset 起始偏移量
      * @return 医生列表
@@ -58,6 +60,7 @@ public interface RegistrationResourceMapper {
     List<DoctorRecord> selectAvailableDoctors(@Param("hospitalId") Long hospitalId,
                                                @Param("departmentId") Long departmentId,
                                                @Param("date") LocalDate date,
+                                               @Param("now") OffsetDateTime now,
                                                @Param("limit") int limit,
                                                @Param("offset") long offset);
 
@@ -92,7 +95,9 @@ public interface RegistrationResourceMapper {
      *
      * @param doctorId 医生 ID
      * @param date 排班日期
+     * @param now 当前业务时间，用于排除已结束时段
      * @return 已发布时段列表
      */
-    List<SlotRecord> selectPublishedSlots(@Param("doctorId") Long doctorId, @Param("date") LocalDate date);
+    List<SlotRecord> selectPublishedSlots(@Param("doctorId") Long doctorId, @Param("date") LocalDate date,
+                                          @Param("now") OffsetDateTime now);
 }

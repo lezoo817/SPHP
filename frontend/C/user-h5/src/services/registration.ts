@@ -15,10 +15,12 @@ export function createAppointment(payload: { patientId?: number; hospitalId: num
  * 构建挂号订单列表请求路径。
  * @param patientId 当前就诊人 ID，可不传以查询本人订单
  * @param status 挂号订单状态，可不传以查询全部状态
+ * @param pageSize 每页记录数量，最大为 100
+ * @param pageNo 查询页码，从 1 开始
  * @returns 不包含空状态参数的挂号订单列表路径
  */
-export function buildAppointmentsPath(patientId?: number, status?: string, pageSize = 20): string {
-  const params = new URLSearchParams({ pageNo: '1', pageSize: String(pageSize) });
+export function buildAppointmentsPath(patientId?: number, status?: string, pageSize = 20, pageNo = 1): string {
+  const params = new URLSearchParams({ pageNo: String(pageNo), pageSize: String(pageSize) });
   if (patientId !== undefined) params.set('patientId', String(patientId));
   // 后端会校验枚举值，未筛选时不能发送空字符串 status=。
   if (status?.trim()) params.set('status', status.trim());
@@ -30,10 +32,11 @@ export function buildAppointmentsPath(patientId?: number, status?: string, pageS
  * @param patientId 当前就诊人 ID
  * @param status 可选的挂号订单状态筛选
  * @param pageSize 每位就诊人需读取的订单数量，最大为 100
+ * @param pageNo 查询页码，加载更多时递增
  * @returns 分页挂号订单数据
  */
-export function getAppointments(patientId?: number, status?: string, pageSize = 20): Promise<PageData<Appointment>> {
-  return request(buildAppointmentsPath(patientId, status, pageSize), { method: 'GET' });
+export function getAppointments(patientId?: number, status?: string, pageSize = 20, pageNo = 1): Promise<PageData<Appointment>> {
+  return request(buildAppointmentsPath(patientId, status, pageSize, pageNo), { method: 'GET' });
 }
 /**
  * 构建医生重复预约状态查询路径。
@@ -53,8 +56,14 @@ export function getDoctorBookingStatus(doctorId: number): Promise<{ doctorId: nu
 }
 /** 查询挂号订单详情。 */
 export function getAppointment(appointmentId: number): Promise<AppointmentDetail> { return request(`/c/v1/appointments/${appointmentId}`, { method: 'GET' }); }
-/** 取消未支付挂号订单。 */
-export function cancelAppointment(appointmentId: number, key: string): Promise<{ status: string }> { return request(`/c/v1/appointments/${appointmentId}/cancel`, { method: 'POST', headers: { 'X-Idempotency-Key': key } }); }
+/**
+ * 取消挂号订单；已支付订单必须传入登录密码，未支付订单不传请求体以兼容原有接口。
+ * @param appointmentId 挂号订单 ID
+ * @param key 幂等键
+ * @param loginPassword 已支付取消时的当前登录密码
+ * @returns 服务端最终取消状态
+ */
+export function cancelAppointment(appointmentId: number, key: string, loginPassword?: string): Promise<{ status: string }> { return request(`/c/v1/appointments/${appointmentId}/cancel`, { method: 'POST', body: loginPassword === undefined ? undefined : { loginPassword }, headers: { 'X-Idempotency-Key': key } }); }
 /** 创建无余量时段的候补登记。 */
 export function createWaitlist(payload: { patientId?: number; slotId: number }, key: string): Promise<{ queueNo: number }> { return request('/c/v1/waitlists', { method: 'POST', body: payload, headers: { 'X-Idempotency-Key': key } }); }
 /** 查询挂号支付单。 */

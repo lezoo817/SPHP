@@ -22,14 +22,16 @@ import { buildNotificationsPath } from '../services/notification';
 import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotification, formatMedicationReminderTimes, getMedicationPlanActions, getMedicationReminderAction, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
 import { buildDeliveryAddressPath } from '../services/delivery-address';
 import { buildDeliveryAddressPayload, getDeliveryAddressInvalidFields, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
-import { getAssistantTabs, getCurrentFlowAction } from './assistant';
+import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantTabs, getCurrentFlowAction, isCurrentAssistantFlow } from './assistant';
 import { buildMedicalRecordDetailPath, buildMedicalRecordListPath } from '../services/medical-record';
 import { buildLegacyReportRedirectPath, createMedicalRecordDisplayNumber, filterMedicalRecordsByDate, getRecentMedicalRecordRange, mergeMedicalRecordPages } from './medical-record';
-import { isDuplicateDoctorAppointmentError } from './registration';
+import { canCancelPaidAppointment, isDuplicateDoctorAppointmentError } from './registration';
 import { buildDoctorBookingStatusPath } from '../services/registration';
 import { buildPrescriptionsPath } from '../services/consultation';
 import { buildAssistantPrescriptionDetailPath, buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, createPrescriptionDisplayNumber, filterPrescriptionsByDate, getPrescriptionDisplayNumber, getRecentPrescriptionRange, mergePrescriptionPages, type PrescriptionDisplayNumberStorage } from './prescription';
 import { buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, formatDrugOrderLogisticsTime, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderPaymentId, shouldPollDrugOrderLogistics } from './pharmacy-order';
+import { filterAppointmentRecordsByDate, getRecentAppointmentRecordRange, matchesAppointmentRecordTab, mergeAppointmentRecordPages } from './appointment-record';
+import type { Appointment } from '../typings/api';
 
 describe('前端表单与联调规则', () => {
   it('拒绝长度不足的登录账号和密码', () => {
@@ -58,7 +60,7 @@ describe('前端表单与联调规则', () => {
 
 describe('重复预约联调规则', () => {
   it('仅识别后端明确返回的重复预约冲突', () => {
-    expect(isDuplicateDoctorAppointmentError({ code: 'A0506', message: '已预约过该医生，不可重复预约' })).toBe(true);
+    expect(isDuplicateDoctorAppointmentError({ code: 'A0506', message: '近5天内已预约过该医生，不可重复预约' })).toBe(true);
     expect(isDuplicateDoctorAppointmentError({ code: 'A0506', message: '幂等键冲突' })).toBe(false);
     expect(isDuplicateDoctorAppointmentError({ code: 'A0400', message: '已预约过该医生，不可重复预约' })).toBe(false);
     expect(isDuplicateDoctorAppointmentError(new Error('已预约过该医生，不可重复预约'))).toBe(false);
@@ -100,6 +102,19 @@ describe('就诊助手展示规则', () => {
   it('仅未支付订单可进入支付，已支付订单保持等待就诊', () => {
     expect(getCurrentFlowAction('UNPAID')).toBe('PAY');
     expect(getCurrentFlowAction('PAID')).toBe('WAITING');
+  });
+
+  it('仅在号源结束前展示待支付或待就诊的当前流程', () => {
+    const now = Date.parse('2026-08-06T10:00:00+08:00');
+    const appointment = { id: 1, doctorName: '陈医生', departmentName: '内科', startTime: '2026-08-06T09:30:00+08:00', endTime: '2026-08-06T10:30:00+08:00', status: 'PAID' as const, amountCent: 100 };
+
+    expect(isCurrentAssistantFlow(appointment, now)).toBe(true);
+    expect(isCurrentAssistantFlow({ ...appointment, endTime: '2026-08-06T10:00:00+08:00' }, now)).toBe(false);
+    expect(isCurrentAssistantFlow({ ...appointment, status: 'COMPLETED' }, now)).toBe(false);
+  });
+
+  it('就诊助手每三十秒静默刷新挂号状态', () => {
+    expect(ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS).toBe(30000);
   });
 });
 
@@ -159,11 +174,52 @@ describe('挂号资源展示规则', () => {
   it('未指定订单状态时不传递空状态参数', () => {
     expect(buildAppointmentsPath(1)).toBe('/c/v1/appointments?pageNo=1&pageSize=20&patientId=1');
     expect(buildAppointmentsPath(1, 'UNPAID')).toContain('status=UNPAID');
+    expect(buildAppointmentsPath(1, undefined, 100, 2)).toBe('/c/v1/appointments?pageNo=2&pageSize=100&patientId=1');
   });
 
   it('将挂号订单状态转换为患者可理解的中文文案', () => {
     expect(getAppointmentStatusText('PAID')).toBe('支付完成');
+    expect(getAppointmentStatusText('NO_SHOW')).toBe('未到诊');
     expect(getAppointmentStatusText('CANCELLED')).toBe('支付取消');
+  });
+
+  it('仅为尚未开始的已支付挂号展示取消入口', () => {
+    const now = Date.parse('2026-08-06T10:00:00+08:00');
+    expect(canCancelPaidAppointment('PAID', '2026-08-06T10:01:00+08:00', now)).toBe(true);
+    expect(canCancelPaidAppointment('PAID', '2026-08-06T10:00:00+08:00', now)).toBe(false);
+    expect(canCancelPaidAppointment('UNPAID', '2026-08-06T10:01:00+08:00', now)).toBe(false);
+  });
+});
+
+describe('我的就诊记录查询规则', () => {
+  const appointments: Appointment[] = [
+    { id: 1, doctorName: '张医生', departmentName: '内科', departmentLocation: '门诊楼一层', startTime: '2026-08-03T08:00:00+08:00', status: 'COMPLETED', amountCent: 100 },
+    { id: 2, doctorName: '李医生', departmentName: '外科', startTime: '2026-08-04T09:00:00+08:00', status: 'NO_SHOW', amountCent: 200 },
+    { id: 3, doctorName: '王医生', departmentName: '骨科', startTime: '2026-08-05T10:00:00+08:00', status: 'CANCELLED', amountCent: 300 },
+    { id: 4, doctorName: '赵医生', departmentName: '儿科', startTime: '2026-08-06T11:00:00+08:00', status: 'PAID', amountCent: 400 },
+  ];
+
+  it('生成最近 30/90/180 天的预约日期范围', () => {
+    const now = new Date('2026-08-05T10:00:00+08:00');
+    expect(getRecentAppointmentRecordRange(30, now)).toEqual({ startDate: '2026-07-07', endDate: '2026-08-05' });
+    expect(getRecentAppointmentRecordRange(90, now).startDate).toBe('2026-05-08');
+    expect(getRecentAppointmentRecordRange(180, now).startDate).toBe('2026-02-07');
+  });
+
+  it('仅将完成、未到诊和取消记录归入对应 Tab', () => {
+    expect(appointments.filter((item) => matchesAppointmentRecordTab(item, 'COMPLETED')).map((item) => item.id)).toEqual([1]);
+    expect(appointments.filter((item) => matchesAppointmentRecordTab(item, 'INVALID')).map((item) => item.id)).toEqual([2, 3]);
+  });
+
+  it('按预约日期筛选并按预约时间倒序排列', () => {
+    expect(filterAppointmentRecordsByDate(appointments, { startDate: '2026-08-03', endDate: '2026-08-05' }).map((item) => item.id)).toEqual([3, 2, 1]);
+    expect(filterAppointmentRecordsByDate(appointments, { startDate: '2026-08-06', endDate: '2026-08-05' })).toEqual([]);
+  });
+
+  it('加载更多时按挂号订单 ID 去重，并以新页记录为准', () => {
+    const merged = mergeAppointmentRecordPages([appointments[0]], [{ ...appointments[0], departmentLocation: '门诊楼二层' }, appointments[1]]);
+    expect(merged).toHaveLength(2);
+    expect(merged.find((item) => item.id === 1)?.departmentLocation).toBe('门诊楼二层');
   });
 });
 
@@ -410,11 +466,22 @@ describe('健康待办、提醒与通知规则', () => {
   it('只聚合待处理项目并按时间升序关联就诊人', () => {
     const todos = buildHealthTodos([
       { patientId: 2, patientName: '小明', appointments: [{ id: 1, doctorName: '张医生', departmentName: '内科', startTime: '2026-08-05T10:00:00+08:00', status: 'COMPLETED', amountCent: 100 }], medicationPlans: [{ id: 2, drugName: '维生素', dosage: '1片', frequency: '每日一次', nextReminderAt: '2026-08-04T08:00:00+08:00', reminderEnabled: true, reminderTimes: ['08:00'], status: 'ACTIVE' }], followUps: [] },
-      { patientId: 1, patientName: '张三', appointments: [{ id: 3, doctorName: '李医生', departmentName: '心内科', departmentLocation: '门诊楼2层201室', startTime: '2026-08-03T14:30:00+08:00', status: 'PAID', amountCent: 200 }], medicationPlans: [], followUps: [{ id: 4, type: '复诊', content: '携带检查报告', dueAt: '2026-08-06T09:00:00+08:00', status: 'CANCELLED' }] },
-    ]);
+      { patientId: 1, patientName: '张三', appointments: [{ id: 3, doctorName: '李医生', departmentName: '心内科', departmentLocation: '门诊楼2层201室', startTime: '2026-08-03T14:30:00+08:00', endTime: '2026-08-03T15:00:00+08:00', status: 'PAID', amountCent: 200 }], medicationPlans: [], followUps: [{ id: 4, type: '复诊', content: '携带检查报告', dueAt: '2026-08-06T09:00:00+08:00', status: 'CANCELLED' }] },
+    ], Date.parse('2026-08-06T10:00:00+08:00'));
     expect(todos.map((item) => [item.type, item.patientName])).toEqual([['APPOINTMENT', '张三'], ['MEDICATION', '小明']]);
     expect(todos[0].departmentLocation).toBe('门诊楼2层201室');
+    expect(todos[0].isExpired).toBe(true);
+    expect(todos[0].detail).toBe('已过期');
     expect(todos[1].departmentLocation).toBeUndefined();
+  });
+
+  it('挂号开始后但结束前仍保持待就诊状态', () => {
+    const todos = buildHealthTodos([
+      { patientId: 1, patientName: '张三', appointments: [{ id: 5, doctorName: '王医生', departmentName: '骨科', startTime: '2026-08-06T09:00:00+08:00', endTime: '2026-08-06T10:00:00+08:00', status: 'PAID', amountCent: 200 }], medicationPlans: [], followUps: [] },
+    ], Date.parse('2026-08-06T09:30:00+08:00'));
+
+    expect(todos[0].isExpired).toBe(false);
+    expect(todos[0].detail).toBe('挂号待就诊');
   });
 
   it('仅按后端状态机提供用药和随访操作', () => {

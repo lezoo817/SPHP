@@ -277,8 +277,9 @@ public class LoginServiceImpl implements LoginService {
         if (updated != 1) {
             throw invalidRefreshToken();
         }
-
+        // 删除旧 Refresh Token 会话
         redisTemplate.delete(oldSessionKey);
+        // 签发 Refresh Token
         IssuedRefreshToken newRefreshToken = issueRefreshToken(user.getId());
         String newAccessToken = jwtService.issueAccessToken(
                 user.getId(), user.getAccount(), newRefreshToken.tokenHash());
@@ -371,7 +372,7 @@ public class LoginServiceImpl implements LoginService {
                 .eq(CUser::getPasswordHash, oldPasswordHash)
                 .isNull(CUser::getDeletedAt));
         if (userUpdated != 1) {
-            throw new CAuthException(ErrorCodeEnum.BUSINESS_STATUS_CONFLICT,
+            throw new CAuthException(BUSINESS_STATUS_CONFLICT,
                     CONFLICT, "密码状态已变化，请重新登录后重试");
         }
 
@@ -412,10 +413,10 @@ public class LoginServiceImpl implements LoginService {
      */
     private void validateAndConsumeCaptcha(String challengeId, String captchaCode) {
         String captchaHash = redisTemplate.opsForValue().getAndDelete(
-                CAuthConstant.CAPTCHA_KEY_PREFIX + challengeId);
+                CAPTCHA_KEY_PREFIX + challengeId);
         if (!StringUtils.hasText(captchaHash)
                 || !BCrypt.checkpw(captchaCode.toUpperCase(Locale.ROOT), captchaHash)) {
-            throw new CAuthException(ErrorCodeEnum.CAPTCHA_ERROR,
+            throw new CAuthException(CAPTCHA_ERROR,
                     BAD_REQUEST, "图形验证码无效或已过期");
         }
     }

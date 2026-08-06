@@ -35,6 +35,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+import static com.sphp.shared.common.constant.HeaderConstant.IDEMPOTENCY_KEY;
+
 /**
  * C 端健康报告、用药计划与随访计划接口。
  */
@@ -61,7 +63,7 @@ public class ProposalController {
     @Operation(summary = "录入检查报告（已废弃）", deprecated = true)
     @PostMapping("/reports")
     public Result<ProposalReportCreateVO> proposalCreateReport(
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank String idempotencyKey,
             @Valid @RequestBody ProposalReportCreateRequest request) {
         Long userId = CUserContext.getRequired().userId();
         // 写入操作统一经 Redis 幂等层，成功重放首个结果且不缓存失败响应。
@@ -175,7 +177,7 @@ public class ProposalController {
     @PatchMapping("/medication-plans/{planId}")
     public Result<ProposalMedicationPlanVO> proposalUpdateMedicationPlan(
             @PathVariable @Positive Long planId,
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank String idempotencyKey,
             @Valid @RequestBody ProposalMedicationUpdateRequest request) {
         Long userId = CUserContext.getRequired().userId();
         // 资源 ID 纳入路径域，避免不同用药计划使用同一幂等键发生误重放。
@@ -215,7 +217,7 @@ public class ProposalController {
     @PostMapping("/follow-ups/{followUpId}/confirm")
     public Result<ProposalFollowUpVO> proposalConfirmFollowUp(
             @PathVariable @Positive Long followUpId,
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank String idempotencyKey,
             @Valid @RequestBody ProposalFollowUpConfirmRequest request) {
         Long userId = CUserContext.getRequired().userId();
         // 确认操作按随访资源隔离幂等结果，保证重复点击不会重复变更状态。

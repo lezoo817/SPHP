@@ -22,6 +22,9 @@ public final class RegistrationConstant {
     /** 排班时段组合时间使用的业务时区 */
     public static final ZoneId BUSINESS_ZONE_ID = ZoneId.of("Asia/Shanghai");
 
+    /** 同一 C 端账号再次预约同一医生前的支付成功冷却天数 */
+    public static final long DOCTOR_REBOOK_COOLDOWN_DAYS = 5L;
+
     /**
      * 防止常量类被实例化。
      */
