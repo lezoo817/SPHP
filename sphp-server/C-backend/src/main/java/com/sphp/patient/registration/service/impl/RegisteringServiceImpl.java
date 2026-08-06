@@ -49,7 +49,6 @@ import java.util.List;
 import org.mindrot.jbcrypt.BCrypt;
 
 import static com.sphp.patient.common.constant.RegistrationConstant.BUSINESS_ZONE_ID;
-import static com.sphp.patient.common.constant.RegistrationConstant.DOCTOR_REBOOK_COOLDOWN_DAYS;
 import static com.sphp.patient.common.enums.NotificationTypeEnum.APPOINTMENT;
 import static com.sphp.patient.common.enums.RegisteringAppointmentStatusEnum.CANCELLED;
 import static com.sphp.patient.common.enums.RegisteringAppointmentStatusEnum.UNPAID;
@@ -98,7 +97,7 @@ public class RegisteringServiceImpl implements RegisteringService {
         RegisteringSlotLockRecord slot = dataMapper.selectRegisteringSlotLockInfo(request.getHospitalId(), request.getSlotId());
         // 验证号源
         registeringValidateSlot(slot);
-        // 账号行锁与已支付历史检查必须先于 Redis 预扣，避免重复预约占用号源。
+        // 账号行锁与有效待就诊挂号检查必须先于 Redis 预扣，避免重复预约占用号源。
         registeringEnsureUserCanBookDoctor(userId, slot.doctorId());
         long availableCount = dataMapper.countRegisteringAvailableSnapshots(slot.slotId());
         // 支付超时
@@ -197,17 +196,16 @@ public class RegisteringServiceImpl implements RegisteringService {
     }
 
     /**
-     * 查询当前账号是否已有任意就诊人成功预约指定医生。
+     * 查询当前账号是否已有任意就诊人的有效待就诊挂号。
      *
      * @param doctorId 医生 ID
-     * @return 当前账号的成功预约状态
+     * @return 当前账号的有效待就诊挂号状态
      */
     @Override
     public RegisteringDoctorBookingStatusVO registeringGetDoctorBookingStatus(Long doctorId) {
         Long userId = CUserContext.getRequired().userId();
-        // 与创建及支付链路复用同一冷却期查询，保证前端展示规则与最终拦截规则一致。
-        boolean booked = dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(userId, doctorId,
-                registeringDoctorRebookCooldownCutoff());
+        // 与创建及支付链路复用同一有效挂号查询，保证前端展示规则与最终拦截规则一致。
+        boolean booked = dataMapper.existsRegisteringActiveDoctorAppointment(userId, doctorId);
         return RegisteringDoctorBookingStatusVO.builder()
                 .doctorId(doctorId)
                 .booked(booked)
@@ -512,32 +510,21 @@ public class RegisteringServiceImpl implements RegisteringService {
     }
 
     /**
-     * 串行校验当前账号是否已成功预约指定医生。
+     * 串行校验当前账号是否已有指定医生的有效待就诊挂号。
      *
      * @param userId C 端用户 ID
      * @param doctorId 医生 ID
-     * @throws CAuthException 当前账号不存在或近五天内已成功预约该医生时抛出
+     * @throws CAuthException 当前账号不存在或已有该医生待就诊挂号时抛出
      */
     private void registeringEnsureUserCanBookDoctor(Long userId, Long doctorId) {
         // 锁定账号行，使挂号创建与支付确认在同一账号范围内串行执行。
         if (dataMapper.registeringLockActiveUser(userId) == null) {
             throw new CAuthException(UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "登录状态已失效");
         }
-        // 同一账号下的任意就诊人支付成功后五天内不得再次预约同一医生。
-        if (dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(userId, doctorId,
-                registeringDoctorRebookCooldownCutoff())) {
-            throw new CAuthException(DUPLICATE_REQUEST, HttpStatus.CONFLICT, "近5天内已预约过该医生，不可重复预约");
+        // 已完成、未到诊、取消和时段结束的记录不会命中该查询，完成就诊后允许再次预约。
+        if (dataMapper.existsRegisteringActiveDoctorAppointment(userId, doctorId)) {
+            throw new CAuthException(DUPLICATE_REQUEST, HttpStatus.CONFLICT, "当前已有该医生待就诊挂号，不可重复预约");
         }
-    }
-
-    /**
-     * 计算同医生再次预约冷却期的排除起点。
-     *
-     * @return 当前时间向前推五天的支付成功时间边界
-     */
-    private OffsetDateTime registeringDoctorRebookCooldownCutoff() {
-        // 使用连续 120 小时窗口；支付时间等于该边界时已经允许再次预约。
-        return OffsetDateTime.now(BUSINESS_ZONE_ID).minusDays(DOCTOR_REBOOK_COOLDOWN_DAYS);
     }
 
     /**

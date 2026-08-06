@@ -382,8 +382,12 @@ def _build_options(choices: list[dict[str, Any]], options_id: str) -> dict[str, 
     """构造 options 事件（M8-6 问诊选医生卡片）。
 
     候选医生（来自 query_doctors 经 _parse_doctor_candidates 解析）映射为前端
-    select_doctor 卡片所需 items。value 用 doctor_id（稳定键），label 用医生姓名，
-    subtitle 含科室与职称，detail 含擅长领域，extra 含挂号费（如有）。
+    select_doctor 卡片所需 items。id 用 doctor_id（稳定键，与用户回传匹配），
+    label 用医生姓名，description 含科室与职称，meta 含擅长领域与挂号费（如有）。
+
+    字段契约与前端 typings/agent.ts 的 AgentOptionsEvent / AgentSelectItem 对齐：
+    type / items(id,label,description,meta) / prompt / reply_template。
+    options_id 仅后端去重用，前端不消费。
 
     Args:
         choices: pending_doctor_choices 候选医生列表。
@@ -394,24 +398,29 @@ def _build_options(choices: list[dict[str, Any]], options_id: str) -> dict[str, 
     """
     items: list[dict[str, Any]] = []
     for c in choices:
-        subtitle_parts = []
+        desc_parts = []
         if c.get("dept_name"):
-            subtitle_parts.append(c["dept_name"])
+            desc_parts.append(c["dept_name"])
         if c.get("title"):
-            subtitle_parts.append(c["title"])
+            desc_parts.append(c["title"])
+        meta: dict[str, Any] = {}
+        if c.get("specialty"):
+            meta["specialty"] = c["specialty"]
+        if c.get("fee_cent") is not None:
+            meta["fee_cent"] = c["fee_cent"]
         items.append(
             {
-                "value": str(c.get("doctor_id", "")),
+                "id": str(c.get("doctor_id", "")),
                 "label": c.get("name", ""),
-                "subtitle": " · ".join(subtitle_parts) if subtitle_parts else "",
-                "detail": c.get("specialty") or "",
-                "extra": {"fee_cent": c.get("fee_cent")} if c.get("fee_cent") is not None else {},
+                "description": " · ".join(desc_parts) if desc_parts else "",
+                "meta": meta,
             }
         )
     return {
         "type": "select_doctor",
         "options_id": options_id,
-        "title": "请选择您想咨询的医生",
+        "prompt": "请选择您想咨询的医生",
+        "reply_template": "我选择{label}",
         "items": items,
     }
 
@@ -795,9 +804,10 @@ async def _record_session(
             if m.get("role") == "user":
                 first_user_msg = m.get("content") or ""
                 break
-        elif getattr(m, "role", None) == "user":
-            first_user_msg = getattr(m, "content", "") or ""
-            break
+        else:
+            if getattr(m, "type", "") == "human" or str(getattr(m, "role", "")).lower() == "user":
+                first_user_msg = getattr(m, "content", "") or ""
+                break
     store = get_session_store()
     await store.upsert(
         user_id=user_id,
@@ -1075,9 +1085,16 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
         error = result.get("error", {})
         # P2 #17：执行失败保留 confirm_token（不删），用户可携带原卡片重试，
         # 复用同一幂等键，Java 去重不重复执行业务。
-        # TOOL_FAILED 系分 §6.1 错误码表标注为 500
+        # TOOL_FAILED 系分 §6.1 错误码表标注为 500。
+        # M8-9：Java 业务冲突/校验错误码（A 开头，如 A0443"已有进行中问诊"）
+        # 是**预期业务拦截**而非系统故障——用 200 返回 + 明确 message，前端
+        # 能正常展示错误提示（如"当前医生仍有进行中的预问诊"），而非 500 崩溃态。
+        err_code = error.get("code", "")
+        err_message = error.get("message", "操作执行失败")
+        if str(err_code).startswith("A"):
+            return _confirm_error("BUSINESS_CONFLICT", err_message, trace_id, status_code=200)
         return _confirm_error(
-            "TOOL_FAILED", error.get("message", "操作执行失败"), trace_id, status_code=500
+            "TOOL_FAILED", err_message, trace_id, status_code=500
         )
 
     # P2 #17：执行成功后删除 confirm_token（一次性语义收敛到此处），

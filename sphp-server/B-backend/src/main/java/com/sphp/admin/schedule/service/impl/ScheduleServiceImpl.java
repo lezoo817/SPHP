@@ -402,8 +402,9 @@ public class ScheduleServiceImpl implements ScheduleService {
         ensureSnapshotInHospital(snapshot, hospitalId);
 
         // 与"取消发布"路径（releaseLockedSnapshots）保持一致：LOCKED → AVAILABLE，
-        // 让 B 端"剩余"统计（aggregateByScheduleIds / selectSourcePoolPage 仅数 AVAILABLE）、
+        // 让 B 端"剩余"统计（aggregateByScheduleIds / selectSourcePoolPage 数 AVAILABLE + RELEASED）、
         // 以及 C 端可约池都把该号源视为可约；patient_id 清空以符合"未占用为空"的字段语义。
+        // 注：C 端取消订单路径走 RELEASED，B 端"剩余"同步包含 RELEASED，所以两侧口径一致。
         snapshot.setStatus(SNAP_AVAILABLE);
         snapshot.setPatientId(null);
         snapshot.setUpdatedAt(OffsetDateTime.now());

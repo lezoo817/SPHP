@@ -30,12 +30,14 @@ public interface SlotMapper extends BaseMapper<Slot> {
             "       COALESCE(SUM(snap.sold), 0) AS soldTotal, " +
             "       COALESCE(SUM(snap.locked), 0) AS lockedTotal " +
             "FROM slot s " +
-            // 快照先按 slot 预聚合，避免 slot 与 slot_snapshot 1:N 连接导致 SUM(remain_count) 按快照行数放大；
-            // 剩余口径：已发布时段（存在快照）取 AVAILABLE 快照数（C端预约只扣快照不扣 remain_count），
+            // 剩余口径：已发布时段（存在快照）取可约快照数（AVAILABLE + RELEASED），
+            // 与 C 端 `countRegisteringAvailableSnapshots` 一致：RELEASED 来自 C 端
+            // 取消订单路径（registeringReleaseLockedSnapshot），号源已归还可约池，
+            // B 端"剩余"必须与 C 端"可约"同步递增；EXPIRED 仍不计（已不可约）。
             // 草稿时段（无快照）回退 slot.remain_count，保证列表发布门禁仍依赖已配置号源之和
             "LEFT JOIN ( " +
             "  SELECT slot_id, " +
-            "         COUNT(*) FILTER (WHERE status = 'AVAILABLE') AS avail, " +
+            "         COUNT(*) FILTER (WHERE status IN ('AVAILABLE', 'RELEASED')) AS avail, " +
             "         COUNT(*) FILTER (WHERE status = 'SOLD') AS sold, " +
             "         COUNT(*) FILTER (WHERE status = 'LOCKED') AS locked, " +
             "         COUNT(*) AS total " +
@@ -54,7 +56,7 @@ public interface SlotMapper extends BaseMapper<Slot> {
      *
      * <p>仅统计 PUBLISHED 排班；schedule 表无 hospital_id，医院范围经 doctor.hospital_id 关联过滤。
      * 科室（诊室）名称取 {@code schedule.dept_id → department.name}。剩余口径与
-     * {@link #aggregateByScheduleIds} 一致：已发布时段（存在快照）取 AVAILABLE 快照数。
+     * {@link #aggregateByScheduleIds} 一致：已发布时段（存在快照）取 AVAILABLE + RELEASED 快照数。
      * 数据权限参数语义：
      * <ul>
      *     <li>{@code deptId} / {@code doctorId}：ADMIN 传入的用户筛选条件</li>
@@ -91,7 +93,7 @@ public interface SlotMapper extends BaseMapper<Slot> {
             "  FROM slot s " +
             "  LEFT JOIN ( " +
             "    SELECT slot_id, " +
-            "           COUNT(*) FILTER (WHERE status = 'AVAILABLE') AS avail, " +
+            "           COUNT(*) FILTER (WHERE status IN ('AVAILABLE', 'RELEASED')) AS avail, " +
             "           COUNT(*) FILTER (WHERE status = 'SOLD') AS sold, " +
             "           COUNT(*) FILTER (WHERE status = 'LOCKED') AS locked, " +
             "           COUNT(*) AS total " +

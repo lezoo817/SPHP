@@ -101,6 +101,13 @@ sphp:
     # 候补通知超时扫描间隔，单位毫秒，默认 60000 毫秒。
     waitlist-scan-interval-millis: ${dev.sphp.registration.waitlist-scan-interval-millis}
 
+  # B端排班调度器配置。
+  schedule:
+    # NO_SHOW 自动标记扫描间隔，单位毫秒，默认 30000 毫秒。
+    no-show-scan-interval-millis: ${dev.sphp.schedule.no-show-scan-interval-millis}
+    # NO_SHOW 自动标记首次执行延迟，单位毫秒，默认 30000 毫秒。
+    no-show-initial-delay-millis: ${dev.sphp.schedule.no-show-initial-delay-millis}
+
   # C端认证有效期与登录保护阈值。
   auth:
     captcha-expiration: ${dev.sphp.auth.captcha-expiration}
