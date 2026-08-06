@@ -18,6 +18,7 @@ const homeBanners = [
   { image: appointmentBanner, label: '预约挂号服务', action: '/home/departments' },
   { image: consultationBanner, label: '在线问诊服务', action: '/assistant' },
 ];
+const circularHomeBanners = [homeBanners[homeBanners.length - 1], ...homeBanners, homeBanners[0]];
 
 /** 展示医院入口、就诊人、快捷服务和全账号健康待办的首页。 */
 export default function HomePage() {
@@ -28,7 +29,8 @@ export default function HomePage() {
   const [notice, setNotice] = useState('');
   const [todos, setTodos] = useState<HealthTodo[]>([]);
   const [waitlistNotification, setWaitlistNotification] = useState<NotificationItem>();
-  const [activeBannerIndex, setActiveBannerIndex] = useState(0);
+  const [bannerSlideIndex, setBannerSlideIndex] = useState(1);
+  const [bannerTransitionEnabled, setBannerTransitionEnabled] = useState(true);
   const waitlistTimer = useRef<number>();
   const patientScrollTimer = useRef<number>();
   const swipeStartX = useRef<number>();
@@ -93,7 +95,7 @@ export default function HomePage() {
   useEffect(() => {
     // 减弱动态效果偏好下不自动轮换，避免影响阅读与操作。
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
-    const timer = window.setInterval(() => setActiveBannerIndex((index) => (index + 1) % homeBanners.length), 5200);
+    const timer = window.setInterval(() => changeBanner(1), 5200);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -121,9 +123,19 @@ export default function HomePage() {
     else navigate('/mine/follow-ups');
   }
 
-  /** 切换宣传窗页码，并确保页码始终落在现有宣传内容范围内。 */
+  /** 沿滑动方向切换宣传窗页码，首尾页通过克隆卡片保持连续运动。 */
   function changeBanner(offset: number) {
-    setActiveBannerIndex((index) => (index + offset + homeBanners.length) % homeBanners.length);
+    setBannerTransitionEnabled(true);
+    setBannerSlideIndex((index) => index + offset);
+  }
+
+  /** 动画到达首尾克隆卡后，无感重置到对应真实卡片。 */
+  function normalizeBannerSlide() {
+    if (bannerSlideIndex !== 0 && bannerSlideIndex !== homeBanners.length + 1) return;
+    // 关闭一次过渡再回到真实卡片，避免循环边界产生反方向回弹。
+    setBannerTransitionEnabled(false);
+    setBannerSlideIndex(bannerSlideIndex === 0 ? homeBanners.length : 1);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => setBannerTransitionEnabled(true)));
   }
 
   /** 记录宣传窗手势起点，用于区分点击按钮与左右滑动。 */
@@ -189,10 +201,10 @@ export default function HomePage() {
       </header>
       <button className="home-search-bar" type="button" onClick={() => navigate('/home/departments')}><Search size={22} /><span>搜索医院、科室、疾病、医生</span></button>
       <section className="home-promo" aria-label="医疗服务宣传" onTouchStart={startBannerSwipe} onTouchEnd={endBannerSwipe}>
-        <div className="home-promo__track" style={{ transform: `translateX(-${activeBannerIndex * 100}%)` }}>
-          {homeBanners.map((banner) => <button className="home-promo__slide" key={banner.label} type="button" aria-label={banner.label} onClick={() => openBanner(banner.action)}><img src={banner.image} alt="" /></button>)}
+        <div className="home-promo__track" style={{ transform: `translateX(-${bannerSlideIndex * 100}%)`, transition: bannerTransitionEnabled ? undefined : 'none' }} onTransitionEnd={normalizeBannerSlide}>
+          {circularHomeBanners.map((banner, index) => <button className="home-promo__slide" key={`${banner.label}-${index}`} type="button" aria-label={banner.label} onClick={() => openBanner(banner.action)}><img src={banner.image} alt="" /></button>)}
         </div>
-        <div className="home-promo__pager" aria-hidden="true">{homeBanners.map((banner, index) => <i className={index === activeBannerIndex ? 'is-active' : ''} key={banner.label} />)}</div>
+        <div className="home-promo__pager" aria-hidden="true">{homeBanners.map((banner, index) => <i className={index === (bannerSlideIndex - 1 + homeBanners.length) % homeBanners.length ? 'is-active' : ''} key={banner.label} />)}</div>
       </section>
     </section>
     {waitlistNotification && <section className="waitlist-banner" aria-label="候补可预约提醒"><button className="waitlist-banner__body" type="button" onClick={openWaitlistNotification}><span className="waitlist-banner__icon"><BellRing size={23} /></span><span className="waitlist-banner__content"><b>{waitlistNotification.title}</b><span>{waitlistNotification.content}</span><small>{waitlistNotification.patientName || '当前就诊人'}</small></span></button><button className="waitlist-banner__close" type="button" aria-label="关闭候补提醒" onClick={dismissWaitlistNotification}><X size={18} /></button></section>}
