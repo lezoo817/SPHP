@@ -1,7 +1,8 @@
 import { Card, Form, Input, Button, Typography, message } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
-import { request, history } from '@umijs/max';
+import { request } from '@umijs/max';
 import { useState } from 'react';
+import { getErrorMessage } from '@/utils/error';
 
 const { Title } = Typography;
 
@@ -24,8 +25,8 @@ export default function LoginPage() {
       }
       message.success('登录成功');
       window.location.href = '/';
-    } catch (err: any) {
-      message.error(err?.message || '登录失败');
+    } catch (err: unknown) {
+      message.error(getErrorMessage(err, '登录失败'));
     } finally {
       setLoading(false);
     }

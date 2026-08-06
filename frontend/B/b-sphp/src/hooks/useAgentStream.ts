@@ -12,6 +12,9 @@
  * 3. 暴露 send / confirm / cancel / reset，供页面调用。
  *
  * 与 sphp-agent `app/api/routes/chat.py` 的 SSE 事件契约对齐。
+ *
+ * 说明：所有内部辅助函数统一 useCallback 包裹，保证被其它 useCallback 引用时
+ * 引用稳定（不因渲染重建），从而满足 react-hooks/exhaustive-deps。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { chatStream, confirmCard, getSessions, deleteSession, getSessionMessages, type ChatStreamHandle } from '../services/agent';
@@ -102,6 +105,212 @@ export function useAgentStream(): UseAgentStream {
     }
   }, []);
 
+  /** 更新指定确认卡片的部分字段。 */
+  const updateConfirmCard = useCallback((cardId: string, patch: Partial<AgentConfirmCard>): void => {
+    setEntries((prev) =>
+      prev.map((entry) =>
+        entry.kind === 'card' && entry.data.id === cardId
+          ? { kind: 'card', data: { ...entry.data, ...patch } }
+          : entry,
+      ),
+    );
+  }, []);
+
+  /** 追加 message.delta 到当前 AI 消息，无则新建。 */
+  const appendMessageDelta = useCallback((delta: string): void => {
+    if (!delta) return;
+    setEntries((prev) => {
+      // 复用当前轮 AI 消息 ID
+      let messageId = currentMessageIdRef.current;
+      if (!messageId) {
+        messageId = genId('a');
+        currentMessageIdRef.current = messageId;
+        const aiMessage: AgentMessage = {
+          id: messageId,
+          role: 'assistant',
+          content: delta,
+          streaming: true,
+          createdAt: Date.now(),
+        };
+        return [...prev, { kind: 'message', data: aiMessage }];
+      }
+      return prev.map((entry) =>
+        entry.kind === 'message' && entry.data.id === messageId && entry.data.role === 'assistant'
+          ? { kind: 'message', data: { ...entry.data, content: entry.data.content + delta } }
+          : entry,
+      );
+    });
+  }, []);
+
+  /** 追加 thought.delta 到当前思考片段，无则新建。 */
+  const appendThoughtDelta = useCallback((delta: string): void => {
+    if (!delta) return;
+    setEntries((prev) => {
+      let thoughtId = currentThoughtIdRef.current;
+      if (!thoughtId) {
+        thoughtId = genId('t');
+        currentThoughtIdRef.current = thoughtId;
+        const thought: AgentThought = {
+          id: thoughtId,
+          content: delta,
+          streaming: true,
+          createdAt: Date.now(),
+        };
+        return [...prev, { kind: 'thought', data: thought }];
+      }
+      return prev.map((entry) =>
+        entry.kind === 'thought' && entry.data.id === thoughtId
+          ? { kind: 'thought', data: { ...entry.data, content: entry.data.content + delta } }
+          : entry,
+      );
+    });
+  }, []);
+
+  /** 创建一张 loading 工具卡片。 */
+  const appendToolCard = useCallback((action: { tool: string; arguments?: Record<string, unknown> }): void => {
+    const toolCard: AgentToolCard = {
+      id: genId('tool'),
+      tool: action.tool,
+      label: labelOf(action.tool),
+      arguments: action.arguments,
+      status: 'loading',
+      createdAt: Date.now(),
+    };
+    setEntries((prev) => [...prev, { kind: 'tool', data: toolCard }]);
+  }, []);
+
+  /** 按 tool 配对最近一张 loading 工具卡片并更新为成功或失败。 */
+  const updateToolCard = useCallback((observation: {
+    tool: string;
+    status: 'success' | 'error';
+    result?: unknown;
+    summary?: string;
+    duration_ms?: number;
+    error?: string;
+  }): void => {
+    setEntries((prev) => {
+      // 从后往前找最近一张同 tool 且仍 loading 的卡片
+      let matchedIndex = -1;
+      for (let i = prev.length - 1; i >= 0; i -= 1) {
+        const entry = prev[i];
+        if (entry.kind === 'tool' && entry.data.tool === observation.tool && entry.data.status === 'loading') {
+          matchedIndex = i;
+          break;
+        }
+      }
+      if (matchedIndex === -1) {
+        // 未匹配到 action：直接创建一张已完成卡片，避免结果丢失
+        const fallback: AgentToolCard = {
+          id: genId('tool'),
+          tool: observation.tool,
+          label: labelOf(observation.tool),
+          status: observation.status,
+          summary: observation.summary,
+          result: observation.result,
+          error: observation.error,
+          durationMs: observation.duration_ms,
+          createdAt: Date.now(),
+        };
+        return [...prev, { kind: 'tool', data: fallback }];
+      }
+      const matched = prev[matchedIndex] as { kind: 'tool'; data: AgentToolCard };
+      const updated: AgentToolCard = {
+        ...matched.data,
+        status: observation.status,
+        summary: observation.summary,
+        result: observation.result,
+        error: observation.error,
+        durationMs: observation.duration_ms,
+      };
+      const next = prev.slice();
+      next[matchedIndex] = { kind: 'tool', data: updated };
+      return next;
+    });
+  }, []);
+
+  /** 追加一张待确认卡片。 */
+  const appendConfirmCard = useCallback((card: AgentCardEvent): void => {
+    const confirmCardEntry: AgentConfirmCard = {
+      id: genId('card'),
+      cardType: card.card_type,
+      confirmToken: card.confirm_token,
+      sessionId: card.session_id,
+      title: card.title,
+      summary: card.summary,
+      details: card.details,
+      expiresAt: card.expires_at,
+      status: 'pending',
+      createdAt: Date.now(),
+    };
+    setEntries((prev) => [...prev, { kind: 'card', data: confirmCardEntry }]);
+  }, []);
+
+  /** 结束本轮流式：标记当前 AI 消息与思考为非流式。 */
+  const finalizeStreaming = useCallback((): void => {
+    const messageId = currentMessageIdRef.current;
+    const thoughtId = currentThoughtIdRef.current;
+    setEntries((prev) =>
+      prev.map((entry) => {
+        if (entry.kind === 'message' && messageId && entry.data.id === messageId) {
+          return { kind: 'message', data: { ...entry.data, streaming: false } };
+        }
+        if (entry.kind === 'thought' && thoughtId && entry.data.id === thoughtId) {
+          return { kind: 'thought', data: { ...entry.data, streaming: false } };
+        }
+        return entry;
+      }),
+    );
+    currentMessageIdRef.current = null;
+    currentThoughtIdRef.current = null;
+  }, []);
+
+  /** 处理单条 SSE 事件，更新对应条目。 */
+  const handleSseEvent = useCallback((event: AgentSseEvent, currentSessionId?: string): void => {
+    switch (event.event) {
+      case 'message':
+        setConnection('streaming');
+        appendMessageDelta(event.data.delta);
+        break;
+      case 'thought':
+        setConnection('streaming');
+        appendThoughtDelta(event.data.delta);
+        break;
+      case 'action':
+        setConnection('streaming');
+        appendToolCard(event.data);
+        break;
+      case 'observation':
+        setConnection('streaming');
+        updateToolCard(event.data);
+        break;
+      case 'card':
+        setConnection('streaming');
+        appendConfirmCard(event.data);
+        break;
+      case 'error':
+        setConnection('error');
+        setErrorMessage(event.data.message || AGENT_ERROR_TEXT[event.data.code] || '对话异常');
+        if (event.data.code === 'SESSION_NOT_FOUND') {
+          clearAgentSessionId();
+          setSessionId(undefined);
+        }
+        break;
+      case 'done':
+        // 保存会话 ID，关闭流式状态
+        if (event.data.session_id) {
+          saveAgentSessionId(event.data.session_id);
+          setSessionId(event.data.session_id);
+        }
+        finalizeStreaming();
+        setConnection('idle');
+        if (handleRef.current) {
+          handleRef.current = null;
+        }
+        break;
+    }
+    void currentSessionId;
+  }, [appendMessageDelta, appendThoughtDelta, appendToolCard, updateToolCard, appendConfirmCard, finalizeStreaming]);
+
   /** 清空会话并重置全部状态。 */
   const reset = useCallback(() => {
     cancel();
@@ -155,22 +364,8 @@ export function useAgentStream(): UseAgentStream {
         });
       }
     },
-    [], // updateConfirmCard 通过 setEntries 闭包稳定引用
+    [updateConfirmCard],
   );
-
-  /** 更新指定确认卡片的部分字段。 */
-  function updateConfirmCard(
-    cardId: string,
-    patch: Partial<AgentConfirmCard>,
-  ): void {
-    setEntries((prev) =>
-      prev.map((entry) =>
-        entry.kind === 'card' && entry.data.id === cardId
-          ? { kind: 'card', data: { ...entry.data, ...patch } }
-          : entry,
-      ),
-    );
-  }
 
   /** 发送一条用户消息并开启流式对话。 */
   const send = useCallback(
@@ -212,203 +407,8 @@ export function useAgentStream(): UseAgentStream {
         { sessionId: currentSessionId, context },
       );
     },
-    [connection, sessionId],
+    [connection, sessionId, handleSseEvent],
   );
-
-  /** 处理单条 SSE 事件，更新对应条目。 */
-  function handleSseEvent(event: AgentSseEvent, currentSessionId?: string): void {
-    switch (event.event) {
-      case 'message':
-        setConnection('streaming');
-        appendMessageDelta(event.data.delta);
-        break;
-      case 'thought':
-        setConnection('streaming');
-        appendThoughtDelta(event.data.delta);
-        break;
-      case 'action':
-        setConnection('streaming');
-        appendToolCard(event.data);
-        break;
-      case 'observation':
-        setConnection('streaming');
-        updateToolCard(event.data);
-        break;
-      case 'card':
-        setConnection('streaming');
-        appendConfirmCard(event.data);
-        break;
-      case 'error':
-        setConnection('error');
-        setErrorMessage(event.data.message || AGENT_ERROR_TEXT[event.data.code] || '对话异常');
-        if (event.data.code === 'SESSION_NOT_FOUND') {
-          clearAgentSessionId();
-          setSessionId(undefined);
-        }
-        break;
-      case 'done':
-        // 保存会话 ID，关闭流式状态
-        if (event.data.session_id) {
-          saveAgentSessionId(event.data.session_id);
-          setSessionId(event.data.session_id);
-        }
-        finalizeStreaming();
-        setConnection('idle');
-        if (handleRef.current) {
-          handleRef.current = null;
-        }
-        break;
-    }
-    void currentSessionId;
-  }
-
-  /** 追加 message.delta 到当前 AI 消息，无则新建。 */
-  function appendMessageDelta(delta: string): void {
-    if (!delta) return;
-    setEntries((prev) => {
-      // 复用当前轮 AI 消息 ID
-      let messageId = currentMessageIdRef.current;
-      if (!messageId) {
-        messageId = genId('a');
-        currentMessageIdRef.current = messageId;
-        const aiMessage: AgentMessage = {
-          id: messageId,
-          role: 'assistant',
-          content: delta,
-          streaming: true,
-          createdAt: Date.now(),
-        };
-        return [...prev, { kind: 'message', data: aiMessage }];
-      }
-      return prev.map((entry) =>
-        entry.kind === 'message' && entry.data.id === messageId && entry.data.role === 'assistant'
-          ? { kind: 'message', data: { ...entry.data, content: entry.data.content + delta } }
-          : entry,
-      );
-    });
-  }
-
-  /** 追加 thought.delta 到当前思考片段，无则新建。 */
-  function appendThoughtDelta(delta: string): void {
-    if (!delta) return;
-    setEntries((prev) => {
-      let thoughtId = currentThoughtIdRef.current;
-      if (!thoughtId) {
-        thoughtId = genId('t');
-        currentThoughtIdRef.current = thoughtId;
-        const thought: AgentThought = {
-          id: thoughtId,
-          content: delta,
-          streaming: true,
-          createdAt: Date.now(),
-        };
-        return [...prev, { kind: 'thought', data: thought }];
-      }
-      return prev.map((entry) =>
-        entry.kind === 'thought' && entry.data.id === thoughtId
-          ? { kind: 'thought', data: { ...entry.data, content: entry.data.content + delta } }
-          : entry,
-      );
-    });
-  }
-
-  /** 创建一张 loading 工具卡片。 */
-  function appendToolCard(action: { tool: string; arguments?: Record<string, unknown> }): void {
-    const toolCard: AgentToolCard = {
-      id: genId('tool'),
-      tool: action.tool,
-      label: labelOf(action.tool),
-      arguments: action.arguments,
-      status: 'loading',
-      createdAt: Date.now(),
-    };
-    setEntries((prev) => [...prev, { kind: 'tool', data: toolCard }]);
-  }
-
-  /** 按 tool 配对最近一张 loading 工具卡片并更新为成功或失败。 */
-  function updateToolCard(observation: {
-    tool: string;
-    status: 'success' | 'error';
-    result?: unknown;
-    summary?: string;
-    duration_ms?: number;
-    error?: string;
-  }): void {
-    setEntries((prev) => {
-      // 从后往前找最近一张同 tool 且仍 loading 的卡片
-      let matchedIndex = -1;
-      for (let i = prev.length - 1; i >= 0; i -= 1) {
-        const entry = prev[i];
-        if (entry.kind === 'tool' && entry.data.tool === observation.tool && entry.data.status === 'loading') {
-          matchedIndex = i;
-          break;
-        }
-      }
-      if (matchedIndex === -1) {
-        // 未匹配到 action：直接创建一张已完成卡片，避免结果丢失
-        const fallback: AgentToolCard = {
-          id: genId('tool'),
-          tool: observation.tool,
-          label: labelOf(observation.tool),
-          status: observation.status,
-          summary: observation.summary,
-          result: observation.result,
-          error: observation.error,
-          durationMs: observation.duration_ms,
-          createdAt: Date.now(),
-        };
-        return [...prev, { kind: 'tool', data: fallback }];
-      }
-      const matched = prev[matchedIndex] as { kind: 'tool'; data: AgentToolCard };
-      const updated: AgentToolCard = {
-        ...matched.data,
-        status: observation.status,
-        summary: observation.summary,
-        result: observation.result,
-        error: observation.error,
-        durationMs: observation.duration_ms,
-      };
-      const next = prev.slice();
-      next[matchedIndex] = { kind: 'tool', data: updated };
-      return next;
-    });
-  }
-
-  /** 追加一张待确认卡片。 */
-  function appendConfirmCard(card: AgentCardEvent): void {
-    const confirmCardEntry: AgentConfirmCard = {
-      id: genId('card'),
-      cardType: card.card_type,
-      confirmToken: card.confirm_token,
-      sessionId: card.session_id,
-      title: card.title,
-      summary: card.summary,
-      details: card.details,
-      expiresAt: card.expires_at,
-      status: 'pending',
-      createdAt: Date.now(),
-    };
-    setEntries((prev) => [...prev, { kind: 'card', data: confirmCardEntry }]);
-  }
-
-  /** 结束本轮流式：标记当前 AI 消息与思考为非流式。 */
-  function finalizeStreaming(): void {
-    const messageId = currentMessageIdRef.current;
-    const thoughtId = currentThoughtIdRef.current;
-    setEntries((prev) =>
-      prev.map((entry) => {
-        if (entry.kind === 'message' && messageId && entry.data.id === messageId) {
-          return { kind: 'message', data: { ...entry.data, streaming: false } };
-        }
-        if (entry.kind === 'thought' && thoughtId && entry.data.id === thoughtId) {
-          return { kind: 'thought', data: { ...entry.data, streaming: false } };
-        }
-        return entry;
-      }),
-    );
-    currentMessageIdRef.current = null;
-    currentThoughtIdRef.current = null;
-  }
 
   // 组件卸载时中断未完成的流式请求，避免内存泄漏
   useEffect(() => () => cancel(), [cancel]);

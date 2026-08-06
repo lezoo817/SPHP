@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CheckCircleOutlined, CloseCircleOutlined, SafetyOutlined } from '@ant-design/icons';
-import type { AgentConfirmCard } from '../../typings/agent';
-import { AGENT_CONFIRM_ERROR_TEXT } from '../../constants/agent';
+import type { AgentConfirmCard } from '@/typings/agent';
+import { AGENT_CONFIRM_ERROR_TEXT } from '@/constants/agent';
 
 /** 渲染 details 关键字段为可读键值对。 */
 function renderDetails(details: Record<string, unknown> | undefined): { label: string; value: string }[] {
@@ -62,11 +62,6 @@ export function AgentConfirmCardView({
 }) {
   const [expanded, setExpanded] = useState(false);
   const detailRows = renderDetails(card.details);
-  const disabled =
-    card.status === 'done' ||
-    card.status === 'error' ||
-    card.status === 'expired' ||
-    card.status === 'confirming';
   const expired = card.status === 'expired' || (!!card.expiresAt && Date.parse(card.expiresAt) <= Date.now());
 
   return (

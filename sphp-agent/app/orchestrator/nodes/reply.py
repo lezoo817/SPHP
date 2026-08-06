@@ -15,9 +15,6 @@ from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
 
-# 医疗安全声明（强制注入所有回复末尾）
-MEDICAL_DISCLAIMER = "\n\n---\n⚠️ **AI 建议仅供参考，不作为诊断依据。如有疑问请咨询专业医生。**"
-
 # 回复生成系统提示词
 REPLY_SYSTEM_PROMPT = """你是一个医疗健康助手，正在为用户提供服务。
 
@@ -45,7 +42,7 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
     """回复生成节点（系分 §5.12）。
 
     汇总工具结果或 LLM 输出，调用 LLM 生成自然语言回复。
-    回复末尾强制注入医疗安全声明。
+    医疗免责声明由前端卡片统一承担，此处不再注入。
 
     Args:
         state: 当前图状态，包含 messages / tool_results 等字段。
@@ -54,7 +51,7 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         dict: 包含新增的 assistant 消息（由 LangGraph add_messages reducer 累积）。
 
     Raises:
-        无：生成失败时返回降级话术（含安全声明）。
+        无：生成失败时返回降级话术。
     """
     try:
         llm = build_llm()
@@ -102,15 +99,12 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         raw_content = response.content
         reply_content = raw_content if isinstance(raw_content, str) else str(raw_content)
 
-        # 强制注入医疗安全声明（所有意图）
-        reply_content += MEDICAL_DISCLAIMER
-
         logger.info("回复生成成功: 长度=%d, 意图=%s", len(reply_content), intent)
         return {"messages": [{"role": "assistant", "content": reply_content}]}
 
     except Exception as e:
         logger.error("回复生成失败: %s", e)
-        fallback_message = "抱歉，我遇到了一些问题，请稍后重试。" + MEDICAL_DISCLAIMER
+        fallback_message = "抱歉，我遇到了一些问题，请稍后重试。"
         return {"messages": [{"role": "assistant", "content": fallback_message}]}
 
 

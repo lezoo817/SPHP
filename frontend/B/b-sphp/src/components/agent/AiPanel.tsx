@@ -1,8 +1,6 @@
 /**
  * B 端 AI 辅助面板（AiPanel）。
  *
- * 对应系分：B 端前端系分 V2.0 §9（AI 辅助面板）。
- *
  * 双形态：
  * 1. 嵌入式（embedded=true）：作为接诊台详情页右侧侧栏渲染，宽度由父容器控制；
  * 2. 全屏式（embedded=false）：作为独立 AI 助手页主体渲染，自带历史会话抽屉。
@@ -30,18 +28,18 @@ import {
   SendOutlined,
   StopOutlined,
 } from '@ant-design/icons';
-import { useAgentStream } from '../../hooks/useAgentStream';
+import { useAgentStream } from '@/hooks/useAgentStream';
 import {
   AGENT_CONTENT_MAX,
   AGENT_QUICK_PROMPTS,
   AGENT_UNAVAILABLE_TEXT,
   AGENT_WELCOME,
-} from '../../constants/agent';
+} from '@/constants/agent';
 import { AgentMessageBubble } from './AgentMessage';
 import { AgentThoughtPanel } from './AgentThought';
 import { AgentToolCardView } from './AgentToolCard';
 import { AgentConfirmCardView } from './AgentConfirmCard';
-import type { AgentChatContext, AgentSession } from '../../typings/agent';
+import type { AgentChatContext, AgentSession } from '@/typings/agent';
 import './agent.css';
 
 const { Text, Paragraph } = Typography;
