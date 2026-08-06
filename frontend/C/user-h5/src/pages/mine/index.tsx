@@ -15,7 +15,7 @@ import { getApiErrorMessage, getRelationLabel, validatePassword } from '../../ut
 const healthEntries = [
   { label: '健康档案', icon: BookHeart, path: 'health-record' },
   { label: '我的处方', icon: ClipboardPlus, path: '/mine/prescriptions' },
-  { label: '就诊记录', icon: HeartPulse },
+  { label: '就诊记录', icon: HeartPulse, path: '/mine/appointments' },
   { label: '病历报告', icon: FileChartColumn, path: '/medical-records?source=mine' },
   { label: '用药提醒', icon: Pill, path: '/mine/medication-plans' },
   { label: '随访计划', icon: HeartPulse, path: '/mine/follow-ups' },
