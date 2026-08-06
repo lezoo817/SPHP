@@ -81,9 +81,13 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         # 如果有待确认的 L2 操作，提醒 LLM 在回复中引导用户查看确认卡片
         pending_confirmations = state.get("pending_confirmations")
         if pending_confirmations:
+            tool_names = [p.get("tool_name", "") for p in pending_confirmations]
             prompt = (
-                f"有 {len(pending_confirmations)} 个操作正在等待用户确认，"
-                "请在回复中提醒用户查看确认卡片。"
+                f"有 {len(pending_confirmations)} 个操作（{', '.join(tool_names)}）正在等待用户"
+                "点击确认卡片，**操作尚未执行**。请用简短回复说明用户即将执行的操作，"
+                "并引导用户查看并点击确认卡片。"
+                "⚠️ 严禁声称操作已成功/已提交/已发送/已收到——确认卡片点击后才会真正执行，"
+                "确认前一律用'即将/待确认'表述，不要替用户完成操作。"
             )
             llm_messages.append({"role": "system", "content": prompt})
 
