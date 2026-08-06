@@ -22,7 +22,7 @@ import { buildNotificationsPath } from '../services/notification';
 import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotification, formatMedicationReminderTimes, getMedicationPlanActions, getMedicationReminderAction, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
 import { buildDeliveryAddressPath } from '../services/delivery-address';
 import { buildDeliveryAddressPayload, getDeliveryAddressInvalidFields, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
-import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantTabs, getCurrentFlowAction } from './assistant';
+import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantTabs, getCurrentFlowAction, isCurrentAssistantFlow } from './assistant';
 import { buildMedicalRecordDetailPath, buildMedicalRecordListPath } from '../services/medical-record';
 import { buildLegacyReportRedirectPath, createMedicalRecordDisplayNumber, filterMedicalRecordsByDate, getRecentMedicalRecordRange, mergeMedicalRecordPages } from './medical-record';
 import { canCancelPaidAppointment, isDuplicateDoctorAppointmentError } from './registration';
@@ -100,6 +100,15 @@ describe('就诊助手展示规则', () => {
   it('仅未支付订单可进入支付，已支付订单保持等待就诊', () => {
     expect(getCurrentFlowAction('UNPAID')).toBe('PAY');
     expect(getCurrentFlowAction('PAID')).toBe('WAITING');
+  });
+
+  it('仅在号源结束前展示待支付或待就诊的当前流程', () => {
+    const now = Date.parse('2026-08-06T10:00:00+08:00');
+    const appointment = { id: 1, doctorName: '陈医生', departmentName: '内科', startTime: '2026-08-06T09:30:00+08:00', endTime: '2026-08-06T10:30:00+08:00', status: 'PAID' as const, amountCent: 100 };
+
+    expect(isCurrentAssistantFlow(appointment, now)).toBe(true);
+    expect(isCurrentAssistantFlow({ ...appointment, endTime: '2026-08-06T10:00:00+08:00' }, now)).toBe(false);
+    expect(isCurrentAssistantFlow({ ...appointment, status: 'COMPLETED' }, now)).toBe(false);
   });
 
   it('就诊助手每三十秒静默刷新挂号状态', () => {

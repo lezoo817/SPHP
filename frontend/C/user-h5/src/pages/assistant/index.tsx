@@ -8,7 +8,7 @@ import { getPrescriptions } from '../../services/consultation';
 import { getFamilyMembers } from '../../services/family';
 import { cancelAppointment, getAppointment, getAppointments } from '../../services/registration';
 import type { Appointment, FamilyMember, Prescription } from '../../typings/api';
-import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantTabs, getCurrentFlowAction } from '../../utils/assistant';
+import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantTabs, getCurrentFlowAction, isCurrentAssistantFlow } from '../../utils/assistant';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatMedicalTime, getAppointmentStatusText } from '../../utils/medical';
 import { buildAssistantPrescriptionDetailPath, getPrescriptionDisplayNumber } from '../../utils/prescription';
@@ -54,7 +54,8 @@ export default function AssistantPage() {
   const [tab, setTab] = useState<AssistantTab>('挂号记录');
   const [notice, setNotice] = useState('');
   const current = members.find((item) => item.patientId === patientId);
-  const currentFlow = appointments.find((item) => item.status === 'UNPAID' || item.status === 'PAID');
+  // 号源结束后订单仍保留在挂号记录，但不应继续占用当前就诊流程卡片。
+  const currentFlow = appointments.find((item) => isCurrentAssistantFlow(item));
 
   /**
    * 按当前就诊人刷新助手页服务端数据。
