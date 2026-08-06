@@ -10,7 +10,7 @@ import java.time.OffsetDateTime;
 import java.util.Map;
 
 /**
- * 待接诊列表项 VO（系分 §5.5.1）。
+ * 待接诊列表项 VO。
  */
 @Data
 @Builder

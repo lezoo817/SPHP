@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import java.time.OffsetDateTime;
 
 /**
- * 结束问诊响应 VO（系分 §5.5.4）。
+ * 结束问诊响应 VO。
  */
 @Data
 @Builder
