@@ -31,8 +31,8 @@ public class TemplateListVO {
     @Schema(description = "科室名称")
     private String deptName;
 
-    @Schema(description = "创建人")
-    private String doctorName;
+    @Schema(description = "更新人姓名")
+    private String updatedByName;
 
     @Schema(description = "药品项数")
     private Integer itemCount;
@@ -42,4 +42,7 @@ public class TemplateListVO {
 
     @Schema(description = "创建时间")
     private OffsetDateTime createdAt;
+
+    @Schema(description = "更新时间")
+    private OffsetDateTime updatedAt;
 }

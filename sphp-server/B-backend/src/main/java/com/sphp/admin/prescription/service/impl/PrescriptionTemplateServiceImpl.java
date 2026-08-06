@@ -154,6 +154,7 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         entity.setDeptId(request.getDeptId());
         entity.setName(request.getName().trim());
         entity.setDoctorId(doctorId);
+        entity.setUpdatedBy(doctorId);
         entity.setItems(itemDTOs);
         entity.setStatus("ENABLED");
         templateMapper.insert(entity);
@@ -182,6 +183,77 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
                 .status(drug.getStatus())
                 .availableStock(stock == null ? 0L : stock.longValue())
                 .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public TemplateListVO update(Long id, SaveTemplateRequest request) {
+        DataScope scope = currentUserService.getCurrentDataScope();
+        Long doctorId = scope.doctorId();
+        if (doctorId == null) {
+            throw new BusinessException("A0443", "当前用户无医生身份，无法更新模板");
+        }
+
+        PrescriptionTemplate template = templateMapper.selectById(id);
+        if (template == null || template.getDeletedAt() != null) {
+            throw new BusinessException("A0402", "模板不存在");
+        }
+        if (!template.getHospitalId().equals(scope.hospitalId())) {
+            throw new BusinessException("3020", "无权修改该模板");
+        }
+
+        // 校验药品明细非空
+        if (request.getItems() == null || request.getItems().isEmpty()) {
+            throw new BusinessException("A0401", "药品明细不能为空");
+        }
+
+        // 校验关联科室属于当前医院（空表示全院通用）
+        if (request.getDeptId() != null) {
+            Department dept = departmentMapper.selectById(request.getDeptId());
+            if (dept == null || dept.getDeletedAt() != null
+                    || !dept.getHospitalId().equals(scope.hospitalId())) {
+                throw new BusinessException("A0401", "科室不存在或不属于当前医院");
+            }
+        }
+
+        // 批量查询药品，校验存在且启用，并回填药品名称
+        Set<Long> drugIds = request.getItems().stream()
+                .map(SaveTemplateRequest.ItemDTO::getDrugId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, Drug> drugMap = drugMapper.selectBatchIds(drugIds).stream()
+                .filter(d -> d.getDeletedAt() == null)
+                .collect(Collectors.toMap(Drug::getId, d -> d, (a, b) -> a));
+
+        List<TemplateItemDTO> itemDTOs = request.getItems().stream()
+                .map(item -> {
+                    Drug drug = drugMap.get(item.getDrugId());
+                    if (drug == null || !"ENABLED".equals(drug.getStatus())) {
+                        throw new BusinessException("3003", "药品不存在或已停用");
+                    }
+                    assertQuantitySufficient(item, drug);
+                    TemplateItemDTO dto = new TemplateItemDTO();
+                    dto.setDrugId(item.getDrugId());
+                    dto.setDrugName(drug.getName());
+                    dto.setDosage(item.getDosage());
+                    dto.setFrequency(item.getFrequency());
+                    dto.setUsageMethod(item.getUsageMethod());
+                    dto.setDays(item.getDays());
+                    dto.setQuantity(item.getQuantity());
+                    dto.setQuantityUnit(StringUtils.hasText(item.getQuantityUnit()) ? item.getQuantityUnit() : "盒");
+                    return dto;
+                })
+                .collect(Collectors.toList());
+
+        OffsetDateTime now = OffsetDateTime.now();
+        template.setDeptId(request.getDeptId());
+        template.setItems(itemDTOs);
+        template.setUpdatedBy(doctorId);
+        template.setUpdatedAt(now);
+        templateMapper.updateById(template);
+
+        log.info("更新处方模板 templateId={}, updatedBy={}", id, doctorId);
+        return toTemplateListVO(template);
     }
 
     @Override
@@ -297,17 +369,20 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
     }
 
     private TemplateListVO toTemplateListVO(PrescriptionTemplate t) {
-        Doctor doctor = doctorMapper.selectById(t.getDoctorId());
+        // 取更新人姓名，更新人为空时回退到创建人
+        Long targetDoctorId = t.getUpdatedBy() != null ? t.getUpdatedBy() : t.getDoctorId();
+        Doctor doctor = targetDoctorId != null ? doctorMapper.selectById(targetDoctorId) : null;
         Department dept = t.getDeptId() != null ? departmentMapper.selectById(t.getDeptId()) : null;
         return TemplateListVO.builder()
                 .id(t.getId())
                 .name(t.getName())
                 .deptId(t.getDeptId())
                 .deptName(dept != null ? dept.getName() : null)
-                .doctorName(doctor != null ? doctor.getName() : null)
+                .updatedByName(doctor != null ? doctor.getName() : null)
                 .itemCount(t.getItems() != null ? t.getItems().size() : 0)
                 .items(t.getItems())
                 .createdAt(t.getCreatedAt())
+                .updatedAt(t.getUpdatedAt())
                 .build();
     }
 }

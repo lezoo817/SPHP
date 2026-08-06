@@ -513,6 +513,8 @@ declare global {
         quantityUnit?: string;
       }[];
       createdAt: string;
+      updatedAt?: string;
+      updatedByName?: string;
     }
 
     /** 模板列表查询参数 */
