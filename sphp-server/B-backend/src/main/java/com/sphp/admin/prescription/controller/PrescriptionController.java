@@ -23,10 +23,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 处方管理控制器（系分 §5.6）。
+ * 处方管理控制器（管理员视角）。
  *
  * <p>外部完整 URL 前缀为 {@code /api/b/...}。
- * 包含处方提交、列表、详情。
+ * 按当前登录用户所属医院做数据隔离过滤；
+ * 医生角色仅可访问本人处方，管理员/科室主任可访问全院或本科室处方。
+ * 包含处方提交、列表、详情、审核。
  */
 @RestController
 @RequestMapping("/b")
@@ -42,15 +44,11 @@ public class PrescriptionController {
 
     private final PrescriptionService prescriptionService;
 
-    // ==================== 5.6.1 提交处方 ====================
-
     @PostMapping("/prescriptions")
     @Operation(summary = "提交处方", description = "含风险拦截，根据命中级别决定 APPROVED 或 SUBMITTED")
     public Result<PrescriptionSubmitVO> submit(@Valid @RequestBody PrescriptionSubmitRequest request) {
         return Result.success("提交成功", prescriptionService.submit(request));
     }
-
-    // ==================== 5.6.2 处方列表 ====================
 
     @GetMapping("/prescriptions")
     @Operation(summary = "查询处方列表", description = "分页查询处方（按当前用户数据权限过滤）")
@@ -64,15 +62,11 @@ public class PrescriptionController {
                 prescriptionService.page(consultId, patientId, status, page, clampSize(size)));
     }
 
-    // ==================== 5.6.3 处方详情 ====================
-
     @GetMapping("/prescriptions/{id}")
     @Operation(summary = "查询处方详情", description = "返回处方完整信息（含药品明细）")
     public Result<PrescriptionDetailVO> getDetail(@PathVariable Long id) {
         return Result.success("查询成功", prescriptionService.getDetail(id));
     }
-
-    // ==================== 5.6.4 待审核处方列表 ====================
 
     @GetMapping("/prescriptions/pending-audit")
     @Operation(summary = "待审核处方列表", description = "分页查询待审核处方（仅 ADMIN / DEPT_HEAD 可访问）")
@@ -82,8 +76,6 @@ public class PrescriptionController {
         return Result.success("查询成功",
                 prescriptionService.pendingAuditList(page, clampSize(size)));
     }
-
-    // ==================== 5.6.5 审核处方 ====================
 
     @PutMapping("/prescriptions/{id}/audit")
     @Operation(summary = "审核处方", description = "通过或驳回处方（仅 ADMIN / DEPT_HEAD 可操作）")

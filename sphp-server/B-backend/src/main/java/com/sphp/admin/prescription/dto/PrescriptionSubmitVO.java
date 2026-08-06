@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * 处方提交响应 VO（系分 §5.6.1）。
+ * 处方提交响应 VO。
  */
 @Data
 @Builder
@@ -21,7 +21,8 @@ public class PrescriptionSubmitVO {
     @Schema(description = "处方 ID")
     private Long id;
 
-    @Schema(description = "处方状态：APPROVED / SUBMITTED")
+    @Schema(description = "处方状态：APPROVED（已通过，无风险）/ SUBMITTED（待审核，命中高危/重复用药）",
+            example = "APPROVED")
     private String status;
 
     @Schema(description = "是否需要人工审核")

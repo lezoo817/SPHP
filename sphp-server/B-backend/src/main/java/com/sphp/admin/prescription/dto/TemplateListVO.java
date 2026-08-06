@@ -10,7 +10,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
- * 处方模板列表项 VO（系分 §5.6.6）。
+ * 处方模板列表项 VO。
  */
 @Data
 @Builder

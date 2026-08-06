@@ -7,6 +7,7 @@ import com.sphp.admin.auth.entity.Doctor;
 import com.sphp.admin.auth.mapper.DoctorMapper;
 import com.sphp.admin.common.CurrentUserService;
 import com.sphp.admin.common.DataScope;
+import com.sphp.admin.common.enums.BUserStatusEnum;
 import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.hospital.entity.Department;
 import com.sphp.admin.hospital.mapper.DepartmentMapper;
@@ -40,12 +41,30 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * 处方模板服务实现（系分 §5.6.6 ~ §5.6.7）。
+ * 处方模板服务实现（管理员视角）。
+ *
+ * <p>按当前登录用户所属医院（{@code hospital_id}）做数据隔离过滤；
+ * 仅创建/更新/删除需医生身份，查询不限角色。
+ * 模板状态字段与 {@link BUserStatusEnum} 复用（仅 ENABLED / DISABLED 两态）。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateService {
+
+    /** 通用业务冲突（A0401：请求参数或业务前置条件不满足） */
+    private static final String ERR_BUSINESS_CONFLICT = "A0401";
+    /** 资源不存在 / 越权访问（A0402：通用资源未找到） */
+    private static final String ERR_RESOURCE_NOT_FOUND = "A0402";
+    /** 无权限（A0443：当前角色不允许操作） */
+    private static final String ERR_NO_PERMISSION = "A0443";
+    /** 越权访问（3020：跨医院/跨科室资源访问） */
+    private static final String ERR_FORBIDDEN = "3020";
+    /** 药品不可用（3003：药品不存在或已停用） */
+    private static final String ERR_DRUG_INVALID = "3003";
+
+    /** 数量单位默认值（前端缺省时使用） */
+    private static final String DEFAULT_QUANTITY_UNIT = "盒";
 
     private final PrescriptionTemplateMapper templateMapper;
     private final DrugMapper drugMapper;
@@ -67,7 +86,7 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
 
         LambdaQueryWrapper<PrescriptionTemplate> wrapper = Wrappers.<PrescriptionTemplate>lambdaQuery()
                 .eq(PrescriptionTemplate::getHospitalId, scope.hospitalId())
-                .eq(PrescriptionTemplate::getStatus, "ENABLED")
+                .eq(PrescriptionTemplate::getStatus, BUserStatusEnum.ENABLED.getCode())
                 .isNull(PrescriptionTemplate::getDeletedAt)
                 .like(StringUtils.hasText(name), PrescriptionTemplate::getName, name)
                 // deptId 为空时返回全部（包括全院通用模板），指定时返回该科室模板 + 全院通用模板
@@ -89,14 +108,14 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         DataScope scope = currentUserService.getCurrentDataScope();
         Long doctorId = scope.doctorId();
         if (doctorId == null) {
-            throw new BusinessException("A0443", "当前用户无医生身份，无法创建模板");
+            throw new BusinessException(ERR_NO_PERMISSION, "当前用户无医生身份，无法创建模板");
         }
 
         if (!StringUtils.hasText(request.getName())) {
-            throw new BusinessException("A0401", "模板名称不能为空");
+            throw new BusinessException(ERR_BUSINESS_CONFLICT, "模板名称不能为空");
         }
         if (request.getItems() == null || request.getItems().isEmpty()) {
-            throw new BusinessException("A0401", "模板药品明细不能为空");
+            throw new BusinessException(ERR_BUSINESS_CONFLICT, "模板药品明细不能为空");
         }
 
         // 校验关联科室属于当前医院（空表示全院通用）
@@ -104,7 +123,7 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
             Department dept = departmentMapper.selectById(request.getDeptId());
             if (dept == null || dept.getDeletedAt() != null
                     || !dept.getHospitalId().equals(scope.hospitalId())) {
-                throw new BusinessException("A0401", "科室不存在或不属于当前医院");
+                throw new BusinessException(ERR_BUSINESS_CONFLICT, "科室不存在或不属于当前医院");
             }
         }
 
@@ -115,7 +134,7 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
                         .eq(PrescriptionTemplate::getName, request.getName().trim())
                         .isNull(PrescriptionTemplate::getDeletedAt));
         if (duplicate != null && duplicate > 0) {
-            throw new BusinessException("A0401", "同医院已存在同名模板");
+            throw new BusinessException(ERR_BUSINESS_CONFLICT, "同医院已存在同名模板");
         }
 
         // 批量查询药品，校验存在且启用，并回填药品名称冗余存入 JSONB
@@ -130,8 +149,8 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         List<TemplateItemDTO> itemDTOs = request.getItems().stream()
                 .map(item -> {
                     Drug drug = drugMap.get(item.getDrugId());
-                    if (drug == null || !"ENABLED".equals(drug.getStatus())) {
-                        throw new BusinessException("3003", "药品不存在或已停用");
+                    if (drug == null || !BUserStatusEnum.isEnabled(drug.getStatus())) {
+                        throw new BusinessException(ERR_DRUG_INVALID, "药品不存在或已停用");
                     }
                     // 数量校验：需求(天数×频次×用量) 不得超过 发放(数量×规格单盒数)
                     assertQuantitySufficient(item, drug);
@@ -144,7 +163,7 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
                     dto.setDays(item.getDays());
                     dto.setQuantity(item.getQuantity());
                     // 数量单位默认盒；不落表，仅存模板 items JSONB
-                    dto.setQuantityUnit(StringUtils.hasText(item.getQuantityUnit()) ? item.getQuantityUnit() : "盒");
+                    dto.setQuantityUnit(StringUtils.hasText(item.getQuantityUnit()) ? item.getQuantityUnit() : DEFAULT_QUANTITY_UNIT);
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -156,7 +175,7 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         entity.setDoctorId(doctorId);
         entity.setUpdatedBy(doctorId);
         entity.setItems(itemDTOs);
-        entity.setStatus("ENABLED");
+        entity.setStatus(BUserStatusEnum.ENABLED.getCode());
         templateMapper.insert(entity);
 
         log.info("创建处方模板 templateId={}, name={}, doctorId={}", entity.getId(), entity.getName(), doctorId);
@@ -168,7 +187,7 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         Long hospitalId = currentUserService.getCurrentDataScope().hospitalId();
         Drug drug = drugMapper.selectById(id);
         if (drug == null || drug.getDeletedAt() != null || !drug.getHospitalId().equals(hospitalId)) {
-            throw new BusinessException("A0402", "药品不存在");
+            throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "药品不存在");
         }
         // 附带当前医院各药房可用库存之和，供新建模板校验数量是否超出库存
         Integer stock = stockMapper.sumAvailableByDrugId(id, hospitalId);
@@ -191,20 +210,20 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         DataScope scope = currentUserService.getCurrentDataScope();
         Long doctorId = scope.doctorId();
         if (doctorId == null) {
-            throw new BusinessException("A0443", "当前用户无医生身份，无法更新模板");
+            throw new BusinessException(ERR_NO_PERMISSION, "当前用户无医生身份，无法更新模板");
         }
 
         PrescriptionTemplate template = templateMapper.selectById(id);
         if (template == null || template.getDeletedAt() != null) {
-            throw new BusinessException("A0402", "模板不存在");
+            throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "模板不存在");
         }
         if (!template.getHospitalId().equals(scope.hospitalId())) {
-            throw new BusinessException("3020", "无权修改该模板");
+            throw new BusinessException(ERR_FORBIDDEN, "无权修改该模板");
         }
 
         // 校验药品明细非空
         if (request.getItems() == null || request.getItems().isEmpty()) {
-            throw new BusinessException("A0401", "药品明细不能为空");
+            throw new BusinessException(ERR_BUSINESS_CONFLICT, "药品明细不能为空");
         }
 
         // 校验关联科室属于当前医院（空表示全院通用）
@@ -212,7 +231,7 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
             Department dept = departmentMapper.selectById(request.getDeptId());
             if (dept == null || dept.getDeletedAt() != null
                     || !dept.getHospitalId().equals(scope.hospitalId())) {
-                throw new BusinessException("A0401", "科室不存在或不属于当前医院");
+                throw new BusinessException(ERR_BUSINESS_CONFLICT, "科室不存在或不属于当前医院");
             }
         }
 
@@ -228,8 +247,8 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         List<TemplateItemDTO> itemDTOs = request.getItems().stream()
                 .map(item -> {
                     Drug drug = drugMap.get(item.getDrugId());
-                    if (drug == null || !"ENABLED".equals(drug.getStatus())) {
-                        throw new BusinessException("3003", "药品不存在或已停用");
+                    if (drug == null || !BUserStatusEnum.isEnabled(drug.getStatus())) {
+                        throw new BusinessException(ERR_DRUG_INVALID, "药品不存在或已停用");
                     }
                     assertQuantitySufficient(item, drug);
                     TemplateItemDTO dto = new TemplateItemDTO();
@@ -240,7 +259,7 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
                     dto.setUsageMethod(item.getUsageMethod());
                     dto.setDays(item.getDays());
                     dto.setQuantity(item.getQuantity());
-                    dto.setQuantityUnit(StringUtils.hasText(item.getQuantityUnit()) ? item.getQuantityUnit() : "盒");
+                    dto.setQuantityUnit(StringUtils.hasText(item.getQuantityUnit()) ? item.getQuantityUnit() : DEFAULT_QUANTITY_UNIT);
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -262,14 +281,14 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         DataScope scope = currentUserService.getCurrentDataScope();
         PrescriptionTemplate template = templateMapper.selectById(id);
         if (template == null || template.getDeletedAt() != null) {
-            throw new BusinessException("A0402", "模板不存在");
+            throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "模板不存在");
         }
         if (!template.getHospitalId().equals(scope.hospitalId())) {
-            throw new BusinessException("3020", "无权删除该模板");
+            throw new BusinessException(ERR_FORBIDDEN, "无权删除该模板");
         }
         // 软删除
         template.setDeletedAt(OffsetDateTime.now());
-        template.setStatus("DISABLED");
+        template.setStatus(BUserStatusEnum.DISABLED.getCode());
         templateMapper.updateById(template);
         log.info("删除处方模板 templateId={}", id);
     }
@@ -282,16 +301,16 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         // 1. 校验模板：当前医院、启用、未删除、明细非空
         PrescriptionTemplate template = templateMapper.selectById(templateId);
         if (template == null || template.getDeletedAt() != null) {
-            throw new BusinessException("A0402", "模板不存在");
+            throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "模板不存在");
         }
-        if (!"ENABLED".equals(template.getStatus())) {
-            throw new BusinessException("A0402", "模板已停用");
+        if (!BUserStatusEnum.isEnabled(template.getStatus())) {
+            throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "模板已停用");
         }
         if (!template.getHospitalId().equals(scope.hospitalId())) {
-            throw new BusinessException("3020", "无权使用该模板");
+            throw new BusinessException(ERR_FORBIDDEN, "无权使用该模板");
         }
         if (template.getItems() == null || template.getItems().isEmpty()) {
-            throw new BusinessException("A0401", "模板药品明细为空，无法开方");
+            throw new BusinessException(ERR_BUSINESS_CONFLICT, "模板药品明细为空，无法开方");
         }
 
         // 2. 模板明细 → 处方明细
@@ -320,6 +339,7 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
      *
      * @param item 模板药品项（含天数/数量/用量/频次）
      * @param drug 药品（取 specification 解析单盒数量）
+     * @throws BusinessException 数量不足时抛 ERR_BUSINESS_CONFLICT
      */
     private void assertQuantitySufficient(SaveTemplateRequest.ItemDTO item, Drug drug) {
         if (item.getDays() == null || item.getDays() <= 0
@@ -335,7 +355,7 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         double needed = item.getDays() * frequencyValue * dosageValue;
         double dispensed = item.getQuantity() * specCount;
         if (needed > dispensed) {
-            throw new BusinessException("A0401",
+            throw new BusinessException(ERR_BUSINESS_CONFLICT,
                     String.format("药品[%s]数量不足：天数×频次×用量=%.2f，需 ≤ 数量×规格=%.2f（%d×%d）",
                             drug.getName(), needed, dispensed, item.getQuantity(), specCount));
         }

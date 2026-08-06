@@ -11,7 +11,7 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * 处方提交请求体（系分 §5.6.1）。
+ * 处方提交请求体。
  */
 @Data
 @Schema(description = "处方提交请求")

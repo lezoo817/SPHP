@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 /**
- * 审核处方请求（系分 §5.6.5）。
+ * 审核处方请求。
  */
 @Data
 @Schema(description = "审核处方请求")
