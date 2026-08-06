@@ -1,7 +1,7 @@
 package com.sphp.admin.common;
 
 /**
- * 当前登录用户的数据权限范围（系分 §7.2）。
+ * 当前登录用户的数据权限范围。
  *
  * <p>由 {@link CurrentUserService#getCurrentDataScope()} 解析，Service 层据此显式拼接过滤条件：
  * <ul>

@@ -7,6 +7,8 @@ import com.sphp.admin.auth.entity.BUser;
 import com.sphp.admin.auth.entity.Doctor;
 import com.sphp.admin.auth.mapper.BUserMapper;
 import com.sphp.admin.auth.mapper.DoctorMapper;
+import com.sphp.admin.common.enums.BRoleEnum;
+import com.sphp.shared.common.enums.ErrorCodeEnum;
 import com.sphp.shared.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -14,7 +16,7 @@ import org.springframework.stereotype.Service;
 /**
  * 当前登录用户上下文服务。
  *
- * <p>双通道鉴权：Agent 调用经 {@link UserContextInterceptor} 按 X-User-Id 建立上下文后，
+ * <p><b>双通道鉴权：</b>Agent 调用经 {@link UserContextInterceptor} 按 X-User-Id 建立上下文后，
  * 优先读取 {@link UserContextHolder}；B 端 Web 沿用 Sa-Token，Service 层通过 {@link StpUtil}
  * 取当前登录 b_user。管理员接口统一要求 ADMIN 角色，并以 ADMIN 所属 {@code hospital_id} 作为数据隔离范围。
  */
@@ -22,17 +24,20 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class CurrentUserService {
 
-    /** ADMIN 角色常量 */
-    public static final String ROLE_ADMIN = "ADMIN";
+    /** 无操作权限业务码（仅管理员可访问） */
+    private static final String ERR_FORBIDDEN = "A0443";
 
     private final BUserMapper bUserMapper;
     private final DoctorMapper doctorMapper;
 
     /**
-     * 获取当前登录用户（未登录 / Token 无效 / 用户不存在或已软删均抛 A0301）。
+     * 获取当前登录用户（未登录 / Token 无效 / 用户不存在或已软删均抛 UNAUTHORIZED）。
      *
-     * <p>双通道：Agent 调用（X-User-Id 已由拦截器写入 {@link UserContextHolder}）优先取线程上下文；
+     * <p><b>双通道：</b>Agent 调用（X-User-Id 已由拦截器写入 {@link UserContextHolder}）优先取线程上下文；
      * 否则回落 Sa-Token Bearer 会话。
+     *
+     * @return 当前登录的 b_user 实体
+     * @throws BusinessException UNAUTHORIZED(A0301)：Token 无效 / 已过期 / 用户不存在或已停用
      */
     public BUser getCurrentUser() {
         UserContext context = UserContextHolder.getContext();
@@ -43,11 +48,11 @@ public class CurrentUserService {
         try {
             userId = StpUtil.getLoginIdAsLong();
         } catch (NotLoginException e) {
-            throw new BusinessException("A0301", "Token无效或已过期");
+            throw new BusinessException(ErrorCodeEnum.UNAUTHORIZED, "Token无效或已过期");
         }
         BUser user = bUserMapper.selectById(userId);
         if (user == null || user.getDeletedAt() != null) {
-            throw new BusinessException("A0301", "用户不存在或已停用");
+            throw new BusinessException(ErrorCodeEnum.UNAUTHORIZED, "用户不存在或已停用");
         }
         return user;
     }
@@ -56,11 +61,14 @@ public class CurrentUserService {
      * 获取当前登录管理员所属医院 ID。
      *
      * <p>要求当前用户角色为 ADMIN，否则抛 A0443（管理员接口权限校验）。
+     *
+     * @return 当前登录 ADMIN 所属医院 ID
+     * @throws BusinessException A0443：当前用户非 ADMIN 角色
      */
     public Long getCurrentHospitalId() {
         BUser user = getCurrentUser();
-        if (!ROLE_ADMIN.equals(user.getRole())) {
-            throw new BusinessException("A0443", "无操作权限，仅管理员可访问");
+        if (!BRoleEnum.ADMIN.equalsCode(user.getRole())) {
+            throw new BusinessException(ERR_FORBIDDEN, "无操作权限，仅管理员可访问");
         }
         return user.getHospitalId();
     }
@@ -68,7 +76,7 @@ public class CurrentUserService {
     /**
      * 按账号校验是否已存在有效用户（用于账号唯一性检查）。
      *
-     * @param account    登录账号
+     * @param account       登录账号
      * @param excludeUserId 需排除的用户 ID（编辑场景传自身，新增场景传 null）
      * @return 是否存在
      */
@@ -80,7 +88,7 @@ public class CurrentUserService {
     }
 
     /**
-     * 获取当前登录用户的数据权限范围（系分 §7.2，三角色通用）。
+     * 获取当前登录用户的数据权限范围（三角色通用）。
      *
      * <p>排班管理等非纯管理员接口使用本方法：ADMIN 仅按 hospital_id 过滤；
      * DEPT_HEAD 经 doctor.dept_id 取管辖科室；DOCTOR 仅本人（doctor_id）。
@@ -88,7 +96,7 @@ public class CurrentUserService {
      * @return 数据权限范围；doctor_id 为 null（如 ADMIN）时 deptId 为 null
      */
     public DataScope getCurrentDataScope() {
-        // Agent 通道：deptId 已由拦截器补全，直接转换（§8.2）
+        // Agent 通道：deptId 已由拦截器补全，直接转换
         UserContext context = UserContextHolder.getContext();
         if (context != null) {
             return context.toDataScope();
