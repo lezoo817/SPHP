@@ -109,7 +109,7 @@ public class RegisteringServiceImpl implements RegisteringService {
                     HttpStatus.CONFLICT, "当前时段号源已约满");
         }
         try {
-            OffsetDateTime now = OffsetDateTime.now();
+            OffsetDateTime now = OffsetDateTime.now(BUSINESS_ZONE_ID);
             // 锁定一个快照
             Long snapshotId = dataMapper.registeringLockOneSnapshot(slot.slotId(), patientId, now);
             // 没有锁定到快照
@@ -117,7 +117,8 @@ public class RegisteringServiceImpl implements RegisteringService {
                 throw new CAuthException(HIGH_CONCURRENCY_INVENTORY_CONFLICT,
                         HttpStatus.CONFLICT, "当前时段号源已约满");
             }
-            OffsetDateTime expireAt = now.plusSeconds(Math.max(registrationProperties.getPaymentTimeout(), 1));
+            // 支付不得超过时段结束；常规 900 秒窗口与结束时间取较早值。
+            OffsetDateTime expireAt = registeringResolvePaymentExpireAt(slot, now);
             RegisteringAppointment appointment = new RegisteringAppointment();
             appointment.setSlotSnapshotId(snapshotId);
             appointment.setPatientId(patientId);
@@ -140,7 +141,7 @@ public class RegisteringServiceImpl implements RegisteringService {
             // 候补人通过正常锁号成功后结束其候补状态，普通挂号不会命中任何记录。
             waitlistPromotionService.registeringFulfillNotifiedWaitlist(userId, patientId, slot.slotId(), now);
             // 事务提交后由监听器投递延迟消息，支付完成前自动触发超时检查。
-            eventPublisher.publishEvent(RegisteringAppointmentLockedEvent.registeringOf(appointment.getId(), userId));
+            eventPublisher.publishEvent(RegisteringAppointmentLockedEvent.registeringOf(appointment.getId(), userId, expireAt));
             // 锁号成功后异步生成待支付通知，通知写入不会阻塞订单主事务。
             notificationEventProducer.publishNotification(
                     "APPOINTMENT_LOCKED",
@@ -236,7 +237,7 @@ public class RegisteringServiceImpl implements RegisteringService {
                                                                         RegisteringAppointmentCancelRequest request) {
         // 可访问的挂号订单
         RegisteringAppointmentRecord record = registeringRequireOwnedAppointment(appointmentId);
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(BUSINESS_ZONE_ID);
         if (UNPAID.name().equals(record.status())) {
             // 条件更新确保支付、超时消费者和主动取消只有一个请求能完成状态流转。
             if (dataMapper.registeringCancelUnpaidAppointment(appointmentId, now) != 1) {
@@ -336,7 +337,7 @@ public class RegisteringServiceImpl implements RegisteringService {
         Long patientId = registeringResolveAccessiblePatient(userId, request.getPatientId());
         // 锁定时段行后再校验余量和队列号，保证同一时段候补号连续且不重复。
         RegisteringSlotLockRecord slot = dataMapper.lockRegisteringWaitlistSlot(request.getSlotId());
-        // 校验时段是否属于可预约的已发布排班且未开始
+        // 校验时段是否属于可预约的已发布排班且尚未结束。
         registeringValidateSlot(slot);
         if (dataMapper.countRegisteringAvailableSnapshots(request.getSlotId()) > 0) {
             throw new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, "当前时段仍可预约，无需候补");
@@ -383,7 +384,7 @@ public class RegisteringServiceImpl implements RegisteringService {
     public RegisteringPaymentSuccessVO registeringSimulatePayment(Long paymentId, RegisteringPaymentSimulateRequest request) {
         // 可访问的支付单
         RegisteringPaymentRecord payment = registeringRequireOwnedPayment(paymentId);
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(BUSINESS_ZONE_ID);
         if (payment.expireAt().isBefore(now) || payment.expireAt().isEqual(now)) {
             // 即使延迟消息尚未投递，支付入口也必须阻止过期订单继续付款。
             registeringExpirePayment(payment, now);
@@ -601,7 +602,7 @@ public class RegisteringServiceImpl implements RegisteringService {
     }
 
     /**
-     * 校验时段是否属于可预约的已发布排班且未开始。
+     * 校验时段是否属于可预约的已发布排班且尚未结束。
      *
      * @param slot 时段锁号记录
      * @throws CAuthException 时段不存在、医院链路不匹配或不可预约时抛出
@@ -610,14 +611,29 @@ public class RegisteringServiceImpl implements RegisteringService {
         if (slot == null) {
             throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "号源时段不存在或已停用");
         }
-        OffsetDateTime startAt = slot.scheduleDate().atTime(slot.startTime())
+        OffsetDateTime endAt = slot.scheduleDate().atTime(slot.endTime())
                 .atZone(BUSINESS_ZONE_ID).toOffsetDateTime();
-        // 时段不存在、医院链路不匹配或不可预约
+        // 只要尚未到时段结束时间即可挂号，开始时间不再作为预约截止边界。
         if (!"PUBLISHED".equals(slot.scheduleStatus()) || !"ENABLED".equals(slot.doctorStatus())
-                || !startAt.isAfter(OffsetDateTime.now())) {
+                || !endAt.isAfter(OffsetDateTime.now(BUSINESS_ZONE_ID))) {
             throw new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID,
                     HttpStatus.CONFLICT, "当前时段不可预约");
         }
+    }
+
+    /**
+     * 计算挂号支付单的实际截止时间。
+     *
+     * @param slot 已校验的时段信息
+     * @param now 当前业务时间
+     * @return 常规支付窗口与时段结束时间中较早的时刻
+     */
+    private OffsetDateTime registeringResolvePaymentExpireAt(RegisteringSlotLockRecord slot, OffsetDateTime now) {
+        OffsetDateTime timeoutAt = now.plusSeconds(Math.max(registrationProperties.getPaymentTimeout(), 1));
+        OffsetDateTime endAt = slot.scheduleDate().atTime(slot.endTime())
+                .atZone(BUSINESS_ZONE_ID).toOffsetDateTime();
+        // 已由时段校验保证结束时间在未来；此处保留最早截止点供支付与超时消息共同使用。
+        return endAt.isBefore(timeoutAt) ? endAt : timeoutAt;
     }
 
     /**

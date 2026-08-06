@@ -169,7 +169,13 @@
         WHERE user_id = #{userId} AND patient_id = #{patientId} AND slot_id = #{slotId}
           AND status = 'NOTIFIED' AND deleted_at IS NULL
     </update>
-    <update id="registeringMarkPaymentSuccess">UPDATE payment_order SET status='SUCCESS', paid_at=#{now}, updated_at=#{now} WHERE id=#{paymentId} AND status='PENDING'</update>
+    <update id="registeringMarkPaymentSuccess">
+        UPDATE payment_order
+        SET status='SUCCESS', paid_at=#{now}, updated_at=#{now}
+        WHERE id=#{paymentId}
+          AND status='PENDING'
+          AND expire_at &gt; #{now}
+    </update>
     <update id="registeringMarkAppointmentPaid">UPDATE appointment SET status='PAID', paid_at=#{now}, updated_at=#{now} WHERE id=#{appointmentId} AND status='UNPAID' AND deleted_at IS NULL</update>
     <update id="registeringMarkSnapshotSold">UPDATE slot_snapshot SET status='SOLD', sold_at=#{now}, updated_at=#{now} WHERE id=#{snapshotId} AND status='LOCKED' AND deleted_at IS NULL</update>
 </mapper>
