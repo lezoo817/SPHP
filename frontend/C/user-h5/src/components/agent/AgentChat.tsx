@@ -43,6 +43,7 @@ export function AgentChat({ context }: { context?: AgentChatContext }) {
     send,
     confirm,
     cancel,
+    retry,
     reset,
     loadSession,
   } = useAgentStream();
@@ -224,7 +225,7 @@ export function AgentChat({ context }: { context?: AgentChatContext }) {
           {errorMessage && (
             <div className="agent-chat__error">
               <span>{errorMessage}</span>
-              <button type="button" className="agent-chat__retry" onClick={() => input && handleSubmit}>
+              <button type="button" className="agent-chat__retry" onClick={retry}>
                 重试
               </button>
             </div>

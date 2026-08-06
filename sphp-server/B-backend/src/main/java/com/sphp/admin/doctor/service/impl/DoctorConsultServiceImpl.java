@@ -103,6 +103,9 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
             return PageResult.of(0, List.of(), page, size);
         }
 
+        // 自动补建缺失的 consult_record：C端挂号成功后未创建问诊记录时，查询前幂等补齐
+        ensureConsultRecordsExist(doctorIds);
+
         // 对于 ADMIN/DEPT_HEAD，deptId 可传参过滤；DOCTOR 只看本人
         Long queryDeptId = (ROLE_ADMIN.equals(scope.role()) && deptId != null) ? deptId
                 : (ROLE_DEPT_HEAD.equals(scope.role()) ? scope.deptId() : null);
@@ -405,6 +408,17 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
             }
         }
         return record;
+    }
+
+    /**
+     * 自动补建缺失的 consult_record（幂等）。
+     * C端挂号成功后未创建 consult_record，B端查询队列前补齐，对双方无侵入。
+     */
+    private void ensureConsultRecordsExist(List<Long> doctorIds) {
+        int inserted = consultRecordMapper.batchCreateIfMissing(doctorIds);
+        if (inserted > 0) {
+            log.info("自动补建 consult_record {} 条", inserted);
+        }
     }
 
     /**

@@ -5,8 +5,7 @@
  */
 import { Tag, Button, Modal, message, Switch, Select } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import { ProTable, ProForm, ProFormText, ProFormSelect } from '@ant-design/pro-components';
-import { useModel } from '@umijs/max';
+import { ProTable } from '@ant-design/pro-components';
 import { useRef, useState } from 'react';
 import type { ActionType, ProColumns, ProFormInstance } from '@ant-design/pro-components';
 import {
@@ -14,15 +13,16 @@ import {
   createDepartment,
   updateDepartment,
   updateDepartmentStatus,
-  getDoctors,
 } from '@/services/admin';
+import { useHasRole } from '@/hooks/useCurrentUser';
+import { getErrorMessage } from '@/utils/error';
+import DepartmentFormModal from './DepartmentFormModal';
 
 export default function DepartmentList() {
-  const { initialState } = useModel('@@initialState');
-  const isAdmin = initialState?.currentUser?.roles?.includes('ADMIN') ?? false;
+  const isAdmin = useHasRole('ADMIN');
   const actionRef = useRef<ActionType>();
   const formRef = useRef<ProFormInstance>();
-  const searchParamsRef = useRef<Record<string, any>>({});
+  const searchParamsRef = useRef<Partial<API.DepartmentListParams>>({});
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingDept, setEditingDept] = useState<API.Department | null>(null);
@@ -53,8 +53,8 @@ export default function DepartmentList() {
       }
       setModalOpen(false);
       actionRef.current?.reload();
-    } catch (err: any) {
-      message.error(err?.message || '操作失败，请重试');
+    } catch (err: unknown) {
+      message.error(getErrorMessage(err, '操作失败，请重试'));
     } finally {
       setSubmitting(false);
     }
@@ -77,24 +77,11 @@ export default function DepartmentList() {
           await updateDepartmentStatus(record.id, newStatus);
           message.success(`${actionLabel}成功`);
           actionRef.current?.reload();
-        } catch (err: any) {
-          message.error(err?.message || `${actionLabel}失败`);
+        } catch (err: unknown) {
+          message.error(getErrorMessage(err, `${actionLabel}失败`));
         }
       },
     });
-  };
-
-  /** 获取医生列表（用于科室主任选择） */
-  const fetchDoctors = async (name?: string, deptId?: number) => {
-    try {
-      const res = await getDoctors({ name, deptId, page: 1, size: 100 });
-      return (res.list ?? []).map((doc) => ({
-        label: `${doc.name}（${doc.title}）`,
-        value: doc.id,
-      }));
-    } catch {
-      return [];
-    }
   };
 
   const columns: ProColumns<API.Department>[] = [
@@ -193,29 +180,26 @@ export default function DepartmentList() {
               total: res.total,
               success: true,
             };
-          } catch (err: any) {
+          } catch (err: unknown) {
             // 查询失败时清空列表，避免残留上一次成功数据；success 置 true 以显示空表格
-            message.error(err?.message || '查询失败，请重试');
+            message.error(getErrorMessage(err, '查询失败，请重试'));
             return { data: [], total: 0, success: true };
           }
         }}
         search={{
           labelWidth: 'auto',
           defaultCollapsed: true,
-          onReset: () => {
-            searchParamsRef.current = {};
-          },
         }}
         beforeSearchSubmit={(values) => {
           // 在 request 之前保存查询参数，供分页时使用
-          const used: Record<string, any> = {};
+          const used: Partial<API.DepartmentListParams> = {};
           if (values.name) used.name = values.name;
           if (values.headDoctorName) used.headDoctorName = values.headDoctorName;
           if (values.status) used.status = values.status;
           searchParamsRef.current = used;
 
-          // 清空未使用的查询字段
-          const cleared: Record<string, undefined> = {};
+          // 清空未使用的查询字段，避免旧值残留
+          const cleared: Partial<API.DepartmentListParams> = {};
           if (!values.name) cleared.name = undefined;
           if (!values.headDoctorName) cleared.headDoctorName = undefined;
           if (!values.status) cleared.status = undefined;
@@ -239,59 +223,13 @@ export default function DepartmentList() {
         pagination={{ pageSize: 5 }}
       />
 
-      <Modal
-        title={editingDept ? '编辑科室' : '新增科室'}
+      <DepartmentFormModal
         open={modalOpen}
-        footer={null}
-        destroyOnClose
+        editingDept={editingDept}
+        submitting={submitting}
         onCancel={() => setModalOpen(false)}
-        width={520}
-      >
-        <ProForm<API.UpsertDepartmentReq>
-          initialValues={
-            editingDept
-              ? {
-                  name: editingDept.name,
-                  headDoctorId: editingDept.headDoctorId,
-                  location: editingDept.location,
-                }
-              : undefined
-          }
-          onFinish={handleSubmit}
-          submitter={{
-            submitButtonProps: { loading: submitting },
-          }}
-        >
-          <ProFormText
-            name="name"
-            label="科室名称"
-            rules={[
-              { required: true, message: '请输入科室名称' },
-              { max: 100, message: '最多 100 个字符' },
-            ]}
-          />
-          <ProFormSelect
-            name="headDoctorId"
-            label="科室主任"
-            placeholder={
-              editingDept
-                ? '请选择科室主任（可选）'
-                : '新增科室暂无负责人可选，创建后可在编辑中设置'
-            }
-            showSearch
-            // 新增时科室尚不存在，任何医生都还不属于本科室（后端会拒绝跨科负责人），
-            // 禁用选择器并提示先创建科室后到编辑中设置负责人，避免误选其它科医生
-            disabled={!editingDept}
-            request={(input) => fetchDoctors(input?.key ?? '', editingDept?.id)}
-            debounceTime={300}
-          />
-          <ProFormText
-            name="location"
-            label="科室位置"
-            rules={[{ max: 500, message: '最多 500 个字符' }]}
-          />
-        </ProForm>
-      </Modal>
+        onSubmit={handleSubmit}
+      />
     </>
   );
 }

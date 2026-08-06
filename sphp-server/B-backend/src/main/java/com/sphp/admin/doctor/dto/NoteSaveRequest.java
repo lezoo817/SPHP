@@ -13,7 +13,7 @@ import lombok.Data;
 public class NoteSaveRequest {
 
     @NotBlank(message = "病历内容不能为空")
-    @Size(max = 10000, message = "病历内容不能超过10000字符")
-    @Schema(description = "病历文本", maxLength = 10000)
+    @Size(max = 65535, message = "病历内容不能超过65535字符")
+    @Schema(description = "病历文本（结构化 JSON，含主诉/现病史/查体/诊断/治疗方案）", maxLength = 65535)
     private String doctorNote;
 }

@@ -1,8 +1,7 @@
 /**
  * B 端 AI 助手全屏会话页。
  *
- * 对应系分：B 端前端系分 V2.0 §9 AI 辅助面板（全屏形态）。
- * 嵌入式形态见接诊台 ConsultDetail 右侧 AiPanel。
+ * 全屏形态；嵌入式形态见接诊台 ConsultDetail 右侧 AiPanel。
  */
 import { useLocation } from '@umijs/max';
 import { Card } from 'antd';

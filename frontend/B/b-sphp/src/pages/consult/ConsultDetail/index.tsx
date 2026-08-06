@@ -1,8 +1,6 @@
 /**
  * 接诊台详情页（三栏布局）。
  *
- * 对应系分：B 端前端系分 V2.0 §2（三栏布局）、§9（AI 辅助面板位于右侧）。
- *
  * 三栏布局：
  * - 左栏：患者基本信息 + 接诊操作（开始/结束接诊）
  * - 中栏：问诊消息区 + 病历记录编辑
@@ -11,12 +9,12 @@
  * 当前为骨架实现，核心业务（接诊/开方/消息）待后续迭代补全；
  * 右栏 AiPanel 已可独立工作，按 consultationId 维护独立会话。
  */
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { useParams } from '@umijs/max';
 import { Card, Col, Empty, Row, Typography } from 'antd';
 import { AiPanel } from '@/components/agent/AiPanel';
 import { buildAgentContext } from '@/models/agent';
-import { useModel } from '@umijs/max';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import type { AgentChatContext } from '@/typings/agent';
 
 const { Text, Title } = Typography;
@@ -24,20 +22,18 @@ const { Text, Title } = Typography;
 export default function ConsultDetailPage() {
   const params = useParams();
   const consultId = Number(params.id);
-  const { initialState } = useModel('@@initialState');
-  const currentUser = initialState?.currentUser;
-  const [context, setContext] = useState<AgentChatContext>({ page: 'consultation' });
+  const currentUser = useCurrentUser();
 
-  // 构造 AI 辅助面板上下文（携带 consultation_id / patient_id / hospital_id / doctor_id）
-  useEffect(() => {
-    setContext(
+  // 构造 AI 辅助面板上下文（携带 consultation_id / patient_id / hospital_id / doctor_id），URL/用户变化时派生
+  const context: AgentChatContext = useMemo(
+    () =>
       buildAgentContext(`/consult/detail/${consultId}`, {
         consultationId: consultId,
         hospitalId: currentUser?.hospitalId,
         doctorId: currentUser?.doctorId,
       }),
-    );
-  }, [consultId, currentUser]);
+    [consultId, currentUser],
+  );
 
   return (
     <Row gutter={16} style={{ height: 'calc(100vh - 140px)', margin: 0 }}>
@@ -64,7 +60,7 @@ export default function ConsultDetailPage() {
             病历记录
           </Title>
           <Text type="secondary">
-            点击右侧 AI 辅助面板"生成病历草稿"可自动填充病历内容。
+            点击右侧 AI 辅助面板“生成病历草稿”可自动填充病历内容。
           </Text>
         </Card>
       </Col>

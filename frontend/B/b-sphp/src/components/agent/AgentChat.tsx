@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeftOutlined,
   ClockCircleOutlined,
@@ -8,14 +8,14 @@ import {
   SendOutlined,
   DeleteOutlined,
 } from '@ant-design/icons';
-import { useAgentStream } from '../../hooks/useAgentStream';
-import { getSessions, deleteSession } from '../../services/agent';
-import { AGENT_CONTENT_MAX, AGENT_QUICK_PROMPTS, AGENT_WELCOME } from '../../constants/agent';
+import { useAgentStream } from '@/hooks/useAgentStream';
+import { getSessions, deleteSession } from '@/services/agent';
+import { AGENT_CONTENT_MAX, AGENT_QUICK_PROMPTS, AGENT_WELCOME } from '@/constants/agent';
 import { AgentMessageBubble } from './AgentMessage';
 import { AgentThoughtPanel } from './AgentThought';
 import { AgentToolCardView } from './AgentToolCard';
 import { AgentConfirmCardView } from './AgentConfirmCard';
-import type { AgentChatContext, AgentConfirmCard, AgentSession } from '../../typings/agent';
+import type { AgentChatContext, AgentConfirmCard, AgentSession } from '@/typings/agent';
 import './agent.css';
 
 /**

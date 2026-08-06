@@ -3,10 +3,12 @@
  * - 日期范围筛选
  * - Statistic 卡片展示：总挂号量、完成率、总收入、处方量、平均等待时间
  */
-import { Card, Row, Col, Statistic, message, DatePicker, Space } from 'antd';
+import { Card, Row, Col, Statistic, DatePicker, Space } from 'antd';
 import { AppstoreOutlined, CheckCircleOutlined, DollarOutlined, FileTextOutlined, ClockCircleOutlined } from '@ant-design/icons';
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { getStatisticsOverview } from '@/services/admin';
+import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -22,31 +24,21 @@ function formatPercent(rate: number): string {
 }
 
 export default function Overview() {
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<API.StatisticsOverview | null>(null);
   const [dates, setDates] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
     dayjs().startOf('month'),
     dayjs(),
   ]);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await getStatisticsOverview({
-        startDate: dates[0].format('YYYY-MM-DD'),
-        endDate: dates[1].format('YYYY-MM-DD'),
-      });
-      setData(res);
-    } catch (err: any) {
-      message.error(err?.message || '查询运营总览失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [dates]);
+  /** 统计周期参数：日期变化时 queryKey 变化，自动重新请求（缓存 5min） */
+  const startDate = dates[0].format('YYYY-MM-DD');
+  const endDate = dates[1].format('YYYY-MM-DD');
+  const { data, isFetching } = useQuery({
+    queryKey: QUERY_KEYS.statisticsOverview(startDate, endDate),
+    queryFn: () => getStatisticsOverview({ startDate, endDate }),
+    staleTime: STALE_TIME.statisticsOverview,
+  });
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const loading = isFetching;
 
   return (
     <div>

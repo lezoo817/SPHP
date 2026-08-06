@@ -6,10 +6,13 @@
  */
 import { Button, Tag, message, DatePicker, Select, Modal } from 'antd';
 import { ProTable } from '@ant-design/pro-components';
-import { useModel } from '@umijs/max';
-import { useEffect, useRef, useState } from 'react';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
+import { useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { getLockedSlots, forceReleaseSlot, getDepartments } from '@/services/admin';
+import { useHasRole } from '@/hooks/useCurrentUser';
+import { getErrorMessage } from '@/utils/error';
+import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 import useCountdown from '@/hooks/useCountdown';
 import dayjs from 'dayjs';
 
@@ -34,24 +37,24 @@ function RemainCountdown({ expireAt }: { expireAt?: string }) {
 }
 
 export default function LockedSlotsBoard() {
-  const { initialState } = useModel('@@initialState');
-  const isAdmin = initialState?.currentUser?.roles?.includes('ADMIN') ?? false;
+  const isAdmin = useHasRole('ADMIN');
   const actionRef = useRef<ActionType>();
 
   const [query, setQuery] = useState<{ date: string; deptId?: number }>({
     date: dayjs().format('YYYY-MM-DD'),
   });
-  const [deptOptions, setDeptOptions] = useState<{ label: string; value: number }[]>([]);
 
-  /** 科室筛选仅 ADMIN 展示，加载科室选项 */
-  useEffect(() => {
-    if (!isAdmin) return;
-    getDepartments({ page: 1, size: 200 })
-      .then((res) =>
-        setDeptOptions((res.list ?? []).map((d) => ({ label: d.name, value: d.id }))),
-      )
-      .catch(() => setDeptOptions([]));
-  }, [isAdmin]);
+  /** 科室选项：React Query 缓存，仅 ADMIN 拉取（筛选按钮仅 ADMIN 展示） */
+  const { data: deptResult } = useQuery({
+    queryKey: QUERY_KEYS.departments,
+    queryFn: () => getDepartments({ page: 1, size: 200 }),
+    enabled: isAdmin,
+    staleTime: STALE_TIME.departments,
+  });
+  const deptOptions = useMemo(
+    () => (deptResult?.list ?? []).map((d) => ({ label: d.name, value: d.id })),
+    [deptResult],
+  );
 
   /** 手动释放锁定号源（仅 ADMIN） */
   const handleForceRelease = (record: API.LockedSlot) => {
@@ -66,8 +69,8 @@ export default function LockedSlotsBoard() {
           await forceReleaseSlot(record.slotId);
           message.success('号源已释放');
           actionRef.current?.reload();
-        } catch (err: any) {
-          message.error(err?.message || '释放失败');
+        } catch (err: unknown) {
+          message.error(getErrorMessage(err, '释放失败'));
         }
       },
     });
@@ -136,8 +139,8 @@ export default function LockedSlotsBoard() {
             size: pageSize,
           });
           return { data: res.list, total: res.total, success: true };
-        } catch (err: any) {
-          message.error(err?.message || '查询失败，请重试');
+        } catch (err: unknown) {
+          message.error(getErrorMessage(err, '查询失败，请重试'));
           return { data: [], total: 0, success: true };
         }
       }}

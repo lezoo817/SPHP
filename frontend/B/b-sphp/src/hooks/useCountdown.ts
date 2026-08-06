@@ -8,11 +8,11 @@ import { useEffect, useState } from 'react';
  */
 export default function useCountdown(targetMs: number | null): number {
   const [remainMs, setRemainMs] = useState<number>(() =>
-    targetMs == null ? 0 : Math.max(0, targetMs - Date.now()),
+    targetMs === null ? 0 : Math.max(0, targetMs - Date.now()),
   );
 
   useEffect(() => {
-    if (targetMs == null) {
+    if (targetMs === null) {
       setRemainMs(0);
       return undefined;
     }

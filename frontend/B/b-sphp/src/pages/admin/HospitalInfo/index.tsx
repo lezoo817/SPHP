@@ -1,7 +1,7 @@
 /**
  * 医院信息页
  * - ADMIN 角色可查看并编辑医院信息
- * - 使用 Card + Descriptions 展示，Modal 编辑
+ * - 数据通过 React Query 拉取；编辑成功后失效缓存，useQuery 自动拉取最新数据（不闪骨架屏）
  */
 import {
   Card,
@@ -15,9 +15,12 @@ import {
 } from 'antd';
 import { EditOutlined } from '@ant-design/icons';
 import { ProForm, ProFormText, ProFormSelect } from '@ant-design/pro-components';
-import { useModel } from '@umijs/max';
-import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { getHospitalInfo, updateHospital } from '@/services/admin';
+import { useHasRole } from '@/hooks/useCurrentUser';
+import { getErrorMessage } from '@/utils/error';
+import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 
 /** 医院等级选项 */
 const HOSPITAL_LEVELS = [
@@ -34,50 +37,37 @@ const HOSPITAL_LEVELS = [
 ];
 
 export default function HospitalInfo() {
-  const { initialState } = useModel('@@initialState');
-  const isAdmin = initialState?.currentUser?.roles?.includes('ADMIN') ?? false;
-
-  const [hospital, setHospital] = useState<API.HospitalInfo | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const isAdmin = useHasRole('ADMIN');
+  const queryClient = useQueryClient();
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
 
-  /** 加载医院信息 */
-  const loadHospital = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getHospitalInfo();
-      setHospital(data);
-    } catch (err: any) {
-      setError(err?.message || '加载医院信息失败');
-    } finally {
-      setLoading(false);
-    }
-  };
+  /** 医院信息查询：首次加载显示骨架屏，缓存内重复访问/刷新不闪屏 */
+  const {
+    data: hospital,
+    isPending: loading,
+    error: loadError,
+    refetch,
+  } = useQuery({
+    queryKey: QUERY_KEYS.hospital,
+    queryFn: getHospitalInfo,
+    staleTime: STALE_TIME.hospital,
+  });
 
-  useEffect(() => {
-    loadHospital();
-  }, []);
-
-  /** 提交编辑 */
-  const handleEditSubmit = async (values: API.UpdateHospitalReq) => {
-    if (!hospital) return;
-    setSubmitting(true);
-    try {
-      await updateHospital(hospital.id, values);
+  /** 编辑提交：成功后失效缓存，useQuery 自动拉取最新数据 */
+  const { mutate: submitEdit, isPending: submitting } = useMutation({
+    mutationFn: (values: API.UpdateHospitalReq) => {
+      if (!hospital) throw new Error('医院信息不存在');
+      return updateHospital(hospital.id, values);
+    },
+    onSuccess: () => {
       message.success('医院信息更新成功');
       setEditModalOpen(false);
-      // 直接重新拉取最新数据，避免 loadHospital 的 loading 骨架屏闪烁
-      const newData = await getHospitalInfo();
-      setHospital(newData);
-    } catch (err: any) {
-      message.error(err?.message || '更新失败，请重试');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.hospital });
+    },
+    onError: (err: unknown) => {
+      message.error(getErrorMessage(err, '更新失败，请重试'));
+    },
+  });
 
   /** 状态标签 */
   const statusTag = (status?: string) => {
@@ -85,6 +75,11 @@ export default function HospitalInfo() {
     if (status === 'DISABLED') return <Tag color="red">停用</Tag>;
     return <Tag>未知</Tag>;
   };
+
+  /** 加载失败信息（Error 对象转可读文本） */
+  const errorMessage = loadError
+    ? getErrorMessage(loadError, '加载医院信息失败')
+    : null;
 
   if (loading) {
     return (
@@ -94,16 +89,16 @@ export default function HospitalInfo() {
     );
   }
 
-  if (error) {
+  if (errorMessage) {
     return (
       <Card title="医院信息">
         <Alert
           message="加载失败"
-          description={error}
+          description={errorMessage}
           type="error"
           showIcon
           action={
-            <Button size="small" onClick={loadHospital}>
+            <Button size="small" onClick={() => refetch()}>
               重试
             </Button>
           }
@@ -170,7 +165,7 @@ export default function HospitalInfo() {
             address: hospital.address,
             contact: hospital.contact,
           }}
-          onFinish={handleEditSubmit}
+          onFinish={(values) => submitEdit(values)}
           submitter={{
             submitButtonProps: { loading: submitting },
             resetButtonProps: { style: { display: 'none' } },

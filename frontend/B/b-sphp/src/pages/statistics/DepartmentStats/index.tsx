@@ -3,11 +3,14 @@
  * - 日期范围筛选 + 可选科室过滤
  * - ProTable 展示各科室挂号量/接诊量/处方量/号源利用率
  */
-import { Tag, message, DatePicker, Space, Select } from 'antd';
+import { Tag, message, DatePicker, Select } from 'antd';
 import { ProTable } from '@ant-design/pro-components';
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
+import { useQuery } from '@tanstack/react-query';
 import { getDepartmentStats, getDepartments } from '@/services/admin';
+import { getErrorMessage } from '@/utils/error';
+import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -24,16 +27,17 @@ export default function DepartmentStats() {
     dayjs(),
   ]);
   const [deptId, setDeptId] = useState<number | undefined>(undefined);
-  const [deptOptions, setDeptOptions] = useState<{ label: string; value: number }[]>([]);
 
-  /** 加载科室选项 */
-  useEffect(() => {
-    getDepartments({ page: 1, size: 200 })
-      .then((res) =>
-        setDeptOptions((res.list ?? []).map((d) => ({ label: d.name, value: d.id }))),
-      )
-      .catch(() => setDeptOptions([]));
-  }, []);
+  /** 科室选项（React Query 缓存 5min） */
+  const { data: deptRes } = useQuery({
+    queryKey: QUERY_KEYS.departments,
+    queryFn: () => getDepartments({ page: 1, size: 200 }),
+    staleTime: STALE_TIME.departments,
+  });
+  const deptOptions = useMemo(
+    () => (deptRes?.list ?? []).map((d) => ({ label: d.name, value: d.id })),
+    [deptRes],
+  );
 
   const columns: ProColumns<API.DepartmentStatItem>[] = [
     {
@@ -74,7 +78,7 @@ export default function DepartmentStats() {
   ];
 
   return (
-    <ProTable<API.DepartmentStatItem, {}>
+    <ProTable<API.DepartmentStatItem>
       actionRef={actionRef}
       rowKey="deptId"
       columns={columns}
@@ -87,8 +91,8 @@ export default function DepartmentStats() {
             deptId,
           });
           return { data: list, total: list.length, success: true };
-        } catch (err: any) {
-          message.error(err?.message || '查询科室统计失败');
+        } catch (err: unknown) {
+          message.error(getErrorMessage(err, '查询科室统计失败'));
           return { data: [], total: 0, success: true };
         }
       }}
