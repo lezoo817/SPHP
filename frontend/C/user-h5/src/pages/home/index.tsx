@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type TouchEvent } from 'react';
+import { useEffect, useRef, useState, type TouchEvent, type UIEvent } from 'react';
 import { BellRing, CalendarPlus, ChevronRight, ClipboardPlus, FileChartColumn, HeartPulse, MapPin, Pill, Plus, Search, Stethoscope, X } from 'lucide-react';
 import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
@@ -30,6 +30,7 @@ export default function HomePage() {
   const [waitlistNotification, setWaitlistNotification] = useState<NotificationItem>();
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const waitlistTimer = useRef<number>();
+  const patientScrollTimer = useRef<number>();
   const swipeStartX = useRef<number>();
   const swipeMoved = useRef(false);
 
@@ -84,6 +85,10 @@ export default function HomePage() {
     waitlistTimer.current = window.setTimeout(() => setWaitlistNotification(undefined), 5000);
     return () => { if (waitlistTimer.current) window.clearTimeout(waitlistTimer.current); };
   }, [waitlistNotification?.id]);
+
+  useEffect(() => () => {
+    if (patientScrollTimer.current) window.clearTimeout(patientScrollTimer.current);
+  }, []);
 
   useEffect(() => {
     // 减弱动态效果偏好下不自动轮换，避免影响阅读与操作。
@@ -153,6 +158,17 @@ export default function HomePage() {
     setSelected(getSelection());
   }
 
+  /** 根据滑动停留的卡片自动切换就诊人，无需额外点击卡片。 */
+  function switchPatientAfterScroll(event: UIEvent<HTMLDivElement>) {
+    const track = event.currentTarget;
+    if (patientScrollTimer.current) window.clearTimeout(patientScrollTimer.current);
+    // 等待滚动吸附结束后再取索引，避免拖动过程频繁切换当前就诊人。
+    patientScrollTimer.current = window.setTimeout(() => {
+      const member = members[Math.round(track.scrollLeft / track.clientWidth)];
+      if (member && member.patientId !== selected.patientId) selectPatient(member.patientId);
+    }, 120);
+  }
+
   const currentHospital = hospitals.find((item) => item.hospitalId === selected.hospitalId);
   const services = [
     { label: '预约挂号', icon: CalendarPlus, action: () => navigate('/home/departments') },
@@ -185,14 +201,13 @@ export default function HomePage() {
       <button className="hospital-switch" type="button" onClick={() => navigate('/home/hospitals')}>当前医院：{currentHospital?.name || '选择医院'} <ChevronRight size={18} /></button>
       <button className="search-bar" type="button" onClick={() => navigate('/home/departments')}><Search size={24} /><span>搜索医生、科室</span></button>
       <section className="patient-carousel" aria-label="切换就诊人">
-        <div className="patient-carousel__track">
+        <div className="patient-carousel__track" onScroll={switchPatientAfterScroll}>
           {members.map((member) => {
             const isCurrent = member.patientId === selected.patientId;
             return <button className={`patient-carousel__card${isCurrent ? ' is-current' : ''}`} key={member.patientId} type="button" onClick={() => selectPatient(member.patientId)} aria-pressed={isCurrent}>
               <span className="patient-carousel__hint">滑动切换就诊人</span>
-              <span className="patient-carousel__eyebrow">{isCurrent ? '当前就诊人' : '就诊人'}{member.isDefault && <em>默认</em>}</span>
-              <b>{member.name}</b>
-              <span>{member.phone || '手机号待完善'}</span>
+              <b className="patient-carousel__name">就诊人：{member.name}{member.isDefault && <em>默认</em>}</b>
+              <span>手机号：{member.phone || '待完善'}</span>
               <small>身份证号：{member.idCardNo || '资料待完善'}</small>
             </button>;
           })}
