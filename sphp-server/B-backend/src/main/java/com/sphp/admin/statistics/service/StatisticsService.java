@@ -7,7 +7,7 @@ import com.sphp.admin.statistics.vo.StatisticsOverviewVO;
 import java.util.List;
 
 /**
- * 统计报表服务接口（系分 §5.9）。
+ * 统计报表服务接口。
  */
 public interface StatisticsService {
 

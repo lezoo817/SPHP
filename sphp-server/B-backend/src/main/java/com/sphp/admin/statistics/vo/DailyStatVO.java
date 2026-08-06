@@ -9,8 +9,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDate;
 
 /**
- * 日统计 VO（系分 §5.9.3）。
- */
+ * 日统计 VO。
 @Data
 @Builder
 @NoArgsConstructor

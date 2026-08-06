@@ -7,8 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 科室统计 VO（系分 §5.9.2）。
- */
+ * 科室统计 VO。
 @Data
 @Builder
 @NoArgsConstructor
