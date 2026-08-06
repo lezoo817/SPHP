@@ -33,6 +33,7 @@ export default function HomePage() {
   const [bannerTransitionEnabled, setBannerTransitionEnabled] = useState(true);
   const waitlistTimer = useRef<number>();
   const patientScrollTimer = useRef<number>();
+  const patientTrackRef = useRef<HTMLDivElement>(null);
   const swipeStartX = useRef<number>();
   const swipeMoved = useRef(false);
 
@@ -91,6 +92,17 @@ export default function HomePage() {
   useEffect(() => () => {
     if (patientScrollTimer.current) window.clearTimeout(patientScrollTimer.current);
   }, []);
+
+  useEffect(() => {
+    const track = patientTrackRef.current;
+    const selectedIndex = members.findIndex((member) => member.patientId === selected.patientId);
+    if (!track || selectedIndex < 0) return undefined;
+    // 轮播容器重建后默认滚动到首卡；按会话已选就诊人恢复停留位置。
+    const frame = window.requestAnimationFrame(() => {
+      track.scrollLeft = track.clientWidth * selectedIndex;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [members, selected.patientId]);
 
   useEffect(() => {
     // 减弱动态效果偏好下不自动轮换，避免影响阅读与操作。
@@ -213,7 +225,7 @@ export default function HomePage() {
       <button className="hospital-switch" type="button" onClick={() => navigate('/home/hospitals')}>当前医院：{currentHospital?.name || '选择医院'} <ChevronRight size={18} /></button>
       <button className="search-bar" type="button" onClick={() => navigate('/home/departments')}><Search size={24} /><span>搜索医生、科室</span></button>
       <section className="patient-carousel" aria-label="切换就诊人">
-        <div className="patient-carousel__track" onScroll={switchPatientAfterScroll}>
+        <div className="patient-carousel__track" ref={patientTrackRef} onScroll={switchPatientAfterScroll}>
           {members.map((member) => {
             const isCurrent = member.patientId === selected.patientId;
             return <button className={`patient-carousel__card${isCurrent ? ' is-current' : ''}`} key={member.patientId} type="button" onClick={() => selectPatient(member.patientId)} aria-pressed={isCurrent}>
