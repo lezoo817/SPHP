@@ -7,6 +7,7 @@ import { AgentMessageBubble } from './AgentMessage';
 import { AgentThoughtPanel } from './AgentThought';
 import { AgentToolCardView } from './AgentToolCard';
 import { AgentConfirmCardView } from './AgentConfirmCard';
+import { AgentSelectCardView } from './AgentSelectCard';
 import type { AgentChatContext, AgentConfirmCard, AgentSession } from '../../typings/agent';
 
 /**
@@ -42,6 +43,7 @@ export function AgentChat({ context }: { context?: AgentChatContext }) {
     isStreaming,
     send,
     confirm,
+    selectOption,
     cancel,
     retry,
     reset,
@@ -260,6 +262,15 @@ export function AgentChat({ context }: { context?: AgentChatContext }) {
                     key={entry.data.id}
                     card={entry.data}
                     onConfirm={(card: AgentConfirmCard) => void confirm(card)}
+                  />
+                );
+              if (entry.kind === 'select')
+                return (
+                  <AgentSelectCardView
+                    key={entry.data.id}
+                    card={entry.data}
+                    disabled={isStreaming}
+                    onSelect={(item) => selectOption(entry.data, item)}
                   />
                 );
               return null;

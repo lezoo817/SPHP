@@ -105,6 +105,47 @@ export interface AgentCardEvent {
   expires_at?: string;
 }
 
+/** options 事件：可选项列表卡片（区别于"确认一个操作"的 L2 卡片）。
+ *
+ * 后端在多选项场景（如医生列表、科室列表、号源列表）下确定性下发，
+ * 让前端以"单选点选"形式承载选择动作，避免纯文本让 LLM 配对 ID。
+ */
+export interface AgentOptionsEvent {
+  /** 选项卡类型：select_doctor / select_department / select_slot / select_pharmacy */
+  type: 'select_doctor' | 'select_department' | 'select_slot' | 'select_pharmacy' | string;
+  /** 选项列表 */
+  items: AgentSelectItem[];
+  /** 引导用户选择的提示语 */
+  prompt?: string;
+  /** 用户选择后会发送的文本模板，{label} 占位为选项展示名，默认"我选择{label}" */
+  reply_template?: string;
+}
+
+/** 单个可选项。 */
+export interface AgentSelectItem {
+  /** 选项 ID，与后端配对的字段 */
+  id: string;
+  /** 展示标题（用户点击的可见文案） */
+  label: string;
+  /** 副标题（科室 / 职称 / 等） */
+  description?: string;
+  /** 附加元数据（前端可选消费） */
+  meta?: Record<string, unknown>;
+}
+
+/** 可选项卡片的运行时对象。 */
+export interface AgentSelectCard {
+  id: string;
+  selectType: AgentOptionsEvent['type'];
+  items: AgentSelectItem[];
+  prompt?: string;
+  /** 构造"我选择{label}"等消息所用的模板 */
+  replyTemplate: string;
+  /** 用户已选项的 ID（单选） */
+  selectedId?: string;
+  createdAt: number;
+}
+
 /** error 事件：对话或工具执行错误。 */
 export interface AgentErrorEvent {
   /** Agent、MCP 或下游业务错误码 */
@@ -125,13 +166,14 @@ export interface AgentDoneEvent {
   trace_id?: string;
 }
 
-/** 七类 SSE 事件的联合类型。 */
+/** 八类 SSE 事件的联合类型（message/thought/action/observation/card/options/error/done）。 */
 export type AgentSseEvent =
   | { event: 'message'; data: AgentMessageEvent }
   | { event: 'thought'; data: AgentThoughtEvent }
   | { event: 'action'; data: AgentActionEvent }
   | { event: 'observation'; data: AgentObservationEvent }
   | { event: 'card'; data: AgentCardEvent }
+  | { event: 'options'; data: AgentOptionsEvent }
   | { event: 'error'; data: AgentErrorEvent }
   | { event: 'done'; data: AgentDoneEvent };
 
@@ -218,12 +260,13 @@ export interface AgentConfirmCard {
   createdAt: number;
 }
 
-/** 会话条目类型：消息、思考、工具卡片、确认卡片按到达顺序排列。 */
+/** 会话条目类型：消息、思考、工具卡片、确认卡片、可选项卡片按到达顺序排列。 */
 export type AgentEntry =
   | { kind: 'message'; data: AgentMessage }
   | { kind: 'thought'; data: AgentThought }
   | { kind: 'tool'; data: AgentToolCard }
-  | { kind: 'card'; data: AgentConfirmCard };
+  | { kind: 'card'; data: AgentConfirmCard }
+  | { kind: 'select'; data: AgentSelectCard };
 
 /** 流式连接状态。 */
 export type AgentConnectionState = 'idle' | 'connecting' | 'streaming' | 'error';

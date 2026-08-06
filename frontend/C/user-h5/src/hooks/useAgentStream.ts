@@ -28,6 +28,9 @@ import type {
   AgentConnectionState,
   AgentEntry,
   AgentMessage,
+  AgentOptionsEvent,
+  AgentSelectCard,
+  AgentSelectItem,
   AgentSseEvent,
   AgentThought,
   AgentToolCard,
@@ -59,6 +62,8 @@ export interface UseAgentStream {
   send: (content: string, context?: AgentChatContext) => void;
   /** 确认一张 L2 卡片 */
   confirm: (card: AgentConfirmCard) => Promise<void>;
+  /** 用户从可选项卡片中点选一项：标记已选并发送"我选择{label}"消息 */
+  selectOption: (card: AgentSelectCard, item: AgentSelectItem) => void;
   /** 中断当前流式请求 */
   cancel: () => void;
   /** 重试上一条消息 */
@@ -256,6 +261,10 @@ export function useAgentStream(): UseAgentStream {
         setConnection('streaming');
         appendConfirmCard(event.data);
         break;
+      case 'options':
+        setConnection('streaming');
+        appendSelectCard(event.data);
+        break;
       case 'error':
         setConnection('error');
         setErrorMessage(event.data.message || AGENT_ERROR_TEXT[event.data.code] || '对话异常');
@@ -409,6 +418,47 @@ export function useAgentStream(): UseAgentStream {
     setEntries((prev) => [...prev, { kind: 'card', data: confirmCardEntry }]);
   }
 
+  /** 追加一张可选项卡片（医生列表 / 科室列表 / 号源等）。 */
+  function appendSelectCard(options: AgentOptionsEvent): void {
+    const selectCard: AgentSelectCard = {
+      id: genId('sel'),
+      selectType: options.type,
+      items: options.items,
+      prompt: options.prompt,
+      replyTemplate: options.reply_template || '我选择{label}',
+      createdAt: Date.now(),
+    };
+    setEntries((prev) => [...prev, { kind: 'select', data: selectCard }]);
+  }
+
+  /** 更新指定可选项卡片的部分字段（目前仅 selectedId）。 */
+  function updateSelectCard(cardId: string, patch: Partial<AgentSelectCard>): void {
+    setEntries((prev) =>
+      prev.map((entry) =>
+        entry.kind === 'select' && entry.data.id === cardId
+          ? { kind: 'select', data: { ...entry.data, ...patch } }
+          : entry,
+      ),
+    );
+  }
+
+  /**
+   * 用户从可选项卡片中点选：标记已选 + 构造"我选择{label}"消息并发送。
+   * 后端按 card.replyTemplate 解析，把上一轮下发的 items 配回 doctor_id 等字段。
+   * @param card 可选项卡片
+   * @param item 用户点选的项
+   */
+  const selectOption = useCallback(
+    (card: AgentSelectCard, item: AgentSelectItem) => {
+      // 已点选过则忽略：避免重复发送或覆盖原选择
+      if (card.selectedId) return;
+      updateSelectCard(card.id, { selectedId: item.id });
+      const text = card.replyTemplate.replace('{label}', item.label);
+      send(text);
+    },
+    [send],
+  );
+
   /** 结束本轮流式：标记当前 AI 消息与思考为非流式。 */
   function finalizeStreaming(): void {
     const messageId = currentMessageIdRef.current;
@@ -479,6 +529,7 @@ export function useAgentStream(): UseAgentStream {
     isStreaming: connection === 'connecting' || connection === 'streaming',
     send,
     confirm,
+    selectOption,
     cancel,
     retry,
     reset,

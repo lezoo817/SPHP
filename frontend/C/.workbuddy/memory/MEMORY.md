@@ -16,11 +16,20 @@
 
 ## Agent 模块要点（2026-08-03 新增）
 - Agent 服务地址 `http://localhost:8081`，常量在 `src/constants/agent.ts`
-- SSE 格式：`event: <name>\ndata: <json>\n\n`，七类事件 message/thought/action/observation/card/error/done
+- SSE 格式：`event: <name>\ndata: <json>\n\n`，八类事件 message/thought/action/observation/card/**options**/error/done
 - 后端 observation 用 `success` 布尔，前端在 service 层归一化为 `status: 'success'|'error'`
 - 后端 card 当前不下发 details，前端按可选处理
 - 悬浮球在 Layout 全局挂载，可拖动、贴边吸附、位置持久化到 localStorage
 - 联调需在 sphp-agent 配置 CORS 允许 `localhost:8001`
+
+## Agent 可选项卡片（2026-08-06 options 事件）
+- `options` 事件 → 可选项卡片，区别于 L2 确认卡片（"确认一个操作" vs "从列表里选一个"）
+- `AgentEntry` 新增 `kind: 'select'`；`AgentSelectCard` 运行时对象含 selectType / items / prompt / replyTemplate / selectedId
+- `selectOption(card, item)` hook 暴露方法：标记 selectedId + 构造"我选择{label}"消息调 send()
+- `reply_template` 兜底为 `"我选择{label}"`，后端按此模板回填 doctor_id / slot_id 等字段
+- 服务层 `parseSseFrame` 新增 `case 'options'`；hook `handleSseEvent` 加对应分支
+- 选项类型：`select_doctor` / `select_department` / `select_slot` / `select_pharmacy` / string
+- 新组件 `AgentSelectCard`（样式 `.agent-select`）沿用 agent-card 基调，单选点选
 
 ## Agent 对话上下文（2026-08-05 补全 address_id）
 - `AgentChatContext` 字段：page / hospital_id / patient_id / appointment_id / consultation_id / **address_id**
