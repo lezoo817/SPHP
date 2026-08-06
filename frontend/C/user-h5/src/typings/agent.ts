@@ -227,8 +227,8 @@ export interface AgentToolCard {
   label: string;
   /** 传入工具的参数 */
   arguments?: Record<string, unknown>;
-  /** 执行状态 */
-  status: 'loading' | 'success' | 'error';
+  /** 执行状态：loading 调用中 / success 成功 / error 失败 / pending 待用户确认（L2 工具不下发 observation，收到确认卡后置此态收尾） */
+  status: 'loading' | 'success' | 'error' | 'pending';
   /** 结果摘要 */
   summary?: string;
   /** 失败原因 */

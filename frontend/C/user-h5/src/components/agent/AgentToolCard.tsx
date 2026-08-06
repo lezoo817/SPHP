@@ -17,6 +17,7 @@ export function AgentToolCardView({ card }: { card: AgentToolCard }) {
         <span className="agent-tool__status">
           {card.status === 'loading' && '调用中'}
           {card.status === 'success' && '成功'}
+          {card.status === 'pending' && '待确认'}
           {card.status === 'error' && '失败'}
         </span>
         {(hasArgs || hasResult) && (

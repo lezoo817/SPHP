@@ -31,6 +31,13 @@
 - 选项类型：`select_doctor` / `select_department` / `select_slot` / `select_pharmacy` / string
 - 新组件 `AgentSelectCard`（样式 `.agent-select`）沿用 agent-card 基调，单选点选
 
+## Agent L2 工具卡收尾（2026-08-06 修复"调用中"卡死）
+- **根因**：L2 工具（save_pre_consultation 等）后端只发 `action`、不发 `observation`（被挂起 pending_confirmations），其 loading 工具卡会永久显示"调用中"
+- **规则**：收到 `card` 事件 → 反查 `AGENT_CARD_TYPE_TO_TOOL[card_type]` 得 tool 名 → 把最近一张同 tool 的 loading 工具卡收尾为 `pending`（"待您确认操作"）
+- `confirm()` 成功分支 → 同一工具卡翻为 `success`（summary = 后端 message）
+- `AgentToolCard.status` 增加 `'pending'`；`AgentToolCardView` 渲染"待确认"；`.agent-tool--pending` 样式 amber 边框 + #b8860b 状态色
+- 新增 `resolveL2ToolCard(cardType, patch)` 辅助函数；`AGENT_CARD_TYPE_TO_TOOL` 反向映射对齐后端 `safety.py._map_card_type`
+
 ## Agent 对话上下文（2026-08-05 补全 address_id）
 - `AgentChatContext` 字段：page / hospital_id / patient_id / appointment_id / consultation_id / **address_id**
 - `buildAgentContext(pathname)` 同步构造基础字段（路由/选择）

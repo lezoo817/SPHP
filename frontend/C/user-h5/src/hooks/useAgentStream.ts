@@ -3,19 +3,21 @@
  *
  * 职责：
  * 1. 维护会话条目列表（消息、思考、工具卡片、确认卡片），按到达顺序排列。
- * 2. 解析七类 SSE 事件并更新对应条目：
+ * 2. 解析八类 SSE 事件并更新对应条目：
  *    - message.delta 追加到当前 AI 消息；
  *    - thought.delta 追加到当前思考片段；
  *    - action 创建 loading 工具卡片，observation 按 tool 配对更新；
+ *    - L2 工具卡不下发 observation（被挂起 pending_confirmations），收到对应 card 时收尾为 pending，确认成功翻为 success；
  *    - card 创建待确认卡片，确认后更新为 done / error；
+ *    - options 创建可选项卡片，点选后发送"我选择{label}"；
  *    - error 展示错误并保留输入，done 结束本轮并保存 session_id。
- * 3. 暴露 send / confirm / cancel / reset，供页面调用。
+ * 3. 暴露 send / confirm / selectOption / cancel / reset，供页面调用。
  *
  * 与 sphp-agent `app/api/routes/chat.py` 的 SSE 事件契约对齐。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { chatStream, confirmCard, getSessions, getSessionMessages, type ChatStreamHandle } from '../services/agent';
-import { AGENT_TOOL_LABELS, AGENT_ERROR_TEXT } from '../constants/agent';
+import { AGENT_TOOL_LABELS, AGENT_CARD_TYPE_TO_TOOL, AGENT_ERROR_TEXT } from '../constants/agent';
 import {
   clearAgentSessionId,
   getAgentSessionId,
@@ -139,10 +141,14 @@ export function useAgentStream(): UseAgentStream {
           status: 'done',
           resultMessage: result.message || '操作成功',
         });
+        // 确认成功后的业务结果文案（后端按工具返回友好文案，兜底"操作成功"）
+        const successMessage = result.message || '操作成功';
+        // 确认成功后，把对应 L2 工具卡从"待确认"收尾为成功（后端已在 confirm 时真正执行该工具）。
+        // 否则该工具卡会永久停在"待确认"/"调用中"，用户点完提交仍看到上面在转圈。
+        resolveL2ToolCard(card.cardType, { status: 'success', summary: successMessage });
         // 确认成功后追加一条 AI 消息到对话流，让用户更醒目地看到结果。
         // 不走 send()：send 会触发新的 chatStream 请求且 streaming 时会被拦截，
         // 这里直接 setEntries 追加纯文本消息（不发起请求、不消耗会话）。
-        const successMessage = result.message || '操作成功';
         setEntries((prev) => [
           ...prev,
           {
@@ -417,6 +423,35 @@ export function useAgentStream(): UseAgentStream {
     });
   }
 
+  /**
+   * 收尾一张 L2 工具卡：L2 工具（如 save_pre_consultation）在后端只下发 action，
+   * 不会下发 observation（被挂起 pending_confirmations 等待确认），其 loading 卡片
+   * 若不加处理会永久显示"调用中"。据此把它从 loading 收尾为 pending / success。
+   * @param cardType 确认卡类型，反查对应的 L2 工具名
+   * @param patch 要写入工具卡的状态（pending 待确认 / success 成功）
+   */
+  function resolveL2ToolCard(cardType: string, patch: Partial<AgentToolCard>): void {
+    const tool = AGENT_CARD_TYPE_TO_TOOL[cardType];
+    if (!tool) return;
+    setEntries((prev) => {
+      // 从后往前找最近一张同 tool 且仍 loading 的卡片（L2 工具卡不下发 observation，需在此收尾）
+      let matchedIndex = -1;
+      for (let i = prev.length - 1; i >= 0; i -= 1) {
+        const entry = prev[i];
+        if (entry.kind === 'tool' && entry.data.tool === tool && entry.data.status === 'loading') {
+          matchedIndex = i;
+          break;
+        }
+      }
+      if (matchedIndex === -1) return prev;
+      const matched = prev[matchedIndex] as { kind: 'tool'; data: AgentToolCard };
+      const updated: AgentToolCard = { ...matched.data, ...patch };
+      const next = prev.slice();
+      next[matchedIndex] = { kind: 'tool', data: updated };
+      return next;
+    });
+  }
+
   /** 追加一张待确认卡片。 */
   function appendConfirmCard(card: AgentCardEvent): void {
     const confirmCardEntry: AgentConfirmCard = {
@@ -432,6 +467,9 @@ export function useAgentStream(): UseAgentStream {
       createdAt: Date.now(),
     };
     setEntries((prev) => [...prev, { kind: 'card', data: confirmCardEntry }]);
+    // L2 工具卡不下发 observation，收到对应确认卡时把 loading 收尾为"待确认"，
+    // 避免永久显示"调用中"转圈（用户确认后再由 confirm 成功分支翻为 success）。
+    resolveL2ToolCard(card.card_type, { status: 'pending', summary: '待您确认操作' });
   }
 
   /** 追加一张可选项卡片（医生列表 / 科室列表 / 号源等）。 */

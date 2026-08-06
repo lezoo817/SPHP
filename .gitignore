@@ -151,3 +151,5 @@ docs/
 /sphp-server/sphp-bootstrap/src/main/java/com/sphp/config/RedissonConfig.java
 /frontend/C/AGENTS.md
 /.superpowers/
+
+.workbuddy/
