@@ -340,6 +340,31 @@ class RegisteringServiceImplTest {
     }
 
     /**
+     * 验证绑定同一就诊人的其他账号不能使用自身密码取消付款账号的已支付挂号。
+     */
+    @Test
+    void registeringCancelPaidAppointmentRejectsNonPayerUser() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        when(dataMapper.selectRegisteringAppointment(7001L)).thenReturn(paidAppointmentRecord());
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectRegisteringPayment(8001L)).thenReturn(paidPaymentRecord(10002L));
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), mock(RegisteringWaitlistPromotionService.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        RegisteringAppointmentCancelRequest request = new RegisteringAppointmentCancelRequest();
+        request.setLoginPassword("P@ssw0rd123");
+
+        try {
+            assertThrows(CAuthException.class, () -> service.registeringCancelAppointment(7001L, request));
+            verify(dataMapper, never()).registeringCancelPaidAppointment(eq(7001L), any());
+            verify(dataMapper, never()).registeringReleaseSoldSnapshot(eq(9001L), any());
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
      * 创建当前账号可取消的已支付挂号订单投影。
      *
      * @return 已支付挂号订单
