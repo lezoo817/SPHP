@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 /**
  * 运营总览 VO。
+ */
 @Data
 @Builder
 @NoArgsConstructor

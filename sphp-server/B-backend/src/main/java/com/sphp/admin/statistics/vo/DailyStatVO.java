@@ -10,6 +10,7 @@ import java.time.LocalDate;
 
 /**
  * 日统计 VO。
+ */
 @Data
 @Builder
 @NoArgsConstructor

@@ -132,7 +132,6 @@ public interface StatisticsMapper {
      * @return 科室统计列表，按挂号量倒序
      */
     @Select("<script>"
-    @Select("<script>"
             + "SELECT "
             + "  d.dept_id AS dept_id, "
             + "  dep.name AS dept_name, "
