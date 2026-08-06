@@ -60,7 +60,7 @@ describe('前端表单与联调规则', () => {
 
 describe('重复预约联调规则', () => {
   it('仅识别后端明确返回的重复预约冲突', () => {
-    expect(isDuplicateDoctorAppointmentError({ code: 'A0506', message: '近5天内已预约过该医生，不可重复预约' })).toBe(true);
+    expect(isDuplicateDoctorAppointmentError({ code: 'A0506', message: '当前已有该医生待就诊挂号，不可重复预约' })).toBe(true);
     expect(isDuplicateDoctorAppointmentError({ code: 'A0506', message: '幂等键冲突' })).toBe(false);
     expect(isDuplicateDoctorAppointmentError({ code: 'A0400', message: '已预约过该医生，不可重复预约' })).toBe(false);
     expect(isDuplicateDoctorAppointmentError(new Error('已预约过该医生，不可重复预约'))).toBe(false);
