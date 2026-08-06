@@ -154,7 +154,10 @@ def _build_initial_state(
     return {
         "messages": messages,
         "session_id": session_id,
-        "intent": None,
+        # intent 不在此初始化：意图粘性依赖 checkpointer 跨轮保留 state.intent，
+        # 此处置 None 会覆盖历史意图，第二轮 intent_node 读到 None 走非粘性分支，
+        # 问诊中补症状被重判 triage。首轮无历史时 state.get("intent") 返回 None，
+        # intent_node 正常走非粘性分类。
         "user_id": getattr(request.state, "user_id", None),
         "scope": scope,
         # M6-B1 鉴权去重：完整复制中间件注入的 B 端身份字段，auth_node 直接消费
