@@ -23,7 +23,6 @@ from app.infrastructure.cache.redis_client import (
     set_confirm_done,
 )
 from app.orchestrator.graphs.main_graph import build_main_graph
-from app.orchestrator.nodes.reply import MEDICAL_DISCLAIMER
 from app.orchestrator.nodes.tool_executor import execute_mcp_tool
 from app.orchestrator.session_store import get_session_store
 from app.orchestrator.state import AgentState
@@ -444,9 +443,6 @@ async def _sse_generator(
                             yield _sse("message", {"delta": content})
 
             logger.info("[SSE] 流程完成, thread_id=%s", thread_key)
-            # 流式回复后补推医疗安全声明（不在 LLM 流中，确保前端必见）
-            if streamed_reply:
-                yield _sse("message", {"delta": MEDICAL_DISCLAIMER})
 
             # 会话元数据落库（历史会话列表）：增强功能，失败仅 log，不阻塞 done
             # 主流程。仅正常完成路径执行——异常/断开路径提前 return，不落库
