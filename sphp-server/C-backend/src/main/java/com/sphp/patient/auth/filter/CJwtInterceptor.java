@@ -25,6 +25,8 @@ import java.nio.charset.StandardCharsets;
 
 import static com.sphp.patient.common.constant.CAuthConstant.BEARER_PREFIX;
 import static com.sphp.patient.common.constant.CAuthConstant.REFRESH_SESSION_KEY_PREFIX;
+import static com.sphp.shared.common.constant.HeaderConstant.AUTHORIZATION;
+import static com.sphp.shared.common.constant.HeaderConstant.USER_ID;
 import static com.sphp.shared.common.enums.ErrorCodeEnum.UNAUTHORIZED;
 
 /**
@@ -56,11 +58,11 @@ public class CJwtInterceptor implements HandlerInterceptor {
             return true;
         }
         // 外部身份头不能替代 JWT 建立 C端用户上下文
-        if (StringUtils.hasText(request.getHeader(HeaderConstant.USER_ID))) {
+        if (StringUtils.hasText(request.getHeader(USER_ID))) {
             writeUnauthorized(response, "不允许使用外部用户身份头");
             return false;
         }
-        String authorization = request.getHeader(HeaderConstant.AUTHORIZATION);
+        String authorization = request.getHeader(AUTHORIZATION);
         if (!StringUtils.hasText(authorization) || !authorization.startsWith(BEARER_PREFIX)) {
             writeUnauthorized(response, "缺少有效的访问令牌");
             return false;

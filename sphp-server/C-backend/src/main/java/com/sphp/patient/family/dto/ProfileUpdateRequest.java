@@ -21,16 +21,21 @@ public class ProfileUpdateRequest {
     @NotBlank(message = "姓名不能为空")
     @Size(max = 64, message = "姓名长度不能超过64位")
     private String name;
+
     /** 性别编码，可选 MALE、FEMALE、UNKNOWN */
     private String gender;
+
     /** 出生日期，不得晚于当天 */
     private LocalDate birthday;
+
     /** 联系电话，未传时保留原值 */
     @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确")
     private String phone;
+
     /** 15 位或 18 位大陆居民身份证号；未传时保留原值 */
     @Pattern(regexp = "^(\\d{15}|\\d{17}[0-9Xx])$", message = "身份证号格式不正确")
     private String idCardNo;
+
     /** 紧急联系人及联系电话，未传时保留原值 */
     @Size(max = 256, message = "紧急联系人长度不能超过256位")
     private String emergencyContact;

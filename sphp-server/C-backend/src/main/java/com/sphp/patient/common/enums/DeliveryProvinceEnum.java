@@ -9,16 +9,22 @@ public enum DeliveryProvinceEnum {
 
     /** 河南省。 */
     HENAN("河南省"),
+
     /** 上海市。 */
     SHANGHAI("上海市"),
+
     /** 北京市。 */
     BEIJING("北京市"),
+
     /** 江苏省。 */
     JIANGSU("江苏省"),
+
     /** 浙江省。 */
     ZHEJIANG("浙江省"),
+
     /** 广东省。 */
     GUANGDONG("广东省");
+
 
     /** 面向用户展示及医院地址解析的省市名称。 */
     private final String displayName;

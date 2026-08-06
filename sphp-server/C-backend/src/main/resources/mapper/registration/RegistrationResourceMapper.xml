@@ -50,7 +50,9 @@
                             AND s.schedule_date = #{date}
                             AND s.status = 'PUBLISHED'
                             AND s.deleted_at IS NULL
-        LEFT JOIN slot sl ON sl.schedule_id = s.id AND sl.deleted_at IS NULL
+        LEFT JOIN slot sl ON sl.schedule_id = s.id
+                         AND sl.deleted_at IS NULL
+                         AND (s.schedule_date + sl.end_time) AT TIME ZONE 'Asia/Shanghai' &gt; #{now}
         LEFT JOIN slot_snapshot ss ON ss.slot_id = sl.id AND ss.deleted_at IS NULL
         WHERE d.hospital_id = #{hospitalId}
           AND d.dept_id = #{departmentId}
@@ -106,6 +108,7 @@
         WHERE d.id = #{doctorId}
           AND d.status = 'ENABLED'
           AND d.deleted_at IS NULL
+          AND (s.schedule_date + sl.end_time) AT TIME ZONE 'Asia/Shanghai' &gt; #{now}
         GROUP BY sl.id, sl.start_time, sl.end_time, d.registration_fee_cent, s.status
         ORDER BY sl.start_time ASC, sl.id ASC
     </select>

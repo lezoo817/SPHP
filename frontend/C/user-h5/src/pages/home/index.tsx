@@ -86,8 +86,13 @@ export default function HomePage() {
 
   /** 根据待办类别跳转到可继续处理的页面。 */
   function openTodo(todo: HealthTodo) {
+    if (todo.isExpired) {
+      // 过期挂号不再进入流程，仅从本次首页待办中关闭提醒。
+      setTodos((current) => current.filter((item) => !(item.type === todo.type && item.id === todo.id && item.patientId === todo.patientId)));
+      return;
+    }
     if (todo.type === 'APPOINTMENT') navigate('/assistant');
-    else if (todo.type === 'MEDICATION') navigate('/mine/medication-plans');
+    else if (todo.type === 'MEDICATION') navigate(`/mine/medication-plans?patientId=${todo.patientId}`);
     else navigate('/mine/follow-ups');
   }
 
@@ -112,7 +117,7 @@ export default function HomePage() {
       <h2>快捷服务</h2>
       <section className="quick-grid">{services.map(({ label, icon: Icon, action }) => <button key={label} type="button" onClick={action || (() => setNotice(`${label}暂未开放`))}><Icon size={29} /><span>{label}</span></button>)}</section>
       <section className="todo-section"><div className="section-title"><h2>健康待办</h2>{todos.length > 0 && <span className="todo-count">{todos.length} 项待处理</span>}</div>
-        {todos.map((todo) => <button className={todo.type === 'APPOINTMENT' ? 'health-todo-card has-location' : 'health-todo-card'} type="button" key={`${todo.type}-${todo.id}-${todo.patientId}`} onClick={() => openTodo(todo)}><div className={`health-todo-card__icon ${todo.type.toLowerCase()}`}>{todo.type === 'APPOINTMENT' ? '挂' : todo.type === 'MEDICATION' ? '药' : '访'}</div><div><b>{todo.occurredAt ? formatMedicalTime(todo.occurredAt) : '时间待确认'} · {todo.title}</b><span>{todo.patientName} · {todo.detail}</span>{todo.type === 'APPOINTMENT' && <small>科室位置：{todo.departmentLocation || '科室位置待确认'}</small>}</div><ChevronRight size={18} /></button>)}
+        {todos.map((todo) => <button className={`${todo.type === 'APPOINTMENT' ? 'health-todo-card has-location' : 'health-todo-card'}${todo.isExpired ? ' is-expired' : ''}`} type="button" key={`${todo.type}-${todo.id}-${todo.patientId}`} onClick={() => openTodo(todo)}><div className={`health-todo-card__icon ${todo.type.toLowerCase()}`}>{todo.type === 'APPOINTMENT' ? '挂' : todo.type === 'MEDICATION' ? '药' : '访'}</div><div><b>{todo.occurredAt ? formatMedicalTime(todo.occurredAt) : '时间待确认'} · {todo.title}</b><span>{todo.patientName} · {todo.detail}</span>{todo.type === 'APPOINTMENT' && <small>科室位置：{todo.departmentLocation || '科室位置待确认'}</small>}</div><ChevronRight size={18} /></button>)}
         {!todos.length && <p className="empty-state">暂无健康待办</p>}
       </section>
     </section>

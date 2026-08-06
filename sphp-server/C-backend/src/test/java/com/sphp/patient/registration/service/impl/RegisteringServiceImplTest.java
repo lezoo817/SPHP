@@ -4,6 +4,7 @@ import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.registration.dto.RegisteringAppointmentCreateRequest;
+import com.sphp.patient.registration.dto.RegisteringAppointmentCancelRequest;
 import com.sphp.patient.registration.dto.RegisteringPaymentSimulateRequest;
 import com.sphp.patient.registration.dto.RegisteringWaitlistCreateRequest;
 import com.sphp.patient.registration.entity.RegisteringWaitlist;
@@ -13,6 +14,7 @@ import com.sphp.patient.registration.mapper.RegisteringAppointmentMapper;
 import com.sphp.patient.registration.mapper.RegisteringPaymentOrderMapper;
 import com.sphp.patient.registration.mapper.RegisteringPaymentRecord;
 import com.sphp.patient.registration.mapper.RegisteringWaitlistMapper;
+import com.sphp.patient.registration.event.RegisteringAppointmentLockedEvent;
 import com.sphp.patient.registration.support.RegisteringSlotLockService;
 import com.sphp.patient.registration.support.RegisteringWaitlistPromotionService;
 import com.sphp.patient.registration.config.RegistrationProperties;
@@ -20,12 +22,14 @@ import com.sphp.patient.notification.mq.producer.NotificationEventProducer;
 import org.springframework.context.ApplicationEventPublisher;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
 import com.sphp.patient.registration.vo.RegisteringDoctorBookingStatusVO;
+import com.sphp.patient.registration.vo.RegisteringAppointmentListVO;
 import org.junit.jupiter.api.Test;
 import org.mindrot.jbcrypt.BCrypt;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -42,7 +46,7 @@ import static org.mockito.Mockito.when;
 class RegisteringServiceImplTest {
 
     /**
-     * 验证预约状态查询按当前账号和医生 ID 读取已支付历史。
+     * 验证预约状态查询按当前账号和医生 ID 读取五天冷却期历史。
      */
     @Test
     void registeringGetDoctorBookingStatusUsesCurrentUserAndDoctorId() {
@@ -53,14 +57,45 @@ class RegisteringServiceImplTest {
                 mock(RegisteringWaitlistMapper.class), registrationProperties(), mock(ApplicationEventPublisher.class),
                 mock(NotificationEventProducer.class));
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
-        when(dataMapper.existsRegisteringPaidDoctorAppointment(10001L, 401L)).thenReturn(true);
+        when(dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class))).thenReturn(true);
 
         try {
             RegisteringDoctorBookingStatusVO result = service.registeringGetDoctorBookingStatus(401L);
 
             assertEquals(401L, result.getDoctorId());
             assertEquals(true, result.isBooked());
-            verify(dataMapper).existsRegisteringPaidDoctorAppointment(10001L, 401L);
+            verify(dataMapper).existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class));
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证列表查询允许使用只读派生的未到诊状态筛选与展示。
+     */
+    @Test
+    void registeringListAppointmentsAcceptsAndReturnsNoShowDisplayStatus() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringAppointmentRecord noShowRecord = new RegisteringAppointmentRecord(7001L, 20001L, 9001L,
+                501L, 401L, "张医生", "呼吸内科", "门诊楼三层", LocalDate.now().minusDays(1),
+                LocalTime.of(9, 0), LocalTime.of(9, 30), "NO_SHOW", 5000,
+                OffsetDateTime.now().minusDays(1), 8001L, "SUCCESS");
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectRegisteringAppointments(20001L, "NO_SHOW", 20, 0L)).thenReturn(List.of(noShowRecord));
+        when(dataMapper.countRegisteringAppointments(20001L, "NO_SHOW")).thenReturn(1L);
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), mock(RegisteringWaitlistPromotionService.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+
+        try {
+            RegisteringAppointmentListVO result = service.registeringListAppointments(20001L, "NO_SHOW", null, null);
+
+            assertEquals(1L, result.getTotal());
+            assertEquals("NO_SHOW", result.getRecords().getFirst().getStatus());
+            assertEquals(OffsetDateTime.parse("2026-08-05T09:30:00+08:00"), result.getRecords().getFirst().getEndTime());
+            verify(dataMapper).selectRegisteringAppointments(20001L, "NO_SHOW", 20, 0L);
+            verify(dataMapper).countRegisteringAppointments(20001L, "NO_SHOW");
         } finally {
             CUserContext.clear();
         }
@@ -90,7 +125,7 @@ class RegisteringServiceImplTest {
                         501L, 301L, 401L, 5000, LocalDate.now().plusDays(1),
                         LocalTime.of(9, 0), LocalTime.of(9, 30), "PUBLISHED", "ENABLED"));
         when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
-        when(dataMapper.existsRegisteringPaidDoctorAppointment(10001L, 401L)).thenReturn(false);
+        when(dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class))).thenReturn(false);
         when(dataMapper.countRegisteringAvailableSnapshots(501L)).thenReturn(1L);
         when(slotLockService.registeringLock(eq(501L), eq(1L), any())).thenReturn(true);
         when(dataMapper.registeringLockOneSnapshot(eq(501L), eq(20001L), any())).thenReturn(9001L);
@@ -121,7 +156,98 @@ class RegisteringServiceImplTest {
     }
 
     /**
-     * 验证同一登录账号已支付过同一医生时，不能再次创建挂号订单。
+     * 验证已经开始但尚未结束的时段仍可锁号，且支付截止时间不超过时段结束。
+     */
+    @Test
+    void registeringCreateAppointmentAllowsOngoingSlotAndCapsPaymentAtSlotEnd() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringAppointmentMapper appointmentMapper = mock(RegisteringAppointmentMapper.class);
+        RegisteringPaymentOrderMapper paymentMapper = mock(RegisteringPaymentOrderMapper.class);
+        RegisteringSlotLockService slotLockService = mock(RegisteringSlotLockService.class);
+        ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+        OffsetDateTime slotEndAt = OffsetDateTime.now(com.sphp.patient.common.constant.RegistrationConstant.BUSINESS_ZONE_ID)
+                .plusMinutes(5).withSecond(0).withNano(0);
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectRegisteringSlotLockInfo(101L, 501L)).thenReturn(
+                new com.sphp.patient.registration.mapper.RegisteringSlotLockRecord(
+                        501L, 301L, 401L, 5000, slotEndAt.toLocalDate(),
+                        slotEndAt.toLocalTime().minusMinutes(10), slotEndAt.toLocalTime(), "PUBLISHED", "ENABLED"));
+        when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
+        when(dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class))).thenReturn(false);
+        when(dataMapper.countRegisteringAvailableSnapshots(501L)).thenReturn(1L);
+        when(slotLockService.registeringLock(eq(501L), eq(1L), any())).thenReturn(true);
+        when(dataMapper.registeringLockOneSnapshot(eq(501L), eq(20001L), any())).thenReturn(9001L);
+        when(appointmentMapper.insert(any(com.sphp.patient.registration.entity.RegisteringAppointment.class))).thenAnswer(invocation -> {
+            invocation.<com.sphp.patient.registration.entity.RegisteringAppointment>getArgument(0).setId(7001L);
+            return 1;
+        });
+        when(paymentMapper.insert(any(com.sphp.patient.registration.entity.RegisteringPaymentOrder.class))).thenAnswer(invocation -> {
+            invocation.<com.sphp.patient.registration.entity.RegisteringPaymentOrder>getArgument(0).setId(8001L);
+            return 1;
+        });
+        RegisteringServiceImpl service = new RegisteringServiceImpl(dataMapper, appointmentMapper, paymentMapper,
+                slotLockService, mock(RegisteringWaitlistPromotionService.class), mock(RegisteringWaitlistMapper.class),
+                registrationProperties(), eventPublisher, mock(NotificationEventProducer.class));
+        RegisteringAppointmentCreateRequest request = new RegisteringAppointmentCreateRequest();
+        request.setPatientId(20001L);
+        request.setHospitalId(101L);
+        request.setSlotId(501L);
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+
+        try {
+            service.registeringCreateAppointment(request);
+
+            org.mockito.ArgumentCaptor<com.sphp.patient.registration.entity.RegisteringAppointment> appointmentCaptor =
+                    org.mockito.ArgumentCaptor.forClass(com.sphp.patient.registration.entity.RegisteringAppointment.class);
+            org.mockito.ArgumentCaptor<RegisteringAppointmentLockedEvent> eventCaptor =
+                    org.mockito.ArgumentCaptor.forClass(RegisteringAppointmentLockedEvent.class);
+            verify(appointmentMapper).insert(appointmentCaptor.capture());
+            verify(eventPublisher).publishEvent(eventCaptor.capture());
+            assertEquals(slotEndAt.toInstant(), appointmentCaptor.getValue().getExpireAt().toInstant());
+            assertEquals(slotEndAt.toInstant(), eventCaptor.getValue().expireAt().toInstant());
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证已超过时段结束时间的支付会取消未支付订单并释放已锁定号源。
+     */
+    @Test
+    void registeringSimulatePaymentExpiresOrderWhenSlotEndDeadlineHasPassed() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringWaitlistPromotionService promotionService = mock(RegisteringWaitlistPromotionService.class);
+        RegisteringPaymentRecord payment = new RegisteringPaymentRecord(8001L, 7001L, 20001L, 401L,
+                10001L, 9001L, 501L, 5000, "PENDING", "UNPAID", OffsetDateTime.now().minusSeconds(1),
+                null, BCrypt.hashpw("Password123", BCrypt.gensalt()));
+        when(dataMapper.selectRegisteringPayment(8001L)).thenReturn(payment);
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.registeringCancelUnpaidAppointment(eq(7001L), any())).thenReturn(1);
+        when(dataMapper.registeringReleaseLockedSnapshot(eq(9001L), any())).thenReturn(1);
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), promotionService);
+        RegisteringPaymentSimulateRequest request = new RegisteringPaymentSimulateRequest();
+        request.setLoginPassword("Password123");
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+
+        try {
+            CAuthException exception = assertThrows(CAuthException.class,
+                    () -> service.registeringSimulatePayment(8001L, request));
+
+            assertEquals("A0441", exception.getCode());
+            verify(dataMapper).registeringCancelUnpaidAppointment(eq(7001L), any());
+            verify(dataMapper).registeringClosePendingPayment(eq(7001L), any());
+            verify(dataMapper).registeringReleaseLockedSnapshot(eq(9001L), any());
+            verify(promotionService).registeringPromoteAfterSlotReleased(501L);
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证同一登录账号在五天冷却期内预约过同一医生时，不能再次创建挂号订单。
      */
     @Test
     void registeringCreateAppointmentRejectsUserWhoAlreadyPaidSameDoctorBeforeLockingSlot() {
@@ -134,7 +260,7 @@ class RegisteringServiceImplTest {
                         501L, 301L, 401L, 5000, LocalDate.now().plusDays(1),
                         LocalTime.of(9, 0), LocalTime.of(9, 30), "PUBLISHED", "ENABLED"));
         when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
-        when(dataMapper.existsRegisteringPaidDoctorAppointment(10001L, 401L)).thenReturn(true);
+        when(dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class))).thenReturn(true);
         RegisteringServiceImpl service = new RegisteringServiceImpl(dataMapper,
                 mock(RegisteringAppointmentMapper.class), mock(RegisteringPaymentOrderMapper.class),
                 slotLockService, mock(RegisteringWaitlistPromotionService.class), mock(RegisteringWaitlistMapper.class),
@@ -151,7 +277,7 @@ class RegisteringServiceImplTest {
 
             assertEquals("A0506", exception.getCode());
             verify(dataMapper).registeringLockActiveUser(10001L);
-            verify(dataMapper).existsRegisteringPaidDoctorAppointment(10001L, 401L);
+            verify(dataMapper).existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class));
             verify(slotLockService, never()).registeringLock(any(), any(Long.class), any());
         } finally {
             CUserContext.clear();
@@ -171,7 +297,7 @@ class RegisteringServiceImplTest {
         when(dataMapper.existsRegisteringActivePatient(20002L)).thenReturn(true);
         when(dataMapper.hasActivePatientRelation(10001L, 20002L)).thenReturn(true);
         when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
-        when(dataMapper.existsRegisteringPaidDoctorAppointment(10001L, 401L)).thenReturn(true);
+        when(dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class))).thenReturn(true);
         RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
                 mock(NotificationEventProducer.class), mock(RegisteringWaitlistPromotionService.class));
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
@@ -184,7 +310,7 @@ class RegisteringServiceImplTest {
 
             assertEquals("A0506", exception.getCode());
             verify(dataMapper).registeringLockActiveUser(10001L);
-            verify(dataMapper).existsRegisteringPaidDoctorAppointment(10001L, 401L);
+            verify(dataMapper).existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class));
             verify(dataMapper, never()).registeringMarkPaymentSuccess(any(), any());
             verify(dataMapper, never()).registeringMarkAppointmentPaid(any(), any());
             verify(dataMapper, never()).registeringMarkSnapshotSold(any(), any());
@@ -250,11 +376,140 @@ class RegisteringServiceImplTest {
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
 
         try {
-            service.registeringCancelAppointment(7001L);
+            service.registeringCancelAppointment(7001L, null);
             verify(promotionService).registeringPromoteAfterSlotReleased(501L);
         } finally {
             CUserContext.clear();
         }
+    }
+
+    /**
+     * 验证付款账号可在预约开始前使用登录密码取消已支付挂号。
+     */
+    @Test
+    void registeringCancelPaidAppointmentReleasesSoldSnapshotAfterPasswordVerification() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringWaitlistPromotionService promotionService = mock(RegisteringWaitlistPromotionService.class);
+        when(dataMapper.selectRegisteringAppointment(7001L)).thenReturn(paidAppointmentRecord());
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectRegisteringPayment(8001L)).thenReturn(paidPaymentRecord(10001L));
+        when(dataMapper.registeringCancelPaidAppointment(eq(7001L), any())).thenReturn(1);
+        when(dataMapper.registeringReleaseSoldSnapshot(eq(9001L), any())).thenReturn(1);
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), promotionService);
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        RegisteringAppointmentCancelRequest request = new RegisteringAppointmentCancelRequest();
+        request.setLoginPassword("P@ssw0rd123");
+
+        try {
+            assertEquals("CANCELLED", service.registeringCancelAppointment(7001L, request).getStatus());
+            verify(dataMapper).registeringCancelPaidAppointment(eq(7001L), any());
+            verify(dataMapper).registeringReleaseSoldSnapshot(eq(9001L), any());
+            verify(dataMapper, never()).registeringClosePendingPayment(eq(7001L), any());
+            verify(promotionService).registeringPromoteAfterSlotReleased(501L);
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证已支付挂号缺少或输入错误密码时不会取消订单或释放号源。
+     */
+    @Test
+    void registeringCancelPaidAppointmentRejectsMissingOrInvalidPassword() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        when(dataMapper.selectRegisteringAppointment(7001L)).thenReturn(paidAppointmentRecord());
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectRegisteringPayment(8001L)).thenReturn(paidPaymentRecord(10001L));
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), mock(RegisteringWaitlistPromotionService.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        RegisteringAppointmentCancelRequest invalidRequest = new RegisteringAppointmentCancelRequest();
+        invalidRequest.setLoginPassword("wrong-password");
+
+        try {
+            assertThrows(CAuthException.class, () -> service.registeringCancelAppointment(7001L, null));
+            assertThrows(CAuthException.class, () -> service.registeringCancelAppointment(7001L, invalidRequest));
+            verify(dataMapper, never()).registeringCancelPaidAppointment(eq(7001L), any());
+            verify(dataMapper, never()).registeringReleaseSoldSnapshot(eq(9001L), any());
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证已支付订单在数据库条件更新发现预约已开始时不能释放已售号源。
+     */
+    @Test
+    void registeringCancelPaidAppointmentRejectsWhenAppointmentHasStarted() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        when(dataMapper.selectRegisteringAppointment(7001L)).thenReturn(paidAppointmentRecord());
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectRegisteringPayment(8001L)).thenReturn(paidPaymentRecord(10001L));
+        when(dataMapper.registeringCancelPaidAppointment(eq(7001L), any())).thenReturn(0);
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), mock(RegisteringWaitlistPromotionService.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        RegisteringAppointmentCancelRequest request = new RegisteringAppointmentCancelRequest();
+        request.setLoginPassword("P@ssw0rd123");
+
+        try {
+            assertThrows(CAuthException.class, () -> service.registeringCancelAppointment(7001L, request));
+            verify(dataMapper, never()).registeringReleaseSoldSnapshot(eq(9001L), any());
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证绑定同一就诊人的其他账号不能使用自身密码取消付款账号的已支付挂号。
+     */
+    @Test
+    void registeringCancelPaidAppointmentRejectsNonPayerUser() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        when(dataMapper.selectRegisteringAppointment(7001L)).thenReturn(paidAppointmentRecord());
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectRegisteringPayment(8001L)).thenReturn(paidPaymentRecord(10002L));
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), mock(RegisteringWaitlistPromotionService.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        RegisteringAppointmentCancelRequest request = new RegisteringAppointmentCancelRequest();
+        request.setLoginPassword("P@ssw0rd123");
+
+        try {
+            assertThrows(CAuthException.class, () -> service.registeringCancelAppointment(7001L, request));
+            verify(dataMapper, never()).registeringCancelPaidAppointment(eq(7001L), any());
+            verify(dataMapper, never()).registeringReleaseSoldSnapshot(eq(9001L), any());
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 创建当前账号可取消的已支付挂号订单投影。
+     *
+     * @return 已支付挂号订单
+     */
+    private RegisteringAppointmentRecord paidAppointmentRecord() {
+        return new RegisteringAppointmentRecord(7001L, 20001L, 9001L, 501L, 401L, "张医生", "呼吸内科",
+                "门诊楼三层", LocalDate.now().plusDays(1), LocalTime.of(9, 0), LocalTime.of(9, 30),
+                "PAID", 5000, OffsetDateTime.now().plusMinutes(15), 8001L, "SUCCESS");
+    }
+
+    /**
+     * 创建指定付款账号的成功支付单投影。
+     *
+     * @param payerUserId 付款 C 端账号 ID
+     * @return 成功支付单
+     */
+    private RegisteringPaymentRecord paidPaymentRecord(Long payerUserId) {
+        return new RegisteringPaymentRecord(8001L, 7001L, 20001L, 401L, payerUserId, 9001L, 501L,
+                5000, "SUCCESS", "PAID", OffsetDateTime.now().plusMinutes(15), OffsetDateTime.now(),
+                BCrypt.hashpw("P@ssw0rd123", BCrypt.gensalt()));
     }
 
     /**

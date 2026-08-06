@@ -80,10 +80,13 @@ public class ConsultationDetailVO {
 
         /** 消息 ID */
         private final Long id;
+
         /** 发送方类型 */
         private final String senderType;
+
         /** 消息内容 */
         private final String content;
+
         /** 创建时间 */
         private final OffsetDateTime createdAt;
     }

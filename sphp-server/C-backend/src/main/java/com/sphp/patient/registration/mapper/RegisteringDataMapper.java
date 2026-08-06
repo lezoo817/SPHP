@@ -46,13 +46,16 @@ public interface RegisteringDataMapper {
     Long registeringLockActiveUser(@Param("userId") Long userId);
 
     /**
-     * 判断当前登录账号是否已成功预约指定医生。
+     * 判断当前登录账号是否在冷却期内成功预约过指定医生。
      *
      * @param userId C 端用户 ID
      * @param doctorId 医生 ID
-     * @return 存在已支付或已完成挂号时返回 true
+     * @param cutoffAt 支付成功冷却期的开始时间
+     * @return 存在冷却期内已支付或已完成挂号时返回 true
      */
-    boolean existsRegisteringPaidDoctorAppointment(@Param("userId") Long userId, @Param("doctorId") Long doctorId);
+    boolean existsRegisteringDoctorAppointmentWithinCooldown(@Param("userId") Long userId,
+                                                              @Param("doctorId") Long doctorId,
+                                                              @Param("cutoffAt") OffsetDateTime cutoffAt);
 
     /**
      * 查询挂号锁号需要的时段、排班、医生和医院链路。
@@ -93,10 +96,14 @@ public interface RegisteringDataMapper {
     RegisteringPaymentRecord selectRegisteringPayment(@Param("paymentId") Long paymentId);
     /** 条件取消未支付挂号订单。 */
     int registeringCancelUnpaidAppointment(@Param("appointmentId") Long appointmentId, @Param("now") OffsetDateTime now);
+    /** 条件取消尚未开始的已支付挂号订单。 */
+    int registeringCancelPaidAppointment(@Param("appointmentId") Long appointmentId, @Param("now") OffsetDateTime now);
     /** 条件关闭待支付挂号支付单。 */
     int registeringClosePendingPayment(@Param("appointmentId") Long appointmentId, @Param("now") OffsetDateTime now);
     /** 条件释放已锁定号源快照。 */
     int registeringReleaseLockedSnapshot(@Param("snapshotId") Long snapshotId, @Param("now") OffsetDateTime now);
+    /** 条件释放已支付订单关联的已售号源快照。 */
+    int registeringReleaseSoldSnapshot(@Param("snapshotId") Long snapshotId, @Param("now") OffsetDateTime now);
     /** 为候补登记锁定有效已发布时段。 */
     RegisteringSlotLockRecord lockRegisteringWaitlistSlot(@Param("slotId") Long slotId);
     /** 判断当前就诊人是否已有活跃候补。 */
@@ -104,7 +111,7 @@ public interface RegisteringDataMapper {
     /** 查询时段的下一个候补排队号。 */
     int selectRegisteringNextQueueNo(@Param("slotId") Long slotId);
     /**
-     * 锁定尚未开始的候补晋级时段，串行化同一时段的候补状态变更。
+     * 锁定尚未结束的候补晋级时段，串行化同一时段的候补状态变更。
      *
      * @param slotId 时段 ID
      * @param now 当前时间

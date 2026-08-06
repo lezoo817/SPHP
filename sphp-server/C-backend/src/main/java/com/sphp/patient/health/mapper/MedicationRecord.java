@@ -14,13 +14,30 @@ import java.time.OffsetDateTime;
  * @param status 用药计划状态
  */
 public record MedicationRecord(
+        // 用药计划 ID
         Long id,
+
+        // 就诊人 ID
         Long patientId,
+
+        // 药物名称
         String drugName,
+
+        // 用药剂量
         String dosage,
+
+        // 用药频次
         String frequency,
+
+        // 下次提醒时间
         OffsetDateTime nextReminderAt,
+
+        // 是否已开启提醒
         boolean reminderEnabled,
+
+        // 每日提醒时刻 JSON 数组
         String reminderTimesJson,
+
+        // 用药计划状态
         String status
 ){}

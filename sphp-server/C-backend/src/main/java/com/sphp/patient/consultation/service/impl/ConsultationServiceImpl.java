@@ -170,11 +170,11 @@ public class ConsultationServiceImpl implements ConsultationService {
                         .build())
                 // 预问诊详情
                 .preConsultation(ConsultationDetailVO.PreConsultation.builder()
-                        .chiefComplaint(record.chiefComplaint())
-                        .historyOfPresentIllness(record.historyOfPresentIllness())
-                        .attachments(deserializeAttachments(record.attachmentsJson()))
+                        .chiefComplaint(record.chiefComplaint()) // 主诉
+                        .historyOfPresentIllness(record.historyOfPresentIllness()) // 现病史
+                        .attachments(deserializeAttachments(record.attachmentsJson())) // 附件
                         .savedAt(record.savedAt())
-                        .submittedAt(record.submittedAt())
+                        .submittedAt(record.submittedAt()) // 提交时间
                         .build())
                 // 问诊详情
                 .messages(messages)

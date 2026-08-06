@@ -41,13 +41,13 @@ public class RegisteringWaitlistPromotionService {
     }
 
     /**
-     * 扫描通知超时及已开始时段的候补，并在有余量时继续通知下一位。
+     * 扫描通知超时及已结束时段的候补，并在有余量时继续通知下一位。
      */
     @Transactional(rollbackFor = Exception.class)
     public void registeringExpireDueWaitlists() {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime deadline = now.minusSeconds(Math.max(registrationProperties.getWaitlistNotifyTimeout(), 1));
-        // 已开始时段的候补没有预约价值，必须先结束以避免扫描过程发出无效通知。
+        // 已结束时段的候补没有预约价值，必须先结束以避免扫描过程发出无效通知。
         dataMapper.registeringExpireStartedWaitlists(now);
         List<RegisteringWaitlistCandidateRecord> expiredWaitlists =
                 dataMapper.selectRegisteringExpiredNotifiedWaitlists(deadline);
@@ -97,7 +97,7 @@ public class RegisteringWaitlistPromotionService {
                 waitlist.patientId(),
                 NotificationTypeEnum.APPOINTMENT,
                 "候补号源可预约",
-                "已有可用号源，请在15分钟内完成预约。号源不保留，建议尽快操作。"
+                "已有可用号源，请在当前时段结束前完成预约。号源不保留，建议尽快操作。"
         );
     }
 }
