@@ -319,6 +319,56 @@ def _fill_missing_address_id(
     return _fill_missing_required_param(tool_calls, "address_id", address_id)
 
 
+def _build_preconsult_progress_prompt(
+    state: AgentState, allowed_tools: list[str] | None
+) -> str | None:
+    """构造预问诊流程推进提示（问诊子图确定性引导）。
+
+    问诊场景日志复现的故障：LLM 调 query_health_record（返回空档案）后，受
+    ``TOOL_CALLER_SYSTEM_PROMPT`` 第 8 条"上一步结果已返回全部信息就停止"
+    影响，重复请求 health_record（被 ``_dedupe_tool_calls`` 去重）或直接结束，
+    **跳过了预问诊第 3 步**（query_departments 确认科室 ID -> query_doctors
+    列医生），选医生卡片根本不出现，流程卡在"查完档案"。
+
+    此函数在问诊场景下、health_record 已成功执行但科室/医生尚未查询时，
+    注入确定性推进提示，明确告知 LLM "下一步必须调 query_departments 再
+    query_doctors，不要重复查档案、不要提前结束"，不依赖 LLM 对空结果的
+    自由解读。
+
+    Args:
+        state: 当前图状态，含 tool_results（已执行工具结果）。
+        allowed_tools: 子图工具白名单（问诊子图含 save_pre_consultation）。
+
+    Returns:
+        str | None: 推进提示；非问诊场景 / health_record 未执行 / 科室医生
+            已查过 时返回 None（不注入，避免干扰后续轮次）。
+    """
+    # 仅问诊子图注入（白名单含 save_pre_consultation 判定场景）
+    if not allowed_tools or "save_pre_consultation" not in allowed_tools:
+        return None
+    tool_results = state.get("tool_results") or []
+    if not tool_results:
+        return None
+    has_health = any(
+        r.get("tool_name") == "query_health_record" and r.get("success") for r in tool_results
+    )
+    if not has_health:
+        return None
+    # 科室/医生已查过则不再推进（避免循环内重复注入干扰后续决策）
+    has_dept_or_doctor = any(
+        r.get("tool_name") in ("query_departments", "query_doctors") and r.get("success")
+        for r in tool_results
+    )
+    if has_dept_or_doctor:
+        return None
+    return (
+        "预问诊推进：健康档案已查询（即使无过敏史/既往史记录也是正常情况，不要重复"
+        "调用 query_health_record）。下一步必须按流程继续：先调 query_departments "
+        "确认科室 ID，再调 query_doctors 列出医生，然后让用户选择。不要提前结束本轮，"
+        "不要跳过选医生环节。"
+    )
+
+
 def _parse_doctor_candidates(tool_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """从 query_doctors 工具结果中解析候选医生列表（问诊选医生卡片数据源）。
 
@@ -455,9 +505,11 @@ def _match_doctor_choice(
             if m.get("role") == "user":
                 user_text = str(m.get("content", ""))
                 break
-        elif getattr(m, "role", None) == "user":
-            user_text = str(getattr(m, "content", ""))
-            break
+        else:
+            # LangChain BaseMessage：dict 化后 role 为 user；或 type 为 human
+            if getattr(m, "type", "") == "human" or str(getattr(m, "role", "")).lower() == "user":
+                user_text = str(getattr(m, "content", ""))
+                break
     if not user_text:
         return None
     for c in candidates:
@@ -473,6 +525,25 @@ def _match_doctor_choice(
         if str_id and str_id in user_text:
             return c
     return None
+
+
+def _latest_user_text(messages: list[Any]) -> str:
+    """取 messages 中最新一条 user 消息文本（诊断用）。
+
+    Args:
+        messages: 消息列表（dict 或 LangChain BaseMessage）。
+
+    Returns:
+        str: 最新 user 消息内容；无 user 消息返回空串。
+    """
+    for m in reversed(messages):
+        if isinstance(m, dict):
+            if m.get("role") == "user":
+                return str(m.get("content", ""))
+        else:
+            if getattr(m, "type", "") == "human" or str(getattr(m, "role", "")).lower() == "user":
+                return str(getattr(m, "content", ""))
+    return ""
 
 
 def _build_doctor_choice_context(choice: dict[str, Any]) -> str:
@@ -537,6 +608,34 @@ async def tool_caller(
         logger.warning("未知 scope=%s，默认使用 c_end 工具集", scope)
         tool_scope = ToolScope.C_END
 
+    # M8-6 问诊选医生：用户已从 options 卡回传选择（"我选择X医生"）时，**在
+    # LLM 推理前**确定性匹配候选并注入 doctor_id 上下文，让 LLM 本轮就知道
+    # "已选医生、直接调 save_pre_consultation"，避免 LLM 把点选误当成普通消息
+    # 而重跑预问诊流程（查档案/科室/医生）或卡死。
+    # 注：注入必须发生在 ainvoke 之前，否则 LLM 看不到已选信息（此前 bug——
+    # 匹配逻辑在 ainvoke 之后才 append，LLM 推理时上下文无"已选医生"指令）。
+    # M8-8：命中后把绑定工具**过滤成只剩 save_pre_consultation**（硬约束，
+    # 不依赖模型遵循提示词）——DeepSeek 对"直接 save 别重跑查询"遵循度不足，
+    # 仍会先调查询工具；过滤后 LLM 想查也无从调起，只能 save。
+    selected_choice: dict[str, Any] | None = None
+    pending_choices = state.get("pending_doctor_choices")
+    if pending_choices:
+        selected_choice = _match_doctor_choice(state.get("messages", []), pending_choices)
+        if selected_choice:
+            logger.info(
+                "用户已选医生: %s(id=%s)",
+                selected_choice.get("name"),
+                selected_choice.get("doctor_id"),
+            )
+        else:
+            # 用户消息含选择意图但未匹配候选（如输入了候选外的医生名）：
+            # 保留 pending 不清空，LLM 可基于场景提示词重新列医生让用户再选。
+            logger.info(
+                "已选医生匹配失败: pending=%s, 最近user消息=%s",
+                [c.get("name") for c in pending_choices],
+                _latest_user_text(state.get("messages", [])),
+            )
+
     # 取 L1+L2 工具（L3/L4 不注册；L2 由 safety_check 拦截生成确认），转 OpenAI schema
     subgraph_tools = ToolRegistry.get_tools_by_scope(tool_scope)
     # 白名单仅约束 C 端：业务子图白名单是 C 端场景专属，B 端忽略白名单，
@@ -545,6 +644,11 @@ async def tool_caller(
     if effective_allowed is not None:
         allowed_set = set(effective_allowed)
         subgraph_tools = [t for t in subgraph_tools if t.name in allowed_set]
+    # M8-8 硬约束：用户已选医生时，本轮只暴露 save_pre_consultation，
+    # 让 LLM 无法重跑查询（query_health_record / query_departments / query_doctors
+    # 均不绑定），只能直接提交预问诊。
+    if selected_choice is not None:
+        subgraph_tools = [t for t in subgraph_tools if t.name == "save_pre_consultation"]
     tools = [
         t.to_openai_schema()
         for t in subgraph_tools
@@ -574,6 +678,13 @@ async def tool_caller(
     if scene_prompt:
         messages.append({"role": "system", "content": scene_prompt})
     messages += history
+
+    # 已选医生上下文注入：告知 LLM 直接调 save_pre_consultation（选择匹配已在
+    # 工具绑定前完成，selected_choice 非 None 即本轮已绑定仅 save 工具）。
+    if selected_choice is not None:
+        messages.append(
+            {"role": "system", "content": _build_doctor_choice_context(selected_choice)}
+        )
 
     # M8-5：注入当前接诊患者上下文（前端 context.patient_id 非空时），
     # LLM 直接携带该 ID，避免 B 端必填 patient_id 工具反复向医生索要患者 ID。
@@ -610,6 +721,12 @@ async def tool_caller(
         summary = _format_tool_results(tool_results)
         messages.append({"role": "system", "content": f"已执行的工具结果：\n{summary}"})
 
+    # 预问诊流程确定性推进（M8-7）：问诊子图下 health_record 已查但科室/医生
+    # 未查时，注入"下一步必须继续"提示，避免 LLM 因空档案误判提前结束/重复查。
+    preconsult_ctx = _build_preconsult_progress_prompt(state, effective_allowed)
+    if preconsult_ctx:
+        messages.append({"role": "system", "content": preconsult_ctx})
+
     # M8-1：注入待确认 L2 摘要，让 LLM 知已有卡片，避免重复调用同一 L2
     # （软约束，硬兜底由 _dedupe_tool_calls 对比 pending + safety_check 复用 token）
     pending_confirmations = state.get("pending_confirmations")
@@ -643,23 +760,27 @@ async def tool_caller(
             state.get("tool_results") or [],
             state.get("pending_confirmations") or [],
         )
-        # M8-6 问诊选医生：若用户已从 options 卡回传选择，确定性匹配候选并
-        # 注入 doctor_id 上下文，清空 pending_doctor_choices（选完即收窗）。
+        # M8-6 问诊选医生收窗：用户已从 options 卡回传选择（选择上下文已在
+        # ainvoke 前注入），此处清空 pending_doctor_choices（选完即收窗，防止
+        # 下一轮重复匹配/重复发卡）。
         result_extra: dict[str, Any] = {}
-        candidates = state.get("pending_doctor_choices")
-        if candidates:
-            choice = _match_doctor_choice(state.get("messages", []), candidates)
-            if choice:
-                messages.append({"role": "system", "content": _build_doctor_choice_context(choice)})
-                result_extra["pending_doctor_choices"] = None
-                logger.info("用户已选医生: %s(id=%s)", choice.get("name"), choice.get("doctor_id"))
-        # 问诊场景拦截：同轮 query_doctors + save_pre_consultation -> 缓存候选、
-        # 剔除 save_pre_consultation（改由 SSE 发 options 卡让用户点选）。
-        tool_calls, new_candidates = _intercept_save_pre_consultation(
+        if selected_choice is not None:
+            result_extra["pending_doctor_choices"] = None
+        # 问诊场景拦截：同轮 query_doctors + save_pre_consultation -> 剔除
+        # save_pre_consultation（改由 SSE 发 options 卡让用户点选，防 LLM 替用户选）。
+        tool_calls, intercepted_candidates = _intercept_save_pre_consultation(
             tool_calls, state.get("tool_results") or []
         )
-        if new_candidates:
-            result_extra["pending_doctor_choices"] = new_candidates
+        # 确定性发卡（M8-7）：只要 query_doctors 返回了候选医生（无论 LLM 本轮
+        # 是否调 save_pre_consultation），就缓存候选供 SSE 发选择卡。修复日志
+        # "LLM 老实了不调 save -> 拦截器静默 -> 不发卡、只给文字回复"的漏卡问题。
+        candidates = (
+            intercepted_candidates
+            if intercepted_candidates is not None
+            else _parse_doctor_candidates(state.get("tool_results") or [])
+        )
+        if candidates:
+            result_extra["pending_doctor_choices"] = candidates
         logger.info(
             "工具决策: scope=%s, 选择 %d 个工具: %s",
             scope,

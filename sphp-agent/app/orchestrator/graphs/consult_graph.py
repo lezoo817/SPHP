@@ -32,6 +32,8 @@ CONSULTATION_SCENE_PROMPT = """【在线问诊场景指令】
 【预问诊阶段】
 1. 先问用户主诉（如"您今天主要哪里不舒服？"），拿到主诉后再进入下一步。
 2. 调 query_health_record 拉取患者过敏史，向用户说明"您的过敏史将随主诉一并发给医生"。
+   ⚠️ 即使档案返回空（无过敏史/既往史记录）也是正常情况：不要重复调用
+   query_health_record，拿到空结果后**必须继续**进入下一步。
 3. 根据主诉推荐科室，调 query_departments 确认科室 ID，再调 query_doctors 列出可接诊医生。
    ⚠️ 查到医生后**不要**直接调 save_pre_consultation！系统会把医生列表渲染成
    选择卡片让用户点选。你只需基于 query_doctors 结果生成回复（如"为您找到以下医生，

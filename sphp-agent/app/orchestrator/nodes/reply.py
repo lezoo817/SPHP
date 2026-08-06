@@ -81,11 +81,35 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         # 如果有待确认的 L2 操作，提醒 LLM 在回复中引导用户查看确认卡片
         pending_confirmations = state.get("pending_confirmations")
         if pending_confirmations:
+            tool_names = [p.get("tool_name", "") for p in pending_confirmations]
             prompt = (
-                f"有 {len(pending_confirmations)} 个操作正在等待用户确认，"
-                "请在回复中提醒用户查看确认卡片。"
+                f"有 {len(pending_confirmations)} 个操作（{', '.join(tool_names)}）正在等待用户"
+                "点击确认卡片，**操作尚未执行**。请用简短回复说明用户即将执行的操作，"
+                "并引导用户查看并点击确认卡片。"
+                "⚠️ 严禁声称操作已成功/已提交/已发送/已收到——确认卡片点击后才会真正执行，"
+                "确认前一律用'即将/待确认'表述，不要替用户完成操作。"
             )
             llm_messages.append({"role": "system", "content": prompt})
+
+        # M8-7：选医生卡片已就绪时，引导 LLM 回复"请在卡片中选择"，
+        # 禁止提及号源余量/预约时间/线下就医（在线问诊不依赖当天号源，
+        # 避免 LLM 把 query_doctors 的 availableCount=0 误读为"号源已满"）。
+        pending_doctor_choices = state.get("pending_doctor_choices")
+        if pending_doctor_choices:
+            names = "、".join(
+                str(c.get("name") or c.get("doctor_id") or "医生") for c in pending_doctor_choices
+            )
+            llm_messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        f"医生列表（{names}）已生成选择卡片，用户可直接点选。"
+                        "请用简短回复告知用户'已为您找到以下医生，请在卡片中选择'，"
+                        "然后停止。⚠️ 不得提及号源余量、号源已满、预约时间、线下就医"
+                        "或挂号——在线问诊随时可发起，不依赖医生当天号源。"
+                    ),
+                }
+            )
 
         # 风险标记注入（系分 §7.1）：safety_check 记录的未完成/被拒操作，
         # 要求 LLM 如实告知用户，避免静默失败
