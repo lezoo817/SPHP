@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type TouchEvent } from 'react';
-import { BellRing, CalendarPlus, ChevronRight, ClipboardPlus, FileChartColumn, HeartPulse, MapPin, Pill, Search, Stethoscope, X } from 'lucide-react';
+import { BellRing, CalendarPlus, ChevronRight, ClipboardPlus, FileChartColumn, HeartPulse, MapPin, Pill, Plus, Search, Stethoscope, X } from 'lucide-react';
 import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
-import { Dialog } from '../../components/Dialog';
 import { dismissExpiredHealthTodo, getDismissedExpiredHealthTodoIds, isExpiredHealthTodoDismissed } from '../../models/expired-health-todo';
 import { getSelection, saveSelection } from '../../models/selection';
 import { getFamilyMembers } from '../../services/family';
@@ -26,7 +25,6 @@ export default function HomePage() {
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [selected, setSelected] = useState(getSelection());
-  const [patientOpen, setPatientOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const [todos, setTodos] = useState<HealthTodo[]>([]);
   const [waitlistNotification, setWaitlistNotification] = useState<NotificationItem>();
@@ -148,8 +146,14 @@ export default function HomePage() {
     navigate(path);
   }
 
+  /** 切换首页当前就诊人，并保留已选择的医院。 */
+  function selectPatient(patientId: number) {
+    // 选择结果写入跨页面状态，后续挂号、问诊等入口读取同一就诊人。
+    saveSelection({ patientId });
+    setSelected(getSelection());
+  }
+
   const currentHospital = hospitals.find((item) => item.hospitalId === selected.hospitalId);
-  const currentPatient = members.find((item) => item.patientId === selected.patientId);
   const services = [
     { label: '预约挂号', icon: CalendarPlus, action: () => navigate('/home/departments') },
     { label: '智能导诊', icon: Stethoscope, action: () => navigate('/agent') },
@@ -180,7 +184,24 @@ export default function HomePage() {
     <section className="home-content">
       <button className="hospital-switch" type="button" onClick={() => navigate('/home/hospitals')}>当前医院：{currentHospital?.name || '选择医院'} <ChevronRight size={18} /></button>
       <button className="search-bar" type="button" onClick={() => navigate('/home/departments')}><Search size={24} /><span>搜索医生、科室</span></button>
-      <section className="patient-switch-card"><div><b>当前就诊人 · {currentPatient?.name || '未选择'}</b><p>{currentPatient?.phone || '资料待完善'}</p></div><button type="button" className="text-button" onClick={() => setPatientOpen(true)}>切换 <ChevronRight size={19} /></button></section>
+      <section className="patient-carousel" aria-label="切换就诊人">
+        <div className="patient-carousel__track">
+          {members.map((member) => {
+            const isCurrent = member.patientId === selected.patientId;
+            return <button className={`patient-carousel__card${isCurrent ? ' is-current' : ''}`} key={member.patientId} type="button" onClick={() => selectPatient(member.patientId)} aria-pressed={isCurrent}>
+              <span className="patient-carousel__eyebrow">{isCurrent ? '当前就诊人' : '就诊人'}{member.isDefault && <em>默认</em>}</span>
+              <b>{member.name}</b>
+              <span>{member.phone || '手机号待完善'}</span>
+              <small>身份证号：{member.idCardNo || '资料待完善'}</small>
+            </button>;
+          })}
+          <button className="patient-carousel__add-card" type="button" onClick={() => navigate('/mine/family-members')} aria-label="添加就诊人">
+            <span><Plus size={25} /></span>
+            <b>添加就诊人</b>
+            <small>管理本人和家庭成员</small>
+          </button>
+        </div>
+      </section>
       <h2>快捷服务</h2>
       <section className="quick-grid">{services.map(({ label, icon: Icon, action }) => <button key={label} type="button" onClick={action || (() => setNotice(`${label}暂未开放`))}><Icon size={29} /><span>{label}</span></button>)}</section>
       <section className="todo-section"><div className="section-title"><h2>健康待办</h2>{todos.length > 0 && <span className="todo-count">{todos.length} 项待处理</span>}</div>
@@ -188,7 +209,6 @@ export default function HomePage() {
         {!todos.length && <p className="empty-state">暂无健康待办</p>}
       </section>
     </section>
-    {patientOpen && <Dialog title="切换就诊人" onClose={() => setPatientOpen(false)}>{members.map((item) => <button className="choice-row" key={item.patientId} type="button" onClick={() => { saveSelection({ patientId: item.patientId }); setSelected(getSelection()); setPatientOpen(false); }}><span>{item.name}</span><small>{item.relationName || item.relation}</small></button>)}{members.filter((item) => item.relation !== 'SELF').length === 0 && <p className="empty-state">当前用户未绑定亲属</p>}</Dialog>}
     {notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}
     <BottomTab onUnavailable={() => setNotice('该页面暂未开放')} />
   </main>;
