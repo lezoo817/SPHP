@@ -12,17 +12,31 @@ import com.sphp.admin.prescription.dto.TemplateListVO;
 public interface PrescriptionTemplateService {
 
     /**
-     * 分页查询处方模板列表（系分 §5.6.6）。
+     * 分页查询处方模板列表。
+     *
+     * <p>仅返回当前医院启用状态模板；按名称模糊、科室过滤。
+     *
+     * @param name   模板名称模糊搜索（可选）
+     * @param deptId 科室 ID 过滤（空返回全部可用模板，含全院通用）
+     * @param page   页码（从 1 开始）
+     * @param size   每页大小
+     * @return 模板分页结果
      */
     PageResult<TemplateListVO> page(String name, Long deptId, int page, int size);
 
     /**
-     * 保存处方模板（系分 §5.6.7）。
+     * 保存处方模板。
+     *
+     * <p>需医生身份；同医院防同名；模板默认启用状态。
+     *
+     * @param request 模板保存请求（名称、科室、药品明细）
+     * @return 创建后的模板信息
+     * @throws com.sphp.shared.exception.BusinessException 无医生身份/参数非法/药品不可用
      */
     TemplateListVO save(SaveTemplateRequest request);
 
     /**
-     * 更新处方模板（系分 §5.6.8）。
+     * 更新处方模板。
      *
      * <p>可更新字段：科室（deptId）、药品明细（items）。
      * 模板名称不可修改，防止引用断裂。
@@ -30,11 +44,15 @@ public interface PrescriptionTemplateService {
      * @param id      模板 ID
      * @param request 更新请求（仅读取 deptId、items）
      * @return 更新后的模板信息
+     * @throws com.sphp.shared.exception.BusinessException 无权限/不存在/参数非法
      */
     TemplateListVO update(Long id, SaveTemplateRequest request);
 
     /**
      * 删除处方模板（软删除）。
+     *
+     * @param id 模板 ID
+     * @throws com.sphp.shared.exception.BusinessException 不存在或越权
      */
     void delete(Long id);
 
@@ -47,6 +65,7 @@ public interface PrescriptionTemplateService {
      * @param templateId 模板 ID
      * @param consultId  问诊记录 ID
      * @return 处方提交结果（含风险警告与状态）
+     * @throws com.sphp.shared.exception.BusinessException 模板无效/越权
      */
     PrescriptionSubmitVO apply(Long templateId, Long consultId);
 
@@ -55,6 +74,7 @@ public interface PrescriptionTemplateService {
      *
      * @param id 药品 ID
      * @return 药品信息；不存在或不属于当前医院抛 A0402
+     * @throws com.sphp.shared.exception.BusinessException 不存在或越权
      */
     DrugListVO getDrug(Long id);
 }

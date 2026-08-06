@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
- * 保存病历请求体（系分 §5.5.5）。
+ * 保存病历请求体。
  */
 @Data
 @Schema(description = "保存病历请求")

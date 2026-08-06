@@ -8,6 +8,8 @@ import com.sphp.admin.auth.entity.Doctor;
 import com.sphp.admin.auth.mapper.DoctorMapper;
 import com.sphp.admin.common.CurrentUserService;
 import com.sphp.admin.common.DataScope;
+import com.sphp.admin.common.enums.BRoleEnum;
+import com.sphp.admin.common.enums.BUserStatusEnum;
 import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.hospital.entity.Department;
 import com.sphp.admin.hospital.mapper.DepartmentMapper;
@@ -29,6 +31,7 @@ import com.sphp.admin.schedule.vo.ScheduleListVO;
 import com.sphp.admin.schedule.vo.SchedulePublishVO;
 import com.sphp.admin.schedule.vo.SlotConfigVO;
 import com.sphp.admin.schedule.vo.SourcePoolVO;
+import com.sphp.shared.common.enums.ErrorCodeEnum;
 import com.sphp.shared.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -50,20 +53,23 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 排班与号源管理服务实现（系分 §5.4）。
+ * 排班与号源管理服务实现。
  *
- * <p>数据权限遵循 §7.2：查询按当前用户角色显式过滤；
- * 写操作经 {@link CurrentUserService#getCurrentHospitalId()} 强制 ADMIN。
- * 号源缓存 Key 格式 {@code slot:remain:{slotId}}（§4.2.3）。
+ * <p><b>管理员视角：</b>提供排班创建/配置/发布/取消发布、号源池与锁定号源看板、手动释放等能力。
+ *
+ * <p><b>数据隔离边界：</b>查询接口按当前登录用户数据权限过滤（{@code DataScope}）：
+ * <ul>
+ *     <li>ADMIN：可按 deptId / doctorId 在本院范围内筛选</li>
+ *     <li>DEPT_HEAD：强制 scope.deptId() = 本人科室</li>
+ *     <li>DOCTOR：强制 scope.doctorId() = 本人医生</li>
+ * </ul>
+ * 写操作经 {@link CurrentUserService#getCurrentHospitalId()} 校验本院归属，
+ * DEPT_HEAD / DOCTOR 无写权限。号源缓存 Key 格式 {@code slot:remain:{slotId}}。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ScheduleServiceImpl implements ScheduleService {
-
-    private static final String ROLE_ADMIN = "ADMIN";
-    private static final String ROLE_DEPT_HEAD = "DEPT_HEAD";
-    private static final String ROLE_DOCTOR = "DOCTOR";
 
     /** 排班状态 */
     private static final String STATUS_DRAFT = "DRAFT";
@@ -75,11 +81,20 @@ public class ScheduleServiceImpl implements ScheduleService {
     private static final String SNAP_AVAILABLE = "AVAILABLE";
     private static final String SNAP_RELEASED = "RELEASED";
 
-    /** 号源缓存 Key 前缀（系分 §4.2.3） */
+    /** 号源缓存 Key 前缀（与 C 端约定） */
     private static final String SLOT_REMAIN_KEY = "slot:remain:%d";
 
     /** 锁定号源展示的过期时长（分钟），与任务契约一致 */
     private static final int LOCK_EXPIRE_MINUTES = 15;
+
+    /** 就诊人姓名脱敏占位（单字姓名 / 空值时回退） */
+    private static final String NAME_MASK_PLACEHOLDER = "**";
+    /** 就诊人姓名脱敏后缀（保留首字符后的掩码） */
+    private static final String NAME_MASK_SUFFIX = "**";
+
+    /** 号源池默认查询窗口（天），含今天 */
+    private static final int SOURCE_POOL_DEFAULT_DAYS = 7;
+    private static final int SOURCE_POOL_OFFSET_DAYS = 6;
 
     private final ScheduleMapper scheduleMapper;
     private final SlotMapper slotMapper;
@@ -89,12 +104,26 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final CurrentUserService currentUserService;
     private final StringRedisTemplate redisTemplate;
 
+    /**
+     * 分页查询排班列表。
+     *
+     * <p>数据权限：ADMIN 可按 deptId/doctorId 筛选；DEPT_HEAD 强制本科室；DOCTOR 强制本人。
+     * 数据权限标识缺失时按空数据返回避免越权。
+     *
+     * @param date     排班日期（可空；不传则加载全部）
+     * @param deptId   科室过滤（仅 ADMIN 生效）
+     * @param doctorId 医生过滤（仅 ADMIN 生效）
+     * @param status   排班状态过滤（DRAFT / PUBLISHED / CANCELLED；可空）
+     * @param page     页码（1 起）
+     * @param size     每页大小（调用方已钳制到 [1, MAX_PAGE_SIZE]）
+     * @return 排班分页结果（含号源聚合计数）
+     */
     @Override
     public PageResult<ScheduleListVO> page(LocalDate date, Long deptId, Long doctorId, String status, int page, int size) {
         DataScope scope = currentUserService.getCurrentDataScope();
         // 数据权限标识缺失（DEPT_HEAD 无科室 / DOCTOR 无本人医生）时按空数据返回，避免越权
-        if ((ROLE_DEPT_HEAD.equals(scope.role()) && scope.deptId() == null)
-                || (ROLE_DOCTOR.equals(scope.role()) && scope.doctorId() == null)) {
+        if ((BRoleEnum.DEPT_HEAD.equalsCode(scope.role()) && scope.deptId() == null)
+                || (BRoleEnum.DOCTOR.equalsCode(scope.role()) && scope.doctorId() == null)) {
             return PageResult.of(0, List.of(), page, size);
         }
 
@@ -105,10 +134,10 @@ public class ScheduleServiceImpl implements ScheduleService {
                 // schedule 表无 hospital_id，医院范围经 doctor.hospital_id 关联过滤
                 .apply("doctor_id IN (SELECT id FROM doctor WHERE hospital_id = {0} AND deleted_at IS NULL)",
                         scope.hospitalId());
-        if (ROLE_ADMIN.equals(scope.role())) {
+        if (BRoleEnum.ADMIN.equalsCode(scope.role())) {
             wrapper.eq(deptId != null, Schedule::getDeptId, deptId)
                     .eq(doctorId != null, Schedule::getDoctorId, doctorId);
-        } else if (ROLE_DEPT_HEAD.equals(scope.role())) {
+        } else if (BRoleEnum.DEPT_HEAD.equalsCode(scope.role())) {
             wrapper.eq(Schedule::getDeptId, scope.deptId());
         } else {
             wrapper.eq(Schedule::getDoctorId, scope.doctorId());
@@ -122,45 +151,69 @@ public class ScheduleServiceImpl implements ScheduleService {
         return PageResult.of(result.getTotal(), buildListVO(result.getRecords()), page, size);
     }
 
+    /**
+     * 号源池分页查询。
+     *
+     * <p>仅统计 PUBLISHED 排班；数据权限同 {@link #page}；默认日期区间近 7 天含今天。
+     *
+     * @param startDate 开始日期（可空；默认 {@code today - 6}）
+     * @param endDate   结束日期（可空；默认今天）
+     * @param deptId    科室过滤（仅 ADMIN 生效）
+     * @param doctorId  医生过滤（仅 ADMIN 生效）
+     * @param page      页码
+     * @param size      每页大小
+     * @return 号源池分页结果
+     * @throws BusinessException 日期范围无效时抛出
+     */
     @Override
     public PageResult<SourcePoolVO> sourcePool(LocalDate startDate, LocalDate endDate, Long deptId, Long doctorId, int page, int size) {
-        // 默认区间：近 7 天（含今天）；显式区间需满足 start <= end
-        LocalDate start = startDate != null ? startDate : LocalDate.now().minusDays(6);
+        // 默认区间：近 SOURCE_POOL_DEFAULT_DAYS 天（含今天）；显式区间需满足 start <= end
+        LocalDate start = startDate != null ? startDate : LocalDate.now().minusDays(SOURCE_POOL_OFFSET_DAYS);
         LocalDate end = endDate != null ? endDate : LocalDate.now();
         if (start.isAfter(end)) {
-            throw new BusinessException("A0400", "日期范围无效，开始日期不能晚于结束日期");
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "日期范围无效，开始日期不能晚于结束日期");
         }
         DataScope scope = currentUserService.getCurrentDataScope();
         // 数据权限标识缺失（DEPT_HEAD 无科室 / DOCTOR 无本人医生）时按空数据返回，避免越权
-        if ((ROLE_DEPT_HEAD.equals(scope.role()) && scope.deptId() == null)
-                || (ROLE_DOCTOR.equals(scope.role()) && scope.doctorId() == null)) {
+        if ((BRoleEnum.DEPT_HEAD.equalsCode(scope.role()) && scope.deptId() == null)
+                || (BRoleEnum.DOCTOR.equalsCode(scope.role()) && scope.doctorId() == null)) {
             return PageResult.of(0, List.of(), page, size);
         }
         // ADMIN 的 deptId/doctorId 为用户筛选条件；DEPT_HEAD / DOCTOR 强制数据权限范围
-        Long filterDeptId = ROLE_ADMIN.equals(scope.role()) ? deptId : null;
-        Long filterDoctorId = ROLE_ADMIN.equals(scope.role()) ? doctorId : null;
-        Long scopeDeptId = ROLE_DEPT_HEAD.equals(scope.role()) ? scope.deptId() : null;
-        Long scopeDoctorId = ROLE_DOCTOR.equals(scope.role()) ? scope.doctorId() : null;
+        Long filterDeptId = BRoleEnum.ADMIN.equalsCode(scope.role()) ? deptId : null;
+        Long filterDoctorId = BRoleEnum.ADMIN.equalsCode(scope.role()) ? doctorId : null;
+        Long scopeDeptId = BRoleEnum.DEPT_HEAD.equalsCode(scope.role()) ? scope.deptId() : null;
+        Long scopeDoctorId = BRoleEnum.DOCTOR.equalsCode(scope.role()) ? scope.doctorId() : null;
         IPage<SourcePoolVO> result = slotMapper.selectSourcePoolPage(
                 new Page<>(page, size), start, end, scope.hospitalId(),
                 filterDeptId, filterDoctorId, scopeDeptId, scopeDoctorId);
         return PageResult.of(result.getTotal(), result.getRecords(), page, size);
     }
 
+    /**
+     * 创建排班（ADMIN）。
+     *
+     * <p>同医生同日期同班次仅允许一条有效排班；存在 CANCELLED 时原地复用并重置为 DRAFT；
+     * DRAFT/PUBLISHED 重复时拒绝。自动填充 dept_id（取自医生所属科室）。
+     *
+     * @param request 创建请求（医生 / 日期 / 班次 / 总号源）
+     * @return 创建结果（排班 ID、状态、创建时间）
+     * @throws BusinessException 医生不存在 / 跨院 / 停用 / 日期过早 / 重复排班时抛出
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ScheduleCreateVO create(ScheduleCreateRequest request) {
         Long hospitalId = currentUserService.getCurrentHospitalId();
         Doctor doctor = doctorMapper.selectById(request.getDoctorId());
         if (doctor == null || doctor.getDeletedAt() != null || !doctor.getHospitalId().equals(hospitalId)) {
-            throw new BusinessException("A0402", "医生不存在或不属于本院");
+            throw new BusinessException(ErrorCodeEnum.INVALID_USER_INPUT, "医生不存在或不属于本院");
         }
-        if (!"ENABLED".equals(doctor.getStatus())) {
-            throw new BusinessException("A0443", "医生当前状态不可排班");
+        if (!BUserStatusEnum.isEnabled(doctor.getStatus())) {
+            throw new BusinessException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID, "医生当前状态不可排班");
         }
         LocalDate scheduleDate = LocalDate.parse(request.getScheduleDate());
         if (scheduleDate.isBefore(LocalDate.now())) {
-            throw new BusinessException("A0400", "排班日期不能早于今天");
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "排班日期不能早于今天");
         }
         // 唯一校验：同医生同日期同班次。已作废（CANCELLED）的排班允许重新建立——
         // 原地复用该行并重置为草稿；存在 DRAFT/PUBLISHED 有效排班时禁止重复创建
@@ -174,7 +227,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             if (STATUS_CANCELLED.equals(s.getStatus())) {
                 cancelled = s;
             } else {
-                throw new BusinessException("A0443", "该医生当天该班次已存在排班");
+                throw new BusinessException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID, "该医生当天该班次已存在排班");
             }
         }
         if (cancelled != null) {
@@ -219,6 +272,13 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .build();
     }
 
+    /**
+     * 查询排班号源时段配置（按开始时间升序）。
+     *
+     * @param id 排班 ID
+     * @return 时段配置列表（可能为空）
+     * @throws BusinessException 排班不存在或越权时抛出
+     */
     @Override
     public List<SlotConfigVO> getSlots(Long id) {
         Schedule schedule = getScheduleInScope(id);
@@ -237,13 +297,22 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .toList();
     }
 
+    /**
+     * 配置号源时段（ADMIN）。
+     *
+     * <p>仅 DRAFT 状态可配置；旧时段逻辑删除后插入新时段；时段号源数之和不超过排班总号源数。
+     *
+     * @param id      排班 ID
+     * @param request 时段配置请求（时段列表）
+     * @throws BusinessException 非 DRAFT / 时段不合法 / 总数越界 / 时段重叠时抛出
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void configureSlots(Long id, SlotConfigRequest request) {
         Long hospitalId = currentUserService.getCurrentHospitalId();
         Schedule schedule = getSchedule(id, hospitalId);
         if (!STATUS_DRAFT.equals(schedule.getStatus())) {
-            throw new BusinessException("A0443", "仅草稿状态可配置号源时段");
+            throw new BusinessException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID, "仅草稿状态可配置号源时段");
         }
         List<SlotConfigRequest.SlotConfigItem> items = request.getSlotConfigs();
         List<Slot> slots = new ArrayList<>(items.size());
@@ -252,7 +321,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             LocalTime start = LocalTime.parse(item.getStartTime());
             LocalTime end = LocalTime.parse(item.getEndTime());
             if (!end.isAfter(start)) {
-                throw new BusinessException("A0400", "时段结束时间必须晚于开始时间：" + item.getStartTime());
+                throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "时段结束时间必须晚于开始时间：" + item.getStartTime());
             }
             sum += item.getCount();
             Slot slot = new Slot();
@@ -263,16 +332,16 @@ public class ScheduleServiceImpl implements ScheduleService {
             slot.setRemainCount(item.getCount());
             slots.add(slot);
         }
-        // 时段号源数之和不超过排班总号源数（余量留作机动，不强制相等，§5.4.4）
+        // 时段号源数之和不超过排班总号源数（余量留作机动，不强制相等）
         if (sum > schedule.getTotalSlots()) {
-            throw new BusinessException("A0400",
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER,
                     "时段号源数之和(" + sum + ")不能超过排班总号源数(" + schedule.getTotalSlots() + ")");
         }
         // 时段不得重叠（按开始时间排序，相邻区间交叉即重叠）
         List<Slot> sorted = slots.stream().sorted(Comparator.comparing(Slot::getStartTime)).toList();
         for (int i = 1; i < sorted.size(); i++) {
             if (sorted.get(i - 1).getEndTime().isAfter(sorted.get(i).getStartTime())) {
-                throw new BusinessException("A0400", "号源时段之间不能重叠");
+                throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "号源时段之间不能重叠");
             }
         }
 
@@ -288,22 +357,32 @@ public class ScheduleServiceImpl implements ScheduleService {
                 schedule.getId(), slots.size(), sum, schedule.getTotalSlots());
     }
 
+    /**
+     * 发布排班（ADMIN；DRAFT → PUBLISHED）。
+     *
+     * <p>校验门禁：仅 DRAFT、已配置时段、时段号源数之和等于总号源数。发布后初始化
+     * Redis 号源缓存并按 generate_series 批量生成 AVAILABLE 号源快照。
+     *
+     * @param id 排班 ID
+     * @return 发布结果（ID、状态、发布时间）
+     * @throws BusinessException 非 DRAFT / 未配置时段 / 号源和不匹配时抛出
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public SchedulePublishVO publish(Long id) {
         Long hospitalId = currentUserService.getCurrentHospitalId();
         Schedule schedule = getSchedule(id, hospitalId);
         if (!STATUS_DRAFT.equals(schedule.getStatus())) {
-            throw new BusinessException("A0443", "仅草稿状态可发布排班");
+            throw new BusinessException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID, "仅草稿状态可发布排班");
         }
         List<Slot> slots = listSlots(schedule.getId());
         if (slots.isEmpty()) {
-            throw new BusinessException("A0443", "请先配置号源时段再发布");
+            throw new BusinessException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID, "请先配置号源时段再发布");
         }
-        // 时段号源数之和须等于排班总号源数方可发布（§5.4.4）
+        // 时段号源数之和须等于排班总号源数方可发布
         int slotCountSum = slots.stream().mapToInt(Slot::getTotalCount).sum();
         if (slotCountSum != schedule.getTotalSlots()) {
-            throw new BusinessException("A0443",
+            throw new BusinessException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID,
                     "时段号源数之和(" + slotCountSum + ")须等于排班总号源数(" + schedule.getTotalSlots() + ")，方可发布");
         }
 
@@ -312,7 +391,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setUpdatedAt(OffsetDateTime.now());
         scheduleMapper.updateById(schedule);
 
-        // 初始化 Redis 号源缓存（幂等覆盖，§4.2.3）
+        // 初始化 Redis 号源缓存（幂等覆盖）
         for (Slot slot : slots) {
             redisTemplate.opsForValue().set(redisKey(slot.getId()), String.valueOf(slot.getRemainCount()));
         }
@@ -326,6 +405,16 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .build();
     }
 
+    /**
+     * 取消发布排班（ADMIN）。
+     *
+     * <p>DRAFT 直接作废；PUBLISHED 校验无未来有效 PAID 订单后释放 LOCKED 快照为
+     * AVAILABLE、清空 AVAILABLE 快照、清理 Redis 号源缓存。
+     *
+     * @param id 排班 ID
+     * @return 取消结果（ID、状态、发布时间为 null）
+     * @throws BusinessException 已取消 / 存在已支付预约时抛出
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public SchedulePublishVO unpublish(Long id) {
@@ -333,15 +422,15 @@ public class ScheduleServiceImpl implements ScheduleService {
         Schedule schedule = getSchedule(id, hospitalId);
         String status = schedule.getStatus();
         if (STATUS_CANCELLED.equals(status)) {
-            throw new BusinessException("A0443", "排班已取消，不可重复操作");
+            throw new BusinessException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID, "排班已取消，不可重复操作");
         }
         List<Slot> slots = listSlots(schedule.getId());
         if (STATUS_PUBLISHED.equals(status)) {
             // 前置校验：存在 PAID 且 schedule_date >= 今天的有效挂号订单则禁止取消
             if (scheduleMapper.countPaidFutureAppointments(schedule.getId()) > 0) {
-                throw new BusinessException("A0443", "该排班存在已支付预约，无法取消发布");
+                throw new BusinessException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID, "该排班存在已支付预约，无法取消发布");
             }
-            // 释放 LOCKED 快照为 AVAILABLE，并 Redis INCR 归还 remain_count（§5.4.6）
+            // 释放 LOCKED 快照为 AVAILABLE，并 Redis INCR 归还 remain_count
             releaseLockedSnapshots(slots);
             // 清空该排班全部 AVAILABLE 号源快照：取消发布后号源池随之清空，避免残留可约数据
             slotSnapshotMapper.clearAvailableSnapshotsBySchedule(schedule.getId());
@@ -361,15 +450,26 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .build();
     }
 
+    /**
+     * 锁定号源看板分页查询（status=LOCKED 快照，按日期+科室+数据权限过滤）。
+     *
+     * <p>就诊人姓名在 Service 层脱敏（保留首字符 + 掩码）；expireAt = lockedAt + 15 分钟。
+     *
+     * @param date   排班日期（必填）
+     * @param deptId 科室过滤（仅 ADMIN 生效；可空）
+     * @param page   页码
+     * @param size   每页大小
+     * @return 锁定号源分页结果
+     */
     @Override
     public PageResult<LockedSlotVO> pageLocked(LocalDate date, Long deptId, int page, int size) {
         DataScope scope = currentUserService.getCurrentDataScope();
-        if ((ROLE_DEPT_HEAD.equals(scope.role()) && scope.deptId() == null)
-                || (ROLE_DOCTOR.equals(scope.role()) && scope.doctorId() == null)) {
+        if ((BRoleEnum.DEPT_HEAD.equalsCode(scope.role()) && scope.deptId() == null)
+                || (BRoleEnum.DOCTOR.equalsCode(scope.role()) && scope.doctorId() == null)) {
             return PageResult.of(0, List.of(), page, size);
         }
-        Long scopeDeptId = ROLE_DEPT_HEAD.equals(scope.role()) ? scope.deptId() : null;
-        Long scopeDoctorId = ROLE_DOCTOR.equals(scope.role()) ? scope.doctorId() : null;
+        Long scopeDeptId = BRoleEnum.DEPT_HEAD.equalsCode(scope.role()) ? scope.deptId() : null;
+        Long scopeDoctorId = BRoleEnum.DOCTOR.equalsCode(scope.role()) ? scope.doctorId() : null;
         IPage<LockedSlotRow> result = slotSnapshotMapper.selectLockedPage(
                 new Page<>(page, size), date, deptId, scope.hospitalId(), scopeDeptId, scopeDoctorId);
 
@@ -387,16 +487,26 @@ public class ScheduleServiceImpl implements ScheduleService {
         return PageResult.of(result.getTotal(), list, page, size);
     }
 
+    /**
+     * 手动释放锁定号源（ADMIN）。
+     *
+     * <p>仅 LOCKED 快照可释放，状态回到 AVAILABLE，patient_id 清空，
+     * Redis 号源 INCR 归还；B 端"剩余"统计与 C 端可约池同步。
+     *
+     * @param snapshotId 号源快照 ID
+     * @return 释放结果（快照 ID、状态、释放时间）
+     * @throws BusinessException 快照不存在 / 非 LOCKED / 跨院时抛出
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ForceReleaseVO forceRelease(Long snapshotId) {
         Long hospitalId = currentUserService.getCurrentHospitalId();
         SlotSnapshot snapshot = slotSnapshotMapper.selectById(snapshotId);
         if (snapshot == null || snapshot.getDeletedAt() != null) {
-            throw new BusinessException("A0402", "号源不存在");
+            throw new BusinessException(ErrorCodeEnum.INVALID_USER_INPUT, "号源不存在");
         }
         if (!SNAP_LOCKED.equals(snapshot.getStatus())) {
-            throw new BusinessException("A0443", "号源状态非 LOCKED，不可释放");
+            throw new BusinessException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID, "号源状态非 LOCKED，不可释放");
         }
         // 归属校验：快照所属排班须属于本院，防越权释放他院号源
         ensureSnapshotInHospital(snapshot, hospitalId);
@@ -418,7 +528,12 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .build();
     }
 
-    /** 分页记录组装为列表 VO（批量加载医生/科室名与号源聚合，避免 N+1） */
+    /**
+     * 分页记录组装为列表 VO（批量加载医生/科室名与号源聚合，避免 N+1）。
+     *
+     * @param records 当前页排班记录（可能为空）
+     * @return 列表 VO（空时返回空列表）
+     */
     private List<ScheduleListVO> buildListVO(List<Schedule> records) {
         if (records.isEmpty()) {
             return List.of();
@@ -457,47 +572,64 @@ public class ScheduleServiceImpl implements ScheduleService {
         }).toList();
     }
 
-    /** 查询排班（校验存在 + 属于当前用户数据权限范围），供只读接口使用 */
+    /**
+     * 查询排班（校验存在 + 属于当前用户数据权限范围），供只读接口使用。
+     *
+     * <p>校验链：医院 → 科室（DEPT_HEAD）→ 医生（DOCTOR），任一不通过则视为越权，
+     * 统一抛"排班不存在"避免暴露资源存在性。
+     *
+     * @param id 排班 ID
+     * @return 排班实体
+     * @throws BusinessException 不存在 / 跨院 / 越权时抛出
+     */
     private Schedule getScheduleInScope(Long id) {
         Schedule schedule = scheduleMapper.selectById(id);
         if (schedule == null || schedule.getDeletedAt() != null) {
-            throw new BusinessException("A0402", "排班不存在");
+            throw new BusinessException(ErrorCodeEnum.INVALID_USER_INPUT, "排班不存在");
         }
         DataScope scope = currentUserService.getCurrentDataScope();
         Doctor doctor = doctorMapper.selectById(schedule.getDoctorId());
         Long hospitalId = doctor != null && doctor.getDeletedAt() == null ? doctor.getHospitalId() : null;
         if (!Objects.equals(scope.hospitalId(), hospitalId)) {
-            throw new BusinessException("A0402", "排班不存在");
+            throw new BusinessException(ErrorCodeEnum.INVALID_USER_INPUT, "排班不存在");
         }
-        if (ROLE_DEPT_HEAD.equals(scope.role()) && !Objects.equals(scope.deptId(), schedule.getDeptId())) {
-            throw new BusinessException("A0402", "排班不存在");
+        if (BRoleEnum.DEPT_HEAD.equalsCode(scope.role()) && !Objects.equals(scope.deptId(), schedule.getDeptId())) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_USER_INPUT, "排班不存在");
         }
-        if (ROLE_DOCTOR.equals(scope.role()) && !Objects.equals(scope.doctorId(), schedule.getDoctorId())) {
-            throw new BusinessException("A0402", "排班不存在");
+        if (BRoleEnum.DOCTOR.equalsCode(scope.role()) && !Objects.equals(scope.doctorId(), schedule.getDoctorId())) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_USER_INPUT, "排班不存在");
         }
         return schedule;
     }
 
-    /** 查询排班（校验存在 + 属于指定医院），供 ADMIN 写操作使用 */
+    /**
+     * 查询排班（校验存在 + 属于指定医院），供 ADMIN 写操作使用。
+     *
+     * @param id         排班 ID
+     * @param hospitalId 当前用户所属医院（ADMIN 来源）
+     * @return 排班实体
+     * @throws BusinessException 不存在 / 跨院时抛出
+     */
     private Schedule getSchedule(Long id, Long hospitalId) {
         Schedule schedule = scheduleMapper.selectById(id);
         if (schedule == null || schedule.getDeletedAt() != null) {
-            throw new BusinessException("A0402", "排班不存在");
+            throw new BusinessException(ErrorCodeEnum.INVALID_USER_INPUT, "排班不存在");
         }
         Doctor doctor = doctorMapper.selectById(schedule.getDoctorId());
         if (doctor == null || doctor.getDeletedAt() != null || !doctor.getHospitalId().equals(hospitalId)) {
-            throw new BusinessException("A0402", "排班不存在");
+            throw new BusinessException(ErrorCodeEnum.INVALID_USER_INPUT, "排班不存在");
         }
         return schedule;
     }
 
-    /** 取消发布时释放 LOCKED 快照为 AVAILABLE，并对所属时段 Redis INCR 归还（§5.4.6） */
     /**
      * 按时段号源数生成 AVAILABLE 号源快照（幂等：已有有效快照的时段跳过）。
      *
      * <p>号源池以 slot_snapshot 的 AVAILABLE 记录为准，C 端可约数与锁号均基于
-     * AVAILABLE 快照计数（§4.2.3），故发布排班时必须同步生成快照，否则号源池为空、
+     * AVAILABLE 快照计数，故发布排班时必须同步生成快照，否则号源池为空、
      * 患者无法预约。单条 SQL 按 generate_series 批量插入，避免逐行循环。
+     *
+     * @param slots 待生成快照的时段列表
      */
     private void generateSlotSnapshots(List<Slot> slots) {
         if (slots.isEmpty()) {
@@ -518,6 +650,11 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
     }
 
+    /**
+     * 取消发布时释放 LOCKED 快照为 AVAILABLE，并对所属时段 Redis INCR 归还。
+     *
+     * @param slots 排班下全部有效时段（用于定位快照与归还 Redis 号源）
+     */
     private void releaseLockedSnapshots(List<Slot> slots) {
         if (slots.isEmpty()) {
             return;
@@ -543,7 +680,11 @@ public class ScheduleServiceImpl implements ScheduleService {
         log.info("取消发布：释放 LOCKED 快照 {} 个", locked.size());
     }
 
-    /** 批量删除排班下所有时段的 Redis 号源缓存（§5.4.6 缓存清理） */
+    /**
+     * 批量删除排班下所有时段的 Redis 号源缓存（取消发布后清理防残留误读）。
+     *
+     * @param slots 排班下全部有效时段
+     */
     private void deleteSlotCache(List<Slot> slots) {
         if (slots.isEmpty()) {
             return;
@@ -552,16 +693,30 @@ public class ScheduleServiceImpl implements ScheduleService {
         redisTemplate.delete(keys);
     }
 
-    /** 校验号源快照所属排班属于指定医院（经 slot → schedule → doctor） */
+    /**
+     * 校验号源快照所属排班属于指定医院（经 slot → schedule → doctor）。
+     *
+     * <p>用于手动释放时防越权释放他院号源；任一节点缺失或医院不符即视为号源不存在。
+     *
+     * @param snapshot   号源快照
+     * @param hospitalId 当前用户所属医院
+     * @throws BusinessException 越权时抛出
+     */
     private void ensureSnapshotInHospital(SlotSnapshot snapshot, Long hospitalId) {
         Slot slot = slotMapper.selectById(snapshot.getSlotId());
         Schedule schedule = slot == null ? null : scheduleMapper.selectById(slot.getScheduleId());
         Doctor doctor = schedule == null ? null : doctorMapper.selectById(schedule.getDoctorId());
         if (doctor == null || doctor.getDeletedAt() != null || !doctor.getHospitalId().equals(hospitalId)) {
-            throw new BusinessException("A0402", "号源不存在");
+            throw new BusinessException(ErrorCodeEnum.INVALID_USER_INPUT, "号源不存在");
         }
     }
 
+    /**
+     * 查询排班下全部有效时段（按开始时间升序）。
+     *
+     * @param scheduleId 排班 ID
+     * @return 时段列表（可能为空）
+     */
     private List<Slot> listSlots(Long scheduleId) {
         return slotMapper.selectList(Wrappers.<Slot>lambdaQuery()
                 .eq(Slot::getScheduleId, scheduleId)
@@ -569,7 +724,12 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .orderByAsc(Slot::getStartTime));
     }
 
-    /** 批量加载医生姓名（仅有效医生） */
+    /**
+     * 批量加载医生姓名（仅有效医生），用于排班列表 N+1 优化。
+     *
+     * @param ids 医生 ID 集合（可能为空）
+     * @return 医生 ID → 姓名 映射（缺失键返回 {@code null}）
+     */
     private Map<Long, String> loadDoctorNames(Collection<Long> ids) {
         if (ids.isEmpty()) {
             return Map.of();
@@ -579,7 +739,12 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .collect(Collectors.toMap(Doctor::getId, Doctor::getName, (a, b) -> a));
     }
 
-    /** 批量加载科室名称（仅有效科室） */
+    /**
+     * 批量加载科室名称（仅有效科室），用于排班列表 N+1 优化。
+     *
+     * @param ids 科室 ID 集合（可能为空）
+     * @return 科室 ID → 名称 映射（缺失键返回 {@code null}）
+     */
     private Map<Long, String> loadDeptNames(Collection<Long> ids) {
         if (ids.isEmpty()) {
             return Map.of();
@@ -589,17 +754,28 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .collect(Collectors.toMap(Department::getId, Department::getName, (a, b) -> a));
     }
 
-    /** 就诊人姓名脱敏：保留首字符，其余以 * 掩码（如 张**） */
+    /**
+     * 就诊人姓名脱敏：保留首字符，其余以 * 掩码（如 张**）；空值 / 单字统一回退。
+     *
+     * @param name 原始姓名（可空）
+     * @return 脱敏后姓名
+     */
     private String maskName(String name) {
         if (name == null || name.isBlank()) {
-            return "**";
+            return NAME_MASK_PLACEHOLDER;
         }
         if (name.length() == 1) {
-            return name + "**";
+            return name + NAME_MASK_SUFFIX;
         }
-        return name.charAt(0) + "**";
+        return name.charAt(0) + NAME_MASK_SUFFIX;
     }
 
+    /**
+     * 拼接号源 Redis 缓存 Key（与 C 端约定 {@code slot:remain:{slotId}}）。
+     *
+     * @param slotId 时段 ID
+     * @return Redis Key 字符串
+     */
     private String redisKey(Long slotId) {
         return String.format(SLOT_REMAIN_KEY, slotId);
     }

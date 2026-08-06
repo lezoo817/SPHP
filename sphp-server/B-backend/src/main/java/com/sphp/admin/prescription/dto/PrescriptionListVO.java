@@ -10,7 +10,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
- * 处方列表项 VO（系分 §5.6.2）。
+ * 处方列表项 VO。
  */
 @Data
 @Builder
@@ -31,7 +31,8 @@ public class PrescriptionListVO {
     @Schema(description = "患者姓名")
     private String patientName;
 
-    @Schema(description = "处方状态")
+    @Schema(description = "处方状态：DRAFT / SUBMITTED / APPROVED / REJECTED / CANCELLED",
+            example = "APPROVED")
     private String status;
 
     @Schema(description = "科室名称")

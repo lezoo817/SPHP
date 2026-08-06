@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import java.time.OffsetDateTime;
 
 /**
- * 手动释放锁定号源响应（系分 §5.4.8）。
+ * 手动释放锁定号源响应。
  */
 @Data
 @Builder

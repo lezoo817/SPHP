@@ -17,9 +17,10 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * 统计报表接口（管理员，系分 §5.9）。
+ * 统计报表接口（管理员视角）。
  *
- * <p>外部完整 URL 前缀为 {@code /api/b/admin/statistics}。
+ * <p>外部完整 URL 前缀为 {@code /api/b/admin/statistics}。所有接口按当前登录管理员
+ * 所属医院（{@code hospital_id}）做数据隔离。
  */
 @RestController
 @RequestMapping("/b/admin/statistics")

@@ -25,27 +25,46 @@ public interface DoctorService {
     PageResult<DoctorListVO> page(Long deptId, String name, String status, int page, int size);
 
     /**
-     * 新增医生（同一事务同步开通 DOCTOR 登录账号，并回填 doctor.b_user_id）。
+     * 新增医生（同一事务同步开通 {@code DOCTOR} 登录账号，并回填 {@code doctor.b_user_id}）。
+     *
+     * @param request 新增请求
      */
     void create(DoctorCreateRequest request);
 
     /**
      * 编辑医生（不修改所属科室）。
+     *
+     * @param id      医生 ID
+     * @param request 编辑请求（仅更新非空字段）
      */
     void update(Long id, DoctorUpdateRequest request);
 
     /**
-     * 启用/停用/暂停医生（停用时校验无已发布排班/进行中问诊；关联 b_user 状态同步联动）。
+     * 启用/停用/暂停医生。
+     *
+     * <p>非 {@code ENABLED} 切换时校验无已发布排班 / 无进行中问诊；通过后更新医生状态，
+     * 并联动关联 {@code b_user} 状态（{@code SUSPENDED} 映射为 {@code DISABLED}）。
+     *
+     * @param id      医生 ID
+     * @param request 状态变更请求
      */
     void updateStatus(Long id, DoctorStatusRequest request);
 
     /**
-     * 修改医生登录账号（无关联账号返回 A0121）。
+     * 修改医生登录账号。
+     *
+     * @param id      医生 ID
+     * @param request 新账号请求
+     * @throws com.sphp.shared.exception.BusinessException 无关联登录账号（A0121）/ 账号已存在（A0112）
      */
     void updateAccount(Long id, DoctorAccountRequest request);
 
     /**
-     * 重置医生登录密码（jBCrypt 哈希入库）。
+     * 重置医生登录密码（jBCrypt 哈希入库，不校验旧密码）。
+     *
+     * @param id      医生 ID
+     * @param request 新密码请求
+     * @throws com.sphp.shared.exception.BusinessException 无关联登录账号（A0121）
      */
     void resetPassword(Long id, DoctorPasswordRequest request);
 }

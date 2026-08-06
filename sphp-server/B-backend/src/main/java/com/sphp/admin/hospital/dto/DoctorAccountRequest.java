@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 /**
- * 修改医生登录账号请求（系分 §5.3.12）。
+ * 修改医生登录账号请求。
  */
 @Data
 @Schema(description = "修改医生登录账号请求")

@@ -19,9 +19,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 患者管理接口（管理员，系分 §5.8）。
+ * 患者管理接口（管理员视角）。
  *
- * <p>外部完整 URL 前缀为 {@code /api/b/admin/patients}。
+ * <p>仅返回本院就诊过的患者（通过 consult_record → doctor.hospital_id 关联过滤）；
+ * 所有接口按当前登录管理员所属医院（{@code hospital_id}）做数据隔离。
+ * 外部完整 URL 前缀为 {@code /api/b/admin/patients}。
  */
 @RestController
 @RequestMapping("/b/admin/patients")

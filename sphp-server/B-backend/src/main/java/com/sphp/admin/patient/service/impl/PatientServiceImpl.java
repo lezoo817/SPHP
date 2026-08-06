@@ -36,16 +36,35 @@ import java.time.Period;
 import java.util.List;
 
 /**
- * 患者管理服务实现（系分 §5.8）。
+ * 患者管理服务实现（管理员视角）。
  *
- * <p>患者列表范围：通过 consult_record → doctor.hospital_id 关联，仅返回在本院就诊过的患者。
- * 所有操作基于当前登录管理员所属医院（hospital_id）做数据隔离。
+ * <p>患者列表范围：通过 consult_record → doctor.hospital_id 关联，
+ * 仅返回在本院就诊过的患者；所有操作基于当前登录管理员所属医院（{@code hospital_id}）
+ * 做数据隔离。详情页附加过敏史（{@code patient_allergy}）与既往史（{@code patient_medical_history}），
+ * 当前用药页附加 ACTIVE/PAUSED 状态的用药计划与未完成的随访计划。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class PatientServiceImpl implements PatientService {
 
+    /** 资源不存在 / 已软删（A0402） */
+    private static final String ERR_RESOURCE_NOT_FOUND = "A0402";
+
+    /** 用药计划状态：进行中（计入当前用药列表） */
+    private static final String MEDICATION_STATUS_ACTIVE = "ACTIVE";
+    /** 用药计划状态：暂停中（计入当前用药列表，等待医生恢复） */
+    private static final String MEDICATION_STATUS_PAUSED = "PAUSED";
+
+    /** 随访计划状态：已完成（从当前随访列表排除） */
+    private static final String FOLLOWUP_STATUS_COMPLETED = "COMPLETED";
+    /** 随访计划状态：已取消（从当前随访列表排除） */
+    private static final String FOLLOWUP_STATUS_CANCELLED = "CANCELLED";
+
+    /** 加密手机号脱敏占位（密文存储无法直接脱敏，统一返回） */
+    private static final String PHONE_MASK_PLACEHOLDER = "***";
+
+    /** 每页大小上限（与 Controller clampSize 一致；common 模块统一前暂留本地） */
     private static final int MAX_PAGE_SIZE = 100;
 
     private final CurrentUserService currentUserService;
@@ -65,26 +84,23 @@ public class PatientServiceImpl implements PatientService {
                 new Page<>(page, size), hospitalId,
                 StringUtils.hasText(name) ? name : null);
 
-        // 计算年龄
+        // 计算年龄后清空生日字段，避免敏感个人信息暴露
         result.getRecords().forEach(vo -> {
             vo.setAge(calcAge(vo.getDateOfBirth()));
-            vo.setDateOfBirth(null); // 年龄返回后清空生日，避免暴露
+            vo.setDateOfBirth(null);
         });
         return PageResult.of(result.getTotal(), result.getRecords(), page, size);
     }
 
     @Override
     public PatientDetailVO detail(Long id) {
-        // 查询患者基本信息
         Patient patient = getPatient(id);
 
-        // 查询过敏史
         List<PatientAllergy> allergies = allergyMapper.selectList(
                 Wrappers.<PatientAllergy>lambdaQuery()
                         .eq(PatientAllergy::getPatientId, id)
                         .isNull(PatientAllergy::getDeletedAt));
 
-        // 查询既往史
         List<PatientMedicalHistory> histories = medicalHistoryMapper.selectList(
                 Wrappers.<PatientMedicalHistory>lambdaQuery()
                         .eq(PatientMedicalHistory::getPatientId, id)
@@ -118,7 +134,6 @@ public class PatientServiceImpl implements PatientService {
     @Override
     public PageResult<PatientVisitVO> visits(Long patientId, int page, int size) {
         size = Math.max(1, Math.min(size, MAX_PAGE_SIZE));
-        // 校验患者存在
         getPatient(patientId);
 
         Page<PatientVisitVO> result = patientDataMapper.selectVisitPage(
@@ -129,7 +144,6 @@ public class PatientServiceImpl implements PatientService {
     @Override
     public PageResult<PatientPrescriptionVO> prescriptions(Long patientId, int page, int size) {
         size = Math.max(1, Math.min(size, MAX_PAGE_SIZE));
-        // 校验患者存在
         getPatient(patientId);
 
         Page<PatientPrescriptionVO> result = patientDataMapper.selectPrescriptionPage(
@@ -139,22 +153,23 @@ public class PatientServiceImpl implements PatientService {
 
     @Override
     public PatientMedicationVO medications(Long patientId) {
-        // 校验患者存在
         getPatient(patientId);
 
-        // 查询当前用药计划（ACTIVE / PAUSED）
+        // 当前用药：进行中 + 暂停中
         List<MedicationPlan> plans = medicationPlanMapper.selectList(
                 Wrappers.<MedicationPlan>lambdaQuery()
                         .eq(MedicationPlan::getPatientId, patientId)
-                        .in(MedicationPlan::getStatus, "ACTIVE", "PAUSED")
+                        .in(MedicationPlan::getStatus,
+                                MEDICATION_STATUS_ACTIVE, MEDICATION_STATUS_PAUSED)
                         .isNull(MedicationPlan::getDeletedAt)
                         .orderByDesc(MedicationPlan::getCreatedAt));
 
-        // 查询随访计划（未完成的）
+        // 当前随访：排除已完成、已取消
         List<FollowUpPlan> followUps = followUpPlanMapper.selectList(
                 Wrappers.<FollowUpPlan>lambdaQuery()
                         .eq(FollowUpPlan::getPatientId, patientId)
-                        .notIn(FollowUpPlan::getStatus, "COMPLETED", "CANCELLED")
+                        .notIn(FollowUpPlan::getStatus,
+                                FOLLOWUP_STATUS_COMPLETED, FOLLOWUP_STATUS_CANCELLED)
                         .isNull(FollowUpPlan::getDeletedAt)
                         .orderByDesc(FollowUpPlan::getCreatedAt));
 
@@ -184,16 +199,27 @@ public class PatientServiceImpl implements PatientService {
                 .build();
     }
 
-    /** 按 ID 查询患者，不存在返回 A0402 */
+    /**
+     * 按 ID 查询患者，不存在或已软删统一返回 {@value #ERR_RESOURCE_NOT_FOUND}。
+     *
+     * @param id 患者 ID
+     * @return 有效患者实体
+     * @throws BusinessException 当患者不存在或已软删时抛出
+     */
     private Patient getPatient(Long id) {
         Patient patient = patientMapper.selectById(id);
         if (patient == null || patient.getDeletedAt() != null) {
-            throw new BusinessException("A0402", "患者不存在");
+            throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "患者不存在");
         }
         return patient;
     }
 
-    /** 根据出生日期计算年龄 */
+    /**
+     * 根据出生日期计算年龄（按当前本地日期）。
+     *
+     * @param dateOfBirth 出生日期
+     * @return 完整年数；{@code null} 入参返回 {@code null}
+     */
     private Integer calcAge(LocalDate dateOfBirth) {
         if (dateOfBirth == null) {
             return null;
@@ -201,12 +227,17 @@ public class PatientServiceImpl implements PatientService {
         return Period.between(dateOfBirth, LocalDate.now()).getYears();
     }
 
-    /** 手机号脱敏（密文存储，仅返回脱敏占位） */
+    /**
+     * 手机号脱敏。手机号以密文存储，无法在服务端做精准脱敏，
+     * 统一返回 {@link #PHONE_MASK_PLACEHOLDER} 占位避免泄露明文长度。
+     *
+     * @param phoneCiphertext 手机号密文（可空）
+     * @return 脱敏占位字符串；入参为空返回 {@code null}
+     */
     private String maskPhone(String phoneCiphertext) {
         if (!StringUtils.hasText(phoneCiphertext)) {
             return null;
         }
-        // phoneCiphertext 为加密存储，无法直接脱敏，返回脱敏占位
-        return "***";
+        return PHONE_MASK_PLACEHOLDER;
     }
 }

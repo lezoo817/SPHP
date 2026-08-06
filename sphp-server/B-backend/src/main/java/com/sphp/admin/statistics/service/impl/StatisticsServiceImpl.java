@@ -14,9 +14,9 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * 统计报表服务实现（系分 §5.9）。
+ * 统计报表服务实现。
  *
- * <p>所有统计基于当前登录管理员所属医院（hospital_id）做数据隔离。
+ * <p>所有统计基于当前登录管理员所属医院（{@code hospital_id}）做数据隔离。
  */
 @Slf4j
 @Service
@@ -70,7 +70,15 @@ public class StatisticsServiceImpl implements StatisticsService {
     }
 
     /**
-     * 解析日期范围：参数为空时默认当前月（1 日 ~ 今天）。
+     * 解析统计区间。
+     *
+     * <p>任意一端为 null 时使用默认值：起始为当月 1 日，截止为当天；两端同时为 null
+     * 退化为「本月至今」。入参格式须为 {@code yyyy-MM-dd}，与 Controller
+     * {@code @Parameter} 描述一致。
+     *
+     * @param startDate 起始日期（{@code yyyy-MM-dd}），可为 null
+     * @param endDate   截止日期（{@code yyyy-MM-dd}），可为 null
+     * @return 二元组 {@code [start, end]}，均非 null
      */
     private LocalDate[] resolveDateRange(String startDate, String endDate) {
         LocalDate today = LocalDate.now();

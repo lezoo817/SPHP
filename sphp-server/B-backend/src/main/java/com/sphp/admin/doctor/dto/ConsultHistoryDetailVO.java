@@ -54,9 +54,13 @@ public class ConsultHistoryDetailVO {
     @AllArgsConstructor
     @Schema(description = "处方简要信息")
     public static class PrescriptionBrief {
+        @Schema(description = "处方 ID")
         private Long id;
+        @Schema(description = "处方状态：SUBMITTED / APPROVED / REJECTED / CANCELLED")
         private String status;
+        @Schema(description = "药品明细条数")
         private Integer itemCount;
+        @Schema(description = "开具时间")
         private OffsetDateTime issuedAt;
     }
 }

@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import java.time.OffsetDateTime;
 
 /**
- * 科室详情响应（系分 §5.3.4）。
+ * 科室详情响应。
  */
 @Data
 @Builder

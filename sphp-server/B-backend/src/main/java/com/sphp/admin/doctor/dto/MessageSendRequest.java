@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
- * 发送问诊消息请求体（系分 §5.5.7）。
+ * 发送问诊消息请求体。
  */
 @Data
 @Schema(description = "发送问诊消息请求")

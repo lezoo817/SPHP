@@ -28,9 +28,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 接诊台控制器（系分 §5.5）。
+ * 接诊台控制器（管理员视角）。
  *
  * <p>外部完整 URL 前缀为 {@code /api/b/doctor/...}。
+ * 数据隔离边界：所有读操作在 Service 层基于当前用户的医院 / 科室 / 医生维度过滤；
+ * 写操作（开始 / 结束接诊、保存病历、发送消息）必须先校验归属与状态机。
  * 包含待接诊队列、患者详情、开始/结束接诊、病历保存、消息查询与发送。
  */
 @RestController
@@ -39,6 +41,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class DoctorConsultController {
 
+    /** 分页大小上限（与全局一致） */
     private static final int MAX_PAGE_SIZE = 100;
 
     private static int clampSize(int size) {
@@ -46,8 +49,6 @@ public class DoctorConsultController {
     }
 
     private final DoctorConsultService doctorConsultService;
-
-    // ==================== 5.5.1 待接诊列表 ====================
 
     @GetMapping("/queue")
     @Operation(summary = "待接诊列表", description = "分页查询待接诊队列（按当前用户数据权限过滤）")
@@ -60,15 +61,11 @@ public class DoctorConsultController {
                 doctorConsultService.pageQueue(deptId, status, page, clampSize(size)));
     }
 
-    // ==================== 5.5.2 患者详情 ====================
-
     @GetMapping("/queue/{id}")
     @Operation(summary = "患者详情", description = "查询患者基本信息、过敏史、既往史、AI摘要、近期处方、历史就诊记录")
     public Result<PatientDetailVO> getPatientDetail(@PathVariable Long id) {
         return Result.success("查询成功", doctorConsultService.getPatientDetail(id));
     }
-
-    // ==================== 5.5.3 开始接诊 ====================
 
     @PostMapping("/consult/{id}/start")
     @Operation(summary = "开始接诊", description = "将问诊状态从 PENDING 改为 IN_PROGRESS；校验该医生当前无其他 IN_PROGRESS 接诊")
@@ -76,15 +73,11 @@ public class DoctorConsultController {
         return Result.success("开始接诊", doctorConsultService.startConsult(id));
     }
 
-    // ==================== 5.5.4 结束问诊 ====================
-
     @PostMapping("/consult/{id}/end")
     @Operation(summary = "结束问诊", description = "将问诊状态从 IN_PROGRESS 改为 COMPLETED；校验无未签名的处方草稿")
     public Result<ConsultEndVO> endConsult(@PathVariable Long id) {
         return Result.success("结束问诊", doctorConsultService.endConsult(id));
     }
-
-    // ==================== 5.5.5 保存病历 ====================
 
     @PutMapping("/consult/{id}/note")
     @Operation(summary = "保存病历", description = "保存医生病历文本（手动 / Agent 双入口共用）")
@@ -92,8 +85,6 @@ public class DoctorConsultController {
                                         @Valid @RequestBody NoteSaveRequest request) {
         return Result.success("保存成功", doctorConsultService.saveNote(id, request.getDoctorNote()));
     }
-
-    // ==================== 5.5.6 查询消息历史 ====================
 
     @GetMapping("/consult/{consultationId}/messages")
     @Operation(summary = "查询问诊消息历史", description = "分页查询问诊消息（按创建时间升序）")
@@ -105,16 +96,12 @@ public class DoctorConsultController {
                 doctorConsultService.pageMessages(consultationId, page, clampSize(size)));
     }
 
-    // ==================== 5.5.7 发送消息 ====================
-
     @PostMapping("/consult/{consultationId}/message")
     @Operation(summary = "发送问诊消息", description = "医生发送问诊消息（仅 IN_PROGRESS 状态可发送）")
     public Result<MessageVO> sendMessage(@PathVariable Long consultationId,
                                           @Valid @RequestBody MessageSendRequest request) {
         return Result.success("发送成功", doctorConsultService.sendMessage(consultationId, request.getContent()));
     }
-
-    // ==================== 接诊历史 ====================
 
     @GetMapping("/consult/history")
     @Operation(summary = "接诊历史", description = "分页查询当前医生的历史接诊记录（不含 PENDING）")

@@ -3,6 +3,7 @@ package com.sphp.admin.pharmacy.service.impl;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sphp.admin.common.CurrentUserService;
+import com.sphp.admin.common.enums.BUserStatusEnum;
 import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.pharmacy.dto.DrugCreateRequest;
 import com.sphp.admin.pharmacy.dto.DrugListVO;
@@ -22,11 +23,33 @@ import org.springframework.util.StringUtils;
 import java.time.OffsetDateTime;
 import java.util.List;
 
-/** 药品目录服务实现（系分 §5.7.1~5.7.2）。 */
+/**
+ * 药品目录服务实现（管理员视角）。
+ *
+ * <p>按当前登录管理员所属医院（{@code hospital_id}）做数据隔离过滤；
+ * 药品状态字段与 {@link BUserStatusEnum} 复用（仅 ENABLED / DISABLED 两态，
+ * 与 {@code b_user.status} / {@code doctor.status} 语义一致），
+ * 业务代码严禁直接使用字面量比较。
+ *
+ * <p>状态机：
+ * <ul>
+ *   <li>新增：默认 {@link BUserStatusEnum#ENABLED}</li>
+ *   <li>删除：先软删（{@code deleted_at}），再将 status 同步置为 {@link BUserStatusEnum#DISABLED}，
+ *       避免历史关联出现"幽灵启用"药品</li>
+ * </ul>
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class DrugServiceImpl implements DrugService {
+
+    /** 通用业务冲突（A0401：请求参数或业务前置条件不满足） */
+    private static final String ERR_BUSINESS_CONFLICT = "A0401";
+    /** 资源不存在 / 越权访问（A0402：通用资源未找到） */
+    private static final String ERR_DRUG_NOT_FOUND = "A0402";
+
+    /** 药品单位默认值（前端缺省时使用） */
+    private static final String DEFAULT_UNIT = "盒";
 
     private final DrugMapper drugMapper;
     private final PharmacyDrugStockMapper stockMapper;
@@ -52,8 +75,8 @@ public class DrugServiceImpl implements DrugService {
     @Transactional(rollbackFor = Exception.class)
     public void create(DrugCreateRequest request) {
         Long hospitalId = currentUserService.getCurrentHospitalId();
-        String unit = StringUtils.hasText(request.getUnit()) ? request.getUnit().trim() : "盒";
-        String status = StringUtils.hasText(request.getStatus()) ? request.getStatus().trim() : "ENABLED";
+        String unit = StringUtils.hasText(request.getUnit()) ? request.getUnit().trim() : DEFAULT_UNIT;
+        String status = StringUtils.hasText(request.getStatus()) ? request.getStatus().trim() : BUserStatusEnum.ENABLED.getCode();
         assertStatusValid(status);
         assertApprovalUnique(hospitalId, request.getApprovalNumber().trim(), null);
 
@@ -85,8 +108,9 @@ public class DrugServiceImpl implements DrugService {
             drug.setApprovalNumber(request.getApprovalNumber().trim());
         }
         if (StringUtils.hasText(request.getStatus())) {
-            assertStatusValid(request.getStatus().trim());
-            drug.setStatus(request.getStatus().trim());
+            String status = request.getStatus().trim();
+            assertStatusValid(status);
+            drug.setStatus(status);
         }
         drug.setUpdatedAt(OffsetDateTime.now());
         drugMapper.updateById(drug);
@@ -105,10 +129,10 @@ public class DrugServiceImpl implements DrugService {
                         .apply("pharmacy_id IN (SELECT id FROM pharmacy WHERE hospital_id = {0} AND deleted_at IS NULL)",
                                 hospitalId));
         if (stockCount != null && stockCount > 0) {
-            throw new BusinessException("A0401", "该药品存在库存记录，无法删除");
+            throw new BusinessException(ERR_BUSINESS_CONFLICT, "该药品存在库存记录，无法删除");
         }
         drug.setDeletedAt(OffsetDateTime.now());
-        drug.setStatus("DISABLED");
+        drug.setStatus(BUserStatusEnum.DISABLED.getCode());
         drug.setUpdatedAt(OffsetDateTime.now());
         drugMapper.updateById(drug);
         log.info("删除药品 drugId={}", id);
@@ -127,16 +151,30 @@ public class DrugServiceImpl implements DrugService {
                 .build();
     }
 
-    /** 按 id + 医院范围查询药品，不存在或越权返回 A0402 */
+    /**
+     * 按 id + 医院范围查询药品，不存在、已软删或越权返回 {@value #ERR_DRUG_NOT_FOUND}。
+     *
+     * @param id         药品 ID
+     * @param hospitalId 当前管理员所属医院 ID
+     * @return 有效且属于本院的药品实体
+     * @throws BusinessException 当药品不存在、已软删或归属其他医院时抛出
+     */
     private Drug getDrugInHospital(Long id, Long hospitalId) {
         Drug drug = drugMapper.selectById(id);
         if (drug == null || drug.getDeletedAt() != null || !drug.getHospitalId().equals(hospitalId)) {
-            throw new BusinessException("A0402", "药品不存在");
+            throw new BusinessException(ERR_DRUG_NOT_FOUND, "药品不存在");
         }
         return drug;
     }
 
-    /** 同医院 + 批准文号唯一性校验（编辑时排除自身） */
+    /**
+     * 同医院 + 批准文号唯一性校验。编辑时需传入待排除的药品 ID。
+     *
+     * @param hospitalId     医院 ID
+     * @param approvalNumber 批准文号
+     * @param excludeId      编辑时排除自身 ID；新增时为 {@code null}
+     * @throws BusinessException 当同医院存在相同批准文号时抛出 {@value #ERR_BUSINESS_CONFLICT}
+     */
     private void assertApprovalUnique(Long hospitalId, String approvalNumber, Long excludeId) {
         Long dup = drugMapper.selectCount(
                 Wrappers.<Drug>lambdaQuery()
@@ -145,13 +183,20 @@ public class DrugServiceImpl implements DrugService {
                         .ne(excludeId != null, Drug::getId, excludeId)
                         .isNull(Drug::getDeletedAt));
         if (dup != null && dup > 0) {
-            throw new BusinessException("A0401", "同医院已存在相同批准文号的药品");
+            throw new BusinessException(ERR_BUSINESS_CONFLICT, "同医院已存在相同批准文号的药品");
         }
     }
 
+    /**
+     * 校验药品状态字段合法性，仅允许 {@link BUserStatusEnum} 中的两个取值。
+     *
+     * @param status 待校验状态字符串
+     * @throws BusinessException 状态不在白名单时抛出 {@value #ERR_BUSINESS_CONFLICT}
+     */
     private void assertStatusValid(String status) {
-        if (!"ENABLED".equals(status) && !"DISABLED".equals(status)) {
-            throw new BusinessException("A0401", "状态仅支持 ENABLED / DISABLED");
+        if (!BUserStatusEnum.ENABLED.getCode().equals(status) && !BUserStatusEnum.DISABLED.getCode().equals(status)) {
+            throw new BusinessException(ERR_BUSINESS_CONFLICT,
+                    "状态仅支持 " + BUserStatusEnum.ENABLED.getCode() + " / " + BUserStatusEnum.DISABLED.getCode());
         }
     }
 }

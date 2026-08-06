@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 /**
- * 新增科室请求（系分 §5.3.5）。
+ * 新增科室请求。
  *
  * <p>医院归属由后端根据当前管理员所属医院自动填充。
  */

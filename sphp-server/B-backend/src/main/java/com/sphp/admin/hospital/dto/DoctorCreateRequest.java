@@ -8,7 +8,9 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
- * 新增医生请求（系分 §5.3.9，同步开通登录账号）。
+ * 新增医生请求。
+ *
+ * <p>同步开通 {@code DOCTOR} 角色的登录账号，回填 {@code doctor.b_user_id}。
  */
 @Data
 @Schema(description = "新增医生请求")

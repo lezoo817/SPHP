@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 /**
- * 应用处方模板请求体（系分 §5.6.7）。
+ * 应用处方模板请求体。
  */
 @Data
 @Schema(description = "应用处方模板请求")

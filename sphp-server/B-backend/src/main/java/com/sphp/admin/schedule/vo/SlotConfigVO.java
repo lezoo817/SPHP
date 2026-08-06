@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalTime;
 
 /**
- * 号源时段配置项响应（系分 §5.4.3）。
+ * 号源时段配置项响应。
  */
 @Data
 @Builder

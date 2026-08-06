@@ -7,7 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 科室列表项响应（系分 §5.3.3）。
+ * 科室列表项响应。
  */
 @Data
 @Builder

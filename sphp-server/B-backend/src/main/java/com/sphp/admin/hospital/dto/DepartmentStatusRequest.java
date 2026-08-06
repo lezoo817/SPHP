@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 /**
- * 启用/停用科室请求（系分 §5.3.7）。
+ * 启用/停用科室请求。
  */
 @Data
 @Schema(description = "启用/停用科室请求")

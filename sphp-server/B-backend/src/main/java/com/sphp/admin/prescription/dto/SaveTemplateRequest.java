@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * 模板保存请求（系分 §5.6.7）。
+ * 模板保存请求。
  */
 @Data
 @Schema(description = "保存模板请求")

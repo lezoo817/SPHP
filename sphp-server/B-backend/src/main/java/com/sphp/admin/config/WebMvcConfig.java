@@ -1,7 +1,6 @@
 package com.sphp.admin.config;
 
 import com.sphp.admin.common.UserContextInterceptor;
-import com.sphp.admin.common.UserContextService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -17,11 +16,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @RequiredArgsConstructor
 public class WebMvcConfig implements WebMvcConfigurer {
 
-    private final UserContextService userContextService;
+    /** B 端网关路径前缀：与 C 端（{@code /c/**}）、AI（{@code /api/ai/**}）按前缀隔离。 */
+    private static final String B_PATH_PATTERN = "/b/**";
+
+    private final UserContextInterceptor userContextInterceptor;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(new UserContextInterceptor(userContextService))
-                .addPathPatterns("/b/**");
+        registry.addInterceptor(userContextInterceptor).addPathPatterns(B_PATH_PATTERN);
     }
 }

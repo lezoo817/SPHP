@@ -30,10 +30,12 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * 排班与号源管理接口（系分 §5.4）。
+ * 排班与号源管理接口。
  *
- * <p>查询按当前用户数据权限过滤（ADMIN/DEPT_HEAD/DOCTOR）；
- * 写操作（创建/配置时段/发布/取消发布/手动释放）仅 ADMIN。
+ * <p><b>管理员视角：</b>对外暴露排班列表/创建/时段配置/发布/取消发布/锁定号源看板/手动释放能力。
+ *
+ * <p><b>数据隔离边界：</b>查询按当前用户数据权限过滤（ADMIN/DEPT_HEAD/DOCTOR）；
+ * 写操作（创建/配置时段/发布/取消发布/手动释放）仅 ADMIN，Service 层校验本院归属。
  * 外部完整 URL 前缀为 {@code /api/b/admin/...}。
  */
 @RestController
@@ -42,10 +44,10 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ScheduleController {
 
-    /** 每页大小上限，防止超大数据量查询 */
+    /** 每页大小上限（与全局一致），防止超大数据量查询 */
     private static final int MAX_PAGE_SIZE = 100;
 
-    /** 每页大小钳制到 [1, MAX_PAGE_SIZE] */
+    /** 每页大小钳制到 [1, MAX_PAGE_SIZE]，避免越界 */
     private static int clampSize(int size) {
         return Math.max(1, Math.min(size, MAX_PAGE_SIZE));
     }

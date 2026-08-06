@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sphp.admin.auth.entity.Doctor;
 import com.sphp.admin.auth.mapper.DoctorMapper;
 import com.sphp.admin.common.CurrentUserService;
+import com.sphp.admin.common.enums.BUserStatusEnum;
 import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.hospital.dto.DepartmentCreateRequest;
 import com.sphp.admin.hospital.dto.DepartmentStatusRequest;
@@ -30,12 +31,21 @@ import java.util.stream.Collectors;
 /**
  * 科室管理服务实现。
  *
- * <p>全部操作按当前登录管理员所属医院（hospital_id）做数据隔离过滤。
+ * <p>全部操作按当前登录管理员所属医院（{@code hospital_id}）做数据隔离过滤。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class DepartmentServiceImpl implements DepartmentService {
+
+    /** 资源不存在 / 越权访问（A0402：通用资源未找到） */
+    private static final String ERR_RESOURCE_NOT_FOUND = "A0402";
+    /** 业务错误：科室下存在启用医生，无法停用 */
+    private static final String ERR_DEPT_HAS_ENABLED_DOCTOR = "4001";
+    /** 业务错误：科室下存在已发布排班，无法停用 */
+    private static final String ERR_DEPT_HAS_PUBLISHED_SCHEDULE = "4002";
+    /** 业务错误：科室下存在进行中问诊，无法停用 */
+    private static final String ERR_DEPT_HAS_IN_PROGRESS_CONSULT = "4003";
 
     private final DepartmentMapper departmentMapper;
     private final DoctorMapper doctorMapper;
@@ -111,7 +121,7 @@ public class DepartmentServiceImpl implements DepartmentService {
         dept.setHospitalId(hospitalId);
         dept.setName(request.getName());
         dept.setLocation(request.getLocation());
-        dept.setStatus("ENABLED");
+        dept.setStatus(BUserStatusEnum.ENABLED.getCode());
         departmentMapper.insert(dept);
 
         // 若指定负责人，必须存在、属本院且属于本科室
@@ -148,14 +158,14 @@ public class DepartmentServiceImpl implements DepartmentService {
         Department dept = getDepartment(id, hospitalId);
         String status = request.getStatus();
         // 停用前置校验：无启用医生 / 已发布排班 / 进行中问诊
-        if ("DISABLED".equals(status)) {
+        if (BUserStatusEnum.DISABLED.getCode().equals(status)) {
             assertNoEnabledDoctor(dept.getId());
             assertNoPublishedSchedule(dept.getId());
             assertNoInProgressConsult(dept.getId());
             // 同步停用该科室下所有医生（状态改为 DISABLED）
             doctorMapper.update(null,
                     Wrappers.<Doctor>lambdaUpdate()
-                            .set(Doctor::getStatus, "DISABLED")
+                            .set(Doctor::getStatus, BUserStatusEnum.DISABLED.getCode())
                             .set(Doctor::getUpdatedAt, OffsetDateTime.now())
                             .eq(Doctor::getDeptId, dept.getId())
                             .isNull(Doctor::getDeletedAt));
@@ -165,48 +175,71 @@ public class DepartmentServiceImpl implements DepartmentService {
         departmentMapper.updateById(dept);
     }
 
-    /** 按 id + 医院范围查询科室，不存在或越权返回 A0402 */
+    /**
+     * 按 id + 医院范围查询科室，不存在或越权返回 {@value #ERR_RESOURCE_NOT_FOUND}。
+     *
+     * @param id         科室 ID
+     * @param hospitalId 当前管理员所属医院 ID
+     * @return 有效且属于本院的科室
+     */
     private Department getDepartment(Long id, Long hospitalId) {
         Department dept = departmentMapper.selectById(id);
         if (dept == null || dept.getDeletedAt() != null || !dept.getHospitalId().equals(hospitalId)) {
-            throw new BusinessException("A0402", "科室不存在");
+            throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "科室不存在");
         }
         return dept;
     }
 
-    /** 校验医生存在、属于指定医院且属于指定科室 */
+    /**
+     * 校验医生存在、属于指定医院且属于指定科室。
+     *
+     * @param doctorId   医生 ID
+     * @param hospitalId 医院 ID
+     * @param deptId     科室 ID
+     */
     private void ensureDoctorBelongsToDept(Long doctorId, Long hospitalId, Long deptId) {
         Doctor doctor = doctorMapper.selectById(doctorId);
         if (doctor == null || doctor.getDeletedAt() != null || !doctor.getHospitalId().equals(hospitalId)) {
-            throw new BusinessException("A0402", "科室负责人医生不存在或不属于本院");
+            throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "科室负责人医生不存在或不属于本院");
         }
         if (!deptId.equals(doctor.getDeptId())) {
-            throw new BusinessException("A0402", "科室负责人必须是本科室的医生");
+            throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "科室负责人必须是本科室的医生");
         }
     }
 
-    /** 停用前置校验 0：科室下无 ENABLED 医生（否则 4001） */
+    /**
+     * 停用前置校验：科室下无 {@code ENABLED} 医生（否则返回 {@value #ERR_DEPT_HAS_ENABLED_DOCTOR}）。
+     */
     private void assertNoEnabledDoctor(Long deptId) {
         if (departmentMapper.countEnabledDoctorByDept(deptId) > 0) {
-            throw new BusinessException("4001", "科室下存在启用医生，无法停用");
+            throw new BusinessException(ERR_DEPT_HAS_ENABLED_DOCTOR, "科室下存在启用医生，无法停用");
         }
     }
 
-    /** 停用前置校验 1：科室下无 PUBLISHED 排班（否则 4002） */
+    /**
+     * 停用前置校验：科室下无 {@code PUBLISHED} 排班（否则返回 {@value #ERR_DEPT_HAS_PUBLISHED_SCHEDULE}）。
+     */
     private void assertNoPublishedSchedule(Long deptId) {
         if (departmentMapper.countPublishedScheduleByDept(deptId) > 0) {
-            throw new BusinessException("4002", "科室下存在已发布排班，无法停用");
+            throw new BusinessException(ERR_DEPT_HAS_PUBLISHED_SCHEDULE, "科室下存在已发布排班，无法停用");
         }
     }
 
-    /** 停用前置校验 3：科室下无 IN_PROGRESS 问诊（否则 4003） */
+    /**
+     * 停用前置校验：科室下无 {@code IN_PROGRESS} 问诊（否则返回 {@value #ERR_DEPT_HAS_IN_PROGRESS_CONSULT}）。
+     */
     private void assertNoInProgressConsult(Long deptId) {
         if (departmentMapper.countInProgressConsultByDept(deptId) > 0) {
-            throw new BusinessException("4003", "科室下存在进行中问诊，无法停用");
+            throw new BusinessException(ERR_DEPT_HAS_IN_PROGRESS_CONSULT, "科室下存在进行中问诊，无法停用");
         }
     }
 
-    /** 批量加载负责人医生姓名（仅有效医生） */
+    /**
+     * 批量加载负责人医生姓名（仅有效医生）。
+     *
+     * @param departments 科室列表
+     * @return {@code doctorId -> doctorName} 映射；空列表返回 {@link Map#of()}
+     */
     private Map<Long, String> loadDoctorNames(List<Department> departments) {
         List<Long> ids = departments.stream()
                 .map(Department::getHeadDoctorId)

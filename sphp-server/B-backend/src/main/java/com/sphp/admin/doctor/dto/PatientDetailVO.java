@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 患者详情 VO（系分 §5.5.2）。
+ * 患者详情 VO。
  *
  * <p>包含基本信息、过敏史、既往史、AI摘要、近期处方、历史就诊记录。
  */
@@ -53,11 +53,17 @@ public class PatientDetailVO {
     @AllArgsConstructor
     @Schema(description = "患者基本信息")
     public static class PatientInfo {
+        @Schema(description = "患者 ID")
         private Long id;
+        @Schema(description = "姓名")
         private String name;
+        @Schema(description = "性别：MALE / FEMALE / UNKNOWN")
         private String gender;
+        @Schema(description = "出生日期")
         private LocalDate dateOfBirth;
+        @Schema(description = "手机号（脱敏后）")
         private String phone;
+        @Schema(description = "紧急联系人手机号（脱敏后）")
         private String emergencyContact;
     }
 
@@ -67,9 +73,13 @@ public class PatientDetailVO {
     @AllArgsConstructor
     @Schema(description = "过敏史")
     public static class AllergyInfo {
+        @Schema(description = "过敏史记录 ID")
         private Long id;
+        @Schema(description = "过敏原")
         private String allergen;
+        @Schema(description = "反应描述")
         private String reaction;
+        @Schema(description = "严重程度：MILD / MODERATE / SEVERE")
         private String severity;
     }
 
@@ -79,8 +89,11 @@ public class PatientDetailVO {
     @AllArgsConstructor
     @Schema(description = "既往史")
     public static class MedicalHistoryInfo {
+        @Schema(description = "既往史记录 ID")
         private Long id;
+        @Schema(description = "病史内容")
         private String content;
+        @Schema(description = "发生日期")
         private LocalDate occurredAt;
     }
 
@@ -90,8 +103,11 @@ public class PatientDetailVO {
     @AllArgsConstructor
     @Schema(description = "近期处方")
     public static class RecentPrescriptionInfo {
+        @Schema(description = "处方 ID")
         private Long id;
+        @Schema(description = "处方状态：SUBMITTED / APPROVED / REJECTED / CANCELLED")
         private String status;
+        @Schema(description = "开具时间")
         private OffsetDateTime issuedAt;
     }
 
@@ -101,11 +117,15 @@ public class PatientDetailVO {
     @AllArgsConstructor
     @Schema(description = "历史就诊记录")
     public static class HistoryRecordInfo {
+        @Schema(description = "就诊日期（yyyy-MM-dd）")
         private String date;
+        @Schema(description = "记录类型")
         private String type;
         @Schema(description = "就诊医生姓名")
         private String doctorName;
+        @Schema(description = "病历摘要")
         private String summary;
+        @Schema(description = "问诊状态：IN_PROGRESS / COMPLETED / NO_SHOW")
         private String status;
     }
 }

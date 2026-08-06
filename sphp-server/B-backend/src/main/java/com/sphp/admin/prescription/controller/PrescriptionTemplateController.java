@@ -24,7 +24,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 处方模板控制器（系分 §5.6.6 ~ §5.6.7）。
+ * 处方模板控制器（管理员视角）。
+ *
+ * <p>外部完整 URL 前缀为 {@code /api/b/...}。
+ * 按当前登录用户所属医院做数据隔离过滤；
+ * 创建/更新需医生身份，查询/删除不限角色。
  */
 @RestController
 @RequestMapping("/b")

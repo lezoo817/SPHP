@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 /**
- * 编辑科室请求（系分 §5.3.6）。
+ * 编辑科室请求。
  */
 @Data
 @Schema(description = "编辑科室请求")

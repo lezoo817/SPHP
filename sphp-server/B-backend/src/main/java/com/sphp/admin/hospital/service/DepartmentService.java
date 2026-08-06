@@ -30,16 +30,25 @@ public interface DepartmentService {
 
     /**
      * 新增科室（医院归属自动填充为当前管理员所属医院）。
+     *
+     * @param request 新增请求
      */
     void create(DepartmentCreateRequest request);
 
     /**
      * 编辑科室。
+     *
+     * @param id      科室 ID
+     * @param request 编辑请求
      */
     void update(Long id, DepartmentUpdateRequest request);
 
     /**
-     * 启用/停用科室（停用时执行前置校验：无启用医生 / 已发布排班 / 进行中问诊）。
+     * 启用/停用科室（停用时执行前置校验：无启用医生 / 已发布排班 / 进行中问诊，
+     * 校验通过后同步停用该科室下所有医生）。
+     *
+     * @param id      科室 ID
+     * @param request 启停请求
      */
     void updateStatus(Long id, DepartmentStatusRequest request);
 }

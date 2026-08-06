@@ -1,6 +1,5 @@
 package com.sphp.admin.doctor.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -10,6 +9,7 @@ import com.sphp.admin.auth.entity.Doctor;
 import com.sphp.admin.auth.mapper.DoctorMapper;
 import com.sphp.admin.common.CurrentUserService;
 import com.sphp.admin.common.DataScope;
+import com.sphp.admin.common.enums.BRoleEnum;
 import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.doctor.dto.ConsultEndVO;
 import com.sphp.admin.doctor.dto.ConsultHistoryDetailVO;
@@ -37,6 +37,7 @@ import com.sphp.admin.prescription.entity.Prescription;
 import com.sphp.admin.prescription.entity.PrescriptionItem;
 import com.sphp.admin.prescription.mapper.PrescriptionItemMapper;
 import com.sphp.admin.prescription.mapper.PrescriptionMapper;
+import com.sphp.shared.common.enums.ErrorCodeEnum;
 import com.sphp.shared.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,30 +52,68 @@ import java.time.Period;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
- * 接诊台服务实现（系分 §5.5）。
+ * 接诊台服务实现（管理员视角）。
  *
- * <p>数据权限遵循 §7.2：查询按当前用户角色显式过滤。
- * 写操作（开始/结束接诊、保存病历、发送消息）校验当前医生对问诊记录的操作权限。
+ * <p>面向 B 端医生 / 科室主任 / 医院管理员，处理待接诊队列、患者详情、开始/结束接诊、病历保存、问诊消息。
+ * 数据隔离边界：所有读操作通过当前用户的 {@link DataScope}（医院 / 科室 / 医生）显式过滤可见问诊记录；
+ * 写操作（开始 / 结束 / 病历 / 消息）必须先校验当前用户对目标问诊的归属与状态机合法性。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class DoctorConsultServiceImpl implements DoctorConsultService {
 
-    private static final String ROLE_ADMIN = "ADMIN";
-    private static final String ROLE_DEPT_HEAD = "DEPT_HEAD";
-    private static final String ROLE_DOCTOR = "DOCTOR";
-
+    /** 问诊记录状态：待接诊（C 端挂号已支付，B 端尚未开始） */
     private static final String STATUS_PENDING = "PENDING";
+    /** 问诊记录状态：进行中（医生已开始接诊） */
     private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
+    /** 问诊记录状态：已完成（医生已结束问诊） */
     private static final String STATUS_COMPLETED = "COMPLETED";
+    /** 问诊记录状态：未到 / 过期未就诊 */
     private static final String STATUS_NO_SHOW = "NO_SHOW";
 
+    /** 处方状态：草稿（未签名） */
     private static final String PRESCRIPTION_DRAFT = "DRAFT";
+
+    /** 问诊消息发送方类型：医生 */
+    private static final String SENDER_DOCTOR = "DOCTOR";
+
+    /** 病历文本最大长度（与服务端校验、NoteSaveRequest 一致） */
+    private static final int MAX_NOTE_LENGTH = 10_000;
+    /** 问诊消息最大长度（与 MessageSendRequest 一致） */
+    private static final int MAX_MESSAGE_LENGTH = 2_000;
+    /** 近期处方展示上限（按创建时间倒序截取） */
+    private static final int RECENT_PRESCRIPTION_LIMIT = 10;
+    /** 历史就诊记录展示上限 */
+    private static final int HISTORY_RECORD_LIMIT = 20;
+    /** 病历摘要截断长度（ConsultHistoryVO） */
+    private static final int NOTE_SUMMARY_MAX_LENGTH = 100;
+    /** 历史就诊病历摘要截断长度（PatientDetailVO.HistoryRecordInfo） */
+    private static final int HISTORY_NOTE_SUMMARY_MAX_LENGTH = 50;
+    /** 手机号脱敏保留前缀长度 */
+    private static final int PHONE_MASK_PREFIX = 3;
+    /** 手机号脱敏保留后缀长度 */
+    private static final int PHONE_MASK_SUFFIX = 4;
+    /** 手机号脱敏最短长度（低于该长度不脱敏，避免越界） */
+    private static final int PHONE_MASK_MIN_LENGTH = 7;
+
+    // ============ 业务错误码（30xx 接诊台域） ============
+
+    /** 患者不存在（3001） */
+    private static final String ERR_PATIENT_NOT_FOUND = "3001";
+    /** 无权访问该问诊 / 患者（3010） */
+    private static final String ERR_NO_PERMISSION = "3010";
+    /** 问诊记录状态不可接诊（3011） */
+    private static final String ERR_CONSULT_STATUS_INVALID = "3011";
+    /** 医生当前存在未结束的接诊（3012） */
+    private static final String ERR_DOCTOR_BUSY = "3012";
+    /** 问诊状态不是 IN_PROGRESS，禁止对应操作（3013） */
+    private static final String ERR_CONSULT_NOT_IN_PROGRESS = "3013";
+    /** 存在未签名的处方草稿（3014） */
+    private static final String ERR_HAS_DRAFT_PRESCRIPTION = "3014";
 
     private final ConsultRecordMapper consultRecordMapper;
     private final BPatientMapper patientMapper;
@@ -88,14 +127,12 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     private final CurrentUserService currentUserService;
     private final ObjectMapper objectMapper;
 
-    // ==================== 5.5.1 待接诊列表 ====================
-
     @Override
     public PageResult<QueueItemVO> pageQueue(Long deptId, String status, int page, int size) {
         DataScope scope = currentUserService.getCurrentDataScope();
         // 数据权限标识缺失时返回空数据
-        if ((ROLE_DEPT_HEAD.equals(scope.role()) && scope.deptId() == null)
-                || (ROLE_DOCTOR.equals(scope.role()) && scope.doctorId() == null)) {
+        if ((BRoleEnum.DEPT_HEAD.equalsCode(scope.role()) && scope.deptId() == null)
+                || (BRoleEnum.DOCTOR.equalsCode(scope.role()) && scope.doctorId() == null)) {
             return PageResult.of(0, List.of(), page, size);
         }
 
@@ -106,7 +143,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
             return PageResult.of(0, List.of(), page, size);
         }
 
-        // 自动补建缺失的 consult_record：C端挂号成功后未创建问诊记录时，查询前幂等补齐
+        // 自动补建缺失的 consult_record：C 端挂号成功后未创建问诊记录时，查询前幂等补齐
         ensureConsultRecordsExist(doctorIds);
 
         // 批量过期已过期的 PENDING 记录与 PAID 挂号订单，保持队列干净
@@ -117,8 +154,8 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
         }
 
         // 对于 ADMIN/DEPT_HEAD，deptId 可传参过滤；DOCTOR 只看本人
-        Long queryDeptId = (ROLE_ADMIN.equals(scope.role()) && deptId != null) ? deptId
-                : (ROLE_DEPT_HEAD.equals(scope.role()) ? scope.deptId() : null);
+        Long queryDeptId = (BRoleEnum.ADMIN.equalsCode(scope.role()) && deptId != null) ? deptId
+                : (BRoleEnum.DEPT_HEAD.equalsCode(scope.role()) ? scope.deptId() : null);
 
         IPage<QueueRow> result = consultRecordMapper.selectQueuePage(
                 new Page<>(page, size), queryStatus, doctorIds, queryDeptId);
@@ -129,14 +166,12 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
         return PageResult.of(result.getTotal(), list, page, size);
     }
 
-    // ==================== 5.5.2 患者详情 ====================
-
     @Override
     public PatientDetailVO getPatientDetail(Long consultId) {
         ConsultRecord record = getConsultInScope(consultId);
         Patient patient = patientMapper.selectById(record.getPatientId());
         if (patient == null || patient.getDeletedAt() != null) {
-            throw new BusinessException("3001", "患者不存在");
+            throw new BusinessException(ERR_PATIENT_NOT_FOUND, "患者不存在");
         }
 
         // 过敏史
@@ -194,29 +229,28 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 .build();
     }
 
-    // ==================== 5.5.3 开始接诊 ====================
-
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ConsultStartVO startConsult(Long consultId) {
         ConsultRecord record = getConsultInScope(consultId);
         if (!STATUS_PENDING.equals(record.getStatus())) {
-            throw new BusinessException("3011", "问诊记录状态不可接诊");
+            throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "问诊记录状态不可接诊");
         }
         // 校验该医生当前无其他 IN_PROGRESS 接诊
         long inProgress = consultRecordMapper.countInProgressByDoctor(record.getDoctorId());
         if (inProgress > 0) {
-            throw new BusinessException("3012", "医生当前存在未结束的接诊记录");
+            throw new BusinessException(ERR_DOCTOR_BUSY, "医生当前存在未结束的接诊记录");
         }
 
         // 校验当前时间是否在号源时段内
         SlotTimeInfo slotTime = consultRecordMapper.selectSlotTimeByConsultId(consultId);
         if (slotTime == null) {
-            throw new BusinessException("A0400", "未找到号源时段信息，无法接诊");
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "未找到号源时段信息，无法接诊");
         }
         LocalTime now = LocalTime.now();
         if (now.isBefore(slotTime.getStartTime()) || now.isAfter(slotTime.getEndTime())) {
-            throw new BusinessException("A0443", "当前不在接诊时间内（" + slotTime.getStartTime() + "~" + slotTime.getEndTime() + "）");
+            throw new BusinessException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID,
+                    "当前不在接诊时间内（" + slotTime.getStartTime() + "~" + slotTime.getEndTime() + "）");
         }
 
         record.setStatus(STATUS_IN_PROGRESS);
@@ -232,14 +266,12 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 .build();
     }
 
-    // ==================== 5.5.4 结束问诊 ====================
-
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ConsultEndVO endConsult(Long consultId) {
         ConsultRecord record = getConsultInScope(consultId);
         if (!STATUS_IN_PROGRESS.equals(record.getStatus())) {
-            throw new BusinessException("3013", "问诊状态不是 IN_PROGRESS");
+            throw new BusinessException(ERR_CONSULT_NOT_IN_PROGRESS, "问诊状态不是 IN_PROGRESS");
         }
         // 校验无未签名的 DRAFT 处方
         long draftPrescriptions = prescriptionMapper.selectCount(Wrappers.<Prescription>lambdaQuery()
@@ -247,7 +279,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 .eq(Prescription::getStatus, PRESCRIPTION_DRAFT)
                 .isNull(Prescription::getDeletedAt));
         if (draftPrescriptions > 0) {
-            throw new BusinessException("3014", "存在未签名的处方草稿，请先处理");
+            throw new BusinessException(ERR_HAS_DRAFT_PRESCRIPTION, "存在未签名的处方草稿，请先处理");
         }
 
         record.setStatus(STATUS_COMPLETED);
@@ -266,13 +298,11 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 .build();
     }
 
-    // ==================== 5.5.5 保存病历 ====================
-
     @Override
     @Transactional(rollbackFor = Exception.class)
     public NoteSaveVO saveNote(Long consultId, String doctorNote) {
-        if (!StringUtils.hasText(doctorNote) || doctorNote.length() > 10000) {
-            throw new BusinessException("A0400", "病历内容不能为空且不超过10000字符");
+        if (!StringUtils.hasText(doctorNote) || doctorNote.length() > MAX_NOTE_LENGTH) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "病历内容不能为空且不超过10000字符");
         }
         ConsultRecord record = getConsultInScope(consultId);
 
@@ -286,8 +316,6 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 .updatedAt(record.getUpdatedAt())
                 .build();
     }
-
-    // ==================== 5.5.6 查询消息历史 ====================
 
     @Override
     public PageResult<MessageVO> pageMessages(Long consultationId, int page, int size) {
@@ -312,35 +340,31 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
         return PageResult.of(result.getTotal(), list, page, size);
     }
 
-    // ==================== 5.5.7 发送消息 ====================
-
     @Override
     @Transactional(rollbackFor = Exception.class)
     public MessageVO sendMessage(Long consultationId, String content) {
-        if (!StringUtils.hasText(content) || content.length() > 2000) {
-            throw new BusinessException("A0400", "消息内容不能为空且不超过2000字符");
+        if (!StringUtils.hasText(content) || content.length() > MAX_MESSAGE_LENGTH) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "消息内容不能为空且不超过2000字符");
         }
         ConsultRecord record = getConsultInScope(consultationId);
         if (!STATUS_IN_PROGRESS.equals(record.getStatus())) {
-            throw new BusinessException("3013", "问诊状态不是 IN_PROGRESS，禁止发送消息");
+            throw new BusinessException(ERR_CONSULT_NOT_IN_PROGRESS, "问诊状态不是 IN_PROGRESS，禁止发送消息");
         }
 
         ConsultationMessage message = new ConsultationMessage();
         message.setConsultId(consultationId);
-        message.setSenderType("DOCTOR");
+        message.setSenderType(SENDER_DOCTOR);
         message.setContent(content);
         consultationMessageMapper.insert(message);
 
         log.info("发送问诊消息 consultId={}, messageId={}", consultationId, message.getId());
         return MessageVO.builder()
                 .messageId(message.getId())
-                .senderType("DOCTOR")
+                .senderType(SENDER_DOCTOR)
                 .content(content)
                 .createdAt(message.getCreatedAt())
                 .build();
     }
-
-    // ==================== 接诊历史 ====================
 
     @Override
     public PageResult<ConsultHistoryVO> pageHistory(int page, int size) {
@@ -396,29 +420,40 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 .build();
     }
 
-    // ==================== 私有方法 ====================
-
     /**
      * 获取问诊记录并校验当前用户的数据权限。
+     *
+     * <p>校验链路：
+     * <ol>
+     *   <li>问诊记录存在且未软删</li>
+     *   <li>问诊所属医生属于当前用户所在医院（跨医院隔离）</li>
+     *   <li>当前角色为 {@link BRoleEnum#DOCTOR} 时，问诊所属医生必须为本人</li>
+     *   <li>当前角色为 {@link BRoleEnum#DEPT_HEAD} 时，问诊所属医生必须属于本人管辖科室</li>
+     *   <li>当前角色为 {@link BRoleEnum#ADMIN} 时，仅受医院边界约束</li>
+     * </ol>
+     *
+     * @param consultId 问诊记录 ID
+     * @return 问诊记录实体
+     * @throws BusinessException 不存在或越权时抛出
      */
     private ConsultRecord getConsultInScope(Long consultId) {
         ConsultRecord record = consultRecordMapper.selectById(consultId);
         if (record == null || record.getDeletedAt() != null) {
-            throw new BusinessException("A0402", "问诊记录不存在");
+            throw new BusinessException(ErrorCodeEnum.INVALID_USER_INPUT, "问诊记录不存在");
         }
         DataScope scope = currentUserService.getCurrentDataScope();
         Doctor doctor = doctorMapper.selectById(record.getDoctorId());
         if (doctor == null || doctor.getDeletedAt() != null
                 || !doctor.getHospitalId().equals(scope.hospitalId())) {
-            throw new BusinessException("3010", "无权查看该患者");
+            throw new BusinessException(ERR_NO_PERMISSION, "无权查看该患者");
         }
-        if (ROLE_DOCTOR.equals(scope.role()) && !scope.doctorId().equals(record.getDoctorId())) {
-            throw new BusinessException("3010", "无权查看该患者");
+        if (BRoleEnum.DOCTOR.equalsCode(scope.role()) && !scope.doctorId().equals(record.getDoctorId())) {
+            throw new BusinessException(ERR_NO_PERMISSION, "无权查看该患者");
         }
-        if (ROLE_DEPT_HEAD.equals(scope.role())) {
+        if (BRoleEnum.DEPT_HEAD.equalsCode(scope.role())) {
             Doctor consultDoctor = doctorMapper.selectById(record.getDoctorId());
             if (consultDoctor == null || !consultDoctor.getDeptId().equals(scope.deptId())) {
-                throw new BusinessException("3010", "无权查看该患者");
+                throw new BusinessException(ERR_NO_PERMISSION, "无权查看该患者");
             }
         }
         return record;
@@ -426,7 +461,8 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
 
     /**
      * 自动补建缺失的 consult_record（幂等）。
-     * C端挂号成功后未创建 consult_record，B端查询队列前补齐，对双方无侵入。
+     *
+     * <p>C 端挂号成功后若未创建 consult_record，B 端查询队列前自动补齐，对两端无侵入。
      */
     private void ensureConsultRecordsExist(List<Long> doctorIds) {
         int inserted = consultRecordMapper.batchCreateIfMissing(doctorIds);
@@ -437,23 +473,31 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
 
     /**
      * 根据数据权限解析可查询的医生 ID 列表。
+     *
+     * <p>ADMIN 返回同医院全部医生（可按 deptId 过滤）；DEPT_HEAD 返回本管辖科室医生；
+     * DOCTOR 仅返回本人；其他角色返回空集合。
+     *
+     * @param scope 当前用户数据权限
+     * @param deptId 可选科室过滤（仅 ADMIN 生效）
+     * @return 医生 ID 列表（空列表表示无可见数据）
      */
     private List<Long> resolveDoctorIds(DataScope scope, Long deptId) {
         return switch (scope.role()) {
-            case ROLE_ADMIN -> doctorMapper.selectList(Wrappers.<Doctor>lambdaQuery()
+            // case label 必须为常量 String 字面量，故此处与 BRoleEnum code 保持一致
+            case "ADMIN" -> doctorMapper.selectList(Wrappers.<Doctor>lambdaQuery()
                             .eq(Doctor::getHospitalId, scope.hospitalId())
                             .eq(deptId != null, Doctor::getDeptId, deptId)
                             .isNull(Doctor::getDeletedAt))
                     .stream()
                     .map(Doctor::getId)
                     .toList();
-            case ROLE_DEPT_HEAD -> doctorMapper.selectList(Wrappers.<Doctor>lambdaQuery()
+            case "DEPT_HEAD" -> doctorMapper.selectList(Wrappers.<Doctor>lambdaQuery()
                             .eq(Doctor::getDeptId, scope.deptId())
                             .isNull(Doctor::getDeletedAt))
                     .stream()
                     .map(Doctor::getId)
                     .toList();
-            case ROLE_DOCTOR -> scope.doctorId() != null
+            case "DOCTOR" -> scope.doctorId() != null
                     ? List.of(scope.doctorId())
                     : List.of();
             default -> List.of();
@@ -461,7 +505,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     }
 
     /**
-     * 将 QueueRow 转换为 QueueItemVO。
+     * 将 QueueRow 转换为 QueueItemVO，并按出生日期推算年龄。
      */
     private QueueItemVO toQueueItemVO(QueueRow row) {
         Map<String, Object> aiSummary = parseAiSummary(row.getAiSummary());
@@ -484,7 +528,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     }
 
     /**
-     * 将 ConsultRecord 转换为 ConsultHistoryVO。
+     * 将 ConsultRecord 转换为 ConsultHistoryVO，附挂患者姓名 / 性别 / 出生日期与病历摘要。
      */
     private ConsultHistoryVO toConsultHistoryVO(ConsultRecord r) {
         Patient patient = r.getPatientId() != null ? patientMapper.selectById(r.getPatientId()) : null;
@@ -492,7 +536,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 ? Period.between(patient.getDateOfBirth(), LocalDate.now()).getYears()
                 : 0;
         String noteSummary = r.getDoctorNote() != null
-                ? r.getDoctorNote().substring(0, Math.min(r.getDoctorNote().length(), 100))
+                ? r.getDoctorNote().substring(0, Math.min(r.getDoctorNote().length(), NOTE_SUMMARY_MAX_LENGTH))
                 : null;
         return ConsultHistoryVO.builder()
                 .consultId(r.getId())
@@ -510,7 +554,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     }
 
     /**
-     * 解析 ai_summary jsonb 字段为 Map。
+     * 解析 ai_summary jsonb 字段为 Map；解析失败时返回空 Map 并记 warn 日志（不影响主流程）。
      */
     private Map<String, Object> parseAiSummary(String aiSummaryJson) {
         if (!StringUtils.hasText(aiSummaryJson)) {
@@ -525,7 +569,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     }
 
     /**
-     * 加载患者近期处方。
+     * 加载患者近期处方（按创建时间倒序，截取 {@value RECENT_PRESCRIPTION_LIMIT} 条）。
      */
     private List<PatientDetailVO.RecentPrescriptionInfo> loadRecentPrescriptions(Long patientId) {
         List<Prescription> prescriptions = prescriptionMapper.selectList(
@@ -533,7 +577,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                         .eq(Prescription::getPatientId, patientId)
                         .isNull(Prescription::getDeletedAt)
                         .orderByDesc(Prescription::getCreatedAt)
-                        .last("LIMIT 10"));
+                        .last("LIMIT " + RECENT_PRESCRIPTION_LIMIT));
         return prescriptions.stream()
                 .map(p -> PatientDetailVO.RecentPrescriptionInfo.builder()
                         .id(p.getId())
@@ -547,6 +591,10 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
      * 加载患者在本医院的历史就诊记录（跨医生，不限当前医生）。
      *
      * <p>通过 doctor 表过滤同医院 + 关联医生姓名，让医生了解患者在本院的其他就诊情况。
+     *
+     * @param patientId  患者 ID
+     * @param hospitalId 当前用户所在医院 ID
+     * @return 历史就诊记录（最多 {@value HISTORY_RECORD_LIMIT} 条）
      */
     private List<PatientDetailVO.HistoryRecordInfo> loadHistoryRecords(Long patientId, Long hospitalId) {
         List<ConsultRecord> records = consultRecordMapper.selectList(
@@ -554,7 +602,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                         .eq(ConsultRecord::getPatientId, patientId)
                         .isNull(ConsultRecord::getDeletedAt)
                         .orderByDesc(ConsultRecord::getCreatedAt)
-                        .last("LIMIT 20"));
+                        .last("LIMIT " + HISTORY_RECORD_LIMIT));
         if (records.isEmpty()) {
             return List.of();
         }
@@ -579,7 +627,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                         .type("病历")
                         .doctorName(doctorNameMap.get(r.getDoctorId()))
                         .summary(r.getDoctorNote() != null
-                                ? r.getDoctorNote().substring(0, Math.min(r.getDoctorNote().length(), 50))
+                                ? r.getDoctorNote().substring(0, Math.min(r.getDoctorNote().length(), HISTORY_NOTE_SUMMARY_MAX_LENGTH))
                                 : null)
                         .status(r.getStatus())
                         .build())
@@ -587,12 +635,13 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     }
 
     /**
-     * 手机号脱敏：保留前3位后4位，中间 ****。
+     * 手机号脱敏：保留前 {@value PHONE_MASK_PREFIX} 位 + 后 {@value PHONE_MASK_SUFFIX} 位，中间 4 个星号。
+     * 长度不足时原样返回，避免越界。
      */
     private String maskPhone(String phone) {
-        if (phone == null || phone.length() < 7) {
+        if (phone == null || phone.length() < PHONE_MASK_MIN_LENGTH) {
             return phone;
         }
-        return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
+        return phone.substring(0, PHONE_MASK_PREFIX) + "****" + phone.substring(phone.length() - PHONE_MASK_SUFFIX);
     }
 }

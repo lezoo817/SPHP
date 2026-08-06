@@ -7,6 +7,8 @@ import com.sphp.admin.auth.entity.Doctor;
 import com.sphp.admin.auth.mapper.BUserMapper;
 import com.sphp.admin.auth.mapper.DoctorMapper;
 import com.sphp.admin.common.CurrentUserService;
+import com.sphp.admin.common.enums.BRoleEnum;
+import com.sphp.admin.common.enums.BUserStatusEnum;
 import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.hospital.dto.DoctorAccountRequest;
 import com.sphp.admin.hospital.dto.DoctorCreateRequest;
@@ -34,13 +36,30 @@ import java.util.stream.Collectors;
 /**
  * 医生管理服务实现。
  *
- * <p>全部操作按当前登录管理员所属医院（hospital_id）做数据隔离过滤；
- * 医生状态与关联 b_user 账号状态保持联动（以 b_user.status 为权威来源）。
+ * <p>全部操作按当前登录管理员所属医院（{@code hospital_id}）做数据隔离过滤；
+ * 医生状态与关联 {@code b_user} 账号状态保持联动（以 {@code b_user.status} 为权威来源）。
+ *
+ * <p>状态机：
+ * <ul>
+ *   <li>{@code doctor.status}：{@code ENABLED} / {@code DISABLED} / {@code SUSPENDED}
+ *       （{@code SUSPENDED} 是 {@code doctor} 表扩展态，{@code b_user} 不支持）</li>
+ *   <li>{@code b_user.status}：{@code ENABLED} / {@code DISABLED}
+ *       （{@code SUSPENDED} 业务层映射为 {@code DISABLED}）</li>
+ * </ul>
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class DoctorServiceImpl implements DoctorService {
+
+    /** 资源不存在 / 越权访问（A0402：通用资源未找到） */
+    private static final String ERR_RESOURCE_NOT_FOUND = "A0402";
+    /** 业务错误：登录账号已存在（A0112） */
+    private static final String ERR_ACCOUNT_DUPLICATE = "A0112";
+    /** 业务错误：医生未开通登录账号（A0121） */
+    private static final String ERR_NO_ACCOUNT = "A0121";
+    /** 业务错误：无操作权限（A0443：通用权限不足） */
+    private static final String ERR_FORBIDDEN = "A0443";
 
     private final DoctorMapper doctorMapper;
     private final BUserMapper bUserMapper;
@@ -92,11 +111,11 @@ public class DoctorServiceImpl implements DoctorService {
         // 1. 校验科室存在且属本院
         Department dept = departmentMapper.selectById(request.getDeptId());
         if (dept == null || dept.getDeletedAt() != null || !dept.getHospitalId().equals(hospitalId)) {
-            throw new BusinessException("A0402", "所属科室不存在");
+            throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "所属科室不存在");
         }
         // 2. 登录账号唯一性（全院唯一）
         if (currentUserService.accountExists(request.getAccount(), null)) {
-            throw new BusinessException("A0112", "登录账号已存在");
+            throw new BusinessException(ERR_ACCOUNT_DUPLICATE, "登录账号已存在");
         }
         // 3. 插入 doctor（b_user_id 先空，循环外键避免约束冲突）
         Doctor doctor = new Doctor();
@@ -108,16 +127,16 @@ public class DoctorServiceImpl implements DoctorService {
         doctor.setLicenseNo(request.getLicenseNo());
         doctor.setPhone(request.getPhone());
         doctor.setRegistrationFeeCent(request.getRegistrationFeeCent() != null ? request.getRegistrationFeeCent() : 0);
-        doctor.setStatus(StringUtils.hasText(request.getStatus()) ? request.getStatus() : "ENABLED");
+        doctor.setStatus(StringUtils.hasText(request.getStatus()) ? request.getStatus() : BUserStatusEnum.ENABLED.getCode());
         doctorMapper.insert(doctor);
         // 4. 插入 b_user（role=DOCTOR）
         BUser user = new BUser();
         user.setAccount(request.getAccount());
         user.setPasswordHash(BCrypt.hashpw(request.getPassword(), BCrypt.gensalt()));
-        user.setRole("DOCTOR");
+        user.setRole(BRoleEnum.DOCTOR.getCode());
         user.setHospitalId(hospitalId);
         user.setDoctorId(doctor.getId());
-        user.setStatus("ENABLED");
+        user.setStatus(BUserStatusEnum.ENABLED.getCode());
         bUserMapper.insert(user);
         // 5. 回填 doctor.b_user_id（配合 idx_doctor_b_user 快速联查）
         Doctor backfill = new Doctor();
@@ -162,12 +181,12 @@ public class DoctorServiceImpl implements DoctorService {
         Doctor doctor = getDoctor(id, hospitalId);
         String status = request.getStatus();
         // 停用/暂停前置校验：无 PUBLISHED 排班、无 IN_PROGRESS 问诊
-        if (!"ENABLED".equals(status)) {
+        if (!BUserStatusEnum.ENABLED.getCode().equals(status)) {
             if (doctorMapper.countPublishedScheduleByDoctor(doctor.getId()) > 0) {
-                throw new BusinessException("A0443", "存在已发布排班，无法停用");
+                throw new BusinessException(ERR_FORBIDDEN, "存在已发布排班，无法停用");
             }
             if (doctorMapper.countInProgressConsultByDoctor(doctor.getId()) > 0) {
-                throw new BusinessException("A0443", "存在进行中问诊，无法停用");
+                throw new BusinessException(ERR_FORBIDDEN, "存在进行中问诊，无法停用");
             }
         }
         // 更新医生状态
@@ -176,7 +195,8 @@ public class DoctorServiceImpl implements DoctorService {
         doctorMapper.updateById(doctor);
         // 账号联动：关联 b_user 状态同步（b_user 无 SUSPENDED，映射为 DISABLED）
         if (doctor.getBUserId() != null) {
-            String userStatus = "SUSPENDED".equals(status) ? "DISABLED" : status;
+            // SUSPENDED 是 doctor 状态机扩展项，b_user 端需降级为 DISABLED
+            String userStatus = "SUSPENDED".equals(status) ? BUserStatusEnum.DISABLED.getCode() : status;
             BUser user = new BUser();
             user.setId(doctor.getBUserId());
             user.setStatus(userStatus);
@@ -191,10 +211,10 @@ public class DoctorServiceImpl implements DoctorService {
         Long hospitalId = currentUserService.getCurrentHospitalId();
         Doctor doctor = getDoctor(id, hospitalId);
         if (doctor.getBUserId() == null) {
-            throw new BusinessException("A0121", "该医生未开通登录账号");
+            throw new BusinessException(ERR_NO_ACCOUNT, "该医生未开通登录账号");
         }
         if (currentUserService.accountExists(request.getAccount(), doctor.getBUserId())) {
-            throw new BusinessException("A0112", "登录账号已存在");
+            throw new BusinessException(ERR_ACCOUNT_DUPLICATE, "登录账号已存在");
         }
         BUser user = new BUser();
         user.setId(doctor.getBUserId());
@@ -209,7 +229,7 @@ public class DoctorServiceImpl implements DoctorService {
         Long hospitalId = currentUserService.getCurrentHospitalId();
         Doctor doctor = getDoctor(id, hospitalId);
         if (doctor.getBUserId() == null) {
-            throw new BusinessException("A0121", "该医生未开通登录账号");
+            throw new BusinessException(ERR_NO_ACCOUNT, "该医生未开通登录账号");
         }
         BUser user = new BUser();
         user.setId(doctor.getBUserId());
@@ -219,16 +239,27 @@ public class DoctorServiceImpl implements DoctorService {
         log.info("重置医生密码 doctorId={}", doctor.getId());
     }
 
-    /** 按 id + 医院范围查询医生，不存在或越权返回 A0402 */
+    /**
+     * 按 id + 医院范围查询医生，不存在或越权返回 {@value #ERR_RESOURCE_NOT_FOUND}。
+     *
+     * @param id         医生 ID
+     * @param hospitalId 当前管理员所属医院 ID
+     * @return 有效且属于本院的医生
+     */
     private Doctor getDoctor(Long id, Long hospitalId) {
         Doctor doctor = doctorMapper.selectById(id);
         if (doctor == null || doctor.getDeletedAt() != null || !doctor.getHospitalId().equals(hospitalId)) {
-            throw new BusinessException("A0402", "医生不存在");
+            throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "医生不存在");
         }
         return doctor;
     }
 
-    /** 批量加载科室名称（仅有效科室） */
+    /**
+     * 批量加载科室名称（仅有效科室）。
+     *
+     * @param doctors 医生列表
+     * @return {@code deptId -> deptName} 映射；空列表返回 {@link Map#of()}
+     */
     private Map<Long, String> loadDeptNames(List<Doctor> doctors) {
         List<Long> ids = doctors.stream()
                 .map(Doctor::getDeptId)
@@ -243,7 +274,12 @@ public class DoctorServiceImpl implements DoctorService {
                 .collect(Collectors.toMap(Department::getId, Department::getName, (a, b) -> a));
     }
 
-    /** 批量加载登录账号（仅有效 b_user） */
+    /**
+     * 批量加载登录账号（仅有效 {@code b_user}）。
+     *
+     * @param doctors 医生列表
+     * @return {@code bUserId -> BUser} 映射；空列表返回 {@link Map#of()}
+     */
     private Map<Long, BUser> loadUsers(List<Doctor> doctors) {
         List<Long> ids = doctors.stream()
                 .map(Doctor::getBUserId)

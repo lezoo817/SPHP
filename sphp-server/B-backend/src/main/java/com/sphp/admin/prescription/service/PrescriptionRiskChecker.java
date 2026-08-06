@@ -26,11 +26,11 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * 处方风险拦截器（系分 §5.6.1）。
+ * 处方风险拦截器。
  *
  * <p>统一处理过敏/禁忌/重复用药/高危药品四类规则：
  * <ul>
- *   <li>ERROR（红线）：过敏强匹配、禁忌强匹配 → 抛 3004，不入库</li>
+ *   <li>ERROR（红线）：过敏强匹配、禁忌强匹配 → 抛 ERR_RISK_REDLINE，不入库</li>
  *   <li>WARNING（提示）：重复用药 → 处方进入待审核队列（status=SUBMITTED）</li>
  *   <li>AUDIT（审核）：高危药品 → 处方进入待审核队列（status=SUBMITTED）</li>
  *   <li>无风险 → APPROVED</li>
@@ -42,6 +42,18 @@ import java.util.regex.Pattern;
 @Service
 @RequiredArgsConstructor
 public class PrescriptionRiskChecker {
+
+    /** 红线规则拦截（3004：过敏/禁忌强匹配，禁止提交） */
+    private static final String ERR_RISK_REDLINE = "3004";
+
+    /** 风险级别 */
+    private static final String RISK_LEVEL_WARNING = "WARNING";
+    private static final String RISK_LEVEL_AUDIT = "AUDIT";
+
+    /** 重复用药规则名 */
+    private static final String RULE_DUPLICATE = "重复用药检测";
+    /** 高危药品规则名 */
+    private static final String RULE_HIGH_RISK = "高危药物联用";
 
     /** ai_summary.allergies 解析尾缀：命中即去除，取核心过敏原词 */
     private static final Pattern ALLERGY_SUFFIX = Pattern.compile("(过敏|史|药物|类)$");
@@ -58,6 +70,13 @@ public class PrescriptionRiskChecker {
             "麻醉", "精神", "吗啡", "芬太尼", "阿片", "可待因", "哌替啶",
             "地西泮", "氯硝西泮", "艾司唑仑", "曲马多", "唑吡坦", "抗凝", "华法林", "氯吡格雷");
 
+    /** 禁忌关键词动词：分隔"关键词 + 动作"，仅取动作前的短语 */
+    private static final List<String> CONTRAINDICATION_VERBS = List.of("禁用", "慎用", "不宜", "忌用");
+    /** 禁忌关键词尾缀：人群限定词，需去除 */
+    private static final String CONTRAINDICATION_PEOPLE_SUFFIX_REGEX = "(者|人群|患者)$";
+    /** 禁忌关键词分隔符 */
+    private static final String CONTRAINDICATION_DELIMITER_REGEX = "[、，,；;]";
+
     private final BPatientAllergyMapper patientAllergyMapper;
     private final BPatientMedicalHistoryMapper patientMedicalHistoryMapper;
     private final ObjectMapper objectMapper;
@@ -69,7 +88,7 @@ public class PrescriptionRiskChecker {
      * @param drugMap 药品 ID → 药品
      * @param items   处方明细
      * @return 风险结果（warnings + auditRequired）
-     * @throws BusinessException 命中 ERROR 红线时抛 3004
+     * @throws BusinessException 命中 ERROR 红线时抛 ERR_RISK_REDLINE
      */
     public RiskCheckResult intercept(ConsultRecord consult,
                                      Map<Long, Drug> drugMap,
@@ -85,7 +104,7 @@ public class PrescriptionRiskChecker {
             String hit = matchAllergen(drug, allergens);
             if (hit != null) {
                 log.warn("红线拦截(过敏)：患者{}对{}过敏，处方含{}", patientId, hit, drug.getName());
-                throw new BusinessException("3004",
+                throw new BusinessException(ERR_RISK_REDLINE,
                         "红线规则拦截：患者对「" + hit + "」过敏，处方含「" + drug.getName() + "」，禁止提交");
             }
         }
@@ -102,7 +121,7 @@ public class PrescriptionRiskChecker {
                 String hit = matchContraindication(drug, histories);
                 if (hit != null) {
                     log.warn("红线拦截(禁忌)：患者{}既往史含{}，与{}禁忌冲突", patientId, hit, drug.getName());
-                    throw new BusinessException("3004",
+                    throw new BusinessException(ERR_RISK_REDLINE,
                             "红线规则拦截：患者既往史含「" + hit + "」，与药品「" + drug.getName() + "」禁忌症冲突，禁止提交");
                 }
             }
@@ -119,8 +138,8 @@ public class PrescriptionRiskChecker {
                 if (sameIngredient(drugA.getName(), drugB.getName())) {
                     duplicateFound = true;
                     warnings.add(RiskWarningVO.builder()
-                            .level("WARNING")
-                            .rule("重复用药检测")
+                            .level(RISK_LEVEL_WARNING)
+                            .rule(RULE_DUPLICATE)
                             .message("处方中存在可能重复用药：「" + drugA.getName() + "」与「" + drugB.getName()
                                     + "」可能属同一成分，请确认是否需联合使用")
                             .build());
@@ -140,8 +159,8 @@ public class PrescriptionRiskChecker {
         }
         if (highRisk) {
             warnings.add(RiskWarningVO.builder()
-                    .level("AUDIT")
-                    .rule("高危药物联用")
+                    .level(RISK_LEVEL_AUDIT)
+                    .rule(RULE_HIGH_RISK)
                     .message("处方命中审核级规则，需人工审核")
                     .build());
         }
@@ -227,21 +246,24 @@ public class PrescriptionRiskChecker {
     /**
      * 提取禁忌关键词：按分隔符切分，取"禁用|慎用|不宜|忌用"前的短语，去尾部"者|人群|患者"。
      * 示例："肝功能不全者禁用，孕妇慎用" → ["肝功能不全", "孕妇"]。
+     *
+     * @param contraindication 药品禁忌症原文
+     * @return 关键词列表（去重、按原文顺序）
      */
     List<String> extractContraindicationKeywords(String contraindication) {
         List<String> keywords = new ArrayList<>();
-        for (String segment : contraindication.split("[、，,；;]")) {
+        for (String segment : contraindication.split(CONTRAINDICATION_DELIMITER_REGEX)) {
             String trimmed = segment.trim();
             if (!StringUtils.hasText(trimmed)) continue;
             int verbIdx = -1;
-            for (String verb : new String[]{"禁用", "慎用", "不宜", "忌用"}) {
+            for (String verb : CONTRAINDICATION_VERBS) {
                 int idx = trimmed.indexOf(verb);
                 if (idx >= 0 && (verbIdx < 0 || idx < verbIdx)) {
                     verbIdx = idx;
                 }
             }
             String phrase = verbIdx >= 0 ? trimmed.substring(0, verbIdx) : trimmed;
-            phrase = phrase.replaceFirst("(者|人群|患者)$", "").trim();
+            phrase = phrase.replaceFirst(CONTRAINDICATION_PEOPLE_SUFFIX_REGEX, "").trim();
             if (StringUtils.hasText(phrase)) {
                 keywords.add(phrase);
             }

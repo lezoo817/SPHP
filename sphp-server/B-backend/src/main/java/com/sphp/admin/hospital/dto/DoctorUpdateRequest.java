@@ -4,9 +4,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 /**
- * 编辑医生请求（系分 §5.3.10）。
+ * 编辑医生请求。
  *
- * <p>字段均可空，仅更新传入的非空值；不修改所属科室（deptId）。
+ * <p>字段均可空，仅更新传入的非空值；不修改所属科室（{@code deptId}）。
  */
 @Data
 @Schema(description = "编辑医生请求")
