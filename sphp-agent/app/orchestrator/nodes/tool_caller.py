@@ -587,6 +587,26 @@ async def tool_caller(
         logger.warning("未知 scope=%s，默认使用 c_end 工具集", scope)
         tool_scope = ToolScope.C_END
 
+    # M8-6 问诊选医生：用户已从 options 卡回传选择（"我选择X医生"）时，**在
+    # LLM 推理前**确定性匹配候选并注入 doctor_id 上下文，让 LLM 本轮就知道
+    # "已选医生、直接调 save_pre_consultation"，避免 LLM 把点选误当成普通消息
+    # 而重跑预问诊流程（查档案/科室/医生）或卡死。
+    # 注：注入必须发生在 ainvoke 之前，否则 LLM 看不到已选信息（此前 bug——
+    # 匹配逻辑在 ainvoke 之后才 append，LLM 推理时上下文无"已选医生"指令）。
+    # M8-8：命中后把绑定工具**过滤成只剩 save_pre_consultation**（硬约束，
+    # 不依赖模型遵循提示词）——DeepSeek 对"直接 save 别重跑查询"遵循度不足，
+    # 仍会先调查询工具；过滤后 LLM 想查也无从调起，只能 save。
+    selected_choice: dict[str, Any] | None = None
+    pending_choices = state.get("pending_doctor_choices")
+    if pending_choices:
+        selected_choice = _match_doctor_choice(state.get("messages", []), pending_choices)
+        if selected_choice:
+            logger.info(
+                "用户已选医生: %s(id=%s)",
+                selected_choice.get("name"),
+                selected_choice.get("doctor_id"),
+            )
+
     # 取 L1+L2 工具（L3/L4 不注册；L2 由 safety_check 拦截生成确认），转 OpenAI schema
     subgraph_tools = ToolRegistry.get_tools_by_scope(tool_scope)
     # 白名单仅约束 C 端：业务子图白名单是 C 端场景专属，B 端忽略白名单，
@@ -595,6 +615,11 @@ async def tool_caller(
     if effective_allowed is not None:
         allowed_set = set(effective_allowed)
         subgraph_tools = [t for t in subgraph_tools if t.name in allowed_set]
+    # M8-8 硬约束：用户已选医生时，本轮只暴露 save_pre_consultation，
+    # 让 LLM 无法重跑查询（query_health_record / query_departments / query_doctors
+    # 均不绑定），只能直接提交预问诊。
+    if selected_choice is not None:
+        subgraph_tools = [t for t in subgraph_tools if t.name == "save_pre_consultation"]
     tools = [
         t.to_openai_schema()
         for t in subgraph_tools
@@ -625,25 +650,12 @@ async def tool_caller(
         messages.append({"role": "system", "content": scene_prompt})
     messages += history
 
-    # M8-6 问诊选医生：用户已从 options 卡回传选择（"我选择X医生"）时，**在
-    # LLM 推理前**确定性匹配候选并注入 doctor_id 上下文，让 LLM 本轮就知道
-    # "已选医生、直接调 save_pre_consultation"，避免 LLM 把点选误当成普通消息
-    # 而重跑预问诊流程（查档案/科室/医生）或卡死。
-    # 注：注入必须发生在 ainvoke 之前，否则 LLM 看不到已选信息（此前 bug——
-    # 匹配逻辑在 ainvoke 之后才 append，LLM 推理时上下文无"已选医生"指令）。
-    selected_choice: dict[str, Any] | None = None
-    pending_choices = state.get("pending_doctor_choices")
-    if pending_choices:
-        selected_choice = _match_doctor_choice(state.get("messages", []), pending_choices)
-        if selected_choice:
-            messages.append(
-                {"role": "system", "content": _build_doctor_choice_context(selected_choice)}
-            )
-            logger.info(
-                "用户已选医生: %s(id=%s)",
-                selected_choice.get("name"),
-                selected_choice.get("doctor_id"),
-            )
+    # 已选医生上下文注入：告知 LLM 直接调 save_pre_consultation（选择匹配已在
+    # 工具绑定前完成，selected_choice 非 None 即本轮已绑定仅 save 工具）。
+    if selected_choice is not None:
+        messages.append(
+            {"role": "system", "content": _build_doctor_choice_context(selected_choice)}
+        )
 
     # M8-5：注入当前接诊患者上下文（前端 context.patient_id 非空时），
     # LLM 直接携带该 ID，避免 B 端必填 patient_id 工具反复向医生索要患者 ID。
