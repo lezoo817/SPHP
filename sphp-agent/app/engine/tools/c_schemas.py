@@ -77,12 +77,17 @@ def _register_appointment_query_tools() -> None:
     ToolRegistry.register(
         ToolSchema(
             name="query_doctors",
-            description="按科室查询医生及号源概览",
+            description="按科室查询医生列表。返回的 availableCount 是该医生指定日期线下门诊"
+            "的号源余量，仅供挂号场景判断能否挂号；在线问诊不依赖号源（异步问诊随时可发起），"
+            "即使 availableCount=0 也可选该医生发起在线问诊。",
             parameters={
                 "properties": {
                     "hospital_id": {"type": "integer", "description": "医院ID"},
                     "department_id": {"type": "integer", "description": "科室ID"},
-                    "date": {"type": "string", "description": "日期 YYYY-MM-DD（选填）"},
+                    "date": {
+                        "type": "string",
+                        "description": "日期 YYYY-MM-DD（选填，挂号场景用于查该日号源余量）",
+                    },
                 },
                 "required": ["hospital_id", "department_id"],
             },

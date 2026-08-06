@@ -4,7 +4,7 @@ AgentState 是图中唯一的共享状态对象，
 通过 LangGraph 的 add_messages reducer 自动累积对话历史。
 """
 
-from typing import Annotated, Any
+from typing import Annotated, Any, NotRequired
 
 from langgraph.graph import add_messages
 from typing_extensions import TypedDict
@@ -21,7 +21,9 @@ class AgentState(TypedDict):
     session_id: str | None
 
     # 当前识别的业务意图：triage / registration / consultation / pharmacy / qa / chitchat
-    intent: str | None
+    # NotRequired：意图粘性依赖 checkpointer 跨轮保留 state.intent，_build_initial_state
+    # 不传此字段（否则 None 覆盖历史意图），首轮由 intent_node 写入后跨轮保留。
+    intent: NotRequired[str | None]
 
     # 从 JWT 鉴权获得的用户 ID，MCP 调用时注入 Header X-User-Id
     user_id: int | None
@@ -61,6 +63,13 @@ class AgentState(TypedDict):
 
     # 待用户确认的 L2 操作列表，非空时 reply_node 推送 card 事件
     pending_confirmations: list[dict[str, Any]] | None
+
+    # 在线问诊选医生候选（M8-6）：问诊场景 query_doctors 返回后，tool_caller
+    # 拦截 save_pre_consultation 并把候选医生缓存至此，SSE 层推 options 选择卡。
+    # 用户点选后作为普通消息回传（"我选择X医生"），tool_caller 用 _match_doctor_choice
+    # 确定性匹配 doctor_id 注入 LLM 上下文，并清空本字段。
+    # NotRequired：跨轮经 checkpointer 保留，_build_initial_state 不传（不污染下一轮）。
+    pending_doctor_choices: NotRequired[list[dict[str, Any]] | None]
 
     # 本轮 RAG 检索到的医学知识上下文（不入 messages 历史，仅本次回复使用）
     rag_context: str | None

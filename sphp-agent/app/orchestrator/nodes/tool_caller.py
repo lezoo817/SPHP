@@ -22,6 +22,31 @@ from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
 
+# C 端项目固定的科室清单（2026-08-06 修订）：15 个常见科室（3-科室医生种子数据.sql，
+# id 100-114，其中妇产科改为妇科）+ 男科/中医科（id 115/116），不含内科/外科。
+# 分诊/问诊/挂号推荐科室时，query_departments 的 keyword 只能从这些名称中选择，
+# 禁止使用别名（如"心内科"→"心血管内科"、"消化科"→"消化内科"），否则 keyword
+# 查不到科室。
+DEPARTMENT_LIST = [
+    "全科",
+    "呼吸内科",
+    "消化内科",
+    "心血管内科",
+    "神经内科",
+    "内分泌科",
+    "普通外科",
+    "骨科",
+    "泌尿外科",
+    "妇科",
+    "儿科",
+    "眼科",
+    "耳鼻喉科",
+    "口腔科",
+    "皮肤科",
+    "男科",
+    "中医科",
+]
+
 # 工具决策系统提示词
 TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的工具调用助手。
 
@@ -172,6 +197,25 @@ def _build_hospital_context(state: AgentState) -> str | None:
     )
 
 
+def _build_department_context() -> str:
+    """构造项目固定科室清单上下文（注入 tool_caller 的 LLM 输入）。
+
+    项目现有科室固定为 ``DEPARTMENT_LIST``（17 个）。C 端工具 query_departments
+    的 keyword 参数若用清单外的别名（如"心内科"/"消化科"），keyword 查询查不到
+    科室（医院维度 LIKE 匹配）。此提示告知 LLM 可用科室名称，推荐/映射科室时
+    必须从清单中选择，禁止编造清单外的名称。
+
+    Returns:
+        str: 科室清单约束提示。
+    """
+    names = "、".join(DEPARTMENT_LIST)
+    return (
+        f"当前项目可用的科室（仅以下 {len(DEPARTMENT_LIST)} 个，医院维度）：{names}。"
+        "涉及科室的工具（query_departments 的 keyword）必须使用以上名称或其完整子串，"
+        "禁止使用别名（如'心内科'→'心血管内科'、'消化科'→'消化内科'）或清单外的科室名。"
+    )
+
+
 def _build_address_context(state: AgentState) -> str | None:
     """构造当前收货地址上下文（注入 tool_caller 的 LLM 输入）。
 
@@ -273,6 +317,177 @@ def _fill_missing_address_id(
     :func:`_fill_missing_required_param`。
     """
     return _fill_missing_required_param(tool_calls, "address_id", address_id)
+
+
+def _parse_doctor_candidates(tool_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """从 query_doctors 工具结果中解析候选医生列表（问诊选医生卡片数据源）。
+
+    query_doctors 返回经 tool_executor / Java 信封包裹，结构形如：
+    ``{code, message, data: {data: {doctors: [...]}}}`` 或 ``{data: {doctors: [...]}}``
+    （含/不含统一信封、含/不含内层 data 两层）。此处宽容解析：逐层下沉寻找
+    含 doctor 标识（id + name）的列表。
+
+    Args:
+        tool_results: 本轮已执行工具结果（含 tool_name / data）。
+
+    Returns:
+        list[dict]: 候选医生列表，每项含 doctor_id / name / dept_name / title /
+        specialty / fee_cent（缺失字段置 None，不抛错）。无 query_doctors 结果或
+        解析失败时返回空列表。
+    """
+    for result in reversed(tool_results):
+        if result.get("tool_name") != "query_doctors":
+            continue
+        data = result.get("data")
+        doctors = _find_doctor_list(data)
+        return [_normalize_doctor(d) for d in doctors]
+    return []
+
+
+def _find_doctor_list(data: Any, depth: int = 0) -> list[Any]:
+    """在 query_doctors 返回数据中深度优先查找医生列表（容忍信封包裹层数）。
+
+    命中条件：dict 中存在 key 为 doctors/doctors_list/list 的 list 值；或 list
+    本身元素为含 id+name 的 dict。限深 3 层防极端嵌套。
+    """
+    if depth > 3:
+        return []
+    if isinstance(data, list):
+        if data and isinstance(data[0], dict) and "id" in data[0] and "name" in data[0]:
+            return data
+        return []
+    if isinstance(data, dict):
+        for key in ("doctors", "doctors_list", "list", "items"):
+            val = data.get(key)
+            if isinstance(val, list) and val and isinstance(val[0], dict):
+                return val
+        for v in data.values():
+            found = _find_doctor_list(v, depth + 1)
+            if found:
+                return found
+    return []
+
+
+def _normalize_doctor(raw: dict[str, Any]) -> dict[str, Any]:
+    """归一化单个医生 dict 为统一候选结构（容忍 snake/camel 键名差异）。
+
+    Java 接口可能返回 camelCase（doctorName / registrationFeeCent）或经
+    java_client 转换的 snake_case（doctor_name / registration_fee_cent），
+    此处对两种键名都兼容。
+    """
+    doctor_id = raw.get("id") or raw.get("doctor_id")
+    name = raw.get("name") or raw.get("doctor_name") or raw.get("doctorName")
+    if doctor_id is None or not name:
+        return {}
+    return {
+        "doctor_id": int(doctor_id),
+        "name": str(name),
+        "dept_name": raw.get("dept_name") or raw.get("department_name") or raw.get("deptName"),
+        "title": raw.get("title"),
+        "specialty": raw.get("specialty"),
+        "fee_cent": (
+            raw.get("registration_fee_cent")
+            or raw.get("registrationFeeCent")
+            or raw.get("fee_cent")
+        ),
+    }
+
+
+def _intercept_save_pre_consultation(
+    tool_calls: list[dict[str, Any]],
+    tool_results: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
+    """问诊场景拦截：同轮 query_doctors + save_pre_consultation -> 缓存候选、剔除后者。
+
+    对应日志里的「查完医生就提交」同轮连跑：LLM 拿到 query_doctors 结果后，本应
+    让用户挑选医生，却直接替用户选了 doctor 并调 save_pre_consultation（L2）。
+    此处确定性拦截 save_pre_consultation，改由 SSE 层发 options 选择卡让用户点选，
+    保证「列医生 -> 用户选」的人工决策点不丢。
+
+    仅当本轮 tool_calls 同时含 query_doctors 与 save_pre_consultation 时拦截
+    （精确匹配"查完即提交"场景）；用户已从卡片选择、本轮只有 save_pre_consultation
+    时（无 query_doctors）不拦截，正常进入 L2 确认。
+
+    Args:
+        tool_calls: 本轮 LLM 选择的工具调用列表。
+        tool_results: 本轮已执行工具结果（用于解析 query_doctors 返回的医生列表）。
+
+    Returns:
+        tuple[list, list | None]: (过滤后的 tool_calls, 候选医生列表 or None)。
+        候选为 None 表示未触发拦截（不写 pending_doctor_choices）。
+    """
+    has_query_doctors = any(tc.get("name") == "query_doctors" for tc in tool_calls)
+    has_save = any(tc.get("name") == "save_pre_consultation" for tc in tool_calls)
+    if not (has_query_doctors and has_save):
+        return tool_calls, None
+    candidates = _parse_doctor_candidates(tool_results)
+    if not candidates:
+        # 候选解析失败（数据异常）：不拦截，放行 save_pre_consultation 走原流程，
+        # 避免数据问题卡死整条链路；由 reply 兜底。
+        logger.warning("query_doctors 未解析到候选医生，跳过选医生拦截")
+        return tool_calls, None
+    filtered = [tc for tc in tool_calls if tc.get("name") != "save_pre_consultation"]
+    logger.info("拦截 save_pre_consultation，改为选医生卡片（%d 位候选）", len(candidates))
+    return filtered, candidates
+
+
+def _match_doctor_choice(
+    messages: list[Any], candidates: list[dict[str, Any]] | None
+) -> dict[str, Any] | None:
+    """从用户最新消息确定性匹配候选医生（选医生卡片回传处理）。
+
+    用户点选 options 卡后，前端作为普通消息回传"我选择X医生"。此处取最新一条
+    user 消息文本，匹配候选的 name（"刘医生"/"刘"/完整 name）或 doctor_id（"104"）。
+    命中即返回该候选，供注入 LLM 上下文（"用户已选择X医生(doctor_id=N)"）。
+
+    Args:
+        messages: 当前 messages 历史（取最后一条 user 文本）。
+        candidates: pending_doctor_choices 候选列表。
+
+    Returns:
+        dict | None: 命中的候选医生；无候选 / 未匹配返回 None。
+    """
+    if not candidates:
+        return None
+    user_text = ""
+    for m in reversed(messages):
+        if isinstance(m, dict):
+            if m.get("role") == "user":
+                user_text = str(m.get("content", ""))
+                break
+        elif getattr(m, "role", None) == "user":
+            user_text = str(getattr(m, "content", ""))
+            break
+    if not user_text:
+        return None
+    for c in candidates:
+        name = c.get("name", "")
+        if not name:
+            continue
+        # "刘医生" / "刘" / 完整姓名
+        user_trim = user_text.replace("医生", "").strip()
+        name_trim = name.replace("医生", "").strip()
+        if name in user_text or user_trim == name_trim:
+            return c
+        str_id = str(c.get("doctor_id", ""))
+        if str_id and str_id in user_text:
+            return c
+    return None
+
+
+def _build_doctor_choice_context(choice: dict[str, Any]) -> str:
+    """构造已选医生上下文（注入 tool_caller 的 LLM 输入）。
+
+    用户已从选医生卡片选中医生后，告知 LLM 该 doctor_id，直接调 save_pre_consultation，
+    不再重新查 query_doctors、不向用户确认（用户点选即授权）。
+    """
+    doctor_id = choice.get("doctor_id")
+    name = choice.get("name", "")
+    return (
+        f"用户已从医生选择卡片选中医生：{name}（doctor_id={doctor_id}）。"
+        "请直接使用此 doctor_id 调用 save_pre_consultation 提交预问诊，"
+        "不要重新调用 query_doctors，不要向用户确认医生选择。"
+    )
 
 
 async def tool_caller(
@@ -381,6 +596,12 @@ async def tool_caller(
     if address_ctx:
         messages.append({"role": "system", "content": address_ctx})
 
+    # C 端注入项目固定科室清单（B 端医生工作台科室由 Java 端管理，不适用 C 端
+    # 17 科室清单）：约束 query_departments 的 keyword 只能用清单内科室名，
+    # 避免 LLM 用别名（心内科/消化科等）查不到科室。
+    if tool_scope == ToolScope.C_END:
+        messages.append({"role": "system", "content": _build_department_context()})
+
     # 注入已执行工具的结果（子图循环累积了前面所有轮次，LLM 分步决策可见）
     tool_results = state.get("tool_results")
     if tool_results:
@@ -422,6 +643,23 @@ async def tool_caller(
             state.get("tool_results") or [],
             state.get("pending_confirmations") or [],
         )
+        # M8-6 问诊选医生：若用户已从 options 卡回传选择，确定性匹配候选并
+        # 注入 doctor_id 上下文，清空 pending_doctor_choices（选完即收窗）。
+        result_extra: dict[str, Any] = {}
+        candidates = state.get("pending_doctor_choices")
+        if candidates:
+            choice = _match_doctor_choice(state.get("messages", []), candidates)
+            if choice:
+                messages.append({"role": "system", "content": _build_doctor_choice_context(choice)})
+                result_extra["pending_doctor_choices"] = None
+                logger.info("用户已选医生: %s(id=%s)", choice.get("name"), choice.get("doctor_id"))
+        # 问诊场景拦截：同轮 query_doctors + save_pre_consultation -> 缓存候选、
+        # 剔除 save_pre_consultation（改由 SSE 发 options 卡让用户点选）。
+        tool_calls, new_candidates = _intercept_save_pre_consultation(
+            tool_calls, state.get("tool_results") or []
+        )
+        if new_candidates:
+            result_extra["pending_doctor_choices"] = new_candidates
         logger.info(
             "工具决策: scope=%s, 选择 %d 个工具: %s",
             scope,
@@ -429,7 +667,7 @@ async def tool_caller(
             [tc["name"] for tc in tool_calls],
         )
         iteration = state.get("tool_iteration") or 0
-        return {"tool_calls": tool_calls, "tool_iteration": iteration + 1}
+        return {"tool_calls": tool_calls, "tool_iteration": iteration + 1, **result_extra}
     except Exception as e:
         logger.error("工具决策失败: %s", e)
         return {"tool_calls": []}

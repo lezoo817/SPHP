@@ -37,6 +37,8 @@ def build_llm(provider: str | None = None, temperature: float | None = None) -> 
     """
     settings = get_settings()
     temperature = temperature if temperature is not None else settings.llm_temperature
+    if temperature is None:
+        raise ValueError("未配置 LLM_TEMPERATURE，请在 .env 设置（如 0.3）")
     api_key, base_url, model = _resolve_llm_config(settings, provider or settings.llm_provider)
 
     return ChatOpenAI(
