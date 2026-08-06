@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
- * 重置医生登录密码请求（系分 §5.3.13）。
+ * 重置医生登录密码请求。
  *
  * <p>管理员直接重置，不校验旧密码，不要求短信/MFA。
  */

@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 /**
- * 编辑医院信息请求（系分 §5.3.2）。
+ * 编辑医院信息请求。
  *
  * <p>字段均可空，仅更新传入的非空值。
  */

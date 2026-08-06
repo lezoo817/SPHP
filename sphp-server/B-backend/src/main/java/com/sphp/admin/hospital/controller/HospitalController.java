@@ -16,10 +16,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 医院信息管理接口（管理员，系分 §5.3.1~5.3.2）。
+ * 医院信息管理接口（管理员视角）。
  *
- * <p>注意：application.yml 已配置 {@code server.servlet.context-path=/api}，
- * 因此控制器映射路径为相对路径 {@code /b/admin/hospitals}，外部完整 URL 为 {@code /api/b/admin/hospitals}。
+ * <p>外部完整 URL 前缀为 {@code /api/b/admin/hospitals}。所有接口按当前登录管理员
+ * 所属医院（{@code hospital_id}）做数据隔离，仅允许读写本院信息。
  */
 @RestController
 @RequestMapping("/b/admin/hospitals")

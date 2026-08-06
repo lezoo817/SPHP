@@ -7,7 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 医院信息响应（系分 §5.3.1）。
+ * 医院信息响应。
  */
 @Data
 @Builder
