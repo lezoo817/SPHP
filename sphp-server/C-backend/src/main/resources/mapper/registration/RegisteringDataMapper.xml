@@ -59,21 +59,35 @@
         INNER JOIN doctor d ON d.id = a.doctor_id AND d.deleted_at IS NULL
         INNER JOIN department dp ON dp.id = d.dept_id AND dp.deleted_at IS NULL
         LEFT JOIN payment_order po ON po.appointment_id = a.id
+        LEFT JOIN consult_record cr ON cr.appointment_id = a.id AND cr.deleted_at IS NULL
+    </sql>
+    <sql id="effectiveAppointmentStatus">
+        CASE
+            WHEN a.status &lt;&gt; 'PAID' THEN a.status
+            WHEN cr.status = 'COMPLETED' THEN 'COMPLETED'
+            WHEN cr.status = 'NO_SHOW' THEN 'NO_SHOW'
+            WHEN (s.schedule_date + sl.end_time) AT TIME ZONE 'Asia/Shanghai' &lt;= CURRENT_TIMESTAMP
+                 AND (cr.id IS NULL OR cr.status = 'PENDING') THEN 'NO_SHOW'
+            ELSE a.status
+        END
     </sql>
     <sql id="appointmentFields">
         a.id, a.patient_id, a.slot_snapshot_id AS snapshot_id, sl.id AS slot_id, a.doctor_id, d.name AS doctor_name,
-        dp.name AS department_name, dp.location AS department_location, s.schedule_date, sl.start_time, sl.end_time, a.status, a.amount_cent, a.expire_at,
+        dp.name AS department_name, dp.location AS department_location, s.schedule_date, sl.start_time, sl.end_time,
+        <include refid="effectiveAppointmentStatus"/> AS status, a.amount_cent, a.expire_at,
         po.id AS payment_id, po.status AS payment_status
     </sql>
     <select id="selectRegisteringAppointments" resultType="com.sphp.patient.registration.mapper.RegisteringAppointmentRecord">
         SELECT <include refid="appointmentFields"/> <include refid="appointmentJoin"/>
         WHERE a.patient_id = #{patientId} AND a.deleted_at IS NULL
-        <if test="status != null and status != ''">AND a.status = #{status}</if>
+        <!-- C端状态筛选必须使用同一派生规则，避免列表记录与总数、详情不一致。 -->
+        <if test="status != null and status != ''">AND (<include refid="effectiveAppointmentStatus"/>) = #{status}</if>
         ORDER BY a.created_at DESC, a.id DESC LIMIT #{limit} OFFSET #{offset}
     </select>
     <select id="countRegisteringAppointments" resultType="long">
-        SELECT COUNT(1) FROM appointment WHERE patient_id = #{patientId} AND deleted_at IS NULL
-        <if test="status != null and status != ''">AND status = #{status}</if>
+        SELECT COUNT(DISTINCT a.id) <include refid="appointmentJoin"/>
+        WHERE a.patient_id = #{patientId} AND a.deleted_at IS NULL
+        <if test="status != null and status != ''">AND (<include refid="effectiveAppointmentStatus"/>) = #{status}</if>
     </select>
     <select id="selectRegisteringAppointment" resultType="com.sphp.patient.registration.mapper.RegisteringAppointmentRecord">
         SELECT <include refid="appointmentFields"/> <include refid="appointmentJoin"/> WHERE a.id = #{appointmentId} AND a.deleted_at IS NULL

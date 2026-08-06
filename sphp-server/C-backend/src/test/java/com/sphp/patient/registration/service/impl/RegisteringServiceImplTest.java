@@ -22,12 +22,14 @@ import com.sphp.patient.notification.mq.producer.NotificationEventProducer;
 import org.springframework.context.ApplicationEventPublisher;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
 import com.sphp.patient.registration.vo.RegisteringDoctorBookingStatusVO;
+import com.sphp.patient.registration.vo.RegisteringAppointmentListVO;
 import org.junit.jupiter.api.Test;
 import org.mindrot.jbcrypt.BCrypt;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -63,6 +65,36 @@ class RegisteringServiceImplTest {
             assertEquals(401L, result.getDoctorId());
             assertEquals(true, result.isBooked());
             verify(dataMapper).existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class));
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证列表查询允许使用只读派生的未到诊状态筛选与展示。
+     */
+    @Test
+    void registeringListAppointmentsAcceptsAndReturnsNoShowDisplayStatus() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringAppointmentRecord noShowRecord = new RegisteringAppointmentRecord(7001L, 20001L, 9001L,
+                501L, 401L, "张医生", "呼吸内科", "门诊楼三层", LocalDate.now().minusDays(1),
+                LocalTime.of(9, 0), LocalTime.of(9, 30), "NO_SHOW", 5000,
+                OffsetDateTime.now().minusDays(1), 8001L, "SUCCESS");
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectRegisteringAppointments(20001L, "NO_SHOW", 20, 0L)).thenReturn(List.of(noShowRecord));
+        when(dataMapper.countRegisteringAppointments(20001L, "NO_SHOW")).thenReturn(1L);
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), mock(RegisteringWaitlistPromotionService.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+
+        try {
+            RegisteringAppointmentListVO result = service.registeringListAppointments(20001L, "NO_SHOW", null, null);
+
+            assertEquals(1L, result.getTotal());
+            assertEquals("NO_SHOW", result.getRecords().getFirst().getStatus());
+            verify(dataMapper).selectRegisteringAppointments(20001L, "NO_SHOW", 20, 0L);
+            verify(dataMapper).countRegisteringAppointments(20001L, "NO_SHOW");
         } finally {
             CUserContext.clear();
         }
