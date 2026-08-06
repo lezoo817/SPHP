@@ -18,7 +18,7 @@
         WHERE id = #{userId} AND deleted_at IS NULL
         FOR UPDATE
     </select>
-    <select id="existsRegisteringPaidDoctorAppointment" resultType="boolean">
+    <select id="existsRegisteringDoctorAppointmentWithinCooldown" resultType="boolean">
         SELECT EXISTS(
             SELECT 1
             FROM appointment a
@@ -26,6 +26,8 @@
             WHERE po.payer_user_id = #{userId}
               AND a.doctor_id = #{doctorId}
               AND a.status IN ('PAID', 'COMPLETED')
+              AND po.status = 'SUCCESS'
+              AND COALESCE(a.paid_at, po.paid_at) &gt; #{cutoffAt}
               AND a.deleted_at IS NULL
         )
     </select>

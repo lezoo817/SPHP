@@ -46,13 +46,16 @@ public interface RegisteringDataMapper {
     Long registeringLockActiveUser(@Param("userId") Long userId);
 
     /**
-     * 判断当前登录账号是否已成功预约指定医生。
+     * 判断当前登录账号是否在冷却期内成功预约过指定医生。
      *
      * @param userId C 端用户 ID
      * @param doctorId 医生 ID
-     * @return 存在已支付或已完成挂号时返回 true
+     * @param cutoffAt 支付成功冷却期的开始时间
+     * @return 存在冷却期内已支付或已完成挂号时返回 true
      */
-    boolean existsRegisteringPaidDoctorAppointment(@Param("userId") Long userId, @Param("doctorId") Long doctorId);
+    boolean existsRegisteringDoctorAppointmentWithinCooldown(@Param("userId") Long userId,
+                                                              @Param("doctorId") Long doctorId,
+                                                              @Param("cutoffAt") OffsetDateTime cutoffAt);
 
     /**
      * 查询挂号锁号需要的时段、排班、医生和医院链路。

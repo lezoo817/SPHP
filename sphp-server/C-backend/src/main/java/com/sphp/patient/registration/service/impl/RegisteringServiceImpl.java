@@ -49,6 +49,7 @@ import java.util.List;
 import org.mindrot.jbcrypt.BCrypt;
 
 import static com.sphp.patient.common.constant.RegistrationConstant.BUSINESS_ZONE_ID;
+import static com.sphp.patient.common.constant.RegistrationConstant.DOCTOR_REBOOK_COOLDOWN_DAYS;
 import static com.sphp.patient.common.enums.NotificationTypeEnum.APPOINTMENT;
 import static com.sphp.patient.common.enums.RegisteringAppointmentStatusEnum.CANCELLED;
 import static com.sphp.patient.common.enums.RegisteringAppointmentStatusEnum.UNPAID;
@@ -203,8 +204,9 @@ public class RegisteringServiceImpl implements RegisteringService {
     @Override
     public RegisteringDoctorBookingStatusVO registeringGetDoctorBookingStatus(Long doctorId) {
         Long userId = CUserContext.getRequired().userId();
-        // 与创建及支付链路复用同一账号维度查询，保证前端展示规则与最终拦截规则一致。
-        boolean booked = dataMapper.existsRegisteringPaidDoctorAppointment(userId, doctorId);
+        // 与创建及支付链路复用同一冷却期查询，保证前端展示规则与最终拦截规则一致。
+        boolean booked = dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(userId, doctorId,
+                registeringDoctorRebookCooldownCutoff());
         return RegisteringDoctorBookingStatusVO.builder()
                 .doctorId(doctorId)
                 .booked(booked)
@@ -513,17 +515,28 @@ public class RegisteringServiceImpl implements RegisteringService {
      *
      * @param userId C 端用户 ID
      * @param doctorId 医生 ID
-     * @throws CAuthException 当前账号不存在或已成功预约该医生时抛出
+     * @throws CAuthException 当前账号不存在或近五天内已成功预约该医生时抛出
      */
     private void registeringEnsureUserCanBookDoctor(Long userId, Long doctorId) {
         // 锁定账号行，使挂号创建与支付确认在同一账号范围内串行执行。
         if (dataMapper.registeringLockActiveUser(userId) == null) {
             throw new CAuthException(UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "登录状态已失效");
         }
-        // 同一账号下的任意就诊人只允许成功预约同一医生一次。
-        if (dataMapper.existsRegisteringPaidDoctorAppointment(userId, doctorId)) {
-            throw new CAuthException(DUPLICATE_REQUEST, HttpStatus.CONFLICT, "已预约过该医生，不可重复预约");
+        // 同一账号下的任意就诊人支付成功后五天内不得再次预约同一医生。
+        if (dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(userId, doctorId,
+                registeringDoctorRebookCooldownCutoff())) {
+            throw new CAuthException(DUPLICATE_REQUEST, HttpStatus.CONFLICT, "近5天内已预约过该医生，不可重复预约");
         }
+    }
+
+    /**
+     * 计算同医生再次预约冷却期的排除起点。
+     *
+     * @return 当前时间向前推五天的支付成功时间边界
+     */
+    private OffsetDateTime registeringDoctorRebookCooldownCutoff() {
+        // 使用连续 120 小时窗口；支付时间等于该边界时已经允许再次预约。
+        return OffsetDateTime.now(BUSINESS_ZONE_ID).minusDays(DOCTOR_REBOOK_COOLDOWN_DAYS);
     }
 
     /**
