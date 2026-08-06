@@ -32,3 +32,24 @@ export function isCurrentAssistantFlow(appointment: Appointment, now = Date.now(
   // 结束时间缺失时不误隐藏当前订单；服务端已在挂号列表中返回该字段。
   return !Number.isFinite(endAt) || endAt > now;
 }
+
+/**
+ * 判断挂号订单是否应展示在就诊助手的挂号记录中。
+ * @param appointment 挂号订单列表项
+ * @param now 当前时间戳，便于时段结束后同步隐藏失效记录
+ * @returns 已完成或未结束待就诊订单返回 true
+ */
+export function shouldDisplayAssistantAppointmentRecord(appointment: Appointment, now = Date.now()): boolean {
+  // 助手仅保留已完成与待就诊记录；待支付、取消、未到诊统一由其他页面处理。
+  return appointment.status === 'COMPLETED' || (appointment.status === 'PAID' && isCurrentAssistantFlow(appointment, now));
+}
+
+/**
+ * 返回就诊助手挂号记录使用的状态文案。
+ * @param status 挂号订单状态
+ * @returns 页面限定的“就诊完成”或“待就诊”文案
+ */
+export function getAssistantAppointmentRecordStatusText(status: Appointment['status']): string {
+  // 已支付订单在助手中表示等待实际就诊，避免继续展示支付环节状态。
+  return status === 'COMPLETED' ? '就诊完成' : '待就诊';
+}

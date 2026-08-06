@@ -8,9 +8,9 @@ import { getPrescriptions } from '../../services/consultation';
 import { getFamilyMembers } from '../../services/family';
 import { cancelAppointment, getAppointment, getAppointments } from '../../services/registration';
 import type { Appointment, FamilyMember, Prescription } from '../../typings/api';
-import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantTabs, getCurrentFlowAction, isCurrentAssistantFlow } from '../../utils/assistant';
+import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantAppointmentRecordStatusText, getAssistantTabs, getCurrentFlowAction, isCurrentAssistantFlow, shouldDisplayAssistantAppointmentRecord } from '../../utils/assistant';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
-import { formatMedicalTime, getAppointmentStatusText } from '../../utils/medical';
+import { formatMedicalTime } from '../../utils/medical';
 import { buildAssistantPrescriptionDetailPath, getPrescriptionDisplayNumber } from '../../utils/prescription';
 import { canCancelPaidAppointment } from '../../utils/registration';
 
@@ -56,6 +56,8 @@ export default function AssistantPage() {
   const current = members.find((item) => item.patientId === patientId);
   // 号源结束后订单仍保留在挂号记录，但不应继续占用当前就诊流程卡片。
   const currentFlow = appointments.find((item) => isCurrentAssistantFlow(item));
+  // 助手记录聚焦就诊环节，支付中和失效订单不在此处重复展示。
+  const assistantAppointmentRecords = appointments.filter((item) => shouldDisplayAssistantAppointmentRecord(item));
 
   /**
    * 按当前就诊人刷新助手页服务端数据。
@@ -181,9 +183,9 @@ export default function AssistantPage() {
       <div className="assistant-tabs">
         {getAssistantTabs.map((item) => <button key={item} type="button" className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{item}</button>)}
       </div>
-      {tab === '挂号记录' && appointments.map((item) => <article className="record-card" key={item.id}>
+      {tab === '挂号记录' && assistantAppointmentRecords.map((item) => <article className="record-card" key={item.id}>
         <span className="record-card__main"><b>{formatMedicalTime(item.startTime)}</b><span>{item.departmentName} · {item.doctorName}</span><small>科室位置：{item.departmentLocation || '科室位置待确认'}</small></span>
-        <aside className="registration-record-actions"><em className={`record-card__status status-${item.status.toLowerCase()}`}>{getAppointmentStatusText(item.status)}</em>{canCancelPaidAppointment(item.status, item.startTime) && <button className="text-button" type="button" onClick={() => openPaidCancellation(item)}>取消挂号</button>}</aside>
+        <aside className="registration-record-actions"><em className={`record-card__status status-${item.status.toLowerCase()}`}>{getAssistantAppointmentRecordStatusText(item.status)}</em></aside>
       </article>)}
       {tab === '处方' && prescriptions.map((item) => <button className="record-card" key={item.id} type="button" onClick={() => navigate(buildAssistantPrescriptionDetailPath(item.id, patientId, item.issuedAt))}><span className="record-card__main"><b>{item.doctorName}电子处方</b><span>开具于 {formatMedicalTime(item.issuedAt)}</span><small>处方编号：{getPrescriptionDisplayNumber(item.id, item.issuedAt)}</small></span><ChevronRight size={18} /></button>)}
     </section>

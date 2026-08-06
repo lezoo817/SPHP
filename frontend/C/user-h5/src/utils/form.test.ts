@@ -22,7 +22,7 @@ import { buildNotificationsPath } from '../services/notification';
 import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotification, formatMedicationReminderTimes, getMedicationPlanActions, getMedicationReminderAction, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
 import { buildDeliveryAddressPath } from '../services/delivery-address';
 import { buildDeliveryAddressPayload, getDeliveryAddressInvalidFields, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
-import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantTabs, getCurrentFlowAction, isCurrentAssistantFlow } from './assistant';
+import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantAppointmentRecordStatusText, getAssistantTabs, getCurrentFlowAction, isCurrentAssistantFlow, shouldDisplayAssistantAppointmentRecord } from './assistant';
 import { buildMedicalRecordDetailPath, buildMedicalRecordListPath } from '../services/medical-record';
 import { buildLegacyReportRedirectPath, createMedicalRecordDisplayNumber, filterMedicalRecordsByDate, getRecentMedicalRecordRange, mergeMedicalRecordPages } from './medical-record';
 import { canCancelPaidAppointment, isDuplicateDoctorAppointmentError } from './registration';
@@ -111,6 +111,20 @@ describe('就诊助手展示规则', () => {
     expect(isCurrentAssistantFlow(appointment, now)).toBe(true);
     expect(isCurrentAssistantFlow({ ...appointment, endTime: '2026-08-06T10:00:00+08:00' }, now)).toBe(false);
     expect(isCurrentAssistantFlow({ ...appointment, status: 'COMPLETED' }, now)).toBe(false);
+  });
+
+  it('挂号记录仅保留就诊完成和未结束的待就诊订单', () => {
+    const now = Date.parse('2026-08-06T10:00:00+08:00');
+    const appointment = { id: 1, doctorName: '陈医生', departmentName: '内科', startTime: '2026-08-06T09:30:00+08:00', endTime: '2026-08-06T10:30:00+08:00', status: 'PAID' as const, amountCent: 100 };
+
+    expect(shouldDisplayAssistantAppointmentRecord(appointment, now)).toBe(true);
+    expect(shouldDisplayAssistantAppointmentRecord({ ...appointment, status: 'COMPLETED' }, now)).toBe(true);
+    expect(shouldDisplayAssistantAppointmentRecord({ ...appointment, status: 'UNPAID' }, now)).toBe(false);
+    expect(shouldDisplayAssistantAppointmentRecord({ ...appointment, status: 'CANCELLED' }, now)).toBe(false);
+    expect(shouldDisplayAssistantAppointmentRecord({ ...appointment, status: 'NO_SHOW' }, now)).toBe(false);
+    expect(shouldDisplayAssistantAppointmentRecord({ ...appointment, endTime: '2026-08-06T10:00:00+08:00' }, now)).toBe(false);
+    expect(getAssistantAppointmentRecordStatusText('PAID')).toBe('待就诊');
+    expect(getAssistantAppointmentRecordStatusText('COMPLETED')).toBe('就诊完成');
   });
 
   it('就诊助手每三十秒静默刷新挂号状态', () => {
