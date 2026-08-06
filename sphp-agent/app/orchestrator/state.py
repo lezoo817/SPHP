@@ -4,7 +4,7 @@ AgentState 是图中唯一的共享状态对象，
 通过 LangGraph 的 add_messages reducer 自动累积对话历史。
 """
 
-from typing import Annotated, Any
+from typing import Annotated, Any, NotRequired
 
 from langgraph.graph import add_messages
 from typing_extensions import TypedDict
@@ -21,7 +21,9 @@ class AgentState(TypedDict):
     session_id: str | None
 
     # 当前识别的业务意图：triage / registration / consultation / pharmacy / qa / chitchat
-    intent: str | None
+    # NotRequired：意图粘性依赖 checkpointer 跨轮保留 state.intent，_build_initial_state
+    # 不传此字段（否则 None 覆盖历史意图），首轮由 intent_node 写入后跨轮保留。
+    intent: NotRequired[str | None]
 
     # 从 JWT 鉴权获得的用户 ID，MCP 调用时注入 Header X-User-Id
     user_id: int | None
