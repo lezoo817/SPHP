@@ -49,9 +49,12 @@ class Settings(BaseSettings):
     c_auth_parse_path: str = "/api/c/v1/auth/token/parse"
     b_auth_parse_path: str = "/api/b/auth/token/parse"
 
-    # ---- LLM 供应商 ----
-    llm_provider: str = "zhipu"
-    llm_temperature: float = 0.3
+    # ---- LLM 供应商（占位符，实际值从 .env 读取）----
+    # LLM_PROVIDER / LLM_TEMPERATURE / LLM_MODEL 在 .env 配置，切换只改 env 不改源码
+    llm_provider: str = ""
+    llm_temperature: float | None = None
+    # 默认模型：配则覆盖各供应商特定 *_model（如 zhipu_model），切换模型只改 .env
+    llm_model: str = ""
 
     # ---- DeepSeek ----
     deepseek_api_key: str = ""
@@ -123,7 +126,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     def llm_config(self, provider: str) -> tuple[str, str, str]:
-        """返回 (api_key, base_url, model)。"""
+        """返回 (api_key, base_url, model)。
+
+        model 优先用统一 ``LLM_MODEL`` 覆盖供应商特定 ``*_model``（如 zhipu_model），
+        便于切换模型只改 .env 而不关心当前供应商；未配 ``LLM_MODEL`` 时回落到
+        供应商特定 model。
+        """
         configs = {
             "deepseek": (self.deepseek_api_key, self.deepseek_base_url, self.deepseek_model),
             "zhipu": (self.zhipu_api_key, self.zhipu_base_url, self.zhipu_model),
@@ -131,7 +139,11 @@ class Settings(BaseSettings):
         }
         if provider not in configs:
             raise ValueError(f"未知的 LLM 供应商: {provider}")
-        return configs[provider]
+        api_key, base_url, model = configs[provider]
+        # 统一 LLM_MODEL 优先：覆盖供应商特定 model，切换模型只改 .env 的 LLM_MODEL
+        if self.llm_model:
+            model = self.llm_model
+        return api_key, base_url, model
 
     @model_validator(mode="after")
     def _enforce_safe_config(self) -> "Settings":
