@@ -177,7 +177,8 @@ export default function AssistantPage() {
         {getCurrentFlowAction(currentFlow.status) === 'PAY' ? <button className="primary-button" type="button" onClick={() => void continueCurrentFlow(currentFlow)}>立即支付</button> : <><button className="primary-button assistant-waiting-button" type="button" disabled>等待就诊中...</button>{canCancelPaidAppointment(currentFlow.status, currentFlow.startTime) && <button className="secondary-button" type="button" onClick={() => openPaidCancellation(currentFlow)}>取消挂号</button>}</>}
       </section> : <section className="flow-card empty-state">
         暂无进行中的就诊流程<br />
-        <button className="primary-button" type="button" onClick={() => navigate('/assistant/book')}>去预约挂号</button>
+        {/* 与首页预约挂号统一进入科室列表，避免回落到旧的标签选择页。 */}
+        <button className="primary-button" type="button" onClick={() => navigate('/home/departments')}>去预约挂号</button>
       </section>}
 
       <div className="assistant-tabs">
