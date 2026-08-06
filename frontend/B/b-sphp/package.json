@@ -4,8 +4,9 @@
   "scripts": {
     "dev": "set PORT=8000&& max dev",
     "build": "max build",
+    "lint": "max lint --eslint-only",
+    "type-check": "tsc --noEmit",
     "format": "prettier --cache --write .",
-    "prepare": "husky",
     "postinstall": "max setup",
     "setup": "max setup",
     "start": "npm run dev"

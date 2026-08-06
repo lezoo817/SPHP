@@ -28,18 +28,18 @@ import {
   SendOutlined,
   StopOutlined,
 } from '@ant-design/icons';
-import { useAgentStream } from '../../hooks/useAgentStream';
+import { useAgentStream } from '@/hooks/useAgentStream';
 import {
   AGENT_CONTENT_MAX,
   AGENT_QUICK_PROMPTS,
   AGENT_UNAVAILABLE_TEXT,
   AGENT_WELCOME,
-} from '../../constants/agent';
+} from '@/constants/agent';
 import { AgentMessageBubble } from './AgentMessage';
 import { AgentThoughtPanel } from './AgentThought';
 import { AgentToolCardView } from './AgentToolCard';
 import { AgentConfirmCardView } from './AgentConfirmCard';
-import type { AgentChatContext, AgentSession } from '../../typings/agent';
+import type { AgentChatContext, AgentSession } from '@/typings/agent';
 import './agent.css';
 
 const { Text, Paragraph } = Typography;
