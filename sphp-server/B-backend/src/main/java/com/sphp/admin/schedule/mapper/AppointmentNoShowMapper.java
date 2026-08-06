@@ -26,8 +26,9 @@ public interface AppointmentNoShowMapper {
             "WHERE status = 'PAID' AND deleted_at IS NULL " +
             "  AND slot_snapshot_id IN ( " +
             "    SELECT ss.id FROM slot_snapshot ss " +
-            "    JOIN slot s ON s.id = ss.slot_id " +
-            "    WHERE (s.schedule_date + s.end_time) AT TIME ZONE 'Asia/Shanghai' " +
+            "    JOIN slot s ON s.id = ss.slot_id AND s.deleted_at IS NULL " +
+            "    JOIN schedule sch ON s.schedule_id = sch.id AND sch.deleted_at IS NULL " +
+            "    WHERE (sch.schedule_date + s.end_time) AT TIME ZONE 'Asia/Shanghai' " +
             "          <= (CURRENT_TIMESTAMP - (INTERVAL '1 minute' * #{graceMinutes})) " +
             "  ) " +
             "  AND NOT EXISTS ( " +
