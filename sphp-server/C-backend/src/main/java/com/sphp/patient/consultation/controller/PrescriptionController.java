@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/c/v1")
 @RequiredArgsConstructor
 public class PrescriptionController {
-
+    // C端处方列表、详情与处方解读接口
     private final PrescriptionService prescriptionService;
 
     /**

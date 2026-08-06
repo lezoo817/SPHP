@@ -10,8 +10,13 @@ import java.time.OffsetDateTime;
  * @param generatedAt 解读生成时间
  */
 public record ConsultationReportInterpretationRecord(
+        //解读正文
         String content,
+
+        //解读免责声明
         String disclaimer,
+
+        //解读生成时间
         OffsetDateTime generatedAt
 ) {
 }

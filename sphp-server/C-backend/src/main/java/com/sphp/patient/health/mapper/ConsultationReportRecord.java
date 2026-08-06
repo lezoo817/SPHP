@@ -16,14 +16,31 @@ import java.time.OffsetDateTime;
  * @param updatedAt 病历最后保存时间
  */
 public record ConsultationReportRecord(
+        // C 端报告 ID
         Long id,
+
+        // 就诊人 ID
         Long patientId,
+
+        // 医生 ID
         Long doctorId,
+
+        //医生姓名
         String doctorName,
+
+        // 科室名称
         String departmentName,
+
+        // 医生病历正文
         String doctorNote,
+
+        // 问诊开始时间
         OffsetDateTime startedAt,
+
+        // 问诊完成时间
         OffsetDateTime completedAt,
+
+        // 病历最后保存时间
         OffsetDateTime updatedAt
 ) {
 }

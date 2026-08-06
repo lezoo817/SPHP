@@ -12,8 +12,10 @@ public enum GenderEnum {
 
     /** 男性 */
     MALE("MALE"),
+
     /** 女性 */
     FEMALE("FEMALE"),
+
     /** 未知或不便提供 */
     UNKNOWN("UNKNOWN");
 

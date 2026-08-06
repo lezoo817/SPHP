@@ -31,6 +31,8 @@ import org.springframework.validation.annotation.Validated;
 
 import java.util.List;
 
+import static com.sphp.shared.common.constant.HeaderConstant.IDEMPOTENCY_KEY;
+
 /**
  * C端家庭成员管理接口。
  */
@@ -42,6 +44,7 @@ import java.util.List;
 public class FamilyController {
 
     private final FamilyService familyService;
+    // 幂等服务
     private final CIdempotencyService idempotencyService;
 
     /**
@@ -65,7 +68,7 @@ public class FamilyController {
     @PostMapping
     @Operation(summary = "新增家庭成员")
     public Result<FamilyMemberCreateVO> createFamilyMember(
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody FamilyMemberCreateRequest request) {
         Long userId = CUserContext.getRequired().userId();
         IdempotencyPayload<FamilyMemberCreateVO> payload = idempotencyService.execute(
@@ -91,7 +94,7 @@ public class FamilyController {
     @Operation(summary = "更新家庭成员")
     public Result<FamilyMemberUpdateVO> updateFamilyMember(
             @PathVariable @Positive(message = "就诊人ID必须为正整数") Long patientId,
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody FamilyMemberUpdateRequest request) {
         Long userId = CUserContext.getRequired().userId();
         IdempotencyPayload<FamilyMemberUpdateVO> payload = idempotencyService.execute(
@@ -116,7 +119,7 @@ public class FamilyController {
     @Operation(summary = "停用解绑家庭成员")
     public Result<FamilyMemberUnbindVO> unbindFamilyMember(
             @PathVariable @Positive(message = "就诊人ID必须为正整数") Long patientId,
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
         Long userId = CUserContext.getRequired().userId();
         IdempotencyPayload<FamilyMemberUnbindVO> payload = idempotencyService.execute(
                 userId,

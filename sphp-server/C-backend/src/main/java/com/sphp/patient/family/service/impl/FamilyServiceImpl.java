@@ -192,6 +192,7 @@ public class FamilyServiceImpl implements FamilyService {
         if (existing == null) {
             throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "家庭成员不存在或已解绑");
         }
+        // 本人不可解绑
         if (SELF.getValue().equals(existing.getRelationship())) {
             throw new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID,
                     HttpStatus.CONFLICT, "本人信息不能通过家庭成员接口解绑");
