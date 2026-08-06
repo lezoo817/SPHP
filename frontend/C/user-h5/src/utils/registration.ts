@@ -1,7 +1,7 @@
 /**
- * 判断接口异常是否为同一账号重复预约同一医生。
+ * 判断接口异常是否为同一账号处于同医生五天预约冷却期。
  * @param error 请求层抛出的未知异常
- * @returns 仅当后端返回指定业务码和重复预约文案时返回 true
+ * @returns 仅当后端返回指定业务码和同医生预约冷却期文案时返回 true
  */
 export function isDuplicateDoctorAppointmentError(error: unknown): boolean {
   // 只有后端明确拒绝重复预约时才锁定当前页面，避免将其他幂等冲突误判为不可预约。
