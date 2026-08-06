@@ -122,7 +122,7 @@ public class ScheduleController {
     }
 
     @PostMapping("/slots/{id}/force-release")
-    @Operation(summary = "手动释放锁定号源", description = "仅 ADMIN；仅 LOCKED 快照可释放，释放后 Redis 归还 remain_count")
+    @Operation(summary = "手动释放锁定号源", description = "仅 ADMIN；仅 LOCKED 快照可释放，释放后状态回到 AVAILABLE，B 端剩余与 C 端可约池均恢复")
     public Result<ForceReleaseVO> forceRelease(@PathVariable Long id) {
         return Result.success("号源已释放", scheduleService.forceRelease(id));
     }

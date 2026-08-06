@@ -401,14 +401,18 @@ public class ScheduleServiceImpl implements ScheduleService {
         // 归属校验：快照所属排班须属于本院，防越权释放他院号源
         ensureSnapshotInHospital(snapshot, hospitalId);
 
-        snapshot.setStatus(SNAP_RELEASED);
+        // 与"取消发布"路径（releaseLockedSnapshots）保持一致：LOCKED → AVAILABLE，
+        // 让 B 端"剩余"统计（aggregateByScheduleIds / selectSourcePoolPage 仅数 AVAILABLE）、
+        // 以及 C 端可约池都把该号源视为可约；patient_id 清空以符合"未占用为空"的字段语义。
+        snapshot.setStatus(SNAP_AVAILABLE);
+        snapshot.setPatientId(null);
         snapshot.setUpdatedAt(OffsetDateTime.now());
         slotSnapshotMapper.updateById(snapshot);
         redisTemplate.opsForValue().increment(redisKey(snapshot.getSlotId()));
         log.info("手动释放锁定号源 snapshotId={}, slotId={}", snapshot.getId(), snapshot.getSlotId());
         return ForceReleaseVO.builder()
                 .slotId(snapshot.getId())
-                .status(SNAP_RELEASED)
+                .status(SNAP_AVAILABLE)
                 .releasedAt(OffsetDateTime.now())
                 .build();
     }

@@ -21,7 +21,7 @@ public class ForceReleaseVO {
     @Schema(description = "号源快照ID")
     private Long slotId;
 
-    @Schema(description = "状态：RELEASED")
+    @Schema(description = "状态：AVAILABLE（释放后回到可约池）")
     private String status;
 
     @Schema(description = "释放时间")
