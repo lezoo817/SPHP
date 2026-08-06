@@ -7,6 +7,7 @@ import com.sphp.patient.common.enums.RegisteringPaymentStatusEnum;
 import com.sphp.patient.common.enums.RegisteringWaitlistStatusEnum;
 import com.sphp.patient.registration.config.RegistrationProperties;
 import com.sphp.patient.registration.dto.RegisteringAppointmentCreateRequest;
+import com.sphp.patient.registration.dto.RegisteringAppointmentCancelRequest;
 import com.sphp.patient.registration.entity.RegisteringAppointment;
 import com.sphp.patient.registration.entity.RegisteringPaymentOrder;
 import com.sphp.patient.registration.entity.RegisteringWaitlist;
@@ -229,26 +230,95 @@ public class RegisteringServiceImpl implements RegisteringService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public RegisteringAppointmentCancelVO registeringCancelAppointment(Long appointmentId) {
+    public RegisteringAppointmentCancelVO registeringCancelAppointment(Long appointmentId,
+                                                                        RegisteringAppointmentCancelRequest request) {
         // 可访问的挂号订单
         RegisteringAppointmentRecord record = registeringRequireOwnedAppointment(appointmentId);
         OffsetDateTime now = OffsetDateTime.now();
-        // 条件更新确保支付、超时消费者和主动取消只有一个请求能完成状态流转。
-        if (dataMapper.registeringCancelUnpaidAppointment(appointmentId, now) != 1) {
+        if (UNPAID.name().equals(record.status())) {
+            // 条件更新确保支付、超时消费者和主动取消只有一个请求能完成状态流转。
+            if (dataMapper.registeringCancelUnpaidAppointment(appointmentId, now) != 1) {
+                throw new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, "当前挂号订单不可取消");
+            }
+            dataMapper.registeringClosePendingPayment(appointmentId, now);
+            // 未支付订单只可能释放 LOCKED 快照。
+            registeringReleaseAppointmentSnapshot(record, false, now);
+        } else if (RegisteringAppointmentStatusEnum.PAID.name().equals(record.status())) {
+            // 已支付取消只允许支付账号本人，禁止共享就诊人关系绕过付款密码。
+            RegisteringPaymentRecord payment = registeringRequirePaidCancellationPayment(record);
+            registeringValidatePaidCancellationPassword(request, payment.passwordHash());
+            // SQL 同时校验 PAID 状态和时段尚未开始，避免取消与接诊并发穿透时间边界。
+            if (dataMapper.registeringCancelPaidAppointment(appointmentId, now) != 1) {
+                throw new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, "预约已开始或当前挂号订单不可取消");
+            }
+            // 已支付订单保留支付单 SUCCESS，仅将已售号源重新释放。
+            registeringReleaseAppointmentSnapshot(record, true, now);
+        } else {
             throw new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, "当前挂号订单不可取消");
-        }
-        dataMapper.registeringClosePendingPayment(appointmentId, now);
-        // 释放锁定的号源
-        if (dataMapper.registeringReleaseLockedSnapshot(record.snapshotId(), now) == 1) {
-            slotLockService.registeringUnlock(record.slotId());
-            // 仅在号源快照实际释放后晋级候补，避免重复取消产生重复通知。
-            waitlistPromotionService.registeringPromoteAfterSlotReleased(record.slotId());
         }
 
         return RegisteringAppointmentCancelVO.builder()
                 .appointmentId(appointmentId)
                 .status(CANCELLED.name()) // 已取消
                 .build();
+    }
+
+    /**
+     * 校验已支付取消关联的支付单必须成功且归属当前登录账号。
+     *
+     * @param appointment 目标挂号订单
+     * @return 当前账号拥有的成功支付单
+     * @throws CAuthException 支付单缺失、归属不符或状态不允许取消时抛出
+     */
+    private RegisteringPaymentRecord registeringRequirePaidCancellationPayment(RegisteringAppointmentRecord appointment) {
+        if (appointment.paymentId() == null) {
+            throw new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, "挂号支付单不存在");
+        }
+        // 复用支付单归属查询，确保密码只能由实际付款账号验证。
+        RegisteringPaymentRecord payment = registeringRequireOwnedPayment(appointment.paymentId());
+        if (!RegisteringPaymentStatusEnum.SUCCESS.name().equals(payment.paymentStatus())
+                || !RegisteringAppointmentStatusEnum.PAID.name().equals(payment.appointmentStatus())
+                || !appointment.id().equals(payment.appointmentId())) {
+            throw new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, "当前挂号订单不可取消");
+        }
+        return payment;
+    }
+
+    /**
+     * 校验已支付挂号取消的当前登录密码。
+     *
+     * @param request 取消请求参数
+     * @param passwordHash 当前付款账号的 BCrypt 密码哈希
+     * @throws CAuthException 密码缺失或校验失败时抛出
+     */
+    private void registeringValidatePaidCancellationPassword(RegisteringAppointmentCancelRequest request, String passwordHash) {
+        // 已支付取消属于敏感状态变更，缺少密码与密码不正确均拒绝处理。
+        if (request == null || request.getLoginPassword() == null || request.getLoginPassword().isBlank()
+                || !BCrypt.checkpw(request.getLoginPassword(), passwordHash)) {
+            throw new CAuthException(PASSWORD_VALIDATION_FAILED, HttpStatus.BAD_REQUEST, "登录密码校验失败");
+        }
+    }
+
+    /**
+     * 按订单支付状态释放号源快照并晋级候补队列。
+     *
+     * @param appointment 挂号订单
+     * @param paidCancellation 是否为已支付取消
+     * @param now 当前业务时间
+     * @throws CAuthException 号源快照状态不一致时抛出并回滚订单取消
+     */
+    private void registeringReleaseAppointmentSnapshot(RegisteringAppointmentRecord appointment, boolean paidCancellation,
+                                                       OffsetDateTime now) {
+        int released = paidCancellation
+                ? dataMapper.registeringReleaseSoldSnapshot(appointment.snapshotId(), now)
+                : dataMapper.registeringReleaseLockedSnapshot(appointment.snapshotId(), now);
+        // 快照必须成功释放，否则回滚订单状态，避免订单已取消但号源仍不可预约。
+        if (released != 1) {
+            throw new CAuthException(ORDER_CLOSED_OR_STATUS_INVALID, HttpStatus.CONFLICT, "号源状态已变化，无法取消挂号");
+        }
+        slotLockService.registeringUnlock(appointment.slotId());
+        // 仅在号源快照实际释放后晋级候补，避免重复取消产生重复通知。
+        waitlistPromotionService.registeringPromoteAfterSlotReleased(appointment.slotId());
     }
 
     /**

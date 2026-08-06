@@ -4,6 +4,7 @@ import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.registration.dto.RegisteringAppointmentCreateRequest;
+import com.sphp.patient.registration.dto.RegisteringAppointmentCancelRequest;
 import com.sphp.patient.registration.dto.RegisteringPaymentSimulateRequest;
 import com.sphp.patient.registration.dto.RegisteringWaitlistCreateRequest;
 import com.sphp.patient.registration.entity.RegisteringWaitlist;
@@ -250,11 +251,115 @@ class RegisteringServiceImplTest {
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
 
         try {
-            service.registeringCancelAppointment(7001L);
+            service.registeringCancelAppointment(7001L, null);
             verify(promotionService).registeringPromoteAfterSlotReleased(501L);
         } finally {
             CUserContext.clear();
         }
+    }
+
+    /**
+     * 验证付款账号可在预约开始前使用登录密码取消已支付挂号。
+     */
+    @Test
+    void registeringCancelPaidAppointmentReleasesSoldSnapshotAfterPasswordVerification() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringWaitlistPromotionService promotionService = mock(RegisteringWaitlistPromotionService.class);
+        when(dataMapper.selectRegisteringAppointment(7001L)).thenReturn(paidAppointmentRecord());
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectRegisteringPayment(8001L)).thenReturn(paidPaymentRecord(10001L));
+        when(dataMapper.registeringCancelPaidAppointment(eq(7001L), any())).thenReturn(1);
+        when(dataMapper.registeringReleaseSoldSnapshot(eq(9001L), any())).thenReturn(1);
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), promotionService);
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        RegisteringAppointmentCancelRequest request = new RegisteringAppointmentCancelRequest();
+        request.setLoginPassword("P@ssw0rd123");
+
+        try {
+            assertEquals("CANCELLED", service.registeringCancelAppointment(7001L, request).getStatus());
+            verify(dataMapper).registeringCancelPaidAppointment(eq(7001L), any());
+            verify(dataMapper).registeringReleaseSoldSnapshot(eq(9001L), any());
+            verify(dataMapper, never()).registeringClosePendingPayment(eq(7001L), any());
+            verify(promotionService).registeringPromoteAfterSlotReleased(501L);
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证已支付挂号缺少或输入错误密码时不会取消订单或释放号源。
+     */
+    @Test
+    void registeringCancelPaidAppointmentRejectsMissingOrInvalidPassword() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        when(dataMapper.selectRegisteringAppointment(7001L)).thenReturn(paidAppointmentRecord());
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectRegisteringPayment(8001L)).thenReturn(paidPaymentRecord(10001L));
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), mock(RegisteringWaitlistPromotionService.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        RegisteringAppointmentCancelRequest invalidRequest = new RegisteringAppointmentCancelRequest();
+        invalidRequest.setLoginPassword("wrong-password");
+
+        try {
+            assertThrows(CAuthException.class, () -> service.registeringCancelAppointment(7001L, null));
+            assertThrows(CAuthException.class, () -> service.registeringCancelAppointment(7001L, invalidRequest));
+            verify(dataMapper, never()).registeringCancelPaidAppointment(eq(7001L), any());
+            verify(dataMapper, never()).registeringReleaseSoldSnapshot(eq(9001L), any());
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证已支付订单在数据库条件更新发现预约已开始时不能释放已售号源。
+     */
+    @Test
+    void registeringCancelPaidAppointmentRejectsWhenAppointmentHasStarted() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        when(dataMapper.selectRegisteringAppointment(7001L)).thenReturn(paidAppointmentRecord());
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectRegisteringPayment(8001L)).thenReturn(paidPaymentRecord(10001L));
+        when(dataMapper.registeringCancelPaidAppointment(eq(7001L), any())).thenReturn(0);
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), mock(RegisteringWaitlistPromotionService.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        RegisteringAppointmentCancelRequest request = new RegisteringAppointmentCancelRequest();
+        request.setLoginPassword("P@ssw0rd123");
+
+        try {
+            assertThrows(CAuthException.class, () -> service.registeringCancelAppointment(7001L, request));
+            verify(dataMapper, never()).registeringReleaseSoldSnapshot(eq(9001L), any());
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 创建当前账号可取消的已支付挂号订单投影。
+     *
+     * @return 已支付挂号订单
+     */
+    private RegisteringAppointmentRecord paidAppointmentRecord() {
+        return new RegisteringAppointmentRecord(7001L, 20001L, 9001L, 501L, 401L, "张医生", "呼吸内科",
+                "门诊楼三层", LocalDate.now().plusDays(1), LocalTime.of(9, 0), LocalTime.of(9, 30),
+                "PAID", 5000, OffsetDateTime.now().plusMinutes(15), 8001L, "SUCCESS");
+    }
+
+    /**
+     * 创建指定付款账号的成功支付单投影。
+     *
+     * @param payerUserId 付款 C 端账号 ID
+     * @return 成功支付单
+     */
+    private RegisteringPaymentRecord paidPaymentRecord(Long payerUserId) {
+        return new RegisteringPaymentRecord(8001L, 7001L, 20001L, 401L, payerUserId, 9001L, 501L,
+                5000, "SUCCESS", "PAID", OffsetDateTime.now().plusMinutes(15), OffsetDateTime.now(),
+                BCrypt.hashpw("P@ssw0rd123", BCrypt.gensalt()));
     }
 
     /**

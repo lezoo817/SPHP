@@ -93,10 +93,14 @@ public interface RegisteringDataMapper {
     RegisteringPaymentRecord selectRegisteringPayment(@Param("paymentId") Long paymentId);
     /** 条件取消未支付挂号订单。 */
     int registeringCancelUnpaidAppointment(@Param("appointmentId") Long appointmentId, @Param("now") OffsetDateTime now);
+    /** 条件取消尚未开始的已支付挂号订单。 */
+    int registeringCancelPaidAppointment(@Param("appointmentId") Long appointmentId, @Param("now") OffsetDateTime now);
     /** 条件关闭待支付挂号支付单。 */
     int registeringClosePendingPayment(@Param("appointmentId") Long appointmentId, @Param("now") OffsetDateTime now);
     /** 条件释放已锁定号源快照。 */
     int registeringReleaseLockedSnapshot(@Param("snapshotId") Long snapshotId, @Param("now") OffsetDateTime now);
+    /** 条件释放已支付订单关联的已售号源快照。 */
+    int registeringReleaseSoldSnapshot(@Param("snapshotId") Long snapshotId, @Param("now") OffsetDateTime now);
     /** 为候补登记锁定有效已发布时段。 */
     RegisteringSlotLockRecord lockRegisteringWaitlistSlot(@Param("slotId") Long slotId);
     /** 判断当前就诊人是否已有活跃候补。 */

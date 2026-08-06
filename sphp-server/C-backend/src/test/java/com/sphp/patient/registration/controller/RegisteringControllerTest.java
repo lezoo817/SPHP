@@ -1,11 +1,13 @@
 package com.sphp.patient.registration.controller;
 
 import com.sphp.patient.registration.dto.RegisteringAppointmentCreateRequest;
+import com.sphp.patient.registration.dto.RegisteringAppointmentCancelRequest;
 import com.sphp.patient.registration.handler.RegisteringExceptionHandler;
 import com.sphp.patient.registration.service.RegisteringService;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentDetailVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentListVO;
+import com.sphp.patient.registration.vo.RegisteringAppointmentCancelVO;
 import com.sphp.patient.registration.vo.RegisteringDoctorBookingStatusVO;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
@@ -21,7 +23,10 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -32,6 +37,66 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * C端挂号与支付控制器接口测试。
  */
 class RegisteringControllerTest {
+
+    /**
+     * 验证未支付挂号取消继续兼容无请求体调用。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void registeringCancelUnpaidAppointmentAllowsEmptyBody() throws Exception {
+        RegisteringService service = mock(RegisteringService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new RegisteringController(service, idempotencyService))
+                .setControllerAdvice(new RegisteringExceptionHandler()).build();
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        when(service.registeringCancelAppointment(7001L, null)).thenReturn(RegisteringAppointmentCancelVO.builder()
+                .appointmentId(7001L).status("CANCELLED").build());
+        when(idempotencyService.execute(any(), anyString(), anyString(), any(), any(), any()))
+                .thenAnswer(invocation -> invocation.<java.util.function.Supplier<IdempotencyPayload<RegisteringAppointmentCancelVO>>>
+                        getArgument(5).get());
+
+        try {
+            mockMvc.perform(post("/c/v1/appointments/7001/cancel").header("X-Idempotency-Key", "cancel-unpaid-1"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.status").value("CANCELLED"));
+            verify(service).registeringCancelAppointment(7001L, null);
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证已支付挂号取消会透传登录密码给服务层。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void registeringCancelPaidAppointmentPassesLoginPassword() throws Exception {
+        RegisteringService service = mock(RegisteringService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new RegisteringController(service, idempotencyService))
+                .setControllerAdvice(new RegisteringExceptionHandler()).build();
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        when(service.registeringCancelAppointment(eq(7001L), any(RegisteringAppointmentCancelRequest.class)))
+                .thenReturn(RegisteringAppointmentCancelVO.builder().appointmentId(7001L).status("CANCELLED").build());
+        when(idempotencyService.execute(any(), anyString(), anyString(), any(), any(), any()))
+                .thenAnswer(invocation -> invocation.<java.util.function.Supplier<IdempotencyPayload<RegisteringAppointmentCancelVO>>>
+                        getArgument(5).get());
+
+        try {
+            mockMvc.perform(post("/c/v1/appointments/7001/cancel")
+                            .header("X-Idempotency-Key", "cancel-paid-1")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"loginPassword\":\"P@ssw0rd123\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.status").value("CANCELLED"));
+            verify(service).registeringCancelAppointment(eq(7001L),
+                    argThat(request -> "P@ssw0rd123".equals(request.getLoginPassword())));
+        } finally {
+            CUserContext.clear();
+        }
+    }
 
     /**
      * 验证医生主页可查询当前账号的重复预约状态。
