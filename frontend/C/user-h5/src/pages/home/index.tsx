@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type TouchEvent } from 'react';
-import { BellRing, CalendarPlus, ChevronRight, ClipboardPlus, FileChartColumn, HeartPulse, MapPin, MessageCircleMore, Pill, Search, Stethoscope, X } from 'lucide-react';
+import { BellRing, CalendarPlus, ChevronRight, ClipboardPlus, FileChartColumn, HeartPulse, MapPin, Pill, Search, Stethoscope, X } from 'lucide-react';
 import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
@@ -165,8 +165,7 @@ export default function HomePage() {
         <button className="home-appbar__hospital" type="button" onClick={() => navigate('/home/hospitals')}>
           <MapPin size={20} /><span>{currentHospital?.name || '选择医院'}</span><ChevronRight size={17} />
         </button>
-        <span className="home-appbar__brand">智慧先锋</span>
-        <button className="home-appbar__notice" type="button" aria-label="查看通知" onClick={() => navigate('/mine/notifications')}><MessageCircleMore size={24} /></button>
+        <span className="home-appbar__brand"><b>智</b><strong>智慧先锋</strong></span>
       </header>
       <button className="home-search-bar" type="button" onClick={() => navigate('/home/departments')}><Search size={22} /><span>搜索医院、科室、疾病、医生</span></button>
       <section className="home-promo" aria-label="医疗服务宣传" onTouchStart={startBannerSwipe} onTouchEnd={endBannerSwipe}>
