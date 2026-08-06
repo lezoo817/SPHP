@@ -213,7 +213,7 @@ export default function HomePage() {
           })}
           <button className="patient-carousel__add-card" type="button" onClick={() => navigate('/mine/family-members')} aria-label="添加就诊人">
             <small className="patient-carousel__hint">滑动切换就诊人</small>
-            <span><Plus size={25} /></span>
+            <span><Plus size={20} /></span>
             <b>添加就诊人</b>
             <small>管理本人和家庭成员</small>
           </button>
