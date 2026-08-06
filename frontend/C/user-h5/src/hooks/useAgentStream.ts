@@ -61,6 +61,8 @@ export interface UseAgentStream {
   confirm: (card: AgentConfirmCard) => Promise<void>;
   /** 中断当前流式请求 */
   cancel: () => void;
+  /** 重试上一条消息 */
+  retry: () => void;
   /** 清空会话并重置状态 */
   reset: () => void;
   /** 加载指定历史会话 */
@@ -82,6 +84,9 @@ export function useAgentStream(): UseAgentStream {
   const currentMessageIdRef = useRef<string | null>(null);
   // 当前思考片段 ID：同轮 thought.delta 累加到同一条思考
   const currentThoughtIdRef = useRef<string | null>(null);
+  // 保存最后一条用户消息，用于重试
+  const lastUserMessageRef = useRef<string>('');
+  const lastContextRef = useRef<AgentChatContext | undefined>(undefined);
 
   /** 中断当前流式请求并释放读取器。 */
   const cancel = useCallback(() => {
@@ -178,6 +183,10 @@ export function useAgentStream(): UseAgentStream {
       currentMessageIdRef.current = null;
       currentThoughtIdRef.current = null;
 
+      // 保存最后一条用户消息，用于重试
+      lastUserMessageRef.current = text;
+      lastContextRef.current = context;
+
       // 追加用户消息
       const userMessage: AgentMessage = {
         id: genId('u'),
@@ -207,6 +216,22 @@ export function useAgentStream(): UseAgentStream {
     },
     [connection, sessionId],
   );
+
+  /** 重试上一条消息。 */
+  const retry = useCallback(() => {
+    const text = lastUserMessageRef.current;
+    if (!text) return;
+    // 移除上一条用户消息（避免重复显示）
+    setEntries((prev) => {
+      const lastIndex = prev.length - 1;
+      if (lastIndex >= 0 && prev[lastIndex].kind === 'message' && prev[lastIndex].data.role === 'user') {
+        return prev.slice(0, -1);
+      }
+      return prev;
+    });
+    // 重新发送
+    send(text, lastContextRef.current);
+  }, [send]);
 
   /** 处理单条 SSE 事件，更新对应条目。 */
   function handleSseEvent(event: AgentSseEvent, currentSessionId?: string): void {
@@ -455,6 +480,7 @@ export function useAgentStream(): UseAgentStream {
     send,
     confirm,
     cancel,
+    retry,
     reset,
     loadSession,
   };
