@@ -18,6 +18,7 @@ import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 import { getColumns } from './columns';
 import TemplateDetailModal from './TemplateDetailModal';
 import TemplateCreateModal from './TemplateCreateModal';
+import TemplateEditModal from './TemplateEditModal';
 
 export default function PrescriptionTemplates() {
   const currentUser = useCurrentUser();
@@ -29,6 +30,10 @@ export default function PrescriptionTemplates() {
 
   // 新建弹窗
   const [createOpen, setCreateOpen] = useState(false);
+
+  // 编辑弹窗
+  const [editOpen, setEditOpen] = useState(false);
+  const [editData, setEditData] = useState<API.PrescriptionTemplate | null>(null);
 
   /** 科室选项（供筛选下拉与新建弹窗），由 React Query 拉取 */
   const { data: deptRes } = useQuery({
@@ -47,6 +52,12 @@ export default function PrescriptionTemplates() {
     setDetailOpen(true);
   };
 
+  /** 编辑模板 */
+  const handleEdit = (record: API.PrescriptionTemplate) => {
+    setEditData(record);
+    setEditOpen(true);
+  };
+
   /** 删除模板 */
   const handleDelete = async (id: number) => {
     try {
@@ -61,6 +72,7 @@ export default function PrescriptionTemplates() {
   const columns = getColumns({
     deptOptions,
     onViewDetail: handleViewDetail,
+    onEdit: handleEdit,
     onDelete: handleDelete,
   });
 
@@ -116,6 +128,17 @@ export default function PrescriptionTemplates() {
         onCancel={() => setCreateOpen(false)}
         onSuccess={() => {
           setCreateOpen(false);
+          actionRef.current?.reload();
+        }}
+      />
+
+      <TemplateEditModal
+        open={editOpen}
+        record={editData}
+        deptOptions={deptOptions}
+        onCancel={() => setEditOpen(false)}
+        onSuccess={() => {
+          setEditOpen(false);
           actionRef.current?.reload();
         }}
       />

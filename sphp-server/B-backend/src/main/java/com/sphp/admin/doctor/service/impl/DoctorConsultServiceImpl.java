@@ -27,6 +27,7 @@ import com.sphp.admin.doctor.entity.PatientMedicalHistory;
 import com.sphp.admin.doctor.mapper.BConsultationMessageMapper;
 import com.sphp.admin.doctor.mapper.BPatientMapper;
 import com.sphp.admin.doctor.mapper.ConsultRecordMapper;
+import com.sphp.admin.doctor.mapper.BAppointmentMapper;
 import com.sphp.admin.doctor.mapper.BPatientAllergyMapper;
 import com.sphp.admin.doctor.mapper.BPatientMedicalHistoryMapper;
 import com.sphp.admin.doctor.mapper.QueueRow;
@@ -71,6 +72,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     private static final String STATUS_PENDING = "PENDING";
     private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
     private static final String STATUS_COMPLETED = "COMPLETED";
+    private static final String STATUS_NO_SHOW = "NO_SHOW";
 
     private static final String PRESCRIPTION_DRAFT = "DRAFT";
 
@@ -79,6 +81,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     private final BPatientAllergyMapper patientAllergyMapper;
     private final BPatientMedicalHistoryMapper patientMedicalHistoryMapper;
     private final BConsultationMessageMapper consultationMessageMapper;
+    private final BAppointmentMapper appointmentMapper;
     private final PrescriptionMapper prescriptionMapper;
     private final PrescriptionItemMapper prescriptionItemMapper;
     private final DoctorMapper doctorMapper;
@@ -105,6 +108,13 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
 
         // 自动补建缺失的 consult_record：C端挂号成功后未创建问诊记录时，查询前幂等补齐
         ensureConsultRecordsExist(doctorIds);
+
+        // 批量过期已过期的 PENDING 记录与 PAID 挂号订单，保持队列干净
+        int expiredCount = consultRecordMapper.batchExpireOldPending(doctorIds);
+        int expiredApptCount = appointmentMapper.batchExpireOldPaid(doctorIds, OffsetDateTime.now());
+        if (expiredCount > 0 || expiredApptCount > 0) {
+            log.info("过期处理：consult_record NO_SHOW {} 条, appointment EXPIRED {} 条", expiredCount, expiredApptCount);
+        }
 
         // 对于 ADMIN/DEPT_HEAD，deptId 可传参过滤；DOCTOR 只看本人
         Long queryDeptId = (ROLE_ADMIN.equals(scope.role()) && deptId != null) ? deptId
@@ -148,7 +158,8 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
         List<PatientDetailVO.RecentPrescriptionInfo> recentPrescriptions = loadRecentPrescriptions(patient.getId());
 
         // 历史就诊记录
-        List<PatientDetailVO.HistoryRecordInfo> historyRecords = loadHistoryRecords(patient.getId());
+        DataScope scope = currentUserService.getCurrentDataScope();
+        List<PatientDetailVO.HistoryRecordInfo> historyRecords = loadHistoryRecords(patient.getId(), scope.hospitalId());
 
         // 脱敏
         String phone = maskPhone(patient.getPhoneCiphertext());
@@ -243,6 +254,9 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
         record.setEndedAt(OffsetDateTime.now());
         record.setUpdatedAt(OffsetDateTime.now());
         consultRecordMapper.updateById(record);
+
+        // 同步更新挂号订单状态，确保 C 端就诊助手能正确反映就诊完成
+        appointmentMapper.completeStatus(record.getAppointmentId(), OffsetDateTime.now());
 
         log.info("结束问诊 consultId={}, doctorId={}", consultId, record.getDoctorId());
         return ConsultEndVO.builder()
@@ -530,19 +544,40 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     }
 
     /**
-     * 加载患者历史就诊记录。
+     * 加载患者在本医院的历史就诊记录（跨医生，不限当前医生）。
+     *
+     * <p>通过 doctor 表过滤同医院 + 关联医生姓名，让医生了解患者在本院的其他就诊情况。
      */
-    private List<PatientDetailVO.HistoryRecordInfo> loadHistoryRecords(Long patientId) {
+    private List<PatientDetailVO.HistoryRecordInfo> loadHistoryRecords(Long patientId, Long hospitalId) {
         List<ConsultRecord> records = consultRecordMapper.selectList(
                 Wrappers.<ConsultRecord>lambdaQuery()
                         .eq(ConsultRecord::getPatientId, patientId)
                         .isNull(ConsultRecord::getDeletedAt)
                         .orderByDesc(ConsultRecord::getCreatedAt)
-                        .last("LIMIT 10"));
+                        .last("LIMIT 20"));
+        if (records.isEmpty()) {
+            return List.of();
+        }
+
+        // 批量查询关联医生，只保留本院医生 + 构建医生姓名映射
+        List<Long> doctorIds = records.stream()
+                .map(ConsultRecord::getDoctorId)
+                .distinct()
+                .toList();
+        Map<Long, String> doctorNameMap = doctorMapper.selectList(
+                        Wrappers.<Doctor>lambdaQuery()
+                                .in(Doctor::getId, doctorIds)
+                                .eq(Doctor::getHospitalId, hospitalId)
+                                .isNull(Doctor::getDeletedAt))
+                .stream()
+                .collect(Collectors.toMap(Doctor::getId, Doctor::getName));
+
         return records.stream()
+                .filter(r -> doctorNameMap.containsKey(r.getDoctorId()))
                 .map(r -> PatientDetailVO.HistoryRecordInfo.builder()
                         .date(r.getCreatedAt() != null ? r.getCreatedAt().toLocalDate().toString() : null)
                         .type("病历")
+                        .doctorName(doctorNameMap.get(r.getDoctorId()))
                         .summary(r.getDoctorNote() != null
                                 ? r.getDoctorNote().substring(0, Math.min(r.getDoctorNote().length(), 50))
                                 : null)
