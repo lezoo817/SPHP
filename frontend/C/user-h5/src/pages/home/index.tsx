@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { BellRing, CalendarPlus, ChevronRight, ClipboardPlus, FileChartColumn, HeartPulse, Pill, Search, Stethoscope, X } from 'lucide-react';
+import { useEffect, useRef, useState, type TouchEvent, type UIEvent } from 'react';
+import { BellRing, CalendarPlus, ChevronRight, ClipboardPlus, FileChartColumn, HeartPulse, MapPin, Pill, Plus, Search, Stethoscope, X } from 'lucide-react';
 import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
-import { Dialog } from '../../components/Dialog';
+import { dismissExpiredHealthTodo, getDismissedExpiredHealthTodoIds, isExpiredHealthTodoDismissed } from '../../models/expired-health-todo';
 import { getSelection, saveSelection } from '../../models/selection';
 import { getFamilyMembers } from '../../services/family';
 import { getFollowUpPlans, getMedicationPlans } from '../../services/health';
@@ -11,6 +11,14 @@ import { getAppointments, getHospitals } from '../../services/registration';
 import type { FamilyMember, Hospital, NotificationItem } from '../../typings/api';
 import { buildHealthTodos, findLatestWaitlistPromotionNotification, type HealthTodo, type PatientHealthSource } from '../../utils/health-notification';
 import { formatMedicalTime, sortHospitals } from '../../utils/medical';
+import appointmentBanner from '../../assets/home-banner-appointment.png';
+import consultationBanner from '../../assets/home-banner-consultation.png';
+
+const homeBanners = [
+  { image: appointmentBanner, label: '预约挂号服务', action: '/home/departments' },
+  { image: consultationBanner, label: '在线问诊服务', action: '/assistant' },
+];
+const circularHomeBanners = [homeBanners[homeBanners.length - 1], ...homeBanners, homeBanners[0]];
 
 /** 展示医院入口、就诊人、快捷服务和全账号健康待办的首页。 */
 export default function HomePage() {
@@ -18,11 +26,15 @@ export default function HomePage() {
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [selected, setSelected] = useState(getSelection());
-  const [patientOpen, setPatientOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const [todos, setTodos] = useState<HealthTodo[]>([]);
   const [waitlistNotification, setWaitlistNotification] = useState<NotificationItem>();
-  const bannerTimer = useRef<number>();
+  const [bannerSlideIndex, setBannerSlideIndex] = useState(1);
+  const [bannerTransitionEnabled, setBannerTransitionEnabled] = useState(true);
+  const waitlistTimer = useRef<number>();
+  const patientScrollTimer = useRef<number>();
+  const swipeStartX = useRef<number>();
+  const swipeMoved = useRef(false);
 
   /** 读取单个就诊人的三类待办，供首页统一展示。 */
   async function loadPatientHealthSource(member: FamilyMember): Promise<PatientHealthSource> {
@@ -57,7 +69,10 @@ export default function HomePage() {
       // 后端按患者隔离待办，首页需要汇总本人和家属后才能展示账号全部待办。
       const healthResults = await healthResultsPromise;
       const sources = healthResults.filter((item): item is PromiseFulfilledResult<PatientHealthSource> => item.status === 'fulfilled').map((item) => item.value);
-      setTodos(buildHealthTodos(sources));
+      const nextTodos = buildHealthTodos(sources);
+      // 已被患者关闭的过期订单在同一登录会话内不再因页面重新加载而重复出现。
+      const dismissedTodoIds = getDismissedExpiredHealthTodoIds();
+      setTodos(nextTodos.filter((todo) => !todo.isExpired || !isExpiredHealthTodoDismissed(todo, dismissedTodoIds)));
       if (healthResults.some((item) => item.status === 'rejected')) setNotice('部分健康待办加载失败，请稍后重试');
     } catch (error: unknown) {
       setNotice(error instanceof Error ? error.message : '首页数据加载失败');
@@ -69,9 +84,20 @@ export default function HomePage() {
   useEffect(() => {
     if (!waitlistNotification) return undefined;
     // 候补提醒仅短暂展示，未读状态仍由通知消息页统一维护。
-    bannerTimer.current = window.setTimeout(() => setWaitlistNotification(undefined), 5000);
-    return () => { if (bannerTimer.current) window.clearTimeout(bannerTimer.current); };
+    waitlistTimer.current = window.setTimeout(() => setWaitlistNotification(undefined), 5000);
+    return () => { if (waitlistTimer.current) window.clearTimeout(waitlistTimer.current); };
   }, [waitlistNotification?.id]);
+
+  useEffect(() => () => {
+    if (patientScrollTimer.current) window.clearTimeout(patientScrollTimer.current);
+  }, []);
+
+  useEffect(() => {
+    // 减弱动态效果偏好下不自动轮换，避免影响阅读与操作。
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
+    const timer = window.setInterval(() => changeBanner(1), 5200);
+    return () => window.clearInterval(timer);
+  }, []);
 
   /** 关闭顶部候补提醒，不调用已读接口以保留通知入口的未读红点。 */
   function dismissWaitlistNotification() {
@@ -87,7 +113,8 @@ export default function HomePage() {
   /** 根据待办类别跳转到可继续处理的页面。 */
   function openTodo(todo: HealthTodo) {
     if (todo.isExpired) {
-      // 过期挂号不再进入流程，仅从本次首页待办中关闭提醒。
+      // 过期挂号不再进入流程，关闭状态写入会话以覆盖切页后重新聚合待办的场景。
+      dismissExpiredHealthTodo(todo);
       setTodos((current) => current.filter((item) => !(item.type === todo.type && item.id === todo.id && item.patientId === todo.patientId)));
       return;
     }
@@ -96,8 +123,65 @@ export default function HomePage() {
     else navigate('/mine/follow-ups');
   }
 
+  /** 沿滑动方向切换宣传窗页码，首尾页通过克隆卡片保持连续运动。 */
+  function changeBanner(offset: number) {
+    setBannerTransitionEnabled(true);
+    setBannerSlideIndex((index) => index + offset);
+  }
+
+  /** 动画到达首尾克隆卡后，无感重置到对应真实卡片。 */
+  function normalizeBannerSlide() {
+    if (bannerSlideIndex !== 0 && bannerSlideIndex !== homeBanners.length + 1) return;
+    // 关闭一次过渡再回到真实卡片，避免循环边界产生反方向回弹。
+    setBannerTransitionEnabled(false);
+    setBannerSlideIndex(bannerSlideIndex === 0 ? homeBanners.length : 1);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => setBannerTransitionEnabled(true)));
+  }
+
+  /** 记录宣传窗手势起点，用于区分点击按钮与左右滑动。 */
+  function startBannerSwipe(event: TouchEvent<HTMLElement>) {
+    swipeStartX.current = event.touches[0]?.clientX;
+    swipeMoved.current = false;
+  }
+
+  /** 根据横向位移切换宣传页，短距离触摸不会误触发页面跳转。 */
+  function endBannerSwipe(event: TouchEvent<HTMLElement>) {
+    const startX = swipeStartX.current;
+    const endX = event.changedTouches[0]?.clientX;
+    swipeStartX.current = undefined;
+    if (startX === undefined || endX === undefined || Math.abs(startX - endX) < 42) return;
+    swipeMoved.current = true;
+    changeBanner(startX > endX ? 1 : -1);
+  }
+
+  /** 打开当前宣传页对应的服务入口，滑动结束后忽略一次合成点击。 */
+  function openBanner(path: string) {
+    if (swipeMoved.current) {
+      swipeMoved.current = false;
+      return;
+    }
+    navigate(path);
+  }
+
+  /** 切换首页当前就诊人，并保留已选择的医院。 */
+  function selectPatient(patientId: number) {
+    // 选择结果写入跨页面状态，后续挂号、问诊等入口读取同一就诊人。
+    saveSelection({ patientId });
+    setSelected(getSelection());
+  }
+
+  /** 根据滑动停留的卡片自动切换就诊人，无需额外点击卡片。 */
+  function switchPatientAfterScroll(event: UIEvent<HTMLDivElement>) {
+    const track = event.currentTarget;
+    if (patientScrollTimer.current) window.clearTimeout(patientScrollTimer.current);
+    // 等待滚动吸附结束后再取索引，避免拖动过程频繁切换当前就诊人。
+    patientScrollTimer.current = window.setTimeout(() => {
+      const member = members[Math.round(track.scrollLeft / track.clientWidth)];
+      if (member && member.patientId !== selected.patientId) selectPatient(member.patientId);
+    }, 120);
+  }
+
   const currentHospital = hospitals.find((item) => item.hospitalId === selected.hospitalId);
-  const currentPatient = members.find((item) => item.patientId === selected.patientId);
   const services = [
     { label: '预约挂号', icon: CalendarPlus, action: () => navigate('/home/departments') },
     { label: '智能导诊', icon: Stethoscope, action: () => navigate('/agent') },
@@ -108,12 +192,45 @@ export default function HomePage() {
   ];
 
   return <main className="home-page">
+    <section className="home-overview">
+      <header className="home-appbar">
+        <button className="home-appbar__hospital" type="button" onClick={() => navigate('/home/hospitals')}>
+          <MapPin size={20} /><span>{currentHospital?.name || '选择医院'}</span><ChevronRight size={17} />
+        </button>
+        <span className="home-appbar__brand"><b>智</b><strong>智慧先锋</strong></span>
+      </header>
+      <button className="home-search-bar" type="button" onClick={() => navigate('/home/departments')}><Search size={22} /><span>搜索医院、科室、疾病、医生</span></button>
+      <section className="home-promo" aria-label="医疗服务宣传" onTouchStart={startBannerSwipe} onTouchEnd={endBannerSwipe}>
+        <div className="home-promo__track" style={{ transform: `translateX(-${bannerSlideIndex * 100}%)`, transition: bannerTransitionEnabled ? undefined : 'none' }} onTransitionEnd={normalizeBannerSlide}>
+          {circularHomeBanners.map((banner, index) => <button className={`home-promo__slide${banner.label === '在线问诊服务' ? ' home-promo__slide--consultation' : ''}`} key={`${banner.label}-${index}`} type="button" aria-label={banner.label} onClick={() => openBanner(banner.action)}><img src={banner.image} alt="" /></button>)}
+        </div>
+        <div className="home-promo__pager" aria-hidden="true">{homeBanners.map((banner, index) => <i className={index === (bannerSlideIndex - 1 + homeBanners.length) % homeBanners.length ? 'is-active' : ''} key={banner.label} />)}</div>
+      </section>
+    </section>
     {waitlistNotification && <section className="waitlist-banner" aria-label="候补可预约提醒"><button className="waitlist-banner__body" type="button" onClick={openWaitlistNotification}><span className="waitlist-banner__icon"><BellRing size={23} /></span><span className="waitlist-banner__content"><b>{waitlistNotification.title}</b><span>{waitlistNotification.content}</span><small>{waitlistNotification.patientName || '当前就诊人'}</small></span></button><button className="waitlist-banner__close" type="button" aria-label="关闭候补提醒" onClick={dismissWaitlistNotification}><X size={18} /></button></section>}
     <header className="home-hero"><div className="home-brand"><b>智</b><div><strong>智愈先锋</strong><span>省人民医院智慧医疗服务</span></div></div><p>让每一次就医，都更清晰、更安心</p></header>
     <section className="home-content">
       <button className="hospital-switch" type="button" onClick={() => navigate('/home/hospitals')}>当前医院：{currentHospital?.name || '选择医院'} <ChevronRight size={18} /></button>
       <button className="search-bar" type="button" onClick={() => navigate('/home/departments')}><Search size={24} /><span>搜索医生、科室</span></button>
-      <section className="patient-switch-card"><div><b>当前就诊人 · {currentPatient?.name || '未选择'}</b><p>{currentPatient?.phone || '资料待完善'}</p></div><button type="button" className="text-button" onClick={() => setPatientOpen(true)}>切换 <ChevronRight size={19} /></button></section>
+      <section className="patient-carousel" aria-label="切换就诊人">
+        <div className="patient-carousel__track" onScroll={switchPatientAfterScroll}>
+          {members.map((member) => {
+            const isCurrent = member.patientId === selected.patientId;
+            return <button className={`patient-carousel__card${isCurrent ? ' is-current' : ''}`} key={member.patientId} type="button" onClick={() => selectPatient(member.patientId)} aria-pressed={isCurrent}>
+              <span className="patient-carousel__hint">滑动切换就诊人</span>
+              <b className="patient-carousel__name">就诊人：{member.name}{member.isDefault && <em>默认</em>}</b>
+              <span>手机号：{member.phone || '待完善'}</span>
+              <small>身份证号：{member.idCardNo || '资料待完善'}</small>
+            </button>;
+          })}
+          <button className="patient-carousel__add-card" type="button" onClick={() => navigate('/mine/family-members')} aria-label="添加就诊人">
+            <small className="patient-carousel__hint">滑动切换就诊人</small>
+            <span><Plus size={20} /></span>
+            <b>添加就诊人</b>
+            <small>管理本人和家庭成员</small>
+          </button>
+        </div>
+      </section>
       <h2>快捷服务</h2>
       <section className="quick-grid">{services.map(({ label, icon: Icon, action }) => <button key={label} type="button" onClick={action || (() => setNotice(`${label}暂未开放`))}><Icon size={29} /><span>{label}</span></button>)}</section>
       <section className="todo-section"><div className="section-title"><h2>健康待办</h2>{todos.length > 0 && <span className="todo-count">{todos.length} 项待处理</span>}</div>
@@ -121,7 +238,6 @@ export default function HomePage() {
         {!todos.length && <p className="empty-state">暂无健康待办</p>}
       </section>
     </section>
-    {patientOpen && <Dialog title="切换就诊人" onClose={() => setPatientOpen(false)}>{members.map((item) => <button className="choice-row" key={item.patientId} type="button" onClick={() => { saveSelection({ patientId: item.patientId }); setSelected(getSelection()); setPatientOpen(false); }}><span>{item.name}</span><small>{item.relationName || item.relation}</small></button>)}{members.filter((item) => item.relation !== 'SELF').length === 0 && <p className="empty-state">当前用户未绑定亲属</p>}</Dialog>}
     {notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}
     <BottomTab onUnavailable={() => setNotice('该页面暂未开放')} />
   </main>;

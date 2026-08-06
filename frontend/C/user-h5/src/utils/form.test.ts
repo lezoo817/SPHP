@@ -22,7 +22,7 @@ import { buildNotificationsPath } from '../services/notification';
 import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotification, formatMedicationReminderTimes, getMedicationPlanActions, getMedicationReminderAction, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
 import { buildDeliveryAddressPath } from '../services/delivery-address';
 import { buildDeliveryAddressPayload, getDeliveryAddressInvalidFields, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
-import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantTabs, getCurrentFlowAction, isCurrentAssistantFlow } from './assistant';
+import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantAppointmentRecordStatusText, getAssistantTabs, getCurrentFlowAction, isCurrentAssistantFlow, shouldDisplayAssistantAppointmentRecord } from './assistant';
 import { buildMedicalRecordDetailPath, buildMedicalRecordListPath } from '../services/medical-record';
 import { buildLegacyReportRedirectPath, createMedicalRecordDisplayNumber, filterMedicalRecordsByDate, getRecentMedicalRecordRange, mergeMedicalRecordPages } from './medical-record';
 import { canCancelPaidAppointment, isDuplicateDoctorAppointmentError } from './registration';
@@ -31,6 +31,7 @@ import { buildPrescriptionsPath } from '../services/consultation';
 import { buildAssistantPrescriptionDetailPath, buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, createPrescriptionDisplayNumber, filterPrescriptionsByDate, getPrescriptionDisplayNumber, getRecentPrescriptionRange, mergePrescriptionPages, type PrescriptionDisplayNumberStorage } from './prescription';
 import { buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, formatDrugOrderLogisticsTime, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderPaymentId, shouldPollDrugOrderLogistics } from './pharmacy-order';
 import { filterAppointmentRecordsByDate, getRecentAppointmentRecordRange, matchesAppointmentRecordTab, mergeAppointmentRecordPages } from './appointment-record';
+import { clearDismissedExpiredHealthTodos, dismissExpiredHealthTodo, getDismissedExpiredHealthTodoIds, isExpiredHealthTodoDismissed, type ExpiredHealthTodoStorage } from '../models/expired-health-todo';
 import type { Appointment } from '../typings/api';
 
 describe('前端表单与联调规则', () => {
@@ -60,7 +61,7 @@ describe('前端表单与联调规则', () => {
 
 describe('重复预约联调规则', () => {
   it('仅识别后端明确返回的重复预约冲突', () => {
-    expect(isDuplicateDoctorAppointmentError({ code: 'A0506', message: '近5天内已预约过该医生，不可重复预约' })).toBe(true);
+    expect(isDuplicateDoctorAppointmentError({ code: 'A0506', message: '当前已有该医生待就诊挂号，不可重复预约' })).toBe(true);
     expect(isDuplicateDoctorAppointmentError({ code: 'A0506', message: '幂等键冲突' })).toBe(false);
     expect(isDuplicateDoctorAppointmentError({ code: 'A0400', message: '已预约过该医生，不可重复预约' })).toBe(false);
     expect(isDuplicateDoctorAppointmentError(new Error('已预约过该医生，不可重复预约'))).toBe(false);
@@ -111,6 +112,20 @@ describe('就诊助手展示规则', () => {
     expect(isCurrentAssistantFlow(appointment, now)).toBe(true);
     expect(isCurrentAssistantFlow({ ...appointment, endTime: '2026-08-06T10:00:00+08:00' }, now)).toBe(false);
     expect(isCurrentAssistantFlow({ ...appointment, status: 'COMPLETED' }, now)).toBe(false);
+  });
+
+  it('挂号记录仅保留就诊完成和未结束的待就诊订单', () => {
+    const now = Date.parse('2026-08-06T10:00:00+08:00');
+    const appointment = { id: 1, doctorName: '陈医生', departmentName: '内科', startTime: '2026-08-06T09:30:00+08:00', endTime: '2026-08-06T10:30:00+08:00', status: 'PAID' as const, amountCent: 100 };
+
+    expect(shouldDisplayAssistantAppointmentRecord(appointment, now)).toBe(true);
+    expect(shouldDisplayAssistantAppointmentRecord({ ...appointment, status: 'COMPLETED' }, now)).toBe(true);
+    expect(shouldDisplayAssistantAppointmentRecord({ ...appointment, status: 'UNPAID' }, now)).toBe(false);
+    expect(shouldDisplayAssistantAppointmentRecord({ ...appointment, status: 'CANCELLED' }, now)).toBe(false);
+    expect(shouldDisplayAssistantAppointmentRecord({ ...appointment, status: 'NO_SHOW' }, now)).toBe(false);
+    expect(shouldDisplayAssistantAppointmentRecord({ ...appointment, endTime: '2026-08-06T10:00:00+08:00' }, now)).toBe(false);
+    expect(getAssistantAppointmentRecordStatusText('PAID')).toBe('待就诊');
+    expect(getAssistantAppointmentRecordStatusText('COMPLETED')).toBe('就诊完成');
   });
 
   it('就诊助手每三十秒静默刷新挂号状态', () => {
@@ -439,6 +454,23 @@ describe('我的处方查询规则', () => {
 });
 
 describe('健康待办、提醒与通知规则', () => {
+  it('关闭过期待办后在当前会话内持续隐藏，并在清除会话时移除标识', () => {
+    const values = new Map<string, string>();
+    const storage: ExpiredHealthTodoStorage = {
+      getItem: (key) => values.get(key) || null,
+      setItem: (key, value) => { values.set(key, value); },
+      removeItem: (key) => { values.delete(key); },
+    };
+    const expiredTodo = { type: 'APPOINTMENT', patientId: 1, id: 7001 };
+
+    expect(getDismissedExpiredHealthTodoIds(storage)).toEqual([]);
+    const dismissedIds = dismissExpiredHealthTodo(expiredTodo, storage);
+    expect(isExpiredHealthTodoDismissed(expiredTodo, dismissedIds)).toBe(true);
+    expect(dismissExpiredHealthTodo(expiredTodo, storage)).toEqual(dismissedIds);
+    clearDismissedExpiredHealthTodos(storage);
+    expect(getDismissedExpiredHealthTodoIds(storage)).toEqual([]);
+  });
+
   it('通知列表不传递未选择的筛选参数', () => {
     expect(buildNotificationsPath({ pageNo: 2, pageSize: 50 })).toBe('/c/v1/notifications?pageNo=2&pageSize=50');
     expect(buildNotificationsPath({ patientId: 2, read: false })).toContain('patientId=2&read=false');

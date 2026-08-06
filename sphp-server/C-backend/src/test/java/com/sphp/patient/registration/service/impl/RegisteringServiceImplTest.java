@@ -46,7 +46,7 @@ import static org.mockito.Mockito.when;
 class RegisteringServiceImplTest {
 
     /**
-     * 验证预约状态查询按当前账号和医生 ID 读取五天冷却期历史。
+     * 验证预约状态查询按当前账号和医生 ID 读取有效待就诊挂号。
      */
     @Test
     void registeringGetDoctorBookingStatusUsesCurrentUserAndDoctorId() {
@@ -57,14 +57,14 @@ class RegisteringServiceImplTest {
                 mock(RegisteringWaitlistMapper.class), registrationProperties(), mock(ApplicationEventPublisher.class),
                 mock(NotificationEventProducer.class));
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
-        when(dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class))).thenReturn(true);
+        when(dataMapper.existsRegisteringActiveDoctorAppointment(10001L, 401L)).thenReturn(true);
 
         try {
             RegisteringDoctorBookingStatusVO result = service.registeringGetDoctorBookingStatus(401L);
 
             assertEquals(401L, result.getDoctorId());
             assertEquals(true, result.isBooked());
-            verify(dataMapper).existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class));
+            verify(dataMapper).existsRegisteringActiveDoctorAppointment(10001L, 401L);
         } finally {
             CUserContext.clear();
         }
@@ -125,7 +125,7 @@ class RegisteringServiceImplTest {
                         501L, 301L, 401L, 5000, LocalDate.now().plusDays(1),
                         LocalTime.of(9, 0), LocalTime.of(9, 30), "PUBLISHED", "ENABLED"));
         when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
-        when(dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class))).thenReturn(false);
+        when(dataMapper.existsRegisteringActiveDoctorAppointment(10001L, 401L)).thenReturn(false);
         when(dataMapper.countRegisteringAvailableSnapshots(501L)).thenReturn(1L);
         when(slotLockService.registeringLock(eq(501L), eq(1L), any())).thenReturn(true);
         when(dataMapper.registeringLockOneSnapshot(eq(501L), eq(20001L), any())).thenReturn(9001L);
@@ -174,7 +174,7 @@ class RegisteringServiceImplTest {
                         501L, 301L, 401L, 5000, slotEndAt.toLocalDate(),
                         slotEndAt.toLocalTime().minusMinutes(10), slotEndAt.toLocalTime(), "PUBLISHED", "ENABLED"));
         when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
-        when(dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class))).thenReturn(false);
+        when(dataMapper.existsRegisteringActiveDoctorAppointment(10001L, 401L)).thenReturn(false);
         when(dataMapper.countRegisteringAvailableSnapshots(501L)).thenReturn(1L);
         when(slotLockService.registeringLock(eq(501L), eq(1L), any())).thenReturn(true);
         when(dataMapper.registeringLockOneSnapshot(eq(501L), eq(20001L), any())).thenReturn(9001L);
@@ -247,7 +247,7 @@ class RegisteringServiceImplTest {
     }
 
     /**
-     * 验证同一登录账号在五天冷却期内预约过同一医生时，不能再次创建挂号订单。
+     * 验证同一登录账号已有同医生待就诊挂号时，不能再次创建挂号订单。
      */
     @Test
     void registeringCreateAppointmentRejectsUserWhoAlreadyPaidSameDoctorBeforeLockingSlot() {
@@ -260,7 +260,7 @@ class RegisteringServiceImplTest {
                         501L, 301L, 401L, 5000, LocalDate.now().plusDays(1),
                         LocalTime.of(9, 0), LocalTime.of(9, 30), "PUBLISHED", "ENABLED"));
         when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
-        when(dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class))).thenReturn(true);
+        when(dataMapper.existsRegisteringActiveDoctorAppointment(10001L, 401L)).thenReturn(true);
         RegisteringServiceImpl service = new RegisteringServiceImpl(dataMapper,
                 mock(RegisteringAppointmentMapper.class), mock(RegisteringPaymentOrderMapper.class),
                 slotLockService, mock(RegisteringWaitlistPromotionService.class), mock(RegisteringWaitlistMapper.class),
@@ -277,7 +277,7 @@ class RegisteringServiceImplTest {
 
             assertEquals("A0506", exception.getCode());
             verify(dataMapper).registeringLockActiveUser(10001L);
-            verify(dataMapper).existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class));
+            verify(dataMapper).existsRegisteringActiveDoctorAppointment(10001L, 401L);
             verify(slotLockService, never()).registeringLock(any(), any(Long.class), any());
         } finally {
             CUserContext.clear();
@@ -297,7 +297,7 @@ class RegisteringServiceImplTest {
         when(dataMapper.existsRegisteringActivePatient(20002L)).thenReturn(true);
         when(dataMapper.hasActivePatientRelation(10001L, 20002L)).thenReturn(true);
         when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
-        when(dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class))).thenReturn(true);
+        when(dataMapper.existsRegisteringActiveDoctorAppointment(10001L, 401L)).thenReturn(true);
         RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
                 mock(NotificationEventProducer.class), mock(RegisteringWaitlistPromotionService.class));
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
@@ -310,7 +310,7 @@ class RegisteringServiceImplTest {
 
             assertEquals("A0506", exception.getCode());
             verify(dataMapper).registeringLockActiveUser(10001L);
-            verify(dataMapper).existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class));
+            verify(dataMapper).existsRegisteringActiveDoctorAppointment(10001L, 401L);
             verify(dataMapper, never()).registeringMarkPaymentSuccess(any(), any());
             verify(dataMapper, never()).registeringMarkAppointmentPaid(any(), any());
             verify(dataMapper, never()).registeringMarkSnapshotSold(any(), any());

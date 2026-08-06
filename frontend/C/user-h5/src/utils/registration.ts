@@ -1,7 +1,7 @@
 /**
- * 判断接口异常是否为同一账号处于同医生五天预约冷却期。
+ * 判断接口异常是否为同一账号已有同医生待就诊挂号。
  * @param error 请求层抛出的未知异常
- * @returns 仅当后端返回指定业务码和同医生预约冷却期文案时返回 true
+ * @returns 仅当后端返回指定业务码和同医生待就诊挂号文案时返回 true
  */
 export function isDuplicateDoctorAppointmentError(error: unknown): boolean {
   // 只有后端明确拒绝重复预约时才锁定当前页面，避免将其他幂等冲突误判为不可预约。
@@ -9,7 +9,8 @@ export function isDuplicateDoctorAppointmentError(error: unknown): boolean {
   const apiError = error as { code?: unknown; message?: unknown };
   return apiError.code === 'A0506'
     && typeof apiError.message === 'string'
-    && apiError.message.includes('已预约过该医生');
+    // 兼容已发布的旧文案，且仅接收后端明确的同医生有效挂号冲突提示。
+    && (apiError.message.includes('已预约过该医生') || apiError.message.includes('已有该医生待就诊挂号'));
 }
 
 /**

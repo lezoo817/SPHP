@@ -18,17 +18,26 @@
         WHERE id = #{userId} AND deleted_at IS NULL
         FOR UPDATE
     </select>
-    <select id="existsRegisteringDoctorAppointmentWithinCooldown" resultType="boolean">
+    <select id="existsRegisteringActiveDoctorAppointment" resultType="boolean">
         SELECT EXISTS(
             SELECT 1
             FROM appointment a
                      INNER JOIN payment_order po ON po.appointment_id = a.id
+                     INNER JOIN slot_snapshot ss ON ss.id = a.slot_snapshot_id AND ss.deleted_at IS NULL
+                     INNER JOIN slot sl ON sl.id = ss.slot_id AND sl.deleted_at IS NULL
+                     INNER JOIN schedule s ON s.id = sl.schedule_id AND s.deleted_at IS NULL
+                     LEFT JOIN consult_record cr ON cr.appointment_id = a.id AND cr.deleted_at IS NULL
             WHERE po.payer_user_id = #{userId}
               AND a.doctor_id = #{doctorId}
-              AND a.status IN ('PAID', 'COMPLETED')
+              AND a.status = 'PAID'
               AND po.status = 'SUCCESS'
-              AND COALESCE(a.paid_at, po.paid_at) &gt; #{cutoffAt}
               AND a.deleted_at IS NULL
+              <!-- 与订单列表的 PAID 派生语义保持一致：已完成、未到诊或已结束等待均不再阻止预约。 -->
+              AND (cr.status IS NULL OR cr.status NOT IN ('COMPLETED', 'NO_SHOW'))
+              AND NOT (
+                  (s.schedule_date + sl.end_time) AT TIME ZONE 'Asia/Shanghai' &lt;= CURRENT_TIMESTAMP
+                  AND (cr.id IS NULL OR cr.status = 'PENDING')
+              )
         )
     </select>
     <select id="selectRegisteringSlotLockInfo" resultType="com.sphp.patient.registration.mapper.RegisteringSlotLockRecord">
