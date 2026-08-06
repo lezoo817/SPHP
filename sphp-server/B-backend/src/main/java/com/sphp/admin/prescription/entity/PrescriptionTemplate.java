@@ -33,6 +33,9 @@ public class PrescriptionTemplate {
     /** 创建人 */
     private Long doctorId;
 
+    /** 更新人（为空时与 doctorId 相同） */
+    private Long updatedBy;
+
     /** 药品明细 JSON */
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<TemplateItemDTO> items;

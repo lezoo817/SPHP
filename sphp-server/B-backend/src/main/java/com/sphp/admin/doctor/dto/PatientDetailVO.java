@@ -103,6 +103,8 @@ public class PatientDetailVO {
     public static class HistoryRecordInfo {
         private String date;
         private String type;
+        @Schema(description = "就诊医生姓名")
+        private String doctorName;
         private String summary;
         private String status;
     }

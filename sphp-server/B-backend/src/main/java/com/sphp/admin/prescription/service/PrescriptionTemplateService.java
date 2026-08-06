@@ -22,6 +22,18 @@ public interface PrescriptionTemplateService {
     TemplateListVO save(SaveTemplateRequest request);
 
     /**
+     * 更新处方模板（系分 §5.6.8）。
+     *
+     * <p>可更新字段：科室（deptId）、药品明细（items）。
+     * 模板名称不可修改，防止引用断裂。
+     *
+     * @param id      模板 ID
+     * @param request 更新请求（仅读取 deptId、items）
+     * @return 更新后的模板信息
+     */
+    TemplateListVO update(Long id, SaveTemplateRequest request);
+
+    /**
      * 删除处方模板（软删除）。
      */
     void delete(Long id);

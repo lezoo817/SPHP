@@ -345,6 +345,7 @@ declare global {
     interface HistoryRecord {
       date: string;
       type: string;
+      doctorName?: string;
       summary: string;
       status: string;
     }
@@ -513,6 +514,8 @@ declare global {
         quantityUnit?: string;
       }[];
       createdAt: string;
+      updatedAt?: string;
+      updatedByName?: string;
     }
 
     /** 模板列表查询参数 */

@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -54,6 +55,12 @@ public class PrescriptionTemplateController {
     @Operation(summary = "保存处方模板", description = "创建新处方模板（需医生身份）；校验药品存在且数量充足（天数×频次×用量 ≤ 数量×规格）")
     public Result<TemplateListVO> save(@RequestBody SaveTemplateRequest request) {
         return Result.success("创建成功", templateService.save(request));
+    }
+
+    @PutMapping("/prescription-templates/{id}")
+    @Operation(summary = "更新处方模板", description = "更新处方模板的科室与药品明细；模板名称不可修改；需医生身份")
+    public Result<TemplateListVO> update(@PathVariable Long id, @RequestBody SaveTemplateRequest request) {
+        return Result.success("更新成功", templateService.update(id, request));
     }
 
     @GetMapping("/prescription-templates/drugs/{id}")
