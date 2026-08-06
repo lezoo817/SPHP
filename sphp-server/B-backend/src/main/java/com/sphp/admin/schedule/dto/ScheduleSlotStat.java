@@ -13,7 +13,7 @@ public class ScheduleSlotStat {
     /** 排班 ID */
     private Long scheduleId;
 
-    /** 剩余可约号源数（SUM(slot.remain_count)） */
+    /** 剩余可约号源数（AVAILABLE + RELEASED 快照数，与 C 端可约口径一致；草稿时段回退 slot.remain_count） */
     private Long remainTotal;
 
     /** 已售号源数（SOLD 快照数） */
