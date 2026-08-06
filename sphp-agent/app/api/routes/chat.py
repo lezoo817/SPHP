@@ -804,9 +804,10 @@ async def _record_session(
             if m.get("role") == "user":
                 first_user_msg = m.get("content") or ""
                 break
-        elif getattr(m, "role", None) == "user":
-            first_user_msg = getattr(m, "content", "") or ""
-            break
+        else:
+            if getattr(m, "type", "") == "human" or str(getattr(m, "role", "")).lower() == "user":
+                first_user_msg = getattr(m, "content", "") or ""
+                break
     store = get_session_store()
     await store.upsert(
         user_id=user_id,
