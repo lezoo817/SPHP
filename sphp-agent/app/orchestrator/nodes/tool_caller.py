@@ -319,6 +319,56 @@ def _fill_missing_address_id(
     return _fill_missing_required_param(tool_calls, "address_id", address_id)
 
 
+def _build_preconsult_progress_prompt(
+    state: AgentState, allowed_tools: list[str] | None
+) -> str | None:
+    """构造预问诊流程推进提示（问诊子图确定性引导）。
+
+    问诊场景日志复现的故障：LLM 调 query_health_record（返回空档案）后，受
+    ``TOOL_CALLER_SYSTEM_PROMPT`` 第 8 条"上一步结果已返回全部信息就停止"
+    影响，重复请求 health_record（被 ``_dedupe_tool_calls`` 去重）或直接结束，
+    **跳过了预问诊第 3 步**（query_departments 确认科室 ID -> query_doctors
+    列医生），选医生卡片根本不出现，流程卡在"查完档案"。
+
+    此函数在问诊场景下、health_record 已成功执行但科室/医生尚未查询时，
+    注入确定性推进提示，明确告知 LLM "下一步必须调 query_departments 再
+    query_doctors，不要重复查档案、不要提前结束"，不依赖 LLM 对空结果的
+    自由解读。
+
+    Args:
+        state: 当前图状态，含 tool_results（已执行工具结果）。
+        allowed_tools: 子图工具白名单（问诊子图含 save_pre_consultation）。
+
+    Returns:
+        str | None: 推进提示；非问诊场景 / health_record 未执行 / 科室医生
+            已查过 时返回 None（不注入，避免干扰后续轮次）。
+    """
+    # 仅问诊子图注入（白名单含 save_pre_consultation 判定场景）
+    if not allowed_tools or "save_pre_consultation" not in allowed_tools:
+        return None
+    tool_results = state.get("tool_results") or []
+    if not tool_results:
+        return None
+    has_health = any(
+        r.get("tool_name") == "query_health_record" and r.get("success") for r in tool_results
+    )
+    if not has_health:
+        return None
+    # 科室/医生已查过则不再推进（避免循环内重复注入干扰后续决策）
+    has_dept_or_doctor = any(
+        r.get("tool_name") in ("query_departments", "query_doctors") and r.get("success")
+        for r in tool_results
+    )
+    if has_dept_or_doctor:
+        return None
+    return (
+        "预问诊推进：健康档案已查询（即使无过敏史/既往史记录也是正常情况，不要重复"
+        "调用 query_health_record）。下一步必须按流程继续：先调 query_departments "
+        "确认科室 ID，再调 query_doctors 列出医生，然后让用户选择。不要提前结束本轮，"
+        "不要跳过选医生环节。"
+    )
+
+
 def _parse_doctor_candidates(tool_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """从 query_doctors 工具结果中解析候选医生列表（问诊选医生卡片数据源）。
 
@@ -609,6 +659,12 @@ async def tool_caller(
 
         summary = _format_tool_results(tool_results)
         messages.append({"role": "system", "content": f"已执行的工具结果：\n{summary}"})
+
+    # 预问诊流程确定性推进（M8-7）：问诊子图下 health_record 已查但科室/医生
+    # 未查时，注入"下一步必须继续"提示，避免 LLM 因空档案误判提前结束/重复查。
+    preconsult_ctx = _build_preconsult_progress_prompt(state, effective_allowed)
+    if preconsult_ctx:
+        messages.append({"role": "system", "content": preconsult_ctx})
 
     # M8-1：注入待确认 L2 摘要，让 LLM 知已有卡片，避免重复调用同一 L2
     # （软约束，硬兜底由 _dedupe_tool_calls 对比 pending + safety_check 复用 token）
