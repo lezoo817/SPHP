@@ -25,7 +25,7 @@ import { buildDeliveryAddressPayload, getDeliveryAddressInvalidFields, getDelive
 import { getAssistantTabs, getCurrentFlowAction } from './assistant';
 import { buildMedicalRecordDetailPath, buildMedicalRecordListPath } from '../services/medical-record';
 import { buildLegacyReportRedirectPath, createMedicalRecordDisplayNumber, filterMedicalRecordsByDate, getRecentMedicalRecordRange, mergeMedicalRecordPages } from './medical-record';
-import { isDuplicateDoctorAppointmentError } from './registration';
+import { canCancelPaidAppointment, isDuplicateDoctorAppointmentError } from './registration';
 import { buildDoctorBookingStatusPath } from '../services/registration';
 import { buildPrescriptionsPath } from '../services/consultation';
 import { buildAssistantPrescriptionDetailPath, buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, createPrescriptionDisplayNumber, filterPrescriptionsByDate, getPrescriptionDisplayNumber, getRecentPrescriptionRange, mergePrescriptionPages, type PrescriptionDisplayNumberStorage } from './prescription';
@@ -164,6 +164,13 @@ describe('挂号资源展示规则', () => {
   it('将挂号订单状态转换为患者可理解的中文文案', () => {
     expect(getAppointmentStatusText('PAID')).toBe('支付完成');
     expect(getAppointmentStatusText('CANCELLED')).toBe('支付取消');
+  });
+
+  it('仅为尚未开始的已支付挂号展示取消入口', () => {
+    const now = Date.parse('2026-08-06T10:00:00+08:00');
+    expect(canCancelPaidAppointment('PAID', '2026-08-06T10:01:00+08:00', now)).toBe(true);
+    expect(canCancelPaidAppointment('PAID', '2026-08-06T10:00:00+08:00', now)).toBe(false);
+    expect(canCancelPaidAppointment('UNPAID', '2026-08-06T10:01:00+08:00', now)).toBe(false);
   });
 });
 

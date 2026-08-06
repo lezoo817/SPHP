@@ -6,12 +6,13 @@ import { Dialog } from '../../components/Dialog';
 import { resolveSelfPatientId } from '../../models/selection';
 import { getPrescriptions } from '../../services/consultation';
 import { getFamilyMembers } from '../../services/family';
-import { getAppointment, getAppointments } from '../../services/registration';
+import { cancelAppointment, getAppointment, getAppointments } from '../../services/registration';
 import type { Appointment, FamilyMember, Prescription } from '../../typings/api';
 import { getAssistantTabs, getCurrentFlowAction } from '../../utils/assistant';
-import { getApiErrorMessage } from '../../utils/form';
+import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatMedicalTime, getAppointmentStatusText } from '../../utils/medical';
 import { buildAssistantPrescriptionDetailPath, getPrescriptionDisplayNumber } from '../../utils/prescription';
+import { canCancelPaidAppointment } from '../../utils/registration';
 
 type AssistantTab = (typeof getAssistantTabs)[number];
 type FlowStepState = 'done' | 'active' | 'pending';
@@ -47,6 +48,9 @@ export default function AssistantPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [open, setOpen] = useState(false);
+  const [cancellingAppointment, setCancellingAppointment] = useState<Appointment>();
+  const [cancellationPassword, setCancellationPassword] = useState('');
+  const [cancelling, setCancelling] = useState(false);
   const [tab, setTab] = useState<AssistantTab>('挂号记录');
   const [notice, setNotice] = useState('');
   const current = members.find((item) => item.patientId === patientId);
@@ -93,6 +97,34 @@ export default function AssistantPage() {
     }
   }
 
+  /** 打开已支付挂号取消确认框，并清理上一次敏感输入。 */
+  function openPaidCancellation(appointment: Appointment) {
+    if (!canCancelPaidAppointment(appointment.status, appointment.startTime)) return;
+    setCancellationPassword('');
+    setCancellingAppointment(appointment);
+  }
+
+  /** 使用当前登录密码取消尚未开始的已支付挂号并刷新挂号流程。 */
+  async function cancelPaidAppointment() {
+    if (!cancellingAppointment || !cancellationPassword) {
+      setNotice('请输入登录密码');
+      return;
+    }
+    setCancelling(true);
+    try {
+      await cancelAppointment(cancellingAppointment.id, createIdempotencyKey(), cancellationPassword);
+      // 取消完成后立即清理密码，避免敏感内容继续留在页面状态中。
+      setCancellationPassword('');
+      setCancellingAppointment(undefined);
+      await loadData();
+      setNotice('挂号已取消');
+    } catch (error) {
+      setNotice(getApiErrorMessage(error));
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   /** 选择就诊人后关闭弹层，由 patientId 变化重新读取该患者的数据。 */
   function selectPatient(nextPatientId: number) {
     setPatientId(nextPatientId);
@@ -122,7 +154,7 @@ export default function AssistantPage() {
             <small>{step.state === 'done' ? '已完成' : step.state === 'active' ? '当前步骤' : '待进行'}</small>
           </li>)}
         </ol>
-        {getCurrentFlowAction(currentFlow.status) === 'PAY' ? <button className="primary-button" type="button" onClick={() => void continueCurrentFlow(currentFlow)}>立即支付</button> : <button className="primary-button assistant-waiting-button" type="button" disabled>等待就诊中...</button>}
+        {getCurrentFlowAction(currentFlow.status) === 'PAY' ? <button className="primary-button" type="button" onClick={() => void continueCurrentFlow(currentFlow)}>立即支付</button> : <><button className="primary-button assistant-waiting-button" type="button" disabled>等待就诊中...</button>{canCancelPaidAppointment(currentFlow.status, currentFlow.startTime) && <button className="secondary-button" type="button" onClick={() => openPaidCancellation(currentFlow)}>取消挂号</button>}</>}
       </section> : <section className="flow-card empty-state">
         暂无进行中的就诊流程<br />
         <button className="primary-button" type="button" onClick={() => navigate('/assistant/book')}>去预约挂号</button>
@@ -133,13 +165,18 @@ export default function AssistantPage() {
       </div>
       {tab === '挂号记录' && appointments.map((item) => <article className="record-card" key={item.id}>
         <span className="record-card__main"><b>{formatMedicalTime(item.startTime)}</b><span>{item.departmentName} · {item.doctorName}</span><small>科室位置：{item.departmentLocation || '科室位置待确认'}</small></span>
-        <em className={`record-card__status status-${item.status.toLowerCase()}`}>{getAppointmentStatusText(item.status)}</em>
+        <aside className="registration-record-actions"><em className={`record-card__status status-${item.status.toLowerCase()}`}>{getAppointmentStatusText(item.status)}</em>{canCancelPaidAppointment(item.status, item.startTime) && <button className="text-button" type="button" onClick={() => openPaidCancellation(item)}>取消挂号</button>}</aside>
       </article>)}
       {tab === '处方' && prescriptions.map((item) => <button className="record-card" key={item.id} type="button" onClick={() => navigate(buildAssistantPrescriptionDetailPath(item.id, patientId, item.issuedAt))}><span className="record-card__main"><b>{item.doctorName}电子处方</b><span>开具于 {formatMedicalTime(item.issuedAt)}</span><small>处方编号：{getPrescriptionDisplayNumber(item.id, item.issuedAt)}</small></span><ChevronRight size={18} /></button>)}
     </section>
     {open && <Dialog title="切换就诊人" onClose={() => setOpen(false)}>
       {members.map((item) => <button className="choice-row" key={item.patientId} type="button" onClick={() => selectPatient(item.patientId)}>{item.name}<small>{item.relationName}</small></button>)}
       {members.filter((item) => item.relation !== 'SELF').length === 0 && <p className="empty-state">当前用户未绑定亲属</p>}
+    </Dialog>}
+    {cancellingAppointment && <Dialog title="取消已支付挂号" onClose={() => { if (!cancelling) { setCancellationPassword(''); setCancellingAppointment(undefined); } }}>
+      <p className="dialog-hint">取消后将释放该时段号源，模拟支付单仍保留支付成功记录。</p>
+      <label>登录密码<input autoComplete="current-password" type="password" value={cancellationPassword} onChange={(event) => setCancellationPassword(event.target.value)} /></label>
+      <button className="primary-button" disabled={cancelling} type="button" onClick={() => void cancelPaidAppointment()}>{cancelling ? '取消中...' : '确认取消挂号'}</button>
     </Dialog>}
     {notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}
     <BottomTab onUnavailable={() => setNotice('该页面暂未开放')} />
