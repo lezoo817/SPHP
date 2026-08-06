@@ -139,6 +139,22 @@ export function useAgentStream(): UseAgentStream {
           status: 'done',
           resultMessage: result.message || '操作成功',
         });
+        // 确认成功后追加一条 AI 消息到对话流，让用户更醒目地看到结果。
+        // 不走 send()：send 会触发新的 chatStream 请求且 streaming 时会被拦截，
+        // 这里直接 setEntries 追加纯文本消息（不发起请求、不消耗会话）。
+        const successMessage = result.message || '操作成功';
+        setEntries((prev) => [
+          ...prev,
+          {
+            kind: 'message',
+            data: {
+              id: genId('a'),
+              role: 'assistant',
+              content: successMessage,
+              createdAt: Date.now(),
+            },
+          },
+        ]);
       } catch (error) {
         const code = (error as Error & { code?: string }).code;
         // 鉴权失败：清理登录态由服务层完成，这里仅更新卡片
