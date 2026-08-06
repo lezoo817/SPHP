@@ -31,7 +31,8 @@ public class RabbitMqConfig {
         SimpleMessageConverter converter = new SimpleMessageConverter();
         // 放行本项目事件类（NotificationCreateEvent、ConsultationMessageSentEvent 等）
         // 以及事件字段中时间类型（OffsetDateTime 等）JDK 序列化使用的内部代理类 java.time.Ser
-        converter.addAllowedListPatterns("com.sphp.patient.**", "java.time.**");
+        // 物流事件使用受限状态枚举，显式放行 JDK Enum 基类而不扩大为全局信任。
+        converter.addAllowedListPatterns("com.sphp.patient.**", "java.time.**", "java.lang.Enum");
         return converter;
     }
 }

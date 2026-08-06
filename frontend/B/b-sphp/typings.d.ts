@@ -254,6 +254,10 @@ declare global {
       queueNumber: number;
       appointmentTime: string;
       status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+      /** 号源时段开始时间（HH:mm），用于接诊时段校验 */
+      slotStartTime?: string;
+      /** 号源时段结束时间（HH:mm） */
+      slotEndTime?: string;
     }
 
     /** 接诊历史项 */
@@ -306,6 +310,8 @@ declare global {
         phone: string;
         emergencyContact: string;
       };
+      /** 病历记录（结构化 JSON 或旧版纯文本），用于接诊中回显已保存病历 */
+      doctorNote?: string;
       allergies: AllergyInfo[];
       medicalHistories: MedicalHistoryInfo[];
       aiSummary?: Record<string, any>;
@@ -424,6 +430,7 @@ declare global {
       deptName: string;
       status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
       auditRequired: boolean;
+      riskWarnings?: RiskWarning[];
       rejectReason?: string;
       items: PrescriptionItem[];
       createdAt: string;
@@ -460,7 +467,7 @@ declare global {
 
     /** 风险预警 */
     interface RiskWarning {
-      level: 'WARNING' | 'ERROR';
+      level: 'WARNING' | 'ERROR' | 'AUDIT';
       rule: string;
       message: string;
     }
@@ -482,6 +489,7 @@ declare global {
       deptId: number;
       deptName: string;
       itemCount: number;
+      riskWarnings?: RiskWarning[];
       issuedAt?: string;
       createdAt: string;
     }

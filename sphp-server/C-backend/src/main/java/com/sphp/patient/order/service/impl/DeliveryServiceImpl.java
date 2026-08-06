@@ -104,7 +104,9 @@ public class DeliveryServiceImpl implements DeliveryService {
         Long userId = deliveryCurrentUserId();
         // 用户锁
         deliveryLockUser(userId);
+        // 收货地址
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, userId);
+        // 更新
         deliveryApplyUpdateRequest(address, request);
         if (deliveryAddressMapper.updateById(address) != 1) {
             throw deliveryStatusConflict("收货地址状态已变化");
@@ -123,6 +125,7 @@ public class DeliveryServiceImpl implements DeliveryService {
         Long userId = deliveryCurrentUserId();
         // 用户锁
         deliveryLockUser(userId);
+        // 收货地址
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, userId);
         OffsetDateTime now = OffsetDateTime.now();
         // 软删除
@@ -131,6 +134,7 @@ public class DeliveryServiceImpl implements DeliveryService {
         }
         // 删除默认地址后为剩余最早地址补位，维持一个稳定默认地址。
         if (Boolean.TRUE.equals(address.getIsDefault())) {
+            // 获取剩余最早地址
             DeliveryAddress fallback = deliveryDataMapper.deliverySelectFirstAddress(userId);
             if (fallback != null && deliveryDataMapper.deliverySetDefault(userId, fallback.getId(), now) != 1) {
                 throw deliveryStatusConflict("默认收货地址设置失败");
@@ -150,6 +154,7 @@ public class DeliveryServiceImpl implements DeliveryService {
         Long userId = deliveryCurrentUserId();
         // 用户锁
         deliveryLockUser(userId);
+        // 收货地址
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, userId);
         OffsetDateTime now = OffsetDateTime.now();
         // 先清空旧默认标记，再设置新默认标记以满足部分唯一索引约束。

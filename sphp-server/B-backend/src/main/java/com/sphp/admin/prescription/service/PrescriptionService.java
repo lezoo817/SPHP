@@ -7,6 +7,8 @@ import com.sphp.admin.prescription.dto.PrescriptionListVO;
 import com.sphp.admin.prescription.dto.PrescriptionSubmitRequest;
 import com.sphp.admin.prescription.dto.PrescriptionSubmitVO;
 
+import java.util.List;
+
 /**
  * 处方管理服务接口。
  */
@@ -20,6 +22,17 @@ public interface PrescriptionService {
      * AUDIT 进入待审核队列，无风险直接 APPROVED。
      */
     PrescriptionSubmitVO submit(PrescriptionSubmitRequest request);
+
+    /**
+     * 由明细直接开方（医生提交、模板应用共用入口）。
+     *
+     * <p>内部执行：问诊校验（IN_PROGRESS/归属）→ 药品校验 → 风险拦截 → 建单。
+     *
+     * @param consultId 问诊记录 ID
+     * @param items     处方明细
+     * @return 处方提交结果
+     */
+    PrescriptionSubmitVO createFromItems(Long consultId, List<PrescriptionSubmitRequest.ItemDTO> items);
 
     /**
      * 分页查询处方列表（系分 §5.6.2）。

@@ -6,7 +6,7 @@ import { getMedicationPlans, updateMedicationPlan } from '../../services/health'
 import { getMinePatientId, resolveMinePatientId, saveMinePatientId } from '../../models/mine-patient';
 import type { MedicationPlan, MedicationPlanAction } from '../../typings/api';
 import { getApiErrorMessage, createIdempotencyKey } from '../../utils/form';
-import { getMedicationActionText, getMedicationPlanActions, getMedicationPlanStatusText } from '../../utils/health-notification';
+import { formatMedicationReminderTimes, getMedicationActionText, getMedicationPlanActions, getMedicationPlanStatusText, getMedicationReminderAction } from '../../utils/health-notification';
 import { formatMedicalTime } from '../../utils/medical';
 
 /** 展示当前“我的”就诊人的用药提醒与用药计划操作。 */
@@ -64,7 +64,12 @@ export default function MedicationPlansPage() {
 
   return <main className="subpage"><PageHeader title="用药提醒" /><section className="subpage-content plan-page"><header className="plan-page__intro"><Pill size={25} /><div><h2>{patientName}的用药计划</h2><p>按计划服用并及时更新执行状态</p></div></header>
     {loading && <p className="empty-state">正在读取用药计划...</p>}
-    {!loading && plans.map((plan) => <article className="plan-card" key={plan.id}><div className="plan-card__top"><div><h3>{plan.drugName}</h3><p>{plan.dosage} · {plan.frequency}</p></div><em className={`status-tag ${plan.status.toLowerCase()}`}>{getMedicationPlanStatusText(plan.status)}</em></div><p className="plan-time"><Clock3 size={17} />下次提醒：{plan.nextReminderAt ? formatMedicalTime(plan.nextReminderAt) : '暂未设置'}</p>{getMedicationPlanActions(plan.status).length > 0 && <div className="plan-actions">{getMedicationPlanActions(plan.status).map((action) => <button className={action === 'COMPLETE' ? 'secondary-button' : 'plan-action-button'} disabled={Boolean(submitting)} key={action} type="button" onClick={() => void changePlan(plan, action)}>{submitting === `${plan.id}:${action}` ? '处理中...' : getMedicationActionText(action)}</button>)}</div>}</article>)}
+    {!loading && plans.map((plan) => {
+      const reminderAction = getMedicationReminderAction(plan);
+      const planActions = getMedicationPlanActions(plan.status);
+      const reminderTimes = formatMedicationReminderTimes(plan.reminderTimes);
+      return <article className="plan-card" key={plan.id}><div className="plan-card__top"><div><h3>{plan.drugName}</h3><p>{plan.dosage} · {plan.frequency}</p></div><em className={`status-tag ${plan.status.toLowerCase()}`}>{getMedicationPlanStatusText(plan.status)}</em></div><p className="plan-time"><Clock3 size={17} />下次提醒：{plan.nextReminderAt ? formatMedicalTime(plan.nextReminderAt) : '暂未设置'}</p>{plan.reminderEnabled && reminderTimes && <p className="plan-time plan-reminder-times"><Clock3 size={17} />提醒时刻：{reminderTimes}</p>}{(reminderAction || planActions.length > 0) && <div className="plan-actions">{reminderAction && <button className={reminderAction === 'DISABLE_REMINDER' ? 'secondary-button' : 'plan-action-button'} disabled={Boolean(submitting)} type="button" onClick={() => void changePlan(plan, reminderAction)}>{submitting === `${plan.id}:${reminderAction}` ? '处理中...' : getMedicationActionText(reminderAction)}</button>}{planActions.map((action) => <button className={action === 'COMPLETE' ? 'secondary-button' : 'plan-action-button'} disabled={Boolean(submitting)} key={action} type="button" onClick={() => void changePlan(plan, action)}>{submitting === `${plan.id}:${action}` ? '处理中...' : getMedicationActionText(action)}</button>)}</div>}</article>;
+    })}
     {!loading && !plans.length && <p className="empty-state">暂无用药提醒</p>}
   </section>{notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}</main>;
 }

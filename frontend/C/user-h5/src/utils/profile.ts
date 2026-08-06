@@ -7,7 +7,17 @@ export interface ProfileFormValues {
   gender: '' | 'MALE' | 'FEMALE' | 'UNKNOWN';
   birthday: string;
   phone: string;
+  idCardNo: string;
   emergencyContact: string;
+}
+
+/**
+ * 规范化身份证号输入，防止空白字符和小写校验位进入更新请求。
+ * @param idCardNo 用户输入的身份证号
+ * @returns 去除空白并转换为大写后的身份证号
+ */
+export function normalizeProfileIdCardNo(idCardNo: string): string {
+  return idCardNo.replace(/\s/g, '').toUpperCase();
 }
 
 /**
@@ -22,6 +32,7 @@ export function validateProfileForm(values: ProfileFormValues): string | undefin
   if (values.gender && !['MALE', 'FEMALE', 'UNKNOWN'].includes(values.gender)) return '性别选择不合法';
   if (values.birthday && values.birthday > new Date().toISOString().slice(0, 10)) return '出生日期不能晚于当天';
   if (values.phone.trim() && !/^1[3-9]\d{9}$/.test(values.phone.trim())) return '手机号格式不正确';
+  if (values.idCardNo.trim() && !/^(\d{15}|\d{17}[0-9X])$/.test(normalizeProfileIdCardNo(values.idCardNo))) return '身份证号格式不正确';
   if (values.emergencyContact.trim().length > 256) return '紧急联系人长度不能超过256位';
   return undefined;
 }
@@ -33,6 +44,7 @@ export function validateProfileForm(values: ProfileFormValues): string | undefin
  */
 export function buildProfileUpdatePayload(values: ProfileFormValues): ProfileUpdatePayload {
   const phone = values.phone.trim();
+  const idCardNo = normalizeProfileIdCardNo(values.idCardNo);
   const emergencyContact = values.emergencyContact.trim();
   return {
     name: values.name.trim(),
@@ -40,6 +52,7 @@ export function buildProfileUpdatePayload(values: ProfileFormValues): ProfileUpd
     ...(values.birthday ? { birthday: values.birthday } : {}),
     // 敏感字段为空表示不修改，不能把脱敏展示值重新提交。
     ...(phone ? { phone } : {}),
+    ...(idCardNo ? { idCardNo } : {}),
     ...(emergencyContact ? { emergencyContact } : {}),
   };
 }

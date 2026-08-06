@@ -29,6 +29,14 @@ public class ProposalMedicationPlan extends BaseDeleteDO {
     @TableField("next_remind_at")
     private OffsetDateTime nextRemindAt;
 
+    // 是否由用户手动开启用药提醒
+    @TableField("reminder_enabled")
+    private Boolean reminderEnabled;
+
+    // 根据处方频次生成的每日提醒时刻 JSON 数组
+    @TableField("reminder_times")
+    private String reminderTimesJson;
+
     // 状态
     private String status;
 

@@ -68,8 +68,8 @@
     <select id="selectOrderList" resultType="com.sphp.patient.order.mapper.OrderListRecord">
         SELECT o.id, o.prescription_id, <include refid="orderNameExpression"/> AS order_name, COALESCE(o.pharmacy_name_snapshot, ph.name) AS pharmacy_name, o.status, o.logistics_status,
                (SELECT t.node FROM drug_order_logistics_trace t WHERE t.drug_order_id=o.id ORDER BY t.occurred_at DESC, t.id DESC LIMIT 1) AS latest_logistics_node,
-               o.amount_cent, o.expire_at
-        FROM drug_order o LEFT JOIN pharmacy ph ON ph.id=o.pharmacy_id
+               o.amount_cent, o.expire_at, p.name AS patient_name
+        FROM drug_order o INNER JOIN patient p ON p.id=o.patient_id AND p.deleted_at IS NULL LEFT JOIN pharmacy ph ON ph.id=o.pharmacy_id
         WHERE o.patient_id=#{patientId} AND o.deleted_at IS NULL
         <if test="status != null and status != ''">AND o.status=#{status}</if>
         <if test="logisticsStatus != null and logisticsStatus != ''">AND o.logistics_status=#{logisticsStatus}</if>
@@ -85,8 +85,10 @@
     <select id="selectOrderDetail" resultType="com.sphp.patient.order.mapper.OrderDetailRecord">
         SELECT o.id, o.prescription_id, o.patient_id, o.pharmacy_id, COALESCE(o.pharmacy_name_snapshot, ph.name) AS pharmacy_name, o.status,
                o.delivery_method, o.delivery_address, o.logistics_company, o.tracking_no, o.logistics_status, o.amount_cent, o.expire_at,
-               po.id AS payment_id, po.status AS payment_status
-        FROM drug_order o LEFT JOIN pharmacy ph ON ph.id=o.pharmacy_id LEFT JOIN payment_order po ON po.drug_order_id=o.id
+               po.id AS payment_id, po.status AS payment_status, p.name AS patient_name, p.phone_ciphertext AS patient_phone,
+               po.paid_at + INTERVAL '60 seconds' AS expected_delivery_at
+        FROM drug_order o INNER JOIN patient p ON p.id=o.patient_id AND p.deleted_at IS NULL
+        LEFT JOIN pharmacy ph ON ph.id=o.pharmacy_id LEFT JOIN payment_order po ON po.drug_order_id=o.id
         WHERE o.id=#{drugOrderId} AND o.deleted_at IS NULL
     </select>
     <select id="selectOrderItems" resultType="com.sphp.patient.order.mapper.OrderItemRecord">
@@ -111,10 +113,26 @@
     </select>
     <update id="markDrugOrderPaymentSuccess">UPDATE payment_order SET status='SUCCESS', paid_at=#{now}, updated_at=#{now} WHERE id=#{paymentId} AND status='PENDING'</update>
     <update id="markDrugOrderPaid">UPDATE drug_order SET status='PAID', updated_at=#{now} WHERE id=#{drugOrderId} AND status='PENDING_PAYMENT' AND deleted_at IS NULL</update>
+    <update id="advanceDrugOrderLogistics">
+        UPDATE drug_order
+        SET logistics_status = #{targetLogisticsStatus},
+            shipped_at = CASE WHEN #{targetLogisticsStatus} = 'IN_TRANSIT' THEN #{now} ELSE shipped_at END,
+            delivered_at = CASE WHEN #{targetLogisticsStatus} = 'TO_RECEIVE' THEN #{now} ELSE delivered_at END,
+            updated_at = #{now}
+        WHERE id = #{drugOrderId}
+          AND status = 'PAID'
+          AND logistics_status = #{expectedLogisticsStatus}
+          AND deleted_at IS NULL
+    </update>
+    <insert id="insertDrugOrderLogisticsTrace">
+        INSERT INTO drug_order_logistics_trace (drug_order_id, node, occurred_at)
+        VALUES (#{drugOrderId}, #{node}, #{occurredAt})
+    </insert>
     <insert id="createMedicationPlans">
-        INSERT INTO medication_plan (patient_id, prescription_item_id, drug_name_snapshot, frequency, usage_method, dosage, duration_days, status, created_at, updated_at)
+        INSERT INTO medication_plan (patient_id, prescription_item_id, drug_name_snapshot, frequency, usage_method, dosage, duration_days,
+                                     status, reminder_enabled, created_at, updated_at)
         SELECT o.patient_id, pi.id, LEFT(doi.drug_name_snapshot, 128), COALESCE(pi.frequency, '按医嘱'), pi.usage_method,
-               pi.dosage, pi.days, 'ACTIVE', #{now}, #{now}
+               pi.dosage, pi.days, 'ACTIVE', false, #{now}, #{now}
         FROM drug_order o INNER JOIN drug_order_item doi ON doi.drug_order_id=o.id
         INNER JOIN prescription_item pi ON pi.prescription_id=o.prescription_id AND pi.drug_id=doi.drug_id
         WHERE o.id=#{drugOrderId}

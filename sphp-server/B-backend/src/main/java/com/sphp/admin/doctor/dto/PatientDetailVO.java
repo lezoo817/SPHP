@@ -26,6 +26,9 @@ public class PatientDetailVO {
     @Schema(description = "问诊记录 ID")
     private Long consultId;
 
+    @Schema(description = "病历记录（结构化 JSON 或旧版纯文本），用于接诊中回显已保存病历")
+    private String doctorNote;
+
     @Schema(description = "患者基本信息")
     private PatientInfo patient;
 

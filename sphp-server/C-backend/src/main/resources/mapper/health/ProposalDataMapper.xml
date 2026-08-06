@@ -123,6 +123,8 @@
                dosage,
                frequency,
                next_remind_at,
+               reminder_enabled,
+               reminder_times::text AS reminder_times_json,
                status
         FROM medication_plan
         WHERE patient_id = #{patientId}
@@ -140,6 +142,8 @@
                dosage,
                frequency,
                next_remind_at,
+               reminder_enabled,
+               reminder_times::text AS reminder_times_json,
                status
         FROM medication_plan
         WHERE id = #{planId}
@@ -150,6 +154,8 @@
         UPDATE medication_plan
         SET status         = #{status},
             next_remind_at = #{nextRemindAt},
+            reminder_enabled = #{reminderEnabled},
+            reminder_times = CAST(#{reminderTimesJson, jdbcType=VARCHAR} AS jsonb),
             end_at         = #{endAt},
             updated_at     = #{now}
         WHERE id = #{planId}

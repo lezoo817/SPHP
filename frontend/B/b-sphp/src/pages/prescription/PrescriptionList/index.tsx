@@ -2,7 +2,7 @@
  * 处方列表页
  * - ProTable 列表，支持问诊ID/患者ID/状态筛选
  * - DRAFT 状态可提交处方（调用 POST /api/b/prescriptions）
- * - 提交后处理红线拦截 / 待审核 / 风险提示三种结果
+ * - 提交后处理红线拦截 / 待审核（含重复用药、高危风险）两种结果
  * - 查看详情弹窗
  */
 import {
@@ -14,13 +14,11 @@ import {
   Space,
   Table,
   Descriptions,
-  List,
   Typography,
 } from 'antd';
 import {
   EyeOutlined,
   SendOutlined,
-  WarningOutlined,
 } from '@ant-design/icons';
 import { ProTable } from '@ant-design/pro-components';
 import { useModel, useNavigate, useLocation } from '@umijs/max';
@@ -123,34 +121,12 @@ export default function PrescriptionList() {
           }
 
           if (result.auditRequired) {
-            // 进入待审核
+            // 命中风险规则（重复用药/高危）→ 进入待审核
             Modal.success({
               title: '提交成功',
               content: '处方已提交审核，请等待审核结果',
               okText: '前往待审核列表',
               onOk: () => navigate('/prescription/pending-audit'),
-            });
-          } else if (result.riskWarnings?.length > 0) {
-            // 有风险警告但已通过
-            Modal.warning({
-              title: '处方已通过（含风险提示）',
-              width: 520,
-              content: (
-                <List
-                  size="small"
-                  dataSource={result.riskWarnings}
-                  renderItem={(w: API.RiskWarning) => (
-                    <List.Item>
-                      <Space>
-                        <WarningOutlined style={{ color: '#faad14' }} />
-                        <Text strong>{w.rule}</Text>
-                        <Text type="secondary">{w.message}</Text>
-                      </Space>
-                    </List.Item>
-                  )}
-                />
-              ),
-              okText: '知道了',
             });
           } else {
             message.success('处方提交成功');

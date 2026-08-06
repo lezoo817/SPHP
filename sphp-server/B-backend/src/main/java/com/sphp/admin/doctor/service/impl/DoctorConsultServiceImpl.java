@@ -30,6 +30,7 @@ import com.sphp.admin.doctor.mapper.ConsultRecordMapper;
 import com.sphp.admin.doctor.mapper.BPatientAllergyMapper;
 import com.sphp.admin.doctor.mapper.BPatientMedicalHistoryMapper;
 import com.sphp.admin.doctor.mapper.QueueRow;
+import com.sphp.admin.doctor.mapper.SlotTimeInfo;
 import com.sphp.admin.doctor.service.DoctorConsultService;
 import com.sphp.admin.prescription.entity.Prescription;
 import com.sphp.admin.prescription.entity.PrescriptionItem;
@@ -43,6 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.Period;
 import java.util.Collections;
@@ -151,6 +153,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
 
         return PatientDetailVO.builder()
                 .consultId(record.getId())
+                .doctorNote(record.getDoctorNote())
                 .patient(PatientDetailVO.PatientInfo.builder()
                         .id(patient.getId())
                         .name(patient.getName())
@@ -190,6 +193,16 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
         long inProgress = consultRecordMapper.countInProgressByDoctor(record.getDoctorId());
         if (inProgress > 0) {
             throw new BusinessException("3012", "医生当前存在未结束的接诊记录");
+        }
+
+        // 校验当前时间是否在号源时段内
+        SlotTimeInfo slotTime = consultRecordMapper.selectSlotTimeByConsultId(consultId);
+        if (slotTime == null) {
+            throw new BusinessException("A0400", "未找到号源时段信息，无法接诊");
+        }
+        LocalTime now = LocalTime.now();
+        if (now.isBefore(slotTime.getStartTime()) || now.isAfter(slotTime.getEndTime())) {
+            throw new BusinessException("A0443", "当前不在接诊时间内（" + slotTime.getStartTime() + "~" + slotTime.getEndTime() + "）");
         }
 
         record.setStatus(STATUS_IN_PROGRESS);
@@ -437,6 +450,8 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 .queueNumber(row.getQueueNumber())
                 .appointmentTime(row.getAppointmentTime())
                 .status(row.getStatus())
+                .slotStartTime(row.getSlotStartTime() != null ? row.getSlotStartTime().toString() : null)
+                .slotEndTime(row.getSlotEndTime() != null ? row.getSlotEndTime().toString() : null)
                 .build();
     }
 

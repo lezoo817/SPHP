@@ -2,6 +2,20 @@ import type { DrugOrder, DrugOrderDetail } from '../typings/api';
 import { formatAmount } from './medical';
 import { getLogisticsStatusText } from './pharmacy';
 
+/** 物流进度阶段状态。 */
+export type DrugOrderLogisticsStepState = 'done' | 'active' | 'pending';
+
+/** 物流进度步骤展示对象。 */
+export interface DrugOrderLogisticsStep {
+  /** 步骤名称。 */
+  label: string;
+  /** 步骤展示状态。 */
+  state: DrugOrderLogisticsStepState;
+}
+
+/** 横向物流进度的固定步骤。 */
+const DRUG_ORDER_LOGISTICS_STEPS = ['待发货', '运输中', '待收货', '已收货'];
+
 /**
  * 判断购药订单是否仍处于待支付状态。
  * @param status 后端购药订单状态
@@ -61,6 +75,68 @@ export function getDrugOrderLogisticsText(detail: DrugOrderDetail | undefined): 
   const logisticsStatus = detail?.delivery?.logisticsStatus || detail?.logisticsStatus;
   if (logisticsStatus) return getLogisticsStatusText(logisticsStatus);
   return isPendingDrugOrder(detail?.status) ? '待支付' : '配送中';
+}
+
+/**
+ * 将后端物流状态转换为横向进度步骤，兼容历史已发货状态。
+ * @param logisticsStatus 后端物流状态
+ * @returns 四阶段物流进度步骤
+ */
+export function getDrugOrderLogisticsSteps(logisticsStatus?: string): DrugOrderLogisticsStep[] {
+  const statusIndex = ({
+    PENDING_SHIPMENT: 0,
+    SHIPPED: 1,
+    IN_TRANSIT: 1,
+    TO_RECEIVE: 2,
+    RECEIVED: 3,
+  } as Record<string, number>)[logisticsStatus || ''] ?? 0;
+  return DRUG_ORDER_LOGISTICS_STEPS.map((label, index) => ({
+    label,
+    state: logisticsStatus === 'RECEIVED' || index < statusIndex ? 'done' : index === statusIndex ? 'active' : 'pending',
+  }));
+}
+
+/**
+ * 将时间格式化为上海时区的 YYYY/MM/DD HH:mm。
+ * @param value ISO 时间或 Date 对象
+ * @returns 固定格式时间；无效值时返回时间待确认
+ */
+export function formatDrugOrderLogisticsTime(value?: string | Date): string {
+  const date = value instanceof Date ? value : value ? new Date(value) : undefined;
+  if (!date || Number.isNaN(date.getTime())) return '时间待确认';
+  const values = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date).reduce<Record<string, string>>((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  return `${values.year}/${values.month}/${values.day} ${values.hour}:${values.minute}`;
+}
+
+/**
+ * 读取后端模拟物流返回的预计送达时间，不在 H5 端推算配送时长。
+ * @param detail 购药订单详情
+ * @returns YYYY/MM/DD HH:mm 格式的预计送达时间；后端未返回时为 undefined
+ */
+export function getDrugOrderExpectedDeliveryTime(detail: DrugOrderDetail | undefined): string | undefined {
+  const expectedDeliveryAt = detail?.delivery?.expectedDeliveryAt;
+  return expectedDeliveryAt ? formatDrugOrderLogisticsTime(expectedDeliveryAt) : undefined;
+}
+
+/**
+ * 判断物流详情页面是否需要继续轮询服务端状态。
+ * @param detail 购药订单详情
+ * @returns 已支付且未确认收货时返回 true
+ */
+export function shouldPollDrugOrderLogistics(detail: DrugOrderDetail | undefined): boolean {
+  const logisticsStatus = detail?.delivery?.logisticsStatus || detail?.logisticsStatus;
+  return detail?.status === 'PAID' && logisticsStatus !== 'RECEIVED';
 }
 
 /**

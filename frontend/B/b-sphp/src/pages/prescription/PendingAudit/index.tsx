@@ -14,6 +14,7 @@ import {
   Input,
   Descriptions,
   Table,
+  Alert,
 } from 'antd';
 import {
   CheckCircleOutlined,
@@ -161,6 +162,28 @@ export default function PendingAudit() {
       render: () => <Tag color={STATUS_TAG.color}>{STATUS_TAG.text}</Tag>,
     },
     {
+      title: '风险',
+      dataIndex: 'riskWarnings',
+      width: 180,
+      ellipsis: true,
+      hideInSearch: true,
+      render: (_, record) => {
+        const warnings = record.riskWarnings;
+        if (!warnings || warnings.length === 0) {
+          return <Text type="secondary">-</Text>;
+        }
+        return (
+          <Space size={4} wrap>
+            {warnings.map((w, i) => (
+              <Tag key={i} color={w.level === 'AUDIT' ? 'red' : 'orange'}>
+                {w.rule}
+              </Tag>
+            ))}
+          </Space>
+        );
+      },
+    },
+    {
       title: '提交时间',
       dataIndex: 'createdAt',
       width: 160,
@@ -259,6 +282,25 @@ export default function PendingAudit() {
                 </Descriptions.Item>
               )}
             </Descriptions>
+
+            {detailData.riskWarnings && detailData.riskWarnings.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                  风险提示
+                </Text>
+                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                  {detailData.riskWarnings.map((w, i) => (
+                    <Alert
+                      key={i}
+                      type={w.level === 'AUDIT' ? 'warning' : 'info'}
+                      showIcon
+                      message={w.rule}
+                      description={w.message}
+                    />
+                  ))}
+                </Space>
+              </div>
+            )}
 
             <Text strong style={{ display: 'block', marginBottom: 8 }}>
               处方明细（{detailData.items.length} 项）

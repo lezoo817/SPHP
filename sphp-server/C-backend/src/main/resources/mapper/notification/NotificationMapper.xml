@@ -20,6 +20,7 @@
         <result property="patientId" column="patient_id"/>
         <result property="patientName" column="patient_name"/>
         <result property="dueAt" column="due_at"/>
+        <result property="reminderTimesJson" column="reminder_times_json"/>
     </resultMap>
 
     <sql id="NotificationColumns">
@@ -43,15 +44,28 @@
     </select>
 
     <select id="selectDueMedicationReminders" resultMap="NotificationReminderRecordMap">
-        SELECT mp.id AS business_id, pur.user_id, mp.patient_id, p.name AS patient_name, mp.next_remind_at AS due_at
+        SELECT mp.id AS business_id, pur.user_id, mp.patient_id, p.name AS patient_name, mp.next_remind_at AS due_at,
+               mp.reminder_times::text AS reminder_times_json
         FROM medication_plan mp
         INNER JOIN patient p ON p.id = mp.patient_id AND p.deleted_at IS NULL
         INNER JOIN patient_user_relation pur ON pur.patient_id = mp.patient_id AND pur.deleted_at IS NULL
         LEFT JOIN notification n ON n.user_id = pur.user_id
             AND n.event_id = CONCAT('REMINDER:', mp.id, ':', FLOOR(EXTRACT(EPOCH FROM mp.next_remind_at) * 1000)::bigint)
-        WHERE mp.status = 'ACTIVE' AND mp.next_remind_at IS NOT NULL AND mp.next_remind_at &lt;= #{now}
+        WHERE mp.status = 'ACTIVE' AND mp.reminder_enabled = true
+          AND mp.next_remind_at IS NOT NULL AND mp.next_remind_at &lt;= #{now}
           AND mp.deleted_at IS NULL AND n.id IS NULL
     </select>
+
+    <update id="advanceMedicationReminder">
+        UPDATE medication_plan
+        SET next_remind_at = #{nextRemindAt},
+            updated_at = #{now}
+        WHERE id = #{planId}
+          AND next_remind_at = #{dueAt}
+          AND status = 'ACTIVE'
+          AND reminder_enabled = true
+          AND deleted_at IS NULL
+    </update>
 
     <select id="selectDueFollowUpReminders" resultMap="NotificationReminderRecordMap">
         SELECT fp.id AS business_id, pur.user_id, fp.patient_id, p.name AS patient_name, fp.remind_at AS due_at

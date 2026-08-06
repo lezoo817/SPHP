@@ -21,6 +21,7 @@ import {
   message,
   Modal,
   Badge,
+  Tooltip,
 } from 'antd';
 import {
   UserOutlined,
@@ -50,6 +51,7 @@ import {
   sendMessage,
   getConsultHistory,
   getConsultHistoryDetail,
+  getPrescriptions,
 } from '@/services/admin';
 import dayjs from 'dayjs';
 import styles from './index.module.less';
@@ -106,6 +108,17 @@ export default function ConsultQueue() {
   const [doctorNote, setDoctorNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [noteChanged, setNoteChanged] = useState(false);
+
+  // 结构化病历表单
+  const [reportChiefComplaint, setReportChiefComplaint] = useState('');
+  const [reportPresentIllness, setReportPresentIllness] = useState('');
+  const [reportPhysicalExam, setReportPhysicalExam] = useState('');
+  const [reportDiagnosis, setReportDiagnosis] = useState('');
+  const [reportTreatmentPlan, setReportTreatmentPlan] = useState('');
+  const [reportGeneratedAt, setReportGeneratedAt] = useState<string>('');
+
+  // 当前问诊的处方列表
+  const [consultPrescriptions, setConsultPrescriptions] = useState<API.Prescription[]>([]);
 
   // 留言板
   const [messages, setMessages] = useState<API.MessageVO[]>([]);
@@ -171,9 +184,34 @@ export default function ConsultQueue() {
     setDoctorNote('');
     setMessages([]);
     setNoteChanged(false);
+    setReportChiefComplaint('');
+    setReportPresentIllness('');
+    setReportPhysicalExam('');
+    setReportDiagnosis('');
+    setReportTreatmentPlan('');
+    setReportGeneratedAt('');
+    setConsultPrescriptions([]);
     try {
       const detail = await getPatientDetail(item.consultId);
       setPatientDetail(detail);
+      // 回显已保存的病历（结构化 JSON，兼容旧版纯文本）
+      if (detail.doctorNote) {
+        try {
+          const parsedNote = JSON.parse(detail.doctorNote);
+          if (parsedNote && typeof parsedNote === 'object') {
+            setReportChiefComplaint(parsedNote.chiefComplaint ?? '');
+            setReportPresentIllness(parsedNote.presentIllness ?? '');
+            setReportPhysicalExam(parsedNote.physicalExamination ?? '');
+            setReportDiagnosis(parsedNote.diagnosis ?? '');
+            setReportTreatmentPlan(parsedNote.treatmentPlan ?? '');
+            setReportGeneratedAt(parsedNote.generatedAt ?? '');
+          }
+        } catch {
+          // 旧数据为纯文本病历，不回显到结构化表单
+        }
+      }
+      // 加载处方
+      loadConsultPrescriptions(item.consultId);
     } catch (err: any) {
       message.error(err?.message || '加载患者详情失败');
     } finally {
@@ -185,6 +223,20 @@ export default function ConsultQueue() {
 
   const handleStartConsult = async () => {
     if (!selectedConsultId) return;
+
+    // 前端时段校验：从队列中找到当前患者，检查当前时间是否在号源时段内
+    const selectedItem = queueItems.find((i) => i.consultId === selectedConsultId);
+    if (selectedItem?.slotStartTime && selectedItem?.slotEndTime) {
+      const now = dayjs();
+      const start = dayjs(selectedItem.slotStartTime, 'HH:mm');
+      const end = dayjs(selectedItem.slotEndTime, 'HH:mm');
+      const currentTime = dayjs(`${now.format('HH:mm')}`, 'HH:mm');
+      if (currentTime.isBefore(start) || currentTime.isAfter(end)) {
+        message.warning(`当前不在接诊时间内（${selectedItem.slotStartTime}~${selectedItem.slotEndTime}）`);
+        return;
+      }
+    }
+
     setStartingConsult(true);
     try {
       await startConsult(selectedConsultId);
@@ -193,6 +245,8 @@ export default function ConsultQueue() {
       setQueueTab('IN_PROGRESS');
       await loadQueue(1);
       loadMessages();
+      // 重新加载处方
+      loadConsultPrescriptions(selectedConsultId);
     } catch (err: any) {
       message.error(err?.message || '开始接诊失败');
     } finally {
@@ -232,15 +286,27 @@ export default function ConsultQueue() {
 
   const handleSaveNote = async () => {
     if (!selectedConsultId) return;
-    if (!doctorNote.trim()) {
-      message.warning('请输入病历内容');
+    // 构建结构化病历 JSON
+    const reportData: Record<string, string> = {
+      chiefComplaint: reportChiefComplaint,
+      presentIllness: reportPresentIllness,
+      physicalExamination: reportPhysicalExam,
+      diagnosis: reportDiagnosis,
+      treatmentPlan: reportTreatmentPlan,
+      doctorName: currentUser?.name ?? '',
+      generatedAt: dayjs().format('YYYY-MM-DD HH:mm'),
+    };
+    const noteJson = JSON.stringify(reportData, null, 2);
+    if (!reportChiefComplaint.trim() && !reportDiagnosis.trim()) {
+      message.warning('请至少填写主诉或诊断');
       return;
     }
     setSavingNote(true);
     try {
-      await saveNote(selectedConsultId, { doctorNote });
+      await saveNote(selectedConsultId, { doctorNote: noteJson });
       message.success('病历已保存');
       setNoteChanged(false);
+      setReportGeneratedAt(reportData.generatedAt);
     } catch (err: any) {
       message.error(err?.message || '保存病历失败');
     } finally {
@@ -262,6 +328,16 @@ export default function ConsultQueue() {
       setMessagesLoading(false);
     }
   }, [selectedConsultId]);
+
+  /** 加载当前问诊的处方列表 */
+  const loadConsultPrescriptions = useCallback(async (consultId: number) => {
+    try {
+      const res = await getPrescriptions({ consultId, page: 1, size: 20 });
+      setConsultPrescriptions(res.list ?? []);
+    } catch {
+      // 静默失败
+    }
+  }, []);
 
   useEffect(() => {
     if (selectedStatus === 'IN_PROGRESS' && selectedConsultId) {
@@ -692,12 +768,72 @@ export default function ConsultQueue() {
           <Spin spinning={historyDetailLoading}>
             {historyDetail ? (
               <div style={{ padding: '4px 0' }}>
-                <div className={styles.sectionTitle}>
-                  <FileTextOutlined /> 病历记录
-                </div>
-                <div style={{ margin: '8px 0', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
-                  {historyDetail.doctorNote || '无病历记录'}
-                </div>
+                {/* 结构化病历报告展示 */}
+                {(() => {
+                  let reportData: Record<string, string> | null = null;
+                  try {
+                    if (historyDetail.doctorNote) {
+                      reportData = JSON.parse(historyDetail.doctorNote);
+                    }
+                  } catch { /* 兼容旧数据（纯文本） */ }
+
+                  if (reportData && reportData.chiefComplaint !== undefined) {
+                    // 结构化病历展示
+                    return (
+                      <div>
+                        {reportData.chiefComplaint && (
+                          <div style={{ marginBottom: 12 }}>
+                            <div className={styles.sectionTitle}>主诉</div>
+                            <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.7, marginTop: 4 }}>{reportData.chiefComplaint}</div>
+                          </div>
+                        )}
+                        {reportData.presentIllness && (
+                          <div style={{ marginBottom: 12 }}>
+                            <div className={styles.sectionTitle}>现病史</div>
+                            <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.7, marginTop: 4 }}>{reportData.presentIllness}</div>
+                          </div>
+                        )}
+                        {reportData.physicalExamination && (
+                          <div style={{ marginBottom: 12 }}>
+                            <div className={styles.sectionTitle}>查体</div>
+                            <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.7, marginTop: 4 }}>{reportData.physicalExamination}</div>
+                          </div>
+                        )}
+                        {reportData.diagnosis && (
+                          <div style={{ marginBottom: 12 }}>
+                            <div className={styles.sectionTitle}>诊断</div>
+                            <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.7, marginTop: 4 }}>{reportData.diagnosis}</div>
+                          </div>
+                        )}
+                        {reportData.treatmentPlan && (
+                          <div style={{ marginBottom: 12 }}>
+                            <div className={styles.sectionTitle}>治疗方案</div>
+                            <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.7, marginTop: 4 }}>{reportData.treatmentPlan}</div>
+                          </div>
+                        )}
+                        {(reportData.doctorName || reportData.generatedAt) && (
+                          <div style={{ fontSize: 12, color: '#999', marginTop: 8 }}>
+                            {reportData.doctorName && (
+                              <span style={{ marginRight: 16 }}>医生签名：{reportData.doctorName}</span>
+                            )}
+                            {reportData.generatedAt && <>病历报告生成时间：{reportData.generatedAt}</>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  // 纯文本病历（兼容旧数据）
+                  if (historyDetail.doctorNote) {
+                    return (
+                      <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
+                        {historyDetail.doctorNote}
+                      </div>
+                    );
+                  }
+
+                  return <Text type="secondary">无病历记录</Text>;
+                })()}
 
                 {historyDetail.prescriptions.length > 0 && (
                   <>
@@ -745,19 +881,40 @@ export default function ConsultQueue() {
           </Spin>
         ) : selectedStatus === 'PENDING' ? (
           <div className={styles.startConsultArea}>
-            <Button
-              type="primary"
-              size="large"
-              icon={<PlayCircleOutlined />}
-              loading={startingConsult}
-              onClick={handleStartConsult}
-              block
-            >
-              开始接诊
-            </Button>
-            <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginTop: 8 }}>
-              点击后开始接诊，将进入接诊中状态
-            </Text>
+            {(() => {
+              const selectedItem = queueItems.find((i) => i.consultId === selectedConsultId);
+              const hasSlotTime = selectedItem?.slotStartTime && selectedItem?.slotEndTime;
+              const slotInfo = hasSlotTime ? `${selectedItem!.slotStartTime}~${selectedItem!.slotEndTime}` : '';
+              const now = dayjs();
+              const start = hasSlotTime ? dayjs(selectedItem!.slotStartTime!, 'HH:mm') : null;
+              const end = hasSlotTime ? dayjs(selectedItem!.slotEndTime!, 'HH:mm') : null;
+              const currentTime = dayjs(`${now.format('HH:mm')}`, 'HH:mm');
+              const withinSlot = !start || !end || (!currentTime.isBefore(start) && !currentTime.isAfter(end));
+              return (
+                <>
+                  <Tooltip title={!withinSlot ? `不在接诊时间内（${slotInfo}）` : ''}>
+                    <Button
+                      type="primary"
+                      size="large"
+                      icon={<PlayCircleOutlined />}
+                      loading={startingConsult}
+                      onClick={handleStartConsult}
+                      disabled={!withinSlot}
+                      block
+                    >
+                      开始接诊
+                    </Button>
+                  </Tooltip>
+                  <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginTop: 8 }}>
+                    {slotInfo ? `预约时段：${slotInfo}` : '未配置号源时段'}
+                    {slotInfo && !withinSlot ? '（当前不在接诊时间内）' : ''}
+                  </Text>
+                  <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginTop: 4 }}>
+                    点击后开始接诊，将进入接诊中状态
+                  </Text>
+                </>
+              );
+            })()}
           </div>
         ) : selectedStatus === 'IN_PROGRESS' ? (
           <div className={styles.inProgressArea}>
@@ -773,31 +930,104 @@ export default function ConsultQueue() {
               结束问诊
             </Button>
 
-            {/* 病历编辑 */}
+            {/* 病历记录 - 结构化表单 */}
             <div className={styles.noteSection}>
               <div className={styles.sectionTitle}>
                 <FileTextOutlined /> 病历记录
               </div>
-              <TextArea
-                rows={6}
-                value={doctorNote}
-                onChange={(e) => {
-                  setDoctorNote(e.target.value);
-                  setNoteChanged(true);
-                }}
-                placeholder={'请输入病历内容\n主诉：...\n现病史：...\n查体：...\n诊断：...\n治疗方案：...'}
-                style={{ marginBottom: 8 }}
-              />
-              <Button
-                type="primary"
-                icon={<SaveOutlined />}
-                loading={savingNote}
-                onClick={handleSaveNote}
-                disabled={!noteChanged}
-                size="small"
-              >
-                保存病历
-              </Button>
+
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>主诉</div>
+                <TextArea
+                  rows={2}
+                  value={reportChiefComplaint}
+                  onChange={(e) => { setReportChiefComplaint(e.target.value); setNoteChanged(true); }}
+                  placeholder="患者主要症状及持续时间"
+                  style={{ marginBottom: 8 }}
+                />
+
+                <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>现病史</div>
+                <TextArea
+                  rows={2}
+                  value={reportPresentIllness}
+                  onChange={(e) => { setReportPresentIllness(e.target.value); setNoteChanged(true); }}
+                  placeholder="发病经过、诊治情况"
+                  style={{ marginBottom: 8 }}
+                />
+
+                <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>查体</div>
+                <TextArea
+                  rows={2}
+                  value={reportPhysicalExam}
+                  onChange={(e) => { setReportPhysicalExam(e.target.value); setNoteChanged(true); }}
+                  placeholder="生命体征、专科检查"
+                  style={{ marginBottom: 8 }}
+                />
+
+                <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>诊断</div>
+                <TextArea
+                  rows={2}
+                  value={reportDiagnosis}
+                  onChange={(e) => { setReportDiagnosis(e.target.value); setNoteChanged(true); }}
+                  placeholder="初步诊断"
+                  style={{ marginBottom: 8 }}
+                />
+
+                <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>治疗方案</div>
+                <TextArea
+                  rows={2}
+                  value={reportTreatmentPlan}
+                  onChange={(e) => { setReportTreatmentPlan(e.target.value); setNoteChanged(true); }}
+                  placeholder="治疗建议、注意事项"
+                  style={{ marginBottom: 8 }}
+                />
+              </div>
+
+              <Space style={{ marginBottom: 8 }}>
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  loading={savingNote}
+                  onClick={handleSaveNote}
+                  disabled={!noteChanged}
+                  size="small"
+                >
+                  保存病历
+                </Button>
+                {reportGeneratedAt && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    病历报告生成时间：{reportGeneratedAt}
+                  </Text>
+                )}
+              </Space>
+
+              {/* 处方列表 */}
+              {consultPrescriptions.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <Divider style={{ margin: '8px 0' }} />
+                  <div className={styles.sectionTitle}>
+                    <MedicineBoxOutlined /> 已开处方
+                  </div>
+                  <List
+                    size="small"
+                    dataSource={consultPrescriptions}
+                    renderItem={(p) => (
+                      <List.Item>
+                        <Space>
+                          <Text style={{ fontSize: 12 }}>处方 #{p.id}</Text>
+                          <Tag>{p.status === 'APPROVED' ? '已通过' : p.status === 'SUBMITTED' ? '待审核' : p.status}</Tag>
+                          <Text type="secondary" style={{ fontSize: 12 }}>{p.itemCount} 项</Text>
+                          {p.issuedAt && (
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {dayjs(p.issuedAt).format('MM-DD HH:mm')}
+                            </Text>
+                          )}
+                        </Space>
+                      </List.Item>
+                    )}
+                  />
+                </div>
+              )}
             </div>
 
             <Divider style={{ margin: '12px 0' }} />

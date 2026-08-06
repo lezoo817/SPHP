@@ -1,10 +1,11 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Search, X } from 'lucide-react';
 import { useNavigate } from 'umi';
 import { getDrugOrders } from '../../services/pharmacy';
 import type { DrugOrder } from '../../typings/api';
 import { formatAmount } from '../../utils/medical';
-import { drugOrderTabs, getLogisticsStatusText, matchesDrugOrderTab, type DrugOrderTab } from '../../utils/pharmacy';
+import { buildPharmacyHomePath, drugOrderTabs, getDrugOrderCardStatusText, isInvalidDrugOrder, matchesDrugOrderTab, type DrugOrderTab } from '../../utils/pharmacy';
+import { getApiErrorMessage } from '../../utils/form';
 
 /** 将地址栏的 Tab 参数转换为受控物流分类。 */
 function resolveTab(value: string | null): DrugOrderTab {
@@ -23,24 +24,29 @@ export default function PharmacyOrdersPage() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState('');
 
-  /** 根据当前患者和已提交关键词重新查询订单。 */
-  async function load(nextKeyword = searchedKeyword) {
+  /** 根据当前患者和已提交关键词重新查询订单，后台刷新不打断页面浏览。 */
+  const load = useCallback(async (silently = false) => {
     if (!Number.isInteger(patientId) || patientId <= 0) {
-      setNotice('就诊人信息无效');
+      if (!silently) setNotice('就诊人信息无效');
       return;
     }
     try {
-      setLoading(true);
-      const page = await getDrugOrders({ patientId, keyword: nextKeyword, pageNo: 1, pageSize: 100 });
+      if (!silently) setLoading(true);
+      const page = await getDrugOrders({ patientId, keyword: searchedKeyword, pageNo: 1, pageSize: 100 });
       setOrders(page.records);
-    } catch (error: any) {
-      setNotice(error.message || '订单加载失败');
+    } catch (error) {
+      if (!silently) setNotice(getApiErrorMessage(error));
     } finally {
-      setLoading(false);
+      if (!silently) setLoading(false);
     }
-  }
+  }, [patientId, searchedKeyword]);
 
-  useEffect(() => { void load(); }, [patientId, searchedKeyword]);
+  useEffect(() => {
+    void load();
+    // 物流状态由后端自动推进，订单页定时读取服务端最新状态。
+    const timer = window.setInterval(() => { void load(true); }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [load]);
 
   /** 提交订单名称模糊搜索。 */
   function search(event: FormEvent) {
@@ -56,7 +62,7 @@ export default function PharmacyOrdersPage() {
 
   const visibleOrders = orders.filter((order) => matchesDrugOrderTab(order, tab));
   return <main className="subpage discovery-page">
-    <header className="page-header"><button className="icon-button" type="button" aria-label="返回购药" onClick={() => nav('/pharmacy')}><ArrowLeft size={22} /></button><h1>我的订单</h1><span /></header>
+    <header className="page-header"><button className="icon-button" type="button" aria-label="返回购药" onClick={() => nav(buildPharmacyHomePath(patientId))}><ArrowLeft size={22} /></button><h1>我的订单</h1><span /></header>
     <section className="subpage-content pharmacy-orders">
       <form className="discovery-input order-search" onSubmit={search}>
         <Search size={20} /><input aria-label="搜索订单名称" value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索订单名称" />
@@ -64,10 +70,13 @@ export default function PharmacyOrdersPage() {
       </form>
       <nav className="order-tabs" aria-label="订单物流状态">{drugOrderTabs.map((item) => <button className={tab === item.key ? 'active' : ''} key={item.key} type="button" onClick={() => setTab(item.key)}>{item.label}</button>)}</nav>
       {loading && <p className="empty-state">订单加载中...</p>}
-      {!loading && visibleOrders.map((order) => <button className="order-list-card" key={order.id} type="button" onClick={() => nav(`/pharmacy/order/${order.id}`)}>
-        <div><b>{order.orderName || '药品订单'}</b><span>{order.pharmacyName}</span><small>{order.latestLogisticsNode || '暂无物流更新'}</small></div>
-        <aside><em>{getLogisticsStatusText(order.logisticsStatus)}</em><strong>{formatAmount(order.amountCent)}</strong></aside>
-      </button>)}
+      {!loading && visibleOrders.map((order) => {
+        const invalidOrder = isInvalidDrugOrder(order);
+        return <button className={invalidOrder ? 'order-list-card is-invalid' : 'order-list-card'} disabled={invalidOrder} key={order.id} type="button" onClick={() => nav(`/pharmacy/order/${order.id}`)}>
+          <div><b>{order.orderName || '药品订单'}</b><span>{order.pharmacyName}</span><small>就诊人：{order.patientName || '待确认'}</small></div>
+          <aside><em>{getDrugOrderCardStatusText(order)}</em><strong>{formatAmount(order.amountCent)}</strong></aside>
+        </button>;
+      })}
       {!loading && !visibleOrders.length && <p className="empty-state">暂无符合条件的订单</p>}
     </section>
     {notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}

@@ -3,6 +3,7 @@ package com.sphp.patient.notification.mq.scheduler;
 import com.sphp.patient.common.enums.NotificationTypeEnum;
 import com.sphp.patient.notification.mapper.NotificationMapper;
 import com.sphp.patient.notification.mapper.NotificationReminderRecord;
+import com.sphp.patient.notification.mq.event.MedicationReminderEvent;
 import com.sphp.patient.notification.mq.event.NotificationCreateEvent;
 import com.sphp.patient.notification.mq.producer.NotificationReminderProducer;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +14,8 @@ import java.time.OffsetDateTime;
 
 import static com.sphp.patient.common.enums.NotificationTypeEnum.FOLLOW_UP_REMINDER;
 import static com.sphp.patient.common.enums.NotificationTypeEnum.MEDICATION_REMINDER;
+import static com.sphp.patient.health.support.ProposalMedicationReminderSupport.proposalCalculateNextReminderAt;
+import static com.sphp.patient.health.support.ProposalMedicationReminderSupport.proposalParseReminderTimes;
 
 /** C端用药和随访提醒到期扫描任务。 */
 @Component
@@ -28,9 +31,22 @@ public class NotificationReminderScheduler {
     public void scanMedicationReminders() {
         OffsetDateTime now = OffsetDateTime.now();
         notificationMapper.selectDueMedicationReminders(now).forEach(record ->
-                notificationReminderProducer.publishMedicationReminder(buildReminderEvent(record, "REMINDER",
-                        "MEDICATION_REMINDER_DUE", MEDICATION_REMINDER,
-                        "用药提醒", "您有一项用药计划需要按时完成。")));
+                notificationReminderProducer.publishMedicationReminder(buildMedicationReminderEvent(record)));
+    }
+
+    /**
+     * 组装包含当前到期和下一次提醒时间的用药提醒事件。
+     *
+     * @param record 到期用药计划投影
+     * @return 可推进下一次提醒的消息事件
+     */
+    private MedicationReminderEvent buildMedicationReminderEvent(NotificationReminderRecord record) {
+        OffsetDateTime nextRemindAt = proposalCalculateNextReminderAt(
+                proposalParseReminderTimes(record.getReminderTimesJson()), record.getDueAt());
+        String eventId = "REMINDER:" + record.getBusinessId() + ":"
+                + record.getDueAt().toInstant().toEpochMilli();
+        return new MedicationReminderEvent(eventId, record.getBusinessId(), record.getUserId(), record.getPatientId(),
+                record.getPatientName(), record.getDueAt(), nextRemindAt, OffsetDateTime.now());
     }
 
     /** 扫描到期随访计划并发送提醒消息。 */

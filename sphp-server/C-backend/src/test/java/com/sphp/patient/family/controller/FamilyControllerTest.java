@@ -75,6 +75,7 @@ class FamilyControllerTest {
                 .name("张三")
                 .relation("SELF")
                 .relationName("本人")
+                .idCardNo("110***********1234")
                 .isDefault(true)
                 .build()));
 
@@ -83,6 +84,7 @@ class FamilyControllerTest {
                 .andExpect(jsonPath("$.code").value("00000"))
                 .andExpect(jsonPath("$.message").value("查询成功"))
                 .andExpect(jsonPath("$.data[0].patientId").value(20001L))
+                .andExpect(jsonPath("$.data[0].idCardNo").value("110***********1234"))
                 .andExpect(jsonPath("$.data[0].relationName").value("本人"));
     }
 
@@ -98,6 +100,7 @@ class FamilyControllerTest {
         FamilyMemberCreateRequest request = new FamilyMemberCreateRequest();
         request.setName("张小明");
         request.setRelation("CHILD");
+        request.setIdCardNo("110105201806010012");
         when(idempotencyService.execute(any(), any(), any(), any(), any(), any()))
                 .thenReturn(new IdempotencyPayload<>("家庭成员已添加", FamilyMemberCreateVO.builder()
                         .patientId(20002L).name("张小明").relation("CHILD").isDefault(false).build()));
@@ -123,6 +126,25 @@ class FamilyControllerTest {
         request.setRelation("CHILD");
 
         mockMvc.perform(post("/c/v1/family-members")
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("A0400"));
+    }
+
+    /**
+     * 验证新增家庭成员缺少身份证号时由请求参数校验拒绝。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void createFamilyMemberRejectsMissingIdCardNo() throws Exception {
+        FamilyMemberCreateRequest request = new FamilyMemberCreateRequest();
+        request.setName("张小明");
+        request.setRelation("CHILD");
+
+        mockMvc.perform(post("/c/v1/family-members")
+                        .header("X-Idempotency-Key", "key-required-id-card")
                         .contentType(APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())

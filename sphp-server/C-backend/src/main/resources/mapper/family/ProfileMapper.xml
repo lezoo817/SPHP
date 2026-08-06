@@ -8,6 +8,7 @@
         <result property="gender" column="gender"/>
         <result property="birthday" column="birthday"/>
         <result property="phone" column="phone"/>
+        <result property="idCardNo" column="id_card_no"/>
         <result property="emergencyContact" column="emergency_contact"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
@@ -18,6 +19,7 @@
                p.gender,
                p.date_of_birth AS birthday,
                p.phone_ciphertext AS phone,
+               p.id_card_ciphertext AS id_card_no,
                p.emergency_contact,
                p.updated_at
         FROM patient_user_relation pur
@@ -29,12 +31,34 @@
         LIMIT 1
     </select>
 
+    <select id="lockUserForProfileMutation" resultType="java.lang.Long">
+        SELECT id
+        FROM c_user
+        WHERE id = #{userId}
+          AND deleted_at IS NULL
+        FOR UPDATE
+    </select>
+
+    <select id="existsActiveIdCard" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+            FROM patient_user_relation pur
+            INNER JOIN patient p ON p.id = pur.patient_id
+                AND p.deleted_at IS NULL
+            WHERE pur.user_id = #{userId}
+              AND pur.deleted_at IS NULL
+              AND p.id_card_ciphertext = #{idCardNo}
+              AND p.id &lt;&gt; #{excludePatientId}
+        )
+    </select>
+
     <update id="updateSelfProfile">
         UPDATE patient p
         SET name = #{name},
             gender = #{gender},
             date_of_birth = #{birthday},
             phone_ciphertext = #{phone},
+            id_card_ciphertext = #{idCardNo},
             emergency_contact = #{emergencyContact},
             updated_at = #{updatedAt}
         FROM patient_user_relation pur

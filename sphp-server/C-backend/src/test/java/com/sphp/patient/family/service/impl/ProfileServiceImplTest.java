@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -51,6 +52,7 @@ class ProfileServiceImplTest {
         assertEquals(20001L, result.getId());
         assertEquals("张三", result.getName());
         assertEquals("138****8000", result.getPhone());
+        assertEquals("110***********1234", result.getIdCardNo());
         assertEquals("李四 139****9000", result.getEmergencyContact());
     }
 
@@ -83,9 +85,12 @@ class ProfileServiceImplTest {
         ProfileUpdateRequest request = new ProfileUpdateRequest();
         request.setName("张三新名");
         request.setPhone("13800138001");
+        request.setIdCardNo("11010519491231123x");
+        when(profileMapper.lockUserForProfileMutation(10001L)).thenReturn(10001L);
         when(profileMapper.selectSelfProfile(10001L)).thenReturn(profileRecord());
         when(profileMapper.updateSelfProfile(eq(10001L), eq(20001L), eq("张三新名"), eq("MALE"),
-                eq(LocalDate.of(1990, 5, 20)), eq("13800138001"), eq("李四 13900139000"), any()))
+                eq(LocalDate.of(1990, 5, 20)), eq("13800138001"), eq("11010519491231123X"),
+                eq("李四 13900139000"), any()))
                 .thenReturn(1);
 
         ProfileUpdateVO result = profileService.updateProfile(request);
@@ -93,8 +98,10 @@ class ProfileServiceImplTest {
         assertEquals(20001L, result.getId());
         assertEquals("张三新名", result.getName());
         assertEquals("138****8001", result.getPhone());
+        assertEquals("110***********123X", result.getIdCardNo());
         verify(profileMapper).updateSelfProfile(eq(10001L), eq(20001L), eq("张三新名"), eq("MALE"),
-                eq(LocalDate.of(1990, 5, 20)), eq("13800138001"), eq("李四 13900139000"), any());
+                eq(LocalDate.of(1990, 5, 20)), eq("13800138001"), eq("11010519491231123X"),
+                eq("李四 13900139000"), any());
     }
 
     /**
@@ -108,8 +115,10 @@ class ProfileServiceImplTest {
                 OffsetDateTime.now().plusHours(1), "session-hash"));
         ProfileUpdateRequest request = new ProfileUpdateRequest();
         request.setName("张三新名");
+        when(profileMapper.lockUserForProfileMutation(10001L)).thenReturn(10001L);
         when(profileMapper.selectSelfProfile(10001L)).thenReturn(profileRecord());
-        when(profileMapper.updateSelfProfile(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(0);
+        when(profileMapper.updateSelfProfile(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(0);
 
         CAuthException exception = assertThrows(CAuthException.class, () -> profileService.updateProfile(request));
 
@@ -140,6 +149,50 @@ class ProfileServiceImplTest {
     }
 
     /**
+     * 验证当前账号下与有效家庭成员重复的身份证号会被拒绝。
+     */
+    @Test
+    void updateProfileRejectsDuplicateIdCardNo() {
+        ProfileMapper profileMapper = mock(ProfileMapper.class);
+        ProfileServiceImpl profileService = new ProfileServiceImpl(profileMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        ProfileUpdateRequest request = new ProfileUpdateRequest();
+        request.setName("张三");
+        request.setIdCardNo("11010519491231123x");
+        when(profileMapper.lockUserForProfileMutation(10001L)).thenReturn(10001L);
+        when(profileMapper.selectSelfProfile(10001L)).thenReturn(profileRecord());
+        when(profileMapper.existsActiveIdCard(10001L, "11010519491231123X", 20001L)).thenReturn(true);
+
+        CAuthException exception = assertThrows(CAuthException.class,
+                () -> profileService.updateProfile(request));
+
+        assertEquals("A0506", exception.getCode());
+        assertEquals(409, exception.getHttpStatus().value());
+        verify(profileMapper, never()).updateSelfProfile(any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    /**
+     * 验证服务层仍会拒绝不符合基础格式的身份证号。
+     */
+    @Test
+    void updateProfileRejectsInvalidIdCardNo() {
+        ProfileMapper profileMapper = mock(ProfileMapper.class);
+        ProfileServiceImpl profileService = new ProfileServiceImpl(profileMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        ProfileUpdateRequest request = new ProfileUpdateRequest();
+        request.setName("张三");
+        request.setIdCardNo("11010519491231");
+
+        CAuthException exception = assertThrows(CAuthException.class,
+                () -> profileService.updateProfile(request));
+
+        assertEquals("A0400", exception.getCode());
+        verify(profileMapper, never()).lockUserForProfileMutation(any());
+    }
+
+    /**
      * 创建有效本人资料查询记录。
      *
      * @return 本人资料查询记录
@@ -151,6 +204,7 @@ class ProfileServiceImplTest {
         record.setGender("MALE");
         record.setBirthday(LocalDate.of(1990, 5, 20));
         record.setPhone("13800138000");
+        record.setIdCardNo("110105194912311234");
         record.setEmergencyContact("李四 13900139000");
         return record;
     }

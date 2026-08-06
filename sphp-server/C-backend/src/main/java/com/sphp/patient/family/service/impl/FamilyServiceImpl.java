@@ -224,6 +224,7 @@ public class FamilyServiceImpl implements FamilyService {
                 .gender(record.getGender())
                 .birthday(record.getBirthday())
                 .phone(maskPhone(record.getPhone()))
+                .idCardNo(maskIdCardNo(record.getIdCardNo())) // 仅向 H5 返回脱敏身份证号
                 .isDefault(record.getIsDefault())
                 .build();
     }
@@ -256,6 +257,23 @@ public class FamilyServiceImpl implements FamilyService {
             return "***";
         }
         return phone.substring(0, 3) + "****" + phone.substring(7);
+    }
+
+    /**
+     * 按身份证号脱敏规则隐藏中间位。
+     *
+     * @param idCardNo 身份证号原始值
+     * @return 脱敏身份证号或 null
+     */
+    private String maskIdCardNo(String idCardNo) {
+        if (!StringUtils.hasText(idCardNo)) {
+            return null;
+        }
+        if (idCardNo.length() <= 7) {
+            return "***";
+        }
+        return idCardNo.substring(0, 3) + "*".repeat(idCardNo.length() - 7)
+                + idCardNo.substring(idCardNo.length() - 4);
     }
 
     /**

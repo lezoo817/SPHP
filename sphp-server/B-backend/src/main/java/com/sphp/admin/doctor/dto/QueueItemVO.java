@@ -45,4 +45,10 @@ public class QueueItemVO {
 
     @Schema(description = "问诊状态：PENDING / IN_PROGRESS")
     private String status;
+
+    @Schema(description = "号源时段开始时间（HH:mm）")
+    private String slotStartTime;
+
+    @Schema(description = "号源时段结束时间（HH:mm）")
+    private String slotEndTime;
 }
