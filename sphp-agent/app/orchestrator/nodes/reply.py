@@ -37,6 +37,96 @@ REPLY_SYSTEM_PROMPT = """你是一个医疗健康助手，正在为用户提供�
 - 不确定的内容要明确告知
 """
 
+# 处方解读来源标识，与 MCP 处方工具返回的数据契约一致。
+_OFFICIAL_READY_SOURCE = "OFFICIAL_READY"
+_AI_FALLBACK_SOURCE = "AI_FALLBACK"
+
+
+def _extract_prescription_interpretation(
+    tool_results: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """提取本轮处方解读工具的标准化结果。
+
+    Args:
+        tool_results: 本轮工具执行结果列表。
+
+    Returns:
+        含 source 的解读载荷；本轮没有成功处方解读时返回 None。
+    """
+    for result in tool_results or []:
+        if result.get("tool_name") != "interpret_prescription" or not result.get("success"):
+            continue
+        response = result.get("data")
+        if not isinstance(response, dict):
+            continue
+        payload = response.get("data")
+        if isinstance(payload, dict) and payload.get("source") in (
+            _OFFICIAL_READY_SOURCE,
+            _AI_FALLBACK_SOURCE,
+        ):
+            return payload
+    return None
+
+
+def _format_official_interpretation(payload: dict[str, Any]) -> str | None:
+    """组合正式处方解读原文及其免责声明。
+
+    Args:
+        payload: source 为 OFFICIAL_READY 的标准化解读载荷。
+
+    Returns:
+        未改写的正式解读正文；内容缺失时返回 None。
+    """
+    interpretation = payload.get("interpretation")
+    if not isinstance(interpretation, dict):
+        return None
+    content = interpretation.get("content")
+    if not isinstance(content, str) or not content.strip():
+        return None
+    sections = [content.strip()]
+    disclaimer = interpretation.get("disclaimer")
+    if isinstance(disclaimer, str) and disclaimer.strip() and disclaimer.strip() not in content:
+        sections.append(disclaimer.strip())
+    return "\n\n".join(sections)
+
+
+def _build_ai_fallback_context(payload: dict[str, Any]) -> str | None:
+    """构造 AI 即时处方解读的严格回复约束。
+
+    Args:
+        payload: source 为 AI_FALLBACK 的标准化解读载荷。
+
+    Returns:
+        注入回复模型的系统上下文；处方详情缺失时返回 None。
+    """
+    prescription = payload.get("prescription")
+    if not isinstance(prescription, dict):
+        return None
+    try:
+        detail = json.dumps(prescription, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return None
+    return (
+        "当前回复必须基于以下真实处方详情生成即时说明：\n"
+        f"{detail}\n\n"
+        "这是“AI 即时解读（未经过医生审核）”，首行必须使用该标题。"
+        "输出必须是自然的纯文本段落，不得使用 Markdown 标题、列表、编号、星号、"
+        "反引号或其他标记语法。"
+        "必须使用换行分段：标题后空一行；每种药品独立成段，药品段之间空一行；"
+        "药品名称，常见副作用，用药提醒等分点段落间,也要空一行；"
+        "最后的总体提醒另起一段并与药品段空一行。"
+        "每种药品段内按“药品名称：”“主要用途：”“常见副作用：”“用药提醒：”分行输出，"
+        "每个字段各占一行，字段之间不使用项目符号。"
+        "对处方中的每种药品，使用通俗语言说明其常见用途、可能帮助缓解的常见症状、"
+        "常见副作用和关键用药注意事项；用途和副作用使用“通常”“可能”等表述，"
+        "不能据此判断用户患有对应疾病。"
+        "可结合药品通用知识提示孕哺期、严重肝肾功能异常、过敏史、驾车和检查前停药等注意事项，"
+        "但不编造具体停药时长、禁忌或相互作用；不确定时应建议咨询医生或药师。"
+        "处方中的规格、单次用量、频次、用法和疗程必须按原始数据复述；任一字段缺失时必须明确写“处方未提供该信息”。"
+        "不得调整剂量、频次、疗程，也不得要求用户自行停药或换药。"
+        "末尾必须写“本说明仅供健康信息理解，请遵医嘱用药；如有不适请及时联系医生。”"
+    )
+
 
 async def reply_node(state: AgentState) -> dict[str, Any]:
     """回复生成节点（系分 §5.12）。
@@ -54,6 +144,13 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         无：生成失败时返回降级话术。
     """
     try:
+        interpretation = _extract_prescription_interpretation(state.get("tool_results"))
+        if interpretation and interpretation.get("source") == _OFFICIAL_READY_SOURCE:
+            official_content = _format_official_interpretation(interpretation)
+            if official_content:
+                # 正式解读由医生或既有生产链路确认，必须原样展示，不能交给 LLM 改写。
+                return {"messages": [{"role": "assistant", "content": official_content}]}
+
         llm = build_llm()
 
         intent = state.get("intent", "qa")
@@ -77,6 +174,12 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         if tool_results:
             tool_summary = _format_tool_results(tool_results)
             llm_messages.append({"role": "system", "content": f"工具调用结果：\n{tool_summary}"})
+
+        if interpretation and interpretation.get("source") == _AI_FALLBACK_SOURCE:
+            fallback_context = _build_ai_fallback_context(interpretation)
+            if fallback_context:
+                # 即时说明只能使用已授权读取的处方详情，避免模型补造医疗事实。
+                llm_messages.append({"role": "system", "content": fallback_context})
 
         # 如果有待确认的 L2 操作，提醒 LLM 在回复中引导用户查看确认卡片
         pending_confirmations = state.get("pending_confirmations")

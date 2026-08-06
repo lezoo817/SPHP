@@ -61,7 +61,7 @@ export interface UseAgentStream {
   /** 是否正在流式接收 */
   isStreaming: boolean;
   /** 发送一条用户消息并开启流式对话 */
-  send: (content: string, context?: AgentChatContext) => void;
+  send: (content: string, context?: AgentChatContext, options?: AgentSendOptions) => void;
   /** 确认一张 L2 卡片 */
   confirm: (card: AgentConfirmCard) => Promise<void>;
   /** 用户从可选项卡片中点选一项：标记已选并发送"我选择{label}"消息 */
@@ -74,6 +74,12 @@ export interface UseAgentStream {
   reset: () => void;
   /** 加载指定历史会话 */
   loadSession: (sessionId: string) => Promise<void>;
+}
+
+/** 发送配置。 */
+export interface AgentSendOptions {
+  /** 强制创建独立会话，不继承浏览器中保存的会话 ID。 */
+  startNewSession?: boolean;
 }
 
 /**
@@ -199,7 +205,7 @@ export function useAgentStream(): UseAgentStream {
 
   /** 发送一条用户消息并开启流式对话。 */
   const send = useCallback(
-    (content: string, context?: AgentChatContext) => {
+    (content: string, context?: AgentChatContext, options: AgentSendOptions = {}) => {
       const text = content.trim();
       if (!text) return;
       // 连接中禁止重复发送
@@ -209,6 +215,13 @@ export function useAgentStream(): UseAgentStream {
       // 重置同轮 AI 消息 / 思考累加指针
       currentMessageIdRef.current = null;
       currentThoughtIdRef.current = null;
+
+      // 一键入口必须切断旧会话，避免处方解读混入此前导诊或购药对话。
+      if (options.startNewSession) {
+        clearAgentSessionId();
+        setSessionId(undefined);
+        setEntries([]);
+      }
 
       // 保存最后一条用户消息，用于重试
       lastUserMessageRef.current = text;
@@ -224,7 +237,7 @@ export function useAgentStream(): UseAgentStream {
       setEntries((prev) => [...prev, { kind: 'message', data: userMessage }]);
 
       setConnection('connecting');
-      const currentSessionId = sessionId;
+      const currentSessionId = options.startNewSession ? undefined : sessionId;
 
       handleRef.current = chatStream(
         text,

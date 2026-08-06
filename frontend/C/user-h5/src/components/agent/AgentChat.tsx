@@ -8,7 +8,7 @@ import { AgentThoughtPanel } from './AgentThought';
 import { AgentToolCardView } from './AgentToolCard';
 import { AgentConfirmCardView } from './AgentConfirmCard';
 import { AgentSelectCardView } from './AgentSelectCard';
-import type { AgentChatContext, AgentConfirmCard, AgentSession } from '../../typings/agent';
+import type { AgentChatContext, AgentConfirmCard, AgentPresetAction, AgentSession } from '../../typings/agent';
 
 /**
  * 格式化会话时间：今天显示时分，昨天显示"昨天"，更早显示日期。
@@ -35,7 +35,7 @@ function formatSessionTime(isoString: string): string {
  *
  * 由 /agent 全屏页承载。对外部传入的上下文（当前页面、医院、就诊人）透传给 Agent。
  */
-export function AgentChat({ context }: { context?: AgentChatContext }) {
+export function AgentChat({ context, presetAction }: { context?: AgentChatContext; presetAction?: AgentPresetAction }) {
   const {
     entries,
     connection,
@@ -51,6 +51,21 @@ export function AgentChat({ context }: { context?: AgentChatContext }) {
   } = useAgentStream();
   const [input, setInput] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
+  const executedPresetRef = useRef<string>();
+
+  useEffect(() => {
+    if (!context || !presetAction) return;
+    const presetKey = `${presetAction.type}:${presetAction.prescriptionId}`;
+    // 严格模式重挂载与上下文异步就绪时只允许自动发送一次。
+    if (executedPresetRef.current === presetKey) return;
+    executedPresetRef.current = presetKey;
+    // 仅传业务 ID，由 Agent 固定调用受控处方解读工具，避免暴露处方正文。
+    send('请为我解读当前处方。', {
+      ...context,
+      preset_action: presetAction.type,
+      prescription_id: presetAction.prescriptionId,
+    }, { startNewSession: true });
+  }, [context, presetAction, send]);
 
   // 历史会话相关状态
   const [showHistory, setShowHistory] = useState(false);

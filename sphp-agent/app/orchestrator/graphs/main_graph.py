@@ -25,8 +25,10 @@ from app.orchestrator.graphs.triage_graph import build_triage_graph
 from app.orchestrator.nodes.auth import auth_node
 from app.orchestrator.nodes.chitchat import chitchat_node
 from app.orchestrator.nodes.intent import intent_node
+from app.orchestrator.nodes.preset import PRESET_INTERPRET_PRESCRIPTION, preset_action_node
 from app.orchestrator.nodes.rag import rag_node
 from app.orchestrator.nodes.reply import reply_node
+from app.orchestrator.nodes.tool_executor import tool_executor
 from app.orchestrator.state import AgentState
 
 
@@ -45,6 +47,27 @@ def route_by_scope(state: AgentState) -> str:
         str: "b_end_tool_graph"（B 端）或 "intent_node"（C 端及未知）。
     """
     return "b_end_tool_graph" if state.get("scope") == "b_end" else "intent_node"
+
+
+def route_after_auth(state: AgentState) -> str:
+    """鉴权后优先路由受控预设动作。
+
+    Args:
+        state: 已完成鉴权的 Agent 状态。
+
+    Returns:
+        预设动作节点或既有按服务端分流的目标名称。
+    """
+    prescription_id = state.get("preset_prescription_id")
+    if (
+        state.get("scope") == "c_end"
+        and state.get("preset_action") == PRESET_INTERPRET_PRESCRIPTION
+        and isinstance(prescription_id, int)
+        and not isinstance(prescription_id, bool)
+        and prescription_id > 0
+    ):
+        return "preset_action_node"
+    return route_by_scope(state)
 
 
 def route_by_intent(state: AgentState) -> str:
@@ -75,6 +98,8 @@ def build_main_graph() -> Any:
     builder.add_node("intent_node", intent_node)
     builder.add_node("qa_node", rag_node)
     builder.add_node("chitchat_node", chitchat_node)
+    builder.add_node("preset_action_node", preset_action_node)
+    builder.add_node("preset_tool_executor", tool_executor)
     builder.add_node("reply_node", reply_node)
 
     # 注册业务子图（编译后的 CompiledGraph）
@@ -92,15 +117,20 @@ def build_main_graph() -> Any:
     # 入口
     builder.set_entry_point("auth_node")
 
-    # 条件边：auth_node 后按 scope 分流（B 端直达工具子图，C 端走意图识别）
+    # 鉴权后先处理受控预设；非预设请求维持原有按服务端分流逻辑。
     builder.add_conditional_edges(
         "auth_node",
-        route_by_scope,
+        route_after_auth,
         {
+            "preset_action_node": "preset_action_node",
             "b_end_tool_graph": "b_end_tool_graph",
             "intent_node": "intent_node",
         },
     )
+
+    # 预设仅构造固定的 L1 处方解读调用，再复用标准执行器和回复节点。
+    builder.add_edge("preset_action_node", "preset_tool_executor")
+    builder.add_edge("preset_tool_executor", "reply_node")
 
     # 条件边：意图路由（仅 C 端执行）
     builder.add_conditional_edges(

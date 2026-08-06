@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ShoppingCart, Truck } from 'lucide-react';
+import { ShoppingCart, Sparkles, Truck } from 'lucide-react';
 import { useLocation, useNavigate, useParams } from 'umi';
 import { PageHeader } from '../../components/PageHeader';
 import { PrescriptionPaper } from '../../components/PrescriptionPaper';
@@ -8,7 +8,7 @@ import type { PrescriptionDetail } from '../../typings/api';
 import { getApiErrorMessage } from '../../utils/form';
 import { buildPharmacyHomePath, buildPharmacyInventoryPath, resolvePharmacyPatientId } from '../../utils/pharmacy';
 import { buildDrugOrderLogisticsPath } from '../../utils/pharmacy-order';
-import { getPrescriptionDisplayNumber } from '../../utils/prescription';
+import { buildPrescriptionInterpretationAgentState, getPrescriptionDisplayNumber } from '../../utils/prescription';
 
 /** 展示购药场景的已批准处方，并按购买状态进入药房库存或物流详情。 */
 export default function PharmacyPrescriptionPage() {
@@ -56,9 +56,18 @@ export default function PharmacyPrescriptionPage() {
     navigate(buildPharmacyInventoryPath(prescriptionId, patientId, detail?.issuedAt || issuedAtFromList));
   }
 
+  /** 创建独立 AI 会话并解读当前处方。 */
+  function interpretWithAi() {
+    if (!detail || !Number.isInteger(prescriptionId) || prescriptionId <= 0) return;
+    // 路由状态只传真实处方 ID，处方正文仍由 Agent 受控工具按当前账号读取。
+    navigate('/agent', {
+      state: buildPrescriptionInterpretationAgentState(`${location.pathname}${location.search}`, prescriptionId),
+    });
+  }
+
   return <main className="subpage pharmacy-prescription-detail-page"><PageHeader title="处方详情" backPath={buildPharmacyHomePath(patientId)} /><section className="subpage-content">
     {!patientId && <p className="form-error">请返回购药页重新选择就诊人</p>}
     {!detail && !notice && <p className="empty-state">正在读取处方详情...</p>}
     {detail && <PrescriptionPaper detail={detail} displayNumber={getPrescriptionDisplayNumber(detail.id, detail.issuedAt || issuedAtFromList)} issuedAt={issuedAtFromList} />}
-  </section><footer className="pharmacy-purchase-bar"><button className="primary-button" type="button" disabled={!detail || (!patientId && !purchasedOrderId)} onClick={purchaseNow}>{purchasedOrderId ? <Truck size={19} /> : <ShoppingCart size={19} />}{purchasedOrderId ? '查看物流' : '立即购药'}</button></footer>{notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}</main>;
+  </section><footer className="pharmacy-purchase-bar"><button className="pharmacy-ai-interpret-button" type="button" disabled={!detail || !Number.isInteger(prescriptionId) || prescriptionId <= 0} onClick={interpretWithAi}><Sparkles size={19} />AI一键解读</button><button className="primary-button" type="button" disabled={!detail || (!patientId && !purchasedOrderId)} onClick={purchaseNow}>{purchasedOrderId ? <Truck size={19} /> : <ShoppingCart size={19} />}{purchasedOrderId ? '查看物流' : '立即购药'}</button></footer>{notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}</main>;
 }

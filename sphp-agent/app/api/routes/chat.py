@@ -23,6 +23,10 @@ from app.infrastructure.cache.redis_client import (
     set_confirm_done,
 )
 from app.orchestrator.graphs.main_graph import build_main_graph
+from app.orchestrator.nodes.preset import (
+    PRESET_INTERPRET_PRESCRIPTION,
+    resolve_preset_interpretation,
+)
 from app.orchestrator.nodes.tool_executor import execute_mcp_tool
 from app.orchestrator.session_store import get_session_store
 from app.orchestrator.state import AgentState
@@ -151,6 +155,10 @@ def _build_initial_state(
         )
 
     scope = getattr(request.state, "scope", req.scope)
+    # 仅在 C 端接受处方解读预设，B 端与非法输入均保持普通对话流程。
+    preset_prescription_id = (
+        resolve_preset_interpretation(req.context) if scope == "c_end" else None
+    )
     return {
         "messages": messages,
         "session_id": session_id,
@@ -175,6 +183,10 @@ def _build_initial_state(
         # 对齐原始需求 §3：用户收货地址 ID 只来自请求 context（前端页面选中的配送地址），
         # 供 recommend_pharmacies 工具确定性补全与 LLM 上下文注入。
         "address_id": (req.context or {}).get("address_id"),
+        "preset_action": (
+            PRESET_INTERPRET_PRESCRIPTION if preset_prescription_id is not None else None
+        ),
+        "preset_prescription_id": preset_prescription_id,
         "tool_calls": None,
         "tool_results": None,
         "pending_confirmations": None,
