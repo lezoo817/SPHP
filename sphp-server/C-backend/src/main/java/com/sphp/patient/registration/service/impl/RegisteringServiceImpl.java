@@ -566,6 +566,7 @@ public class RegisteringServiceImpl implements RegisteringService {
                 .departmentName(record.departmentName())
                 .departmentLocation(record.departmentLocation())
                 .startTime(registeringToOffset(record.scheduleDate(), record.startTime()))
+                .endTime(registeringToOffset(record.scheduleDate(), record.endTime()))
                 .status(record.status())
                 .amountCent(record.amountCent())
                 .expireAt(record.expireAt())

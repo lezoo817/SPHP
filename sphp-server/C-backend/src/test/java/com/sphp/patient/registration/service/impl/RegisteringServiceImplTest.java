@@ -93,6 +93,7 @@ class RegisteringServiceImplTest {
 
             assertEquals(1L, result.getTotal());
             assertEquals("NO_SHOW", result.getRecords().getFirst().getStatus());
+            assertEquals(OffsetDateTime.parse("2026-08-05T09:30:00+08:00"), result.getRecords().getFirst().getEndTime());
             verify(dataMapper).selectRegisteringAppointments(20001L, "NO_SHOW", 20, 0L);
             verify(dataMapper).countRegisteringAppointments(20001L, "NO_SHOW");
         } finally {

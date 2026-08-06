@@ -136,12 +136,14 @@ class RegisteringControllerTest {
                         .records(List.of(RegisteringAppointmentListVO.Item.builder()
                                 .id(7001L).doctorName("张医生").departmentName("呼吸内科")
                                 .departmentLocation("门诊楼3层A区").startTime(OffsetDateTime.parse("2026-08-03T08:00:00+08:00"))
+                                .endTime(OffsetDateTime.parse("2026-08-03T08:30:00+08:00"))
                                 .status("PAID").amountCent(5000).build()))
                         .build());
 
         mockMvc.perform(get("/c/v1/appointments").param("patientId", "20001"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.records[0].departmentLocation").value("门诊楼3层A区"));
+                .andExpect(jsonPath("$.data.records[0].departmentLocation").value("门诊楼3层A区"))
+                .andExpect(jsonPath("$.data.records[0].endTime").isNumber());
     }
 
     /**
