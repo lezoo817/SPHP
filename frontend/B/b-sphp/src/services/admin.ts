@@ -360,6 +360,17 @@ export function deleteTemplate(id: number): Promise<void> {
   });
 }
 
+/** 更新处方模板 */
+export function updateTemplate(
+  id: number,
+  data: API.SaveTemplateReq,
+): Promise<API.PrescriptionTemplate> {
+  return requestData<API.PrescriptionTemplate>(
+    `/api/b/prescription-templates/${id}`,
+    { method: 'PUT', data },
+  );
+}
+
 // ===================== 药品库存管理 =====================
 
 /** 查询药品目录（分页） */

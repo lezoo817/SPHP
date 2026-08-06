@@ -5,18 +5,19 @@
  * 操作列依赖查看/删除回调；搜索项（模板名称/科室）置于列表首部且隐藏于表格。
  */
 import { Button, Space, Popconfirm } from 'antd';
-import { EyeOutlined, DeleteOutlined } from '@ant-design/icons';
+import { EyeOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import type { ProColumns } from '@ant-design/pro-components';
 import dayjs from 'dayjs';
 
 interface ColumnsDeps {
   deptOptions: { label: string; value: number }[];
   onViewDetail: (record: API.PrescriptionTemplate) => void;
+  onEdit: (record: API.PrescriptionTemplate) => void;
   onDelete: (id: number) => void;
 }
 
 export function getColumns(deps: ColumnsDeps): ProColumns<API.PrescriptionTemplate>[] {
-  const { deptOptions, onViewDetail, onDelete } = deps;
+  const { deptOptions, onViewDetail, onEdit, onDelete } = deps;
 
   return [
     // 搜索项：模板名称、科室（隐藏于表格，仅用于筛选）
@@ -50,8 +51,8 @@ export function getColumns(deps: ColumnsDeps): ProColumns<API.PrescriptionTempla
       render: (_: unknown, record: API.PrescriptionTemplate) => record.deptName ?? '全院通用',
     },
     {
-      title: '创建人',
-      dataIndex: 'doctorName',
+      title: '更新人',
+      dataIndex: 'updatedByName',
       width: 100,
       hideInSearch: true,
     },
@@ -64,12 +65,12 @@ export function getColumns(deps: ColumnsDeps): ProColumns<API.PrescriptionTempla
       render: (_: unknown, record: API.PrescriptionTemplate) => `${record.itemCount} 项`,
     },
     {
-      title: '创建时间',
-      dataIndex: 'createdAt',
+      title: '更新时间',
+      dataIndex: 'updatedAt',
       width: 160,
       hideInSearch: true,
       render: (_: unknown, record: API.PrescriptionTemplate) =>
-        record.createdAt ? dayjs(record.createdAt).format('YYYY-MM-DD HH:mm') : '-',
+        record.updatedAt ? dayjs(record.updatedAt).format('YYYY-MM-DD HH:mm') : '-',
     },
     {
       title: '操作',
@@ -84,6 +85,14 @@ export function getColumns(deps: ColumnsDeps): ProColumns<API.PrescriptionTempla
             onClick={() => onViewDetail(record)}
           >
             查看
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => onEdit(record)}
+          >
+            编辑
           </Button>
           <Popconfirm
             title="确认删除"
