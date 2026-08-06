@@ -9,7 +9,7 @@ import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 /**
- * 创建排班请求（系分 §5.4.2）。
+ * 创建排班请求。
  */
 @Data
 @Schema(description = "创建排班请求")

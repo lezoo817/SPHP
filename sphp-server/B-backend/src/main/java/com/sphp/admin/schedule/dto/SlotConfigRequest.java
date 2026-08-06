@@ -12,7 +12,7 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * 配置号源时段请求（系分 §5.4.4）。
+ * 配置号源时段请求。
  */
 @Data
 @Schema(description = "配置号源时段请求")

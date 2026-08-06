@@ -10,7 +10,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
 /**
- * 排班列表项响应（系分 §5.4.1）。
+ * 排班列表项响应。
  */
 @Data
 @Builder

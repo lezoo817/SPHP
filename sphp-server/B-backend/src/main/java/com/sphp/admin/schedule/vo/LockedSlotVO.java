@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import java.time.OffsetDateTime;
 
 /**
- * 锁定号源看板项响应（系分 §5.4.7）。
+ * 锁定号源看板项响应。
  */
 @Data
 @Builder

@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import java.time.OffsetDateTime;
 
 /**
- * 发布/取消发布排班响应（系分 §5.4.5 / §5.4.6）。
+ * 发布/取消发布排班响应。
  */
 @Data
 @Builder
