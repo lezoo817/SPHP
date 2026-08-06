@@ -120,7 +120,8 @@ export function useConsultQueue() {
           const n = parsedNote as Record<string, string>;
           setReportChiefComplaint(n.chiefComplaint ?? '');
           setReportPresentIllness(n.presentIllness ?? '');
-          setReportPhysicalExam(n.physicalExamination ?? '');
+          // 兼容旧数据：旧版 key 为 physicalExamination
+          setReportPhysicalExam(n.physicalExam ?? n.physicalExamination ?? '');
           setReportDiagnosis(n.diagnosis ?? '');
           setReportTreatmentPlan(n.treatmentPlan ?? '');
           setReportGeneratedAt(n.generatedAt ?? '');
@@ -256,7 +257,7 @@ export function useConsultQueue() {
     const reportData: Record<string, string> = {
       chiefComplaint: reportChiefComplaint,
       presentIllness: reportPresentIllness,
-      physicalExamination: reportPhysicalExam,
+      physicalExam: reportPhysicalExam,
       diagnosis: reportDiagnosis,
       treatmentPlan: reportTreatmentPlan,
       doctorName: currentUser?.name ?? '',

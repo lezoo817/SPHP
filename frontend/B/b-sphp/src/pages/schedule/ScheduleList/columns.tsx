@@ -12,6 +12,7 @@ import {
   PUBLISHED_LOCK_TOOLTIP,
   getShiftConfig,
   getStatusConfig,
+  isScheduleExpired,
 } from '../constants';
 
 interface ColumnsDeps {
@@ -135,6 +136,9 @@ export function getColumns(deps: ColumnsDeps): ProColumns<API.Schedule>[] {
         <Select allowClear placeholder="全部" options={STATUS_OPTIONS} />
       ),
       render: (_, record) => {
+        if (isScheduleExpired(record)) {
+          return <Tag color="default">已过期</Tag>;
+        }
         const cfg = getStatusConfig(record.status);
         return <Tag color={cfg?.color}>{cfg?.text ?? record.status}</Tag>;
       },
@@ -188,10 +192,17 @@ export function getColumns(deps: ColumnsDeps): ProColumns<API.Schedule>[] {
                 作废
               </Button>
             )}
-            {published && isAdmin && (
+            {published && isAdmin && !isScheduleExpired(record) && (
               <Button type="link" size="small" danger onClick={() => onUnpublish(record)}>
                 取消发布
               </Button>
+            )}
+            {published && isAdmin && isScheduleExpired(record) && (
+              <Tooltip title="排班已过期，不可取消发布">
+                <Button type="link" size="small" disabled>
+                  取消发布
+                </Button>
+              </Tooltip>
             )}
           </Space>
         );
