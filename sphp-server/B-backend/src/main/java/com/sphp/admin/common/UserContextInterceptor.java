@@ -5,6 +5,7 @@ import com.sphp.shared.exception.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -18,6 +19,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
  * </ul>
  * 请求结束后在 {@link #afterCompletion} 清理 ThreadLocal，防止内存泄漏。
  */
+@Component
 @RequiredArgsConstructor
 public class UserContextInterceptor implements HandlerInterceptor {
 
