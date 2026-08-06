@@ -8,7 +8,7 @@ import { getPrescriptions } from '../../services/consultation';
 import { getFamilyMembers } from '../../services/family';
 import { cancelAppointment, getAppointment, getAppointments } from '../../services/registration';
 import type { Appointment, FamilyMember, Prescription } from '../../typings/api';
-import { getAssistantTabs, getCurrentFlowAction } from '../../utils/assistant';
+import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantTabs, getCurrentFlowAction } from '../../utils/assistant';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatMedicalTime, getAppointmentStatusText } from '../../utils/medical';
 import { buildAssistantPrescriptionDetailPath, getPrescriptionDisplayNumber } from '../../utils/prescription';
@@ -56,8 +56,11 @@ export default function AssistantPage() {
   const current = members.find((item) => item.patientId === patientId);
   const currentFlow = appointments.find((item) => item.status === 'UNPAID' || item.status === 'PAID');
 
-  /** 按当前就诊人刷新助手页服务端数据。 */
-  async function loadData() {
+  /**
+   * 按当前就诊人刷新助手页服务端数据。
+   * @param silent 是否静默处理轮询失败，避免定时刷新重复打断患者操作
+   */
+  async function loadData(silent = false) {
     try {
       const nextMembers = await getFamilyMembers();
       setMembers(nextMembers);
@@ -72,12 +75,26 @@ export default function AssistantPage() {
       setAppointments(appointmentPage.records);
       setPrescriptions(prescriptionPage.records);
     } catch (error) {
-      setNotice(getApiErrorMessage(error));
+      // 定时刷新失败时保留当前页面数据，首次加载和用户主动操作仍反馈错误原因。
+      if (!silent) setNotice(getApiErrorMessage(error));
     }
   }
 
   useEffect(() => {
     void loadData();
+    // 页面存活期间轮询挂号状态，使医生结束接诊和时段结束后的派生状态自动更新。
+    const refreshTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void loadData(true);
+    }, ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS);
+    // 从后台返回前台时立即刷新，避免患者等待下一轮轮询才看到最终状态。
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void loadData(true);
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.clearInterval(refreshTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [patientId]);
 
   /** 根据未支付订单状态进入支付页，并从详情读取可靠的支付单 ID。 */

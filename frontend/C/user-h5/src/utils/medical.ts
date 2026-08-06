@@ -32,6 +32,7 @@ export function getAppointmentStatusText(status: Appointment['status']): string 
     UNPAID: '待支付',
     PAID: '支付完成',
     COMPLETED: '就诊完成',
+    NO_SHOW: '未到诊',
     CANCELLED: '支付取消',
   } as Record<Appointment['status'], string>)[status];
 }

@@ -6,6 +6,9 @@ export const getAssistantTabs = ['挂号记录', '处方'] as const;
 /** 当前挂号流程底部操作的展示类型。 */
 export type CurrentFlowAction = 'PAY' | 'WAITING';
 
+/** 就诊助手挂号状态静默刷新间隔，单位毫秒。 */
+export const ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS = 30000;
+
 /**
  * 根据挂号订单状态确定当前流程允许的操作。
  * @param status 挂号订单当前状态

@@ -22,7 +22,7 @@ import { buildNotificationsPath } from '../services/notification';
 import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotification, formatMedicationReminderTimes, getMedicationPlanActions, getMedicationReminderAction, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
 import { buildDeliveryAddressPath } from '../services/delivery-address';
 import { buildDeliveryAddressPayload, getDeliveryAddressInvalidFields, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
-import { getAssistantTabs, getCurrentFlowAction } from './assistant';
+import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantTabs, getCurrentFlowAction } from './assistant';
 import { buildMedicalRecordDetailPath, buildMedicalRecordListPath } from '../services/medical-record';
 import { buildLegacyReportRedirectPath, createMedicalRecordDisplayNumber, filterMedicalRecordsByDate, getRecentMedicalRecordRange, mergeMedicalRecordPages } from './medical-record';
 import { canCancelPaidAppointment, isDuplicateDoctorAppointmentError } from './registration';
@@ -101,6 +101,10 @@ describe('就诊助手展示规则', () => {
     expect(getCurrentFlowAction('UNPAID')).toBe('PAY');
     expect(getCurrentFlowAction('PAID')).toBe('WAITING');
   });
+
+  it('就诊助手每三十秒静默刷新挂号状态', () => {
+    expect(ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS).toBe(30000);
+  });
 });
 
 describe('病历报告查询规则', () => {
@@ -163,6 +167,7 @@ describe('挂号资源展示规则', () => {
 
   it('将挂号订单状态转换为患者可理解的中文文案', () => {
     expect(getAppointmentStatusText('PAID')).toBe('支付完成');
+    expect(getAppointmentStatusText('NO_SHOW')).toBe('未到诊');
     expect(getAppointmentStatusText('CANCELLED')).toBe('支付取消');
   });
 
