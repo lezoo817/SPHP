@@ -31,6 +31,7 @@ import { buildPrescriptionsPath } from '../services/consultation';
 import { buildAssistantPrescriptionDetailPath, buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, createPrescriptionDisplayNumber, filterPrescriptionsByDate, getPrescriptionDisplayNumber, getRecentPrescriptionRange, mergePrescriptionPages, type PrescriptionDisplayNumberStorage } from './prescription';
 import { buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, formatDrugOrderLogisticsTime, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderPaymentId, shouldPollDrugOrderLogistics } from './pharmacy-order';
 import { filterAppointmentRecordsByDate, getRecentAppointmentRecordRange, matchesAppointmentRecordTab, mergeAppointmentRecordPages } from './appointment-record';
+import { clearDismissedExpiredHealthTodos, dismissExpiredHealthTodo, getDismissedExpiredHealthTodoIds, isExpiredHealthTodoDismissed, type ExpiredHealthTodoStorage } from '../models/expired-health-todo';
 import type { Appointment } from '../typings/api';
 
 describe('前端表单与联调规则', () => {
@@ -453,6 +454,23 @@ describe('我的处方查询规则', () => {
 });
 
 describe('健康待办、提醒与通知规则', () => {
+  it('关闭过期待办后在当前会话内持续隐藏，并在清除会话时移除标识', () => {
+    const values = new Map<string, string>();
+    const storage: ExpiredHealthTodoStorage = {
+      getItem: (key) => values.get(key) || null,
+      setItem: (key, value) => { values.set(key, value); },
+      removeItem: (key) => { values.delete(key); },
+    };
+    const expiredTodo = { type: 'APPOINTMENT', patientId: 1, id: 7001 };
+
+    expect(getDismissedExpiredHealthTodoIds(storage)).toEqual([]);
+    const dismissedIds = dismissExpiredHealthTodo(expiredTodo, storage);
+    expect(isExpiredHealthTodoDismissed(expiredTodo, dismissedIds)).toBe(true);
+    expect(dismissExpiredHealthTodo(expiredTodo, storage)).toEqual(dismissedIds);
+    clearDismissedExpiredHealthTodos(storage);
+    expect(getDismissedExpiredHealthTodoIds(storage)).toEqual([]);
+  });
+
   it('通知列表不传递未选择的筛选参数', () => {
     expect(buildNotificationsPath({ pageNo: 2, pageSize: 50 })).toBe('/c/v1/notifications?pageNo=2&pageSize=50');
     expect(buildNotificationsPath({ patientId: 2, read: false })).toContain('patientId=2&read=false');

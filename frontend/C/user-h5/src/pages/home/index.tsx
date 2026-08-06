@@ -3,6 +3,7 @@ import { BellRing, CalendarPlus, ChevronRight, ClipboardPlus, FileChartColumn, H
 import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
+import { dismissExpiredHealthTodo, getDismissedExpiredHealthTodoIds, isExpiredHealthTodoDismissed } from '../../models/expired-health-todo';
 import { getSelection, saveSelection } from '../../models/selection';
 import { getFamilyMembers } from '../../services/family';
 import { getFollowUpPlans, getMedicationPlans } from '../../services/health';
@@ -57,7 +58,10 @@ export default function HomePage() {
       // 后端按患者隔离待办，首页需要汇总本人和家属后才能展示账号全部待办。
       const healthResults = await healthResultsPromise;
       const sources = healthResults.filter((item): item is PromiseFulfilledResult<PatientHealthSource> => item.status === 'fulfilled').map((item) => item.value);
-      setTodos(buildHealthTodos(sources));
+      const nextTodos = buildHealthTodos(sources);
+      // 已被患者关闭的过期订单在同一登录会话内不再因页面重新加载而重复出现。
+      const dismissedTodoIds = getDismissedExpiredHealthTodoIds();
+      setTodos(nextTodos.filter((todo) => !todo.isExpired || !isExpiredHealthTodoDismissed(todo, dismissedTodoIds)));
       if (healthResults.some((item) => item.status === 'rejected')) setNotice('部分健康待办加载失败，请稍后重试');
     } catch (error: unknown) {
       setNotice(error instanceof Error ? error.message : '首页数据加载失败');
@@ -87,7 +91,8 @@ export default function HomePage() {
   /** 根据待办类别跳转到可继续处理的页面。 */
   function openTodo(todo: HealthTodo) {
     if (todo.isExpired) {
-      // 过期挂号不再进入流程，仅从本次首页待办中关闭提醒。
+      // 过期挂号不再进入流程，关闭状态写入会话以覆盖切页后重新聚合待办的场景。
+      dismissExpiredHealthTodo(todo);
       setTodos((current) => current.filter((item) => !(item.type === todo.type && item.id === todo.id && item.patientId === todo.patientId)));
       return;
     }
