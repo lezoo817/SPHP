@@ -227,7 +227,7 @@ CREATE TABLE appointment (
                              CONSTRAINT fk_appointment_slot_snapshot FOREIGN KEY (slot_snapshot_id) REFERENCES slot_snapshot(id),
                              CONSTRAINT fk_appointment_patient FOREIGN KEY (patient_id) REFERENCES patient(id),
                              CONSTRAINT fk_appointment_doctor FOREIGN KEY (doctor_id) REFERENCES doctor(id),
-                             CONSTRAINT ck_appointment_status CHECK (status IN ('UNPAID', 'PAID', 'COMPLETED', 'CANCELLED')),
+                             CONSTRAINT ck_appointment_status CHECK (status IN ('UNPAID', 'PAID', 'COMPLETED', 'CANCELLED', 'EXPIRED', 'NO_SHOW')),
                              CONSTRAINT ck_appointment_amount CHECK (amount_cent >= 0)
 );
 CREATE INDEX idx_appointment_patient_created ON appointment(patient_id, created_at DESC) WHERE deleted_at IS NULL;
