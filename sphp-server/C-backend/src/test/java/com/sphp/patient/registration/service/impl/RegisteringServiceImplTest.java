@@ -14,6 +14,7 @@ import com.sphp.patient.registration.mapper.RegisteringAppointmentMapper;
 import com.sphp.patient.registration.mapper.RegisteringPaymentOrderMapper;
 import com.sphp.patient.registration.mapper.RegisteringPaymentRecord;
 import com.sphp.patient.registration.mapper.RegisteringWaitlistMapper;
+import com.sphp.patient.registration.event.RegisteringAppointmentLockedEvent;
 import com.sphp.patient.registration.support.RegisteringSlotLockService;
 import com.sphp.patient.registration.support.RegisteringWaitlistPromotionService;
 import com.sphp.patient.registration.config.RegistrationProperties;
@@ -116,6 +117,97 @@ class RegisteringServiceImplTest {
             assertEquals("UNPAID", result.getStatus());
             assertEquals(5000, result.getAmountCent());
             verify(waitlistPromotionService).registeringFulfillNotifiedWaitlist(eq(10001L), eq(20001L), eq(501L), any());
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证已经开始但尚未结束的时段仍可锁号，且支付截止时间不超过时段结束。
+     */
+    @Test
+    void registeringCreateAppointmentAllowsOngoingSlotAndCapsPaymentAtSlotEnd() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringAppointmentMapper appointmentMapper = mock(RegisteringAppointmentMapper.class);
+        RegisteringPaymentOrderMapper paymentMapper = mock(RegisteringPaymentOrderMapper.class);
+        RegisteringSlotLockService slotLockService = mock(RegisteringSlotLockService.class);
+        ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+        OffsetDateTime slotEndAt = OffsetDateTime.now(com.sphp.patient.common.constant.RegistrationConstant.BUSINESS_ZONE_ID)
+                .plusMinutes(5).withSecond(0).withNano(0);
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.selectRegisteringSlotLockInfo(101L, 501L)).thenReturn(
+                new com.sphp.patient.registration.mapper.RegisteringSlotLockRecord(
+                        501L, 301L, 401L, 5000, slotEndAt.toLocalDate(),
+                        slotEndAt.toLocalTime().minusMinutes(10), slotEndAt.toLocalTime(), "PUBLISHED", "ENABLED"));
+        when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
+        when(dataMapper.existsRegisteringDoctorAppointmentWithinCooldown(eq(10001L), eq(401L), any(OffsetDateTime.class))).thenReturn(false);
+        when(dataMapper.countRegisteringAvailableSnapshots(501L)).thenReturn(1L);
+        when(slotLockService.registeringLock(eq(501L), eq(1L), any())).thenReturn(true);
+        when(dataMapper.registeringLockOneSnapshot(eq(501L), eq(20001L), any())).thenReturn(9001L);
+        when(appointmentMapper.insert(any(com.sphp.patient.registration.entity.RegisteringAppointment.class))).thenAnswer(invocation -> {
+            invocation.<com.sphp.patient.registration.entity.RegisteringAppointment>getArgument(0).setId(7001L);
+            return 1;
+        });
+        when(paymentMapper.insert(any(com.sphp.patient.registration.entity.RegisteringPaymentOrder.class))).thenAnswer(invocation -> {
+            invocation.<com.sphp.patient.registration.entity.RegisteringPaymentOrder>getArgument(0).setId(8001L);
+            return 1;
+        });
+        RegisteringServiceImpl service = new RegisteringServiceImpl(dataMapper, appointmentMapper, paymentMapper,
+                slotLockService, mock(RegisteringWaitlistPromotionService.class), mock(RegisteringWaitlistMapper.class),
+                registrationProperties(), eventPublisher, mock(NotificationEventProducer.class));
+        RegisteringAppointmentCreateRequest request = new RegisteringAppointmentCreateRequest();
+        request.setPatientId(20001L);
+        request.setHospitalId(101L);
+        request.setSlotId(501L);
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+
+        try {
+            service.registeringCreateAppointment(request);
+
+            org.mockito.ArgumentCaptor<com.sphp.patient.registration.entity.RegisteringAppointment> appointmentCaptor =
+                    org.mockito.ArgumentCaptor.forClass(com.sphp.patient.registration.entity.RegisteringAppointment.class);
+            org.mockito.ArgumentCaptor<RegisteringAppointmentLockedEvent> eventCaptor =
+                    org.mockito.ArgumentCaptor.forClass(RegisteringAppointmentLockedEvent.class);
+            verify(appointmentMapper).insert(appointmentCaptor.capture());
+            verify(eventPublisher).publishEvent(eventCaptor.capture());
+            assertEquals(slotEndAt.toInstant(), appointmentCaptor.getValue().getExpireAt().toInstant());
+            assertEquals(slotEndAt.toInstant(), eventCaptor.getValue().expireAt().toInstant());
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证已超过时段结束时间的支付会取消未支付订单并释放已锁定号源。
+     */
+    @Test
+    void registeringSimulatePaymentExpiresOrderWhenSlotEndDeadlineHasPassed() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringWaitlistPromotionService promotionService = mock(RegisteringWaitlistPromotionService.class);
+        RegisteringPaymentRecord payment = new RegisteringPaymentRecord(8001L, 7001L, 20001L, 401L,
+                10001L, 9001L, 501L, 5000, "PENDING", "UNPAID", OffsetDateTime.now().minusSeconds(1),
+                null, BCrypt.hashpw("Password123", BCrypt.gensalt()));
+        when(dataMapper.selectRegisteringPayment(8001L)).thenReturn(payment);
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.registeringCancelUnpaidAppointment(eq(7001L), any())).thenReturn(1);
+        when(dataMapper.registeringReleaseLockedSnapshot(eq(9001L), any())).thenReturn(1);
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), promotionService);
+        RegisteringPaymentSimulateRequest request = new RegisteringPaymentSimulateRequest();
+        request.setLoginPassword("Password123");
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+
+        try {
+            CAuthException exception = assertThrows(CAuthException.class,
+                    () -> service.registeringSimulatePayment(8001L, request));
+
+            assertEquals("A0441", exception.getCode());
+            verify(dataMapper).registeringCancelUnpaidAppointment(eq(7001L), any());
+            verify(dataMapper).registeringClosePendingPayment(eq(7001L), any());
+            verify(dataMapper).registeringReleaseLockedSnapshot(eq(9001L), any());
+            verify(promotionService).registeringPromoteAfterSlotReleased(501L);
         } finally {
             CUserContext.clear();
         }
