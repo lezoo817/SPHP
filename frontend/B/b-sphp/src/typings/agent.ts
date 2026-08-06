@@ -252,3 +252,30 @@ export interface AgentApiEnvelope<T> {
   message?: string;
   data?: T;
 }
+
+/** 知识库文档分类（与 Agent knowledge.py 的 _CATEGORIES 对齐）。 */
+export type KnowledgeCategory = 'patient_edu' | 'clinical_ref';
+
+/** POST /api/knowledge/ingest 成功响应数据。 */
+export interface KnowledgeIngestResult {
+  /** 文档唯一 ID（doc_日期_随机） */
+  document_id: string;
+  /** 文档标题 */
+  title: string;
+  /** 切分后的知识片段数 */
+  chunk_count: number;
+  /** 入库状态：indexed 成功 / failed 无可用片段 */
+  status: 'indexed' | 'failed';
+}
+
+/** 知识库入库请求参数（multipart/form-data 字段）。 */
+export interface KnowledgeIngestParams {
+  /** 文档文件（.txt/.md/.pdf/.csv，≤10MB） */
+  file: File;
+  /** 文档标题（必填，用于来源标注） */
+  title: string;
+  /** 分类标签，默认 patient_edu */
+  category?: KnowledgeCategory;
+  /** 来源说明，如《中国药典》2025版 */
+  source?: string;
+}

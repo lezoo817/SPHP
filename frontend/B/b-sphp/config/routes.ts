@@ -12,6 +12,8 @@ const routes = [
           { path: '/admin/hospital', component: 'admin/HospitalInfo' },
           { path: '/admin/departments', component: 'admin/DepartmentList' },
           { path: '/admin/doctors', component: 'admin/DoctorList' },
+          // 知识库管理：拖放入库文档，供 Agent RAG 检索
+          { path: '/admin/knowledge', component: 'knowledge' },
         ],
       },
       // 排班管理（所有人）

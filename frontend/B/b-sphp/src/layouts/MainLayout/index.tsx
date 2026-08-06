@@ -10,6 +10,7 @@ import {
   BarChartOutlined,
   HomeOutlined,
   RobotOutlined,
+  BookOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { request } from '@umijs/max';
@@ -93,6 +94,16 @@ function buildMenuItems(roles: string[]): MenuProps['items'] {
       label: '患者管理',
       icon: <UserOutlined />,
     },
+    // 知识库管理（仅 ADMIN）：拖放入库文档供 Agent RAG 检索
+    ...(isAdmin
+      ? [
+          {
+            key: '/admin/knowledge',
+            label: '知识库',
+            icon: <BookOutlined />,
+          },
+        ]
+      : []),
     {
       key: '/agent',
       label: 'AI 助手',

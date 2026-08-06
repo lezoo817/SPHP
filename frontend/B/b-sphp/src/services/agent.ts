@@ -16,6 +16,8 @@ import type {
   AgentSession,
   AgentSessionList,
   AgentSseEvent,
+  KnowledgeIngestParams,
+  KnowledgeIngestResult,
 } from '../typings/agent';
 
 /** 历史消息条目 */
@@ -405,4 +407,80 @@ export async function confirmCard(payload: AgentConfirmRequest): Promise<AgentCo
   const error = new Error(payloadJson.message || '确认请求失败') as Error & { code?: string };
   error.code = payloadJson.code;
   throw error;
+}
+
+/** 知识库入库允许的文件后缀（与 Agent knowledge.py 一致）。 */
+const KNOWLEDGE_ALLOWED_EXT = ['.txt', '.md', '.pdf', '.csv'] as const;
+
+/** 知识库单文件大小上限：10MB（与 Agent knowledge.py _MAX_UPLOAD_BYTES 一致）。 */
+const KNOWLEDGE_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * 文档入库（POST /api/knowledge/ingest）。
+ *
+ * 仅 B 端 ADMIN 可调用；multipart/form-data 上传文件，Agent 切分→向量化→
+ * 写入 pgvector，对话时 rag_node 自动检索注入。前端直连 Agent（:8081），
+ * 认证方式与对话接口一致：B 端 Sa-Token JWT + X-Scope: b_end。
+ *
+ * @param params 入库参数（file/title/category/source）
+ * @returns 入库结果（document_id / chunk_count / status）
+ */
+export async function ingestKnowledge(
+  params: KnowledgeIngestParams,
+): Promise<KnowledgeIngestResult> {
+  const token = ensureAccessToken();
+  if (!token) {
+    redirectToLogin();
+    throw new Error('登录状态已失效，请重新登录');
+  }
+
+  // 前置校验：避免无效请求打到后端（后端同样校验，此处提前给出友好提示）
+  const ext = '.' + (params.file.name.split('.').pop() ?? '').toLowerCase();
+  if (!(KNOWLEDGE_ALLOWED_EXT as readonly string[]).includes(ext)) {
+    throw new Error(`不支持的文件格式: ${ext}，仅支持 ${KNOWLEDGE_ALLOWED_EXT.join('/')}`);
+  }
+  if (params.file.size > KNOWLEDGE_MAX_BYTES) {
+    throw new Error(`文件过大，上限 ${KNOWLEDGE_MAX_BYTES / 1024 / 1024}MB`);
+  }
+
+  const form = new FormData();
+  form.append('file', params.file);
+  form.append('title', params.title);
+  if (params.category) form.append('category', params.category);
+  if (params.source) form.append('source', params.source);
+
+  let response: Response;
+  try {
+    response = await fetch(`${AGENT_BASE_URL}/api/knowledge/ingest`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Scope': AGENT_SCOPE,
+      },
+      body: form,
+    });
+  } catch {
+    throw new Error('网络连接失败，请稍后重试');
+  }
+
+  if (response.status === 401) {
+    redirectToLogin();
+    throw new Error('登录已失效，请重新登录');
+  }
+  if (response.status === 403) {
+    throw new Error('无权限：需要管理员角色');
+  }
+
+  let payload: AgentApiEnvelope<KnowledgeIngestResult>;
+  try {
+    payload = (await response.json()) as AgentApiEnvelope<KnowledgeIngestResult>;
+  } catch {
+    throw new Error('入库响应异常，请稍后重试');
+  }
+
+  if (payload.code === '00000' && payload.data) {
+    return payload.data;
+  }
+
+  throw new Error(payload.message || '文档入库失败，请稍后重试');
 }
