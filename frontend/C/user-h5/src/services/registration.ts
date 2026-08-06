@@ -53,8 +53,14 @@ export function getDoctorBookingStatus(doctorId: number): Promise<{ doctorId: nu
 }
 /** 查询挂号订单详情。 */
 export function getAppointment(appointmentId: number): Promise<AppointmentDetail> { return request(`/c/v1/appointments/${appointmentId}`, { method: 'GET' }); }
-/** 取消未支付挂号订单。 */
-export function cancelAppointment(appointmentId: number, key: string): Promise<{ status: string }> { return request(`/c/v1/appointments/${appointmentId}/cancel`, { method: 'POST', headers: { 'X-Idempotency-Key': key } }); }
+/**
+ * 取消挂号订单；已支付订单必须传入登录密码，未支付订单不传请求体以兼容原有接口。
+ * @param appointmentId 挂号订单 ID
+ * @param key 幂等键
+ * @param loginPassword 已支付取消时的当前登录密码
+ * @returns 服务端最终取消状态
+ */
+export function cancelAppointment(appointmentId: number, key: string, loginPassword?: string): Promise<{ status: string }> { return request(`/c/v1/appointments/${appointmentId}/cancel`, { method: 'POST', body: loginPassword === undefined ? undefined : { loginPassword }, headers: { 'X-Idempotency-Key': key } }); }
 /** 创建无余量时段的候补登记。 */
 export function createWaitlist(payload: { patientId?: number; slotId: number }, key: string): Promise<{ queueNo: number }> { return request('/c/v1/waitlists', { method: 'POST', body: payload, headers: { 'X-Idempotency-Key': key } }); }
 /** 查询挂号支付单。 */

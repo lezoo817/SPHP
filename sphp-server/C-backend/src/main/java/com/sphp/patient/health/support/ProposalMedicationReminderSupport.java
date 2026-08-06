@@ -14,6 +14,9 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.sphp.shared.common.enums.ErrorCodeEnum.BUSINESS_STATUS_CONFLICT;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.PARAMETER_OUT_OF_RANGE;
+
 /**
  * 用药频次与每日提醒时刻转换工具。
  */
@@ -21,17 +24,24 @@ public final class ProposalMedicationReminderSupport {
 
     // 从处方频次中提取每日次数的首个阿拉伯数字
     private static final Pattern FREQUENCY_NUMBER_PATTERN = Pattern.compile("(\\d+)");
+
     // C 端用药提醒统一以中国标准时间计算
     private static final ZoneId SHANGHAI_ZONE_ID = ZoneId.of("Asia/Shanghai");
+
     // 每日一次的默认提醒时刻
     private static final List<LocalTime> ONCE_DAILY = List.of(LocalTime.of(8, 0));
+
     // 每日两次的默认提醒时刻
     private static final List<LocalTime> TWICE_DAILY = List.of(LocalTime.of(8, 0), LocalTime.of(20, 0));
+
     // 每日三次的默认提醒时刻
+
     private static final List<LocalTime> THREE_TIMES_DAILY = List.of(LocalTime.of(8, 0), LocalTime.of(14, 0), LocalTime.of(20, 0));
     // 每日四次的默认提醒时刻
+
     private static final List<LocalTime> FOUR_TIMES_DAILY = List.of(LocalTime.of(8, 0), LocalTime.of(12, 0), LocalTime.of(16, 0), LocalTime.of(20, 0));
     // 支持的每日服药次数与日间提醒时刻映射
+
     private static final Map<Integer, List<LocalTime>> REMINDER_TIME_MAPPING = Map.of(
             1, ONCE_DAILY,
             2, TWICE_DAILY,
@@ -86,7 +96,7 @@ public final class ProposalMedicationReminderSupport {
      */
     public static List<LocalTime> proposalParseReminderTimes(String reminderTimesJson) {
         if (reminderTimesJson == null || reminderTimesJson.isBlank()) {
-            throw new CAuthException(ErrorCodeEnum.BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT,
+            throw new CAuthException(BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT,
                     "用药提醒时刻不存在，请重新开启提醒");
         }
         try {
@@ -104,7 +114,7 @@ public final class ProposalMedicationReminderSupport {
                     .sorted()
                     .toList();
         } catch (RuntimeException exception) {
-            throw new CAuthException(ErrorCodeEnum.BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT,
+            throw new CAuthException(BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT,
                     "用药提醒时刻异常，请重新开启提醒");
         }
     }
@@ -134,7 +144,7 @@ public final class ProposalMedicationReminderSupport {
      * @return HTTP 400 业务异常
      */
     private static CAuthException unsupportedFrequency() {
-        return new CAuthException(ErrorCodeEnum.PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST,
+        return new CAuthException(PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST,
                 "处方频次仅支持每日1至4次，暂无法开启提醒");
     }
 }

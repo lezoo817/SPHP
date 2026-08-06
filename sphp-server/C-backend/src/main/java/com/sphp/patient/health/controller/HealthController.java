@@ -45,6 +45,7 @@ import static com.sphp.shared.common.constant.HeaderConstant.IDEMPOTENCY_KEY;
 public class HealthController {
 
     private final HealthService healthService;
+    // 幂等性服务
     private final CIdempotencyService idempotencyService;
 
     /**

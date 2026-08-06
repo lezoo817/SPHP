@@ -164,8 +164,10 @@ export interface Appointment {
   departmentLocation?: string;
   /** 就诊开始时间。 */
   startTime: string;
+  /** 就诊结束时间，用于待办过期判定，兼容接口的 ISO 字符串或时间戳。 */
+  endTime?: string | number;
   /** 挂号订单状态。 */
-  status: 'UNPAID' | 'PAID' | 'COMPLETED' | 'CANCELLED';
+  status: 'UNPAID' | 'PAID' | 'COMPLETED' | 'NO_SHOW' | 'CANCELLED';
   /** 挂号金额，单位为分。 */
   amountCent: number;
   /** 待支付订单失效时间。 */

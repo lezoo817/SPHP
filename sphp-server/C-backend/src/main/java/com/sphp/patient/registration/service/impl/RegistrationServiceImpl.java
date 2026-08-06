@@ -93,13 +93,14 @@ public class RegistrationServiceImpl implements RegistrationService {
         // 医院、科室分别校验，确保停用资源不会出现在 C 端挂号入口。
         validateHospitalAndDepartment(hospitalId, departmentId);
         LocalDate queryDate = date == null ? LocalDate.now(BUSINESS_ZONE_ID) : date;
+        OffsetDateTime now = OffsetDateTime.now(BUSINESS_ZONE_ID);
         int resolvedPageNo = pageNo == null ?DEFAULT_PAGE_NO : pageNo;
         int resolvedPageSize = pageSize == null ? DEFAULT_PAGE_SIZE : pageSize;
         long offset = (long) (resolvedPageNo - 1) * resolvedPageSize;
 
         // 余量只汇总指定日期已发布排班的 AVAILABLE 快照，零余量医生仍需供前端展示。
         List<DoctorListItemVO> records = resourceMapper.selectAvailableDoctors(
-                        hospitalId, departmentId, queryDate, resolvedPageSize, offset)
+                        hospitalId, departmentId, queryDate, now, resolvedPageSize, offset)
                 .stream()
                 .map(this::toDoctorListItemVO)
                 .toList();
@@ -131,7 +132,8 @@ public class RegistrationServiceImpl implements RegistrationService {
         if (!resourceMapper.hasPublishedSchedule(doctorId, date)) {
             throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "医生当日暂无可预约排班");
         }
-        return resourceMapper.selectPublishedSlots(doctorId, date).stream()
+        OffsetDateTime now = OffsetDateTime.now(BUSINESS_ZONE_ID);
+        return resourceMapper.selectPublishedSlots(doctorId, date, now).stream()
                 .map(slot -> toAppointmentSlotVO(slot, date))
                 .toList();
     }

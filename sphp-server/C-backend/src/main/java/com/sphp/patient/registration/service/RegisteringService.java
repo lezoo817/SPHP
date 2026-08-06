@@ -2,6 +2,7 @@ package com.sphp.patient.registration.service;
 
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.registration.dto.RegisteringAppointmentCreateRequest;
+import com.sphp.patient.registration.dto.RegisteringAppointmentCancelRequest;
 import com.sphp.patient.registration.vo.RegisteringAppointmentCreateVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentDetailVO;
 import com.sphp.patient.registration.vo.RegisteringAppointmentListVO;
@@ -56,9 +57,11 @@ public interface RegisteringService {
     /**
      * 取消挂号订单。
      * @param appointmentId 挂号订单 ID
+     * @param request 已支付订单取消密码；未支付订单可为 null
      * @return 取消挂号订单结果
      */
-    RegisteringAppointmentCancelVO registeringCancelAppointment(Long appointmentId);
+    RegisteringAppointmentCancelVO registeringCancelAppointment(Long appointmentId,
+                                                                 RegisteringAppointmentCancelRequest request);
 
 
     /**

@@ -90,13 +90,13 @@ export default function DoctorBookingPage() {
     }
   }
 
-  /** 在展示可点击号源前核验账号维度的重复预约状态。 */
+  /** 在展示可点击号源前核验账号维度的五天同医生预约冷却期。 */
   async function loadDoctorBookingStatus(currentDoctor: Doctor) {
     setCheckingBookingStatus(true);
     setDuplicateBookingBlocked(false);
     try {
       const status = await getDoctorBookingStatus(currentDoctor.id);
-      // 后端按支付账号和医生 ID 查询，覆盖本人及所有家庭成员的历史成功预约。
+      // 后端按支付账号和医生 ID 查询近五天成功预约，覆盖本人及所有家庭成员。
       setDuplicateBookingBlocked(status.booked);
     } catch (error) {
       // 查询失败时不伪造已预约状态，仍由创建接口完成最终并发校验。
@@ -161,7 +161,7 @@ export default function DoctorBookingPage() {
         // 明确业务拒绝不应复用幂等键，后续仅允许用户查看已有挂号或取消待支付订单。
         operationKey.current = undefined;
         setDuplicateBookingBlocked(true);
-        showTransientNotice('当前账号下已有就诊人预约过该医生，不能再次预约');
+        showTransientNotice('当前账号近5天内已有就诊人预约过该医生，暂不能再次预约');
         return;
       }
       // 网络失败保留幂等键，重复点击可安全重试同一业务请求。
@@ -171,7 +171,7 @@ export default function DoctorBookingPage() {
 
   return <main className="subpage doctor-page"><PageHeader title="医生主页" backPath="/home/departments" /><section className="subpage-content">
     {loadingDoctor && <p className="empty-state">正在读取医生资料...</p>}
-    {!loadingDoctor && doctor && <><section className="doctor-profile-card"><span className="doctor-profile-avatar">{doctor.name.slice(0, 1)}</span><div><h2>{doctor.name} <small>{doctor.title || '医生'}</small></h2><p>{doctor.departmentName || '所属科室待确认'}</p><p>{doctor.specialty || '暂无专长说明'}</p><strong>挂号费 {formatAmount(doctor.registrationFeeCent)}</strong></div></section><section className="doctor-service-card"><CalendarPlus size={26} /><div><h2>预约挂号</h2><p>按日期与上午、下午查看真实开放时段。</p></div></section>{isDuplicateBookingBlocked && <section className="duplicate-appointment-notice"><b>不可重复预约</b><p>当前账号下已有就诊人预约过该医生，请前往挂号记录查看。</p><button className="secondary-button" type="button" onClick={() => navigate('/assistant')}>查看挂号记录</button></section>}<section className="doctor-schedule"><h2>{doctor.departmentName || '门诊'}号源</h2>{loadingSchedule && <p className="empty-state">号源加载中...</p>}{!loadingSchedule && <ScheduleTable dates={dates} selectedDate={selectedDate} slotsByDate={slotsByDate} loadingDates={loadingDates} isDuplicateBookingBlocked={isDuplicateBookingBlocked} isCheckingBookingStatus={checkingBookingStatus} onSelectDate={selectDate} onChooseSlot={chooseSlot} />}</section></>}
+    {!loadingDoctor && doctor && <><section className="doctor-profile-card"><span className="doctor-profile-avatar">{doctor.name.slice(0, 1)}</span><div><h2>{doctor.name} <small>{doctor.title || '医生'}</small></h2><p>{doctor.departmentName || '所属科室待确认'}</p><p>{doctor.specialty || '暂无专长说明'}</p><strong>挂号费 {formatAmount(doctor.registrationFeeCent)}</strong></div></section><section className="doctor-service-card"><CalendarPlus size={26} /><div><h2>预约挂号</h2><p>按日期与上午、下午查看真实开放时段。</p></div></section>{isDuplicateBookingBlocked && <section className="duplicate-appointment-notice"><b>近5天不可重复预约</b><p>当前账号近5天内已有就诊人预约过该医生，冷却期结束后可再次预约。</p><button className="secondary-button" type="button" onClick={() => navigate('/assistant')}>查看挂号记录</button></section>}<section className="doctor-schedule"><h2>{doctor.departmentName || '门诊'}号源</h2>{loadingSchedule && <p className="empty-state">号源加载中...</p>}{!loadingSchedule && <ScheduleTable dates={dates} selectedDate={selectedDate} slotsByDate={slotsByDate} loadingDates={loadingDates} isDuplicateBookingBlocked={isDuplicateBookingBlocked} isCheckingBookingStatus={checkingBookingStatus} onSelectDate={selectDate} onChooseSlot={chooseSlot} />}</section></>}
     {!loadingDoctor && !doctor && <p className="empty-state">暂无可展示的医生资料</p>}
   </section>{notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}</main>;
 }

@@ -42,6 +42,9 @@ public class RegisteringAppointmentListVO {
         /** 就诊开始时间 */
         private final OffsetDateTime startTime;
 
+        /** 就诊结束时间 */
+        private final OffsetDateTime endTime;
+
         /** 订单状态 */
         private final String status;
 
