@@ -1085,9 +1085,16 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
         error = result.get("error", {})
         # P2 #17：执行失败保留 confirm_token（不删），用户可携带原卡片重试，
         # 复用同一幂等键，Java 去重不重复执行业务。
-        # TOOL_FAILED 系分 §6.1 错误码表标注为 500
+        # TOOL_FAILED 系分 §6.1 错误码表标注为 500。
+        # M8-9：Java 业务冲突/校验错误码（A 开头，如 A0443"已有进行中问诊"）
+        # 是**预期业务拦截**而非系统故障——用 200 返回 + 明确 message，前端
+        # 能正常展示错误提示（如"当前医生仍有进行中的预问诊"），而非 500 崩溃态。
+        err_code = error.get("code", "")
+        err_message = error.get("message", "操作执行失败")
+        if str(err_code).startswith("A"):
+            return _confirm_error("BUSINESS_CONFLICT", err_message, trace_id, status_code=200)
         return _confirm_error(
-            "TOOL_FAILED", error.get("message", "操作执行失败"), trace_id, status_code=500
+            "TOOL_FAILED", err_message, trace_id, status_code=500
         )
 
     # P2 #17：执行成功后删除 confirm_token（一次性语义收敛到此处），
