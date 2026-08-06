@@ -97,7 +97,7 @@
           AND a.slot_snapshot_id=ss.id
           AND a.status='PAID'
           AND a.deleted_at IS NULL
-          AND (s.schedule_date + sl.start_time) AT TIME ZONE 'Asia/Shanghai' &gt; #{now}
+          AND (s.schedule_date + sl.end_time) AT TIME ZONE 'Asia/Shanghai' &gt; #{now}
     </update>
     <update id="registeringClosePendingPayment">UPDATE payment_order SET status='CLOSED', updated_at=#{now} WHERE appointment_id=#{appointmentId} AND status='PENDING'</update>
     <update id="registeringReleaseLockedSnapshot">UPDATE slot_snapshot SET status='RELEASED', patient_id=NULL, updated_at=#{now} WHERE id=#{snapshotId} AND status='LOCKED' AND deleted_at IS NULL</update>
@@ -161,7 +161,7 @@
         WHERE aw.slot_id = sl.id
           AND aw.status IN ('WAITING', 'NOTIFIED')
           AND aw.deleted_at IS NULL
-          AND (s.schedule_date + sl.start_time) AT TIME ZONE 'Asia/Shanghai' &lt;= #{now}
+          AND (s.schedule_date + sl.end_time) AT TIME ZONE 'Asia/Shanghai' &lt;= #{now}
     </update>
     <update id="registeringFulfillNotifiedWaitlist">
         UPDATE appointment_waitlist

@@ -111,7 +111,7 @@ public interface RegisteringDataMapper {
     /** 查询时段的下一个候补排队号。 */
     int selectRegisteringNextQueueNo(@Param("slotId") Long slotId);
     /**
-     * 锁定尚未开始的候补晋级时段，串行化同一时段的候补状态变更。
+     * 锁定尚未结束的候补晋级时段，串行化同一时段的候补状态变更。
      *
      * @param slotId 时段 ID
      * @param now 当前时间
