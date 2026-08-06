@@ -189,6 +189,7 @@ export default function HomePage() {
           {members.map((member) => {
             const isCurrent = member.patientId === selected.patientId;
             return <button className={`patient-carousel__card${isCurrent ? ' is-current' : ''}`} key={member.patientId} type="button" onClick={() => selectPatient(member.patientId)} aria-pressed={isCurrent}>
+              <span className="patient-carousel__hint">滑动切换就诊人</span>
               <span className="patient-carousel__eyebrow">{isCurrent ? '当前就诊人' : '就诊人'}{member.isDefault && <em>默认</em>}</span>
               <b>{member.name}</b>
               <span>{member.phone || '手机号待完善'}</span>
@@ -196,6 +197,7 @@ export default function HomePage() {
             </button>;
           })}
           <button className="patient-carousel__add-card" type="button" onClick={() => navigate('/mine/family-members')} aria-label="添加就诊人">
+            <small className="patient-carousel__hint">滑动切换就诊人</small>
             <span><Plus size={25} /></span>
             <b>添加就诊人</b>
             <small>管理本人和家庭成员</small>
