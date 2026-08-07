@@ -1,11 +1,11 @@
 /**
  * 排班列表页
  * - ProTable 列表，支持日期/科室/医生/状态筛选
- * - 写操作（新增/配置时段/发布/取消发布/作废）仅 ADMIN
+ * - 写操作（新增/批量/配置时段/发布/取消发布/作废）仅 ADMIN
  * - 业务铁律：PUBLISHED 状态下增/删/改类按钮置灰禁用并附 Tooltip「排班已发布，不可修改」
  */
 import { Button, Checkbox, Form, Modal, message } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { ProTable } from '@ant-design/pro-components';
 import type { ActionType } from '@ant-design/pro-components';
 import { useNavigate } from '@umijs/max';
@@ -21,6 +21,7 @@ import { getErrorMessage } from '@/utils/error';
 import { getShiftConfig } from '../constants';
 import { getColumns } from './columns';
 import ScheduleFormModal from './ScheduleFormModal';
+import BatchScheduleModal from './BatchScheduleModal';
 import type { Dayjs } from 'dayjs';
 
 export default function ScheduleList() {
@@ -29,6 +30,7 @@ export default function ScheduleList() {
   const actionRef = useRef<ActionType>();
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   /** 跳转排班详情页（携带元信息，供详情页展示与状态判断，刷新后仍可恢复） */
@@ -185,6 +187,13 @@ export default function ScheduleList() {
                 >
                   新增排班
                 </Button>,
+                <Button
+                  key="batch"
+                  icon={<ThunderboltOutlined />}
+                  onClick={() => setBatchOpen(true)}
+                >
+                  批量排班
+                </Button>,
               ]
             : []
         }
@@ -196,6 +205,12 @@ export default function ScheduleList() {
         submitting={submitting}
         onCancel={() => setCreateOpen(false)}
         onSubmit={handleCreateSubmit}
+      />
+
+      <BatchScheduleModal
+        open={batchOpen}
+        onCancel={() => setBatchOpen(false)}
+        onCreated={() => actionRef.current?.reload()}
       />
     </>
   );
