@@ -2,7 +2,7 @@
  * B 端 Agent 服务层：流式对话与 L2 确认回调。
  *
  * 直连 Python Agent（:8081），与 B 端 Java 业务接口（/api/b）分离。
- * 对话使用 Fetch 响应流读取七类 SSE 事件，不使用浏览器原生 EventSource。
+ * 对话使用 Fetch 响应流读取九类 SSE 事件，不使用浏览器原生 EventSource。
  *
  * 认证方式：使用 B 端 Sa-Token JWT（存储在 localStorage 的 b_access_token）。
  */
@@ -55,7 +55,7 @@ function redirectToLogin(): void {
  * 发起流式对话（POST /api/chat/stream）。
  *
  * 使用 Fetch 读取响应体流，按 `\n\n` 切分 SSE 帧，解析 `event:` 与 `data:`
- * 字段，通过 onEvent 回调逐条上抛七类事件。异常或中断时调用 onError。
+ * 字段，通过 onEvent 回调逐条上抛九类事件。异常或中断时调用 onError。
  *
  * @param content 用户输入文本
  * @param onEvent SSE 事件回调
@@ -203,6 +203,10 @@ function parseSseFrame(frame: string): AgentSseEvent | null {
       }
       case 'card':
         return { event: 'card', data };
+      case 'action_card':
+        return { event: 'action_card', data };
+      case 'options':
+        return { event: 'options', data };
       case 'error':
         return { event: 'error', data };
       case 'done':
