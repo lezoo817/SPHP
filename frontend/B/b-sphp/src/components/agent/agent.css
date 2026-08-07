@@ -263,6 +263,10 @@
   border-color: #1890ff;
 }
 
+.agent-tool--pending {
+  border-color: #faad14;
+}
+
 .agent-tool--error {
   border-color: #ff4d4f;
 }
@@ -293,6 +297,10 @@
 
 .agent-tool--success .agent-tool__status {
   color: #52c41a;
+}
+
+.agent-tool--pending .agent-tool__status {
+  color: #faad14;
 }
 
 .agent-tool--error .agent-tool__status {
