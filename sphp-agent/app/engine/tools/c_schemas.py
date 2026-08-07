@@ -557,14 +557,22 @@ def _register_medication_plan_tools() -> None:
     ToolRegistry.register(
         ToolSchema(
             name="update_medication_plan",
-            description="暂停/恢复/完成用药计划",
+            description="更新用药计划：开启/关闭用药提醒、暂停/恢复/完成计划",
             parameters={
                 "properties": {
                     "plan_id": {"type": "integer", "description": "用药计划ID"},
                     "action": {
                         "type": "string",
-                        "enum": ["PAUSE", "RESUME", "COMPLETE"],
-                        "description": "操作类型",
+                        "enum": [
+                            "ENABLE_REMINDER",
+                            "DISABLE_REMINDER",
+                            "PAUSE",
+                            "RESUME",
+                            "COMPLETE",
+                        ],
+                        "description": "操作类型：ENABLE_REMINDER=开启用药提醒，"
+                        "DISABLE_REMINDER=关闭用药提醒，PAUSE=暂停，RESUME=恢复，"
+                        "COMPLETE=完成",
                     },
                 },
                 "required": ["plan_id", "action"],
