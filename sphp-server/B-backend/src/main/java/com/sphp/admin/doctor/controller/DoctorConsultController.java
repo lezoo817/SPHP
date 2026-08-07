@@ -104,7 +104,7 @@ public class DoctorConsultController {
     }
 
     @GetMapping("/consult/history")
-    @Operation(summary = "接诊历史", description = "分页查询当前医生的历史接诊记录（不含 PENDING）")
+    @Operation(summary = "接诊历史", description = "分页查询本医院的接诊历史（跨医生，按当前用户所属医院过滤）")
     public Result<PageResult<ConsultHistoryVO>> history(
             @Parameter(description = "页码，默认1") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页大小，默认10") @RequestParam(defaultValue = "10") int size) {

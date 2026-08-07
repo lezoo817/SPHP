@@ -369,15 +369,22 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     @Override
     public PageResult<ConsultHistoryVO> pageHistory(int page, int size) {
         DataScope scope = currentUserService.getCurrentDataScope();
-        Long doctorId = scope.doctorId();
-        if (doctorId == null) {
+        // 查询本医院全部医生（ADMIN/DEPT_HEAD/DOCTOR 均可见本医院接诊历史，便于跨医生协同查看）
+        List<Long> doctorIds = doctorMapper.selectList(
+                        Wrappers.<Doctor>lambdaQuery()
+                                .eq(Doctor::getHospitalId, scope.hospitalId())
+                                .isNull(Doctor::getDeletedAt))
+                .stream()
+                .map(Doctor::getId)
+                .toList();
+        if (doctorIds.isEmpty()) {
             return PageResult.of(0, List.of(), page, size);
         }
 
         Page<ConsultRecord> result = consultRecordMapper.selectPage(
                 new Page<>(page, size),
                 Wrappers.<ConsultRecord>lambdaQuery()
-                        .eq(ConsultRecord::getDoctorId, doctorId)
+                        .in(ConsultRecord::getDoctorId, doctorIds)
                         .ne(ConsultRecord::getStatus, STATUS_PENDING)
                         .isNull(ConsultRecord::getDeletedAt)
                         .orderByDesc(ConsultRecord::getEndedAt, ConsultRecord::getCreatedAt));

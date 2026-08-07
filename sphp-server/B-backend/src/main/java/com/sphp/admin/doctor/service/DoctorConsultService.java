@@ -83,11 +83,14 @@ public interface DoctorConsultService {
     MessageVO sendMessage(Long consultationId, String content);
 
     /**
-     * 分页查询当前医生的历史接诊记录（不含 PENDING）。
+     * 分页查询本医院接诊历史。
+     *
+     * <p>按当前用户所属医院过滤（ADMIN/DEPT_HEAD/DOCTOR 均可见本医院全部接诊历史，
+     * 便于跨医生协同查看患者在他处的就诊记录）。
      *
      * @param page 页码（从 1 开始）
      * @param size 每页大小
-     * @return 历史接诊分页结果
+     * @return 历史接诊分页结果（不含 PENDING）
      */
     PageResult<ConsultHistoryVO> pageHistory(int page, int size);
 
