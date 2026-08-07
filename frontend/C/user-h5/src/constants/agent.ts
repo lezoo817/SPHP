@@ -23,7 +23,7 @@ export const AGENT_WELCOME =
 
 /** 常用咨询快捷入口。 */
 export const AGENT_QUICK_PROMPTS: { label: string; content: string }[] = [
-  { label: '智能导诊', content: '我最近咳嗽发热三天，应该挂什么科室？' },
+  { label: '智能导诊', content: '开启智能导诊服务' },
   { label: '查询挂号', content: '帮我查一下当前的挂号订单。' },
   { label: '处方解读', content: '帮我解读一下最近的处方。' },
   { label: '购药下单', content: '我想购买最近的处方药品。' },

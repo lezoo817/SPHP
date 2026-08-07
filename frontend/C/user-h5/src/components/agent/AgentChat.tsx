@@ -11,7 +11,7 @@ import { AgentConfirmCardView } from './AgentConfirmCard';
 import { AgentActionCardView } from './AgentActionCard';
 import { AgentSelectCardView } from './AgentSelectCard';
 import type { AgentActionCard, AgentChatContext, AgentConfirmCard, AgentPresetAction, AgentSession } from '../../typings/agent';
-import { resolveDrugOrderPaymentResult } from '../../utils/agent-purchase';
+import { resolveAppointmentPaymentResult, resolveDrugOrderPaymentResult } from '../../utils/agent-purchase';
 
 /**
  * 格式化会话时间：今天显示时分，昨天显示"昨天"，更早显示日期。
@@ -75,11 +75,6 @@ export function AgentChat({
   // recommend_pharmacies 工具因缺必填参数不敢调用，回复"我不知道您所在的具体位置"。
   const contextReady = context !== undefined;
 
-  // 会话上下文就绪状态：address_id / hospital_id / patient_id 等需在 send 前
-  // 注入请求体，后端 tool_caller 据此决定是否注入"当前收货地址/医院/就诊人"
-  // 系统提示词。context 未就绪时发送会让 LLM 拿不到 address_id，购药流程
-  // recommend_pharmacies 工具因缺必填参数不敢调用，回复"我不知道您所在的具体位置"。
-  const contextReady = context !== undefined;
 
   useEffect(() => {
     if (!resumeSessionId || restoredSessionRef.current === resumeSessionId) return;
@@ -200,6 +195,16 @@ export function AgentChat({
   /** 确认下单成功后使用 Agent 返回的订单与支付单 ID 进入支付页。 */
   async function handleConfirm(card: AgentConfirmCard) {
     const result = await confirm(card);
+    if (!result) return;
+    if (card.cardType === 'confirm_appointment') {
+      // 挂号确认后跳转挂号支付页（仿照购药下单跳转订单详情页逻辑）。
+      const paymentResult = resolveAppointmentPaymentResult(result.action_result);
+      if (!paymentResult) return;
+      navigate(`/assistant/pay/${paymentResult.paymentId}?appointmentId=${paymentResult.appointmentId}`, {
+        state: { returnToAgent: { sessionId: card.sessionId, from: returnPath } },
+      });
+      return;
+    }
     if (card.cardType !== 'confirm_drug_order') return;
     const paymentResult = resolveDrugOrderPaymentResult(result?.action_result);
     if (!paymentResult) return;

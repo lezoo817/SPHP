@@ -17,6 +17,7 @@ import com.sphp.patient.order.mapper.OrderPrescriptionItemRecord;
 import com.sphp.patient.order.mapper.OrderPrescriptionRecord;
 import com.sphp.patient.order.service.DeliveryService;
 import com.sphp.patient.order.support.DeliverySimulationCalculator;
+import com.sphp.patient.order.support.DeliveryOrderSnapshot;
 import com.sphp.patient.order.support.DeliverySimulationResult;
 import com.sphp.patient.order.vo.DeliveryAddressDeleteVO;
 import com.sphp.patient.order.vo.DeliveryAddressVO;
@@ -175,22 +176,51 @@ public class DeliveryServiceImpl implements DeliveryService {
      */
     @Override
     public String deliveryResolveOrderAddress(Long addressId, String legacyDeliveryAddress) {
-        boolean hasAddressId = addressId != null;
-        boolean hasLegacyAddress = legacyDeliveryAddress != null && !legacyDeliveryAddress.isBlank();
-        if (hasAddressId == hasLegacyAddress) {
-            throw deliveryInvalidInput("addressId 与 deliveryAddress 必须且只能传入一个");
-        }
+        boolean hasLegacyAddress = deliveryValidateOrderAddressArguments(addressId, legacyDeliveryAddress);
         if (hasLegacyAddress) {
             return legacyDeliveryAddress.trim();
         }
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, deliveryCurrentUserId());
-        String snapshot = address.getReceiverName() + " " + address.getReceiverPhone() + " "
-                + DeliveryProvinceEnum.valueOf(address.getProvince()).getDisplayName() + address.getCity()
-                + (address.getDistrict() == null ? "" : address.getDistrict()) + address.getDetailAddress();
-        if (snapshot.length() > 500) {
-            throw deliveryInvalidInput("收货地址快照不能超过500个字符");
+        return deliveryBuildOrderAddressSnapshot(address);
+    }
+
+    /**
+     * 解析订单地址并固化与推荐接口一致的模拟配送时效。
+     *
+     * @param addressId 当前账号地址簿 ID
+     * @param legacyDeliveryAddress 旧版完整地址文本
+     * @param hospitalId 院内药房所属医院 ID
+     * @param pharmacyId 选定院内药房 ID
+     * @return 订单地址与配送分钟数快照
+     */
+    @Override
+    public DeliveryOrderSnapshot deliveryResolveOrderSnapshot(Long addressId, String legacyDeliveryAddress,
+                                                              Long hospitalId, Long pharmacyId) {
+        boolean hasLegacyAddress = deliveryValidateOrderAddressArguments(addressId, legacyDeliveryAddress);
+        String snapshot;
+        String detailAddress;
+        DeliveryProvinceEnum userProvince;
+        if (hasLegacyAddress) {
+            // 旧版文本没有结构化省市字段，优先从文本中解析受支持的省市。
+            snapshot = legacyDeliveryAddress.trim();
+            userProvince = DeliveryProvinceEnum.resolveFromAddress(snapshot);
+            if (userProvince == null) {
+                // 历史调用没有省市信息时无法可靠计算，保留原先一分钟物流演示时效。
+                return new DeliveryOrderSnapshot(snapshot, 1);
+            }
+            detailAddress = snapshot;
+        } else {
+            DeliveryAddress address = deliveryRequireOwnedAddress(addressId, deliveryCurrentUserId());
+            snapshot = deliveryBuildOrderAddressSnapshot(address);
+            userProvince = DeliveryProvinceEnum.valueOf(address.getProvince());
+            detailAddress = address.getDetailAddress();
         }
-        return snapshot;
+        DeliveryProvinceEnum hospitalProvince = deliveryRequireHospitalProvince(hospitalId);
+        double coefficient = deliveryProperties.deliveryProvinceCoefficient(userProvince, hospitalProvince);
+        // 使用与药房推荐完全相同的哈希参数，确保选中同一药房时前后展示一致。
+        DeliverySimulationResult simulation = deliverySimulationCalculator.deliveryCalculate(userProvince, detailAddress,
+                hospitalId, pharmacyId, hospitalProvince, coefficient);
+        return new DeliveryOrderSnapshot(snapshot, simulation.estimatedDeliveryMinutes());
     }
 
     /**
@@ -241,6 +271,53 @@ public class DeliveryServiceImpl implements DeliveryService {
      */
     private Long deliveryCurrentUserId() {
         return CUserContext.getRequired().userId();
+    }
+
+    /**
+     * 校验地址簿 ID 与旧地址文本的互斥关系。
+     *
+     * @param addressId 新版地址簿 ID
+     * @param legacyDeliveryAddress 旧版完整地址文本
+     * @return 是否使用旧版地址文本
+     */
+    private boolean deliveryValidateOrderAddressArguments(Long addressId, String legacyDeliveryAddress) {
+        boolean hasAddressId = addressId != null;
+        boolean hasLegacyAddress = legacyDeliveryAddress != null && !legacyDeliveryAddress.isBlank();
+        if (hasAddressId == hasLegacyAddress) {
+            throw deliveryInvalidInput("addressId 与 deliveryAddress 必须且只能传入一个");
+        }
+        return hasLegacyAddress;
+    }
+
+    /**
+     * 生成订单使用的不可变收货地址文本快照。
+     *
+     * @param address 已校验归属的结构化收货地址
+     * @return 订单收货地址快照
+     */
+    private String deliveryBuildOrderAddressSnapshot(DeliveryAddress address) {
+        String snapshot = address.getReceiverName() + " " + address.getReceiverPhone() + " "
+                + DeliveryProvinceEnum.valueOf(address.getProvince()).getDisplayName() + address.getCity()
+                + (address.getDistrict() == null ? "" : address.getDistrict()) + address.getDetailAddress();
+        if (snapshot.length() > 500) {
+            throw deliveryInvalidInput("收货地址快照不能超过500个字符");
+        }
+        return snapshot;
+    }
+
+    /**
+     * 从医院地址解析配送省市，避免缺少地理基础数据时伪造预计送达时间。
+     *
+     * @param hospitalId 医院 ID
+     * @return 已解析的医院省市
+     */
+    private DeliveryProvinceEnum deliveryRequireHospitalProvince(Long hospitalId) {
+        DeliveryProvinceEnum hospitalProvince = DeliveryProvinceEnum.resolveFromAddress(
+                deliveryDataMapper.deliverySelectHospitalAddress(hospitalId));
+        if (hospitalProvince == null) {
+            throw deliverySystemError("医院地址缺少配送省市信息");
+        }
+        return hospitalProvince;
     }
 
     /**
