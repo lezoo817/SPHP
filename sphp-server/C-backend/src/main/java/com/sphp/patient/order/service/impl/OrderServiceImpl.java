@@ -30,6 +30,7 @@ import com.sphp.patient.order.mapper.OrderTraceRecord;
 import com.sphp.patient.order.mq.event.DrugOrderLogisticsAdvanceEvent;
 import com.sphp.patient.order.service.OrderService;
 import com.sphp.patient.order.service.DeliveryService;
+import com.sphp.patient.order.support.DeliveryOrderSnapshot;
 import com.sphp.patient.order.support.OrderStockLockService;
 import com.sphp.patient.order.vo.DrugOrderCancelVO;
 import com.sphp.patient.order.vo.DrugOrderCreateVO;
@@ -114,7 +115,8 @@ public class OrderServiceImpl implements OrderService {
         // 校验当前账号可访问的已批准处方
         OrderPrescriptionRecord prescription = requireAccessibleApprovedPrescription(request.getPatientId(), request.getPrescriptionId());
         // 下单只接受地址簿快照或旧版文本，避免客户端伪造已保存地址的归属。
-        String deliveryAddress = deliveryService.deliveryResolveOrderAddress(request.getAddressId(), request.getDeliveryAddress());
+        DeliveryOrderSnapshot deliverySnapshot = deliveryService.deliveryResolveOrderSnapshot(request.getAddressId(),
+                request.getDeliveryAddress(), prescription.hospitalId(), request.getPharmacyId());
         List<OrderStockRecord> stocks = orderDataMapper.selectOrderStocks(request.getPharmacyId(), request.getPrescriptionId());
         List<OrderPrescriptionItemRecord> prescriptionItems = orderDataMapper.selectOrderPrescriptionItems(request.getPrescriptionId());
         if (stocks.size() != prescriptionItems.size() || stocks.isEmpty()) {
@@ -131,7 +133,7 @@ public class OrderServiceImpl implements OrderService {
         }
         return stockLockService.executeWithStockLocks(
                 stocks,
-                () -> createLockedDrugOrder(request, prescription, stocks, deliveryAddress) //创建订单
+                () -> createLockedDrugOrder(request, prescription, stocks, deliverySnapshot) //创建订单
         );
     }
 
@@ -326,11 +328,11 @@ public class OrderServiceImpl implements OrderService {
      * @param request 购药订单创建请求
      * @param prescription 处方
      * @param stocks 购药订单药品库存
-     * @param deliveryAddress 购药订单配送地址
+     * @param deliverySnapshot 购药订单配送地址与时效快照
      * @return 购药订单创建结果
      */
     private DrugOrderCreateVO createLockedDrugOrder(DrugOrderCreateRequest request, OrderPrescriptionRecord prescription,
-                                                     List<OrderStockRecord> stocks, String deliveryAddress) {
+                                                     List<OrderStockRecord> stocks, DeliveryOrderSnapshot deliverySnapshot) {
         OffsetDateTime now = OffsetDateTime.now();
         for (OrderStockRecord stock : stocks) {
             if (orderDataMapper.lockOrderStock(stock.pharmacyId(), stock.drugId(), stock.quantity(), now) != 1) {
@@ -349,7 +351,9 @@ public class OrderServiceImpl implements OrderService {
         order.setPharmacyId(request.getPharmacyId());
         order.setPharmacyNameSnapshot(stocks.getFirst().pharmacyName()); // 药房名称快照
         order.setDeliveryMethod("COURIER"); // 快递
-        order.setDeliveryAddress(deliveryAddress);
+        order.setDeliveryAddress(deliverySnapshot.deliveryAddress());
+        // 下单时冻结模拟时效，避免地址簿或配置变更影响已支付订单的预计送达时间。
+        order.setEstimatedDeliveryMinutes(deliverySnapshot.estimatedDeliveryMinutes());
         order.setStatus(PENDING_PAYMENT.name());
         order.setLogisticsStatus(PENDING_SHIPMENT.name()); // 待发货
         order.setAmountCent(amountCent);
