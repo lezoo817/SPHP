@@ -29,7 +29,7 @@ import { canCancelPaidAppointment, isDuplicateDoctorAppointmentError, resolveApp
 import { buildDoctorBookingStatusPath } from '../services/registration';
 import { buildPrescriptionsPath } from '../services/consultation';
 import { buildAssistantPrescriptionDetailPath, buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, createPrescriptionDisplayNumber, filterPrescriptionsByDate, getPrescriptionDisplayNumber, getRecentPrescriptionRange, mergePrescriptionPages, type PrescriptionDisplayNumberStorage } from './prescription';
-import { buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, formatDrugOrderLogisticsTime, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderPaymentId, shouldPollDrugOrderLogistics } from './pharmacy-order';
+import { buildDrugOrderDetailPath, buildDrugOrderListPagePath, buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, formatDrugOrderLogisticsTime, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderDetailPagePath, resolveDrugOrderListPagePath, resolveDrugOrderPaymentId, shouldPollDrugOrderLogistics } from './pharmacy-order';
 import { filterAppointmentRecordsByDate, getRecentAppointmentRecordRange, matchesAppointmentRecordTab, mergeAppointmentRecordPages } from './appointment-record';
 import { clearDismissedExpiredHealthTodos, dismissExpiredHealthTodo, getDismissedExpiredHealthTodoIds, isExpiredHealthTodoDismissed, type ExpiredHealthTodoStorage } from '../models/expired-health-todo';
 import type { Appointment } from '../typings/api';
@@ -270,6 +270,18 @@ describe('购药订单展示规则', () => {
     expect(getDrugOrderLogisticsText(detail)).toBe('配送中');
     expect(canConfirmDrugOrderReceipt({ ...detail, delivery: { address: '演示地址', logisticsStatus: 'TO_RECEIVE', traces: [] } })).toBe(true);
     expect(buildDrugOrderLogisticsPath(1001)).toBe('/pharmacy/order/1001/logistics');
+  });
+
+  it('订单列表、订单详情与物流详情保留安全的逐级返回路径', () => {
+    const listPath = buildDrugOrderListPagePath(20001, 'TO_RECEIVE', '布洛芬');
+    const detailPath = buildDrugOrderDetailPath(1001, listPath);
+    const logisticsPath = buildDrugOrderLogisticsPath(1001, detailPath);
+    expect(listPath).toBe('/pharmacy/orders?patientId=20001&tab=TO_RECEIVE&keyword=%E5%B8%83%E6%B4%9B%E8%8A%AC');
+    expect(resolveDrugOrderListPagePath(listPath)).toBe(listPath);
+    expect(resolveDrugOrderDetailPagePath(1001, detailPath)).toBe(detailPath);
+    expect(logisticsPath).toContain('returnTo=');
+    expect(resolveDrugOrderListPagePath('https://example.com')).toBeUndefined();
+    expect(resolveDrugOrderDetailPagePath(1001, '/pharmacy/order/1002')).toBe('/pharmacy');
   });
 
   it('处方只关联已支付订单，并使用该订单进入物流详情', () => {
