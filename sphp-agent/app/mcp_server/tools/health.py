@@ -175,7 +175,13 @@ async def query_medication_plans(
 async def update_medication_plan(
     plan_id: int, action: str, user_id: int | None = None
 ) -> dict[str, Any]:
-    """暂停/恢复/完成用药计划。"""
+    """开启/关闭用药提醒，或暂停/恢复/完成用药计划。
+
+    action 取值（对齐 Java ProposalMedicationActionEnum）：
+        ENABLE_REMINDER：开启用药提醒（按处方频次生成每日提醒时刻）
+        DISABLE_REMINDER：关闭用药提醒
+        PAUSE / RESUME / COMPLETE：暂停 / 恢复 / 完成用药计划
+    """
     body = {"action": action}
     return await call_java_api(
         api_name="update_medication_plan",
