@@ -284,6 +284,8 @@ declare global {
       status: string;
       chiefComplaint?: string;
       doctorNote?: string;
+      /** 接诊医生姓名（从 doctor 表加载，非登录账号） */
+      doctorName?: string;
       startedAt?: string;
       endedAt?: string;
       createdAt?: string;

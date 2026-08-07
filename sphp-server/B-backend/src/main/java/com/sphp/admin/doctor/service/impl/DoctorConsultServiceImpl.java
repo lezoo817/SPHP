@@ -398,6 +398,8 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     @Override
     public ConsultHistoryDetailVO getHistoryDetail(Long consultId) {
         ConsultRecord record = getConsultInScope(consultId);
+        Doctor doctor = doctorMapper.selectById(record.getDoctorId());
+        String doctorName = (doctor != null && doctor.getDeletedAt() == null) ? doctor.getName() : null;
         List<Prescription> prescriptions = prescriptionMapper.selectList(
                 Wrappers.<Prescription>lambdaQuery()
                         .eq(Prescription::getConsultId, consultId)
@@ -420,6 +422,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 .status(record.getStatus())
                 .chiefComplaint(record.getChiefComplaint())
                 .doctorNote(record.getDoctorNote())
+                .doctorName(doctorName)
                 .startedAt(record.getStartedAt())
                 .endedAt(record.getEndedAt())
                 .createdAt(record.getCreatedAt())

@@ -36,6 +36,9 @@ public class ConsultHistoryDetailVO {
     @Schema(description = "病历全文")
     private String doctorNote;
 
+    @Schema(description = "接诊医生姓名")
+    private String doctorName;
+
     @Schema(description = "开始接诊时间")
     private OffsetDateTime startedAt;
 
