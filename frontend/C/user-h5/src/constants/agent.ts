@@ -21,13 +21,19 @@ export const AGENT_SESSION_KEY = 'sphp_c_agent_session_id';
 export const AGENT_WELCOME =
   '您好，我是智愈先锋 AI 助手，可以帮您智能导诊、挂号、问诊、购药和查阅健康档案。请问有什么可以帮您？';
 
-/** 常用咨询快捷入口。 */
-export const AGENT_QUICK_PROMPTS: { label: string; content: string }[] = [
-  { label: '智能导诊', content: '开启智能导诊服务' },
-  { label: '查询挂号', content: '帮我查一下当前的挂号订单。' },
-  { label: '处方解读', content: '帮我解读一下最近的处方。' },
-  { label: '在线问诊', content: '我想进行在线问诊' },
-  { label: '健康档案', content: '查看我的健康档案和过敏史。' },
+/** 常用咨询快捷入口（常驻在对话列表上方，每个按钮含图标 + 标题 + 描述）。 */
+export interface AgentQuickPrompt {
+  label: string;
+  content: string;
+  description: string;
+}
+
+export const AGENT_QUICK_PROMPTS: AgentQuickPrompt[] = [
+  { label: '智能导诊', content: '开启智能导诊服务', description: '描述症状，推荐科室' },
+  { label: '查询挂号', content: '帮我查一下当前的挂号订单。', description: '查看预约与就诊流程' },
+  { label: '处方解读', content: '帮我解读一下最近的处方。', description: '通俗解释处方与禁忌' },
+  { label: '在线问诊', content: '我想进行在线问诊', description: '找医生，提交预问诊' },
+  { label: '健康档案', content: '查看我的健康档案和过敏史。', description: '过敏史 / 既往史 / 用药' },
 ];
 
 /** 工具英文标识符到中文标签的映射（与 sphp-agent `_TOOL_LABELS` 对齐）。 */
