@@ -218,7 +218,17 @@ def run() -> None:
     python -m app.main
     等价于 uvicorn app.main:app --host <AGENT_HOST> --port <AGENT_PORT>。
     """
+    import asyncio
+    import sys
+
     import uvicorn
+
+    # P3：Windows 下 uvicorn 默认 ProactorEventLoop，psycopg 异步驱动不兼容
+    # （'Psycopg cannot use the ProactorEventLoop'），导致 checkpointer=postgres /
+    # session_store 建连失败。切换为 Selector 兼容策略（仅 Windows 生效，
+    # Linux/macOS 默认 Selector 或 epoll 无影响）。参考 tests/integration/test_rag_e2e.py。
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     settings = get_settings()
     uvicorn.run(
