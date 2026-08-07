@@ -11,7 +11,7 @@ import { AgentConfirmCardView } from './AgentConfirmCard';
 import { AgentActionCardView } from './AgentActionCard';
 import { AgentSelectCardView } from './AgentSelectCard';
 import type { AgentActionCard, AgentChatContext, AgentConfirmCard, AgentPresetAction, AgentSession } from '../../typings/agent';
-import { resolveDrugOrderPaymentResult } from '../../utils/agent-purchase';
+import { resolveAppointmentPaymentResult, resolveDrugOrderPaymentResult } from '../../utils/agent-purchase';
 
 /**
  * 格式化会话时间：今天显示时分，昨天显示"昨天"，更早显示日期。
@@ -195,6 +195,16 @@ export function AgentChat({
   /** 确认下单成功后使用 Agent 返回的订单与支付单 ID 进入支付页。 */
   async function handleConfirm(card: AgentConfirmCard) {
     const result = await confirm(card);
+    if (!result) return;
+    if (card.cardType === 'confirm_appointment') {
+      // 挂号确认后跳转挂号支付页（仿照购药下单跳转订单详情页逻辑）。
+      const paymentResult = resolveAppointmentPaymentResult(result.action_result);
+      if (!paymentResult) return;
+      navigate(`/assistant/pay/${paymentResult.paymentId}?appointmentId=${paymentResult.appointmentId}`, {
+        state: { returnToAgent: { sessionId: card.sessionId, from: returnPath } },
+      });
+      return;
+    }
     if (card.cardType !== 'confirm_drug_order') return;
     const paymentResult = resolveDrugOrderPaymentResult(result?.action_result);
     if (!paymentResult) return;
