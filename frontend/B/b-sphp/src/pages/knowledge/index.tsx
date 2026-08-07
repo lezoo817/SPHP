@@ -10,23 +10,31 @@ import {
   Alert,
   Button,
   Card,
+  Divider,
   Form,
   Input,
   message,
+  Modal,
   Result,
   Select,
   Space,
+  Table,
+  Tag,
   Typography,
   Upload,
   type UploadFile,
 } from 'antd';
-import { BookOutlined, InboxOutlined } from '@ant-design/icons';
-import { useMutation } from '@tanstack/react-query';
+import { BookOutlined, DeleteOutlined, InboxOutlined } from '@ant-design/icons';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { ingestKnowledge } from '@/services/agent';
+import { deleteKnowledge, ingestKnowledge, listKnowledge } from '@/services/agent';
 import { useHasRole } from '@/hooks/useCurrentUser';
 import { getErrorMessage } from '@/utils/error';
-import type { KnowledgeCategory, KnowledgeIngestResult } from '@/typings/agent';
+import type {
+  KnowledgeCategory,
+  KnowledgeDocument,
+  KnowledgeIngestResult,
+} from '@/typings/agent';
 
 const { Dragger } = Upload;
 const { Text, Paragraph } = Typography;
@@ -51,8 +59,43 @@ function normFile(e: unknown): UploadFile[] | undefined {
 
 export default function KnowledgePage() {
   const isAdmin = useHasRole('ADMIN');
+  const queryClient = useQueryClient();
   const [form] = Form.useForm<{ title: string; category: KnowledgeCategory; source?: string; file?: UploadFile[] }>();
   const [result, setResult] = useState<KnowledgeIngestResult | null>(null);
+
+  // ── 文档列表查询 ──
+  const [page, setPage] = useState(1);
+  const [categoryFilter, setCategoryFilter] = useState<KnowledgeCategory | undefined>();
+
+  const { data: listData, isLoading: listLoading } = useQuery({
+    queryKey: ['knowledge-docs', page, categoryFilter],
+    queryFn: () => listKnowledge({ page, page_size: 10, category: categoryFilter }),
+    enabled: isAdmin,
+  });
+
+  // ── 删除 mutation ──
+  const deleteMutation = useMutation({
+    mutationFn: deleteKnowledge,
+    onSuccess: (data) => {
+      message.success(`已删除文档及 ${data.chunk_count} 个知识片段`);
+      void queryClient.invalidateQueries({ queryKey: ['knowledge-docs'] });
+    },
+    onError: (err: unknown) => {
+      message.error(getErrorMessage(err, '删除失败'));
+    },
+  });
+
+  /** 删除确认弹窗 */
+  const handleDelete = (doc: KnowledgeDocument) => {
+    Modal.confirm({
+      title: '确认删除',
+      content: `确定删除文档「${doc.title}」？此操作不可逆，将同时删除 ${doc.chunk_count} 个知识片段。`,
+      okType: 'danger',
+      okText: '确认删除',
+      cancelText: '取消',
+      onOk: () => deleteMutation.mutate(doc.id),
+    });
+  };
 
   /** 入库 mutation：成功后展示结果并清空文件选择，失败提示错误。 */
   const { mutate, isPending } = useMutation({
@@ -61,12 +104,12 @@ export default function KnowledgePage() {
       if (data.status === 'indexed') {
         message.success(`入库成功，切分为 ${data.chunk_count} 个知识片段`);
       } else {
-        // status=failed：文件已接收但未切出可用片段（如空文件/纯图片 PDF）
         message.warning('文件已接收但未产生可用知识片段，请检查文件内容');
       }
       setResult(data);
-      // 清空文件选择，保留 title 等便于连续入库同类文档
       form.setFieldValue('file', undefined);
+      // 入库成功后自动刷新文档列表
+      void queryClient.invalidateQueries({ queryKey: ['knowledge-docs'] });
     },
     onError: (err: unknown) => {
       message.error(getErrorMessage(err, '入库失败，请重试'));
@@ -208,6 +251,84 @@ export default function KnowledgePage() {
           style={{ marginTop: 16 }}
         />
       )}
+
+      <Divider />
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Typography.Title level={5} style={{ marginBottom: 0 }}>
+          已入库文档
+        </Typography.Title>
+        <Select<KnowledgeCategory | undefined>
+          allowClear
+          placeholder="全部分类"
+          style={{ width: 140 }}
+          value={categoryFilter}
+          onChange={(val) => { setCategoryFilter(val); setPage(1); }}
+          options={[
+            { label: '患者科普', value: 'patient_edu' },
+            { label: '临床参考', value: 'clinical_ref' },
+          ]}
+        />
+      </div>
+
+      <Table<KnowledgeDocument>
+        dataSource={listData?.items}
+        loading={listLoading}
+        rowKey="id"
+        pagination={{
+          total: listData?.total,
+          current: page,
+          pageSize: 10,
+          onChange: (p) => setPage(p),
+          showTotal: (total) => `共 ${total} 篇`,
+        }}
+        columns={[
+          {
+            title: '文档标题',
+            dataIndex: 'title',
+            ellipsis: true,
+          },
+          {
+            title: '分类',
+            dataIndex: 'category',
+            width: 120,
+            render: (cat: KnowledgeCategory) => (
+              <Tag color={cat === 'patient_edu' ? 'green' : 'blue'}>
+                {cat === 'patient_edu' ? '患者科普' : '临床参考'}
+              </Tag>
+            ),
+          },
+          {
+            title: '来源',
+            dataIndex: 'source',
+            ellipsis: true,
+            render: (src: string | null) => src || '—',
+          },
+          {
+            title: '片段数',
+            dataIndex: 'chunk_count',
+            width: 80,
+            align: 'center',
+          },
+          {
+            title: '操作',
+            width: 80,
+            align: 'center',
+            render: (_, doc) => (
+              <Button
+                danger
+                type="link"
+                size="small"
+                icon={<DeleteOutlined />}
+                onClick={() => handleDelete(doc)}
+                loading={deleteMutation.isPending}
+              >
+                删除
+              </Button>
+            ),
+          },
+        ]}
+      />
     </Card>
   );
 }

@@ -16,8 +16,11 @@ import type {
   AgentSession,
   AgentSessionList,
   AgentSseEvent,
+  KnowledgeCategory,
+  KnowledgeDeleteResponse,
   KnowledgeIngestParams,
   KnowledgeIngestResult,
+  KnowledgeListResponse,
 } from '../typings/agent';
 
 /** 历史消息条目 */
@@ -487,4 +490,124 @@ export async function ingestKnowledge(
   }
 
   throw new Error(payload.message || '文档入库失败，请稍后重试');
+}
+
+/**
+ * 查询已入库文档列表（GET /api/knowledge/list）。
+ *
+ * 按 document_id 聚合 langchain_pg_embedding 表，返回文档级信息。
+ * 仅 B 端 ADMIN 可调用。
+ *
+ * @param params 查询参数（分类/分页）
+ * @returns 文档列表及分页信息
+ */
+export async function listKnowledge(params?: {
+  category?: KnowledgeCategory;
+  page?: number;
+  page_size?: number;
+}): Promise<KnowledgeListResponse> {
+  const token = ensureAccessToken();
+  if (!token) {
+    redirectToLogin();
+    throw new Error('登录状态已失效，请重新登录');
+  }
+
+  const query = new URLSearchParams();
+  if (params?.category) query.set('category', params.category);
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.page_size) query.set('page_size', String(params.page_size));
+
+  const qs = query.toString();
+  const url = `${AGENT_BASE_URL}/api/knowledge/list${qs ? `?${qs}` : ''}`;
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Scope': AGENT_SCOPE,
+      },
+    });
+  } catch {
+    throw new Error('网络连接失败，请稍后重试');
+  }
+
+  if (response.status === 401) {
+    redirectToLogin();
+    throw new Error('登录已失效，请重新登录');
+  }
+  if (response.status === 403) {
+    throw new Error('无权限：需要管理员角色');
+  }
+
+  let payload: AgentApiEnvelope<KnowledgeListResponse>;
+  try {
+    payload = (await response.json()) as AgentApiEnvelope<KnowledgeListResponse>;
+  } catch {
+    throw new Error('获取文档列表响应异常，请稍后重试');
+  }
+
+  if (payload.code === '00000' && payload.data) {
+    return payload.data;
+  }
+
+  throw new Error(payload.message || '获取文档列表失败');
+}
+
+/**
+ * 删除已入库文档（DELETE /api/knowledge/{document_id}）。
+ *
+ * 直接删除 langchain_pg_embedding 中该文档的所有 chunk，操作不可逆。
+ * 仅 B 端 ADMIN 可调用。
+ *
+ * @param documentId 文档 ID（doc_YYYYMMDD_xxxxxx）
+ * @returns 删除结果（含实际删除的 chunk 数）
+ */
+export async function deleteKnowledge(documentId: string): Promise<KnowledgeDeleteResponse> {
+  const token = ensureAccessToken();
+  if (!token) {
+    redirectToLogin();
+    throw new Error('登录状态已失效，请重新登录');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `${AGENT_BASE_URL}/api/knowledge/${encodeURIComponent(documentId)}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Scope': AGENT_SCOPE,
+        },
+      },
+    );
+  } catch {
+    throw new Error('网络连接失败，请稍后重试');
+  }
+
+  if (response.status === 401) {
+    redirectToLogin();
+    throw new Error('登录已失效，请重新登录');
+  }
+  if (response.status === 403) {
+    throw new Error('无权限：需要管理员角色');
+  }
+  if (response.status === 404) {
+    throw new Error('文档不存在');
+  }
+
+  let payload: AgentApiEnvelope<KnowledgeDeleteResponse>;
+  try {
+    payload = (await response.json()) as AgentApiEnvelope<KnowledgeDeleteResponse>;
+  } catch {
+    throw new Error('删除响应异常，请稍后重试');
+  }
+
+  if (payload.code === '00000' && payload.data) {
+    return payload.data;
+  }
+
+  throw new Error(payload.message || '删除文档失败');
 }

@@ -1,8 +1,10 @@
-"""知识库管理接口（系分 §6.5）：文档入库 + 检索测试。
+"""知识库管理接口（系分 §6.5）：文档入库 + 检索测试 + 文档列表 + 文档删除。
 
 收敛到系分 §6.5 定义的单接口：
     - POST /api/knowledge/ingest   单文件入库（file + title + category + source）
     - GET  /api/knowledge/search   检索测试（q + top_k + category）
+    - GET  /api/knowledge/list     已入库文档列表（分页，ADMIN 角色）
+    - DELETE /api/knowledge/{id}   删除指定文档及其所有 chunk（ADMIN 角色）
 原 /ingest/file、/ingest/directory 端点已移除：/ingest/directory 为内部批量
 工具（引擎层 ingest_directory），不暴露为对外 API。
 
@@ -18,10 +20,13 @@ from typing import Any
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.api.schemas.envelope import error_response, success_response
 from app.engine.rag.ingest import ingest_file
 from app.engine.rag.search import search_knowledge
+from app.engine.rag.vectorstore import _connection_string
 from app.infrastructure.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -34,6 +39,9 @@ _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 _MAX_TOP_K = 20
 # 分类标签（系分 §6.5.1）：patient_edu（患者科普）/ clinical_ref（临床参考）
 _CATEGORIES = {"patient_edu", "clinical_ref"}
+
+# 复用 vectorstore 连接串，用于直查 langchain_pg_embedding 表
+_engine = create_async_engine(_connection_string())
 
 
 def _require_auth(request: Request, *, admin_only: bool = False) -> JSONResponse | None:
@@ -196,6 +204,140 @@ async def search(
             "elapsed_ms": elapsed_ms,
         },
     )
+
+
+# ── 已入库文档列表（直查 langchain_pg_embedding 聚合） ──
+
+
+@router.get("/list")
+async def list_docs(
+    request: Request,
+    category: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> JSONResponse:
+    """查询已入库文档列表（分页），需 ADMIN 角色。
+
+    通过 langchain_pg_embedding 的 cmetadata 聚合，按 document_id 分组
+    返回文档级信息（title/category/source/chunk_count）。
+
+    Args:
+        request: FastAPI 请求。
+        category: 按分类过滤（patient_edu / clinical_ref）。
+        page: 页码（从 1 开始）。
+        page_size: 每页条数（默认 20，最大 100）。
+
+    Returns:
+        JSONResponse: data 含 items / total / page / page_size。
+    """
+    if (err := _require_auth(request, admin_only=True)) is not None:
+        return err
+    trace_id = getattr(request.state, "trace_id", "")
+
+    if category is not None and category not in _CATEGORIES:
+        return _error(request, 400, "INVALID_REQUEST", f"不支持的分类: {category}")
+
+    page = max(1, page)
+    page_size = min(max(1, page_size), 100)
+    offset = (page - 1) * page_size
+
+    settings = get_settings()
+    collection_name = settings.kb_collection
+
+    # 分类过滤条件
+    category_filter = ""
+    params: dict = {"collection": collection_name, "limit": page_size, "offset": offset}
+    if category:
+        category_filter = "AND e.cmetadata->>'category' = :category"
+        params["category"] = category
+
+    async with _engine.begin() as conn:
+        # 总数（按 document_id 去重计数）
+        count_sql = text(f"""
+            SELECT COUNT(DISTINCT e.cmetadata->>'document_id')
+            FROM langchain_pg_embedding e
+            JOIN langchain_pg_collection c ON e.collection_id = c.uuid
+            WHERE c.name = :collection
+              AND e.cmetadata->>'document_id' IS NOT NULL
+              {category_filter}
+        """)
+        total = (await conn.execute(count_sql, params)).scalar() or 0
+
+        # 分页查询（按 document_id 聚合）
+        list_sql = text(f"""
+            SELECT
+                e.cmetadata->>'document_id' AS id,
+                e.cmetadata->>'title'       AS title,
+                e.cmetadata->>'category'    AS category,
+                e.cmetadata->>'source'      AS source,
+                COUNT(*)                    AS chunk_count
+            FROM langchain_pg_embedding e
+            JOIN langchain_pg_collection c ON e.collection_id = c.uuid
+            WHERE c.name = :collection
+              AND e.cmetadata->>'document_id' IS NOT NULL
+              {category_filter}
+            GROUP BY e.cmetadata->>'document_id',
+                     e.cmetadata->>'title',
+                     e.cmetadata->>'category',
+                     e.cmetadata->>'source'
+            ORDER BY MAX(e.cmetadata->>'document_id') DESC
+            LIMIT :limit OFFSET :offset
+        """)
+        rows = (await conn.execute(list_sql, params)).mappings().all()
+
+    return _envelope(trace_id, {
+        "items": [dict(r) for r in rows],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    })
+
+
+# ── 删除指定文档（直删 langchain_pg_embedding） ──
+
+
+@router.delete("/{document_id}")
+async def delete_doc(request: Request, document_id: str) -> JSONResponse:
+    """删除指定文档及其所有知识片段，需 ADMIN 角色。
+
+    直接从 langchain_pg_embedding 删除 cmetadata->>'document_id' 匹配的所有行。
+    操作不可逆。
+
+    Args:
+        request: FastAPI 请求。
+        document_id: 文档 ID（格式 doc_YYYYMMDD_xxxxxx）。
+
+    Returns:
+        JSONResponse: 成功返回 {deleted: true, chunk_count: N}；文档不存在返回 404。
+    """
+    if (err := _require_auth(request, admin_only=True)) is not None:
+        return err
+    trace_id = getattr(request.state, "trace_id", "")
+
+    if not document_id.startswith("doc_"):
+        return _error(request, 400, "INVALID_REQUEST", "无效的文档 ID 格式")
+
+    settings = get_settings()
+
+    async with _engine.begin() as conn:
+        result = await conn.execute(text("""
+            DELETE FROM langchain_pg_embedding
+            WHERE cmetadata->>'document_id' = :doc_id
+              AND collection_id = (
+                  SELECT uuid FROM langchain_pg_collection WHERE name = :collection
+              )
+        """), {"doc_id": document_id, "collection": settings.kb_collection})
+
+    deleted_count = result.rowcount
+    if deleted_count == 0:
+        return _error(request, 404, "NOT_FOUND", "文档不存在")
+
+    logger.info("已删除知识库文档: document_id=%s, chunks=%d", document_id, deleted_count)
+    return _envelope(trace_id, {
+        "deleted": True,
+        "document_id": document_id,
+        "chunk_count": deleted_count,
+    })
 
 
 def _envelope(trace_id: str, data: dict[str, Any]) -> JSONResponse:

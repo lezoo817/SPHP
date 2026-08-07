@@ -357,3 +357,32 @@ export interface KnowledgeIngestParams {
   /** 来源说明，如《中国药典》2025版 */
   source?: string;
 }
+
+/** 知识库文档元数据（对应 Agent GET /api/knowledge/list 返回的单条记录）。 */
+export interface KnowledgeDocument {
+  /** 文档唯一 ID（doc_YYYYMMDD_xxxxxx） */
+  id: string;
+  /** 文档标题 */
+  title: string;
+  /** 分类标签 */
+  category: KnowledgeCategory;
+  /** 来源说明 */
+  source: string | null;
+  /** chunk 数量 */
+  chunk_count: number;
+}
+
+/** GET /api/knowledge/list 响应数据。 */
+export interface KnowledgeListResponse {
+  items: KnowledgeDocument[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** DELETE /api/knowledge/{document_id} 响应数据。 */
+export interface KnowledgeDeleteResponse {
+  deleted: boolean;
+  document_id: string;
+  chunk_count: number;
+}

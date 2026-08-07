@@ -129,7 +129,12 @@ async def ingest_file(
     if not chunks:
         return "", 0
 
+    # document_id 在 metadata 赋值前生成，确保每个 chunk 都携带此标识
+    # 用于文档级分组查询（GET /list）和文档级删除（DELETE /{id}）
+    document_id = _gen_document_id()
+
     for i, chunk in enumerate(chunks, 1):
+        chunk.metadata["document_id"] = document_id
         chunk.metadata["title"] = title
         chunk.metadata["category"] = category
         chunk.metadata["source"] = source
@@ -141,7 +146,6 @@ async def ingest_file(
     # vectorstore 为 async_mode（仅异步 engine），必须用异步入库
     await store.aadd_documents(chunks)
 
-    document_id = _gen_document_id()
     logger.info(
         "已入库 %s（title=%s, category=%s）→ %d 个 chunk，document_id=%s",
         file_path.name,
