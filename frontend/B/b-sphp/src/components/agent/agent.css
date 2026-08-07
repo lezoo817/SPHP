@@ -504,6 +504,108 @@
   cursor: not-allowed;
 }
 
+/* ==================== 可选项卡片 ==================== */
+.agent-select {
+  margin: 12px 0;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f0f0f0;
+}
+
+.agent-select--selected {
+  border-color: #b7eb8f;
+}
+
+.agent-select__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.agent-select__icon {
+  display: inline-flex;
+  align-items: center;
+  color: #1890ff;
+}
+
+.agent-select__title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.agent-select__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.agent-select__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  background: #fafafa;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+}
+
+.agent-select__item:hover:not(:disabled) {
+  border-color: #1890ff;
+  background: #e6f7ff;
+}
+
+.agent-select__item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.agent-select__item.is-selected {
+  border-color: #52c41a;
+  background: #f6ffed;
+  opacity: 1;
+}
+
+.agent-select__item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agent-select__item-label {
+  font-size: 14px;
+  color: #262626;
+  font-weight: 500;
+}
+
+.agent-select__item-desc {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.agent-select__item-mark {
+  display: inline-flex;
+  align-items: center;
+  color: #52c41a;
+  flex-shrink: 0;
+}
+
+.agent-select__hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #52c41a;
+}
+
 /* ==================== 输入框 ==================== */
 .agent-chat__input-bar {
   display: flex;
