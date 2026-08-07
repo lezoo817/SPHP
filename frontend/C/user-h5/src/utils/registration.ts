@@ -25,3 +25,13 @@ export function canCancelPaidAppointment(status: string, startTime?: string, now
   const startAt = startTime ? Date.parse(startTime) : Number.NaN;
   return status === 'PAID' && Number.isFinite(startAt) && startAt > now;
 }
+
+/**
+ * 解析挂号支付取消后的安全回跳地址。
+ * @param returnTo 支付页地址栏传入的候选回跳地址
+ * @returns 合法医生主页地址；其他值统一回退至就诊助手
+ */
+export function resolveAppointmentPaymentCancelPath(returnTo: string | null): string {
+  // 仅接收内部医生主页路径，避免地址栏参数被利用为任意跳转入口。
+  return /^\/assistant\/doctor\/[1-9]\d*(?:\?departmentId=[1-9]\d*)?$/.test(returnTo || '') ? returnTo! : '/assistant';
+}
