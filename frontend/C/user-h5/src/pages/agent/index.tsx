@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, House } from 'lucide-react';
 import { useLocation, useNavigate } from 'umi';
 import { AgentChat } from '../../components/agent/AgentChat';
 import { resolveAgentContext } from '../../models/agent';
@@ -27,10 +27,9 @@ export default function AgentPage() {
   return (
     <main className="agent-page">
       <header className="agent-page__header">
-        <button type="button" className="agent-page__back" onClick={() => navigate(-1)} aria-label="返回">
-          <ArrowLeft size={22} />
-        </button>
+        <div className="agent-page__controls"><button type="button" className="agent-page__back" onClick={() => navigate(-1)} aria-label="返回"><ArrowLeft size={22} /></button><button type="button" className="agent-page__home" onClick={() => navigate('/home')} aria-label="返回首页"><House size={19} /></button></div>
         <h1>AI 助手</h1>
+        <span aria-hidden="true" />
       </header>
       <AgentChat
         context={context}

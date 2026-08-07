@@ -96,7 +96,7 @@ export default function PaymentPage() {
   const canPay = isPending && !isDuplicatePaymentBlocked;
 
   return <main className="subpage">
-    <PageHeader title="挂号支付" />
+    <PageHeader title="挂号支付" showHome={false} />
     <section className="subpage-content payment-card">
       <h2>{isSuccess ? '支付成功' : '请完成支付'}</h2>
       <b>{formatAmount(payment?.amountCent || 0)}</b>

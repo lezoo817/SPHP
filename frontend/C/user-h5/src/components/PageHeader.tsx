@@ -1,18 +1,33 @@
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, House } from 'lucide-react';
 import { useNavigate } from 'umi';
+
+/** 二级页面头的展示与跳转配置。 */
+export interface PageHeaderProps {
+  /** 页面标题。 */
+  title: string;
+  /** 返回图标的目标路径。 */
+  backPath?: string;
+  /** 是否显示首页快捷入口，支付流程应关闭以减少中断操作。 */
+  showHome?: boolean;
+  /** 首页快捷入口的目标路径。 */
+  homePath?: string;
+}
 
 /**
  * 显示二级页面标题与返回入口。
- * @param props 页面标题和可选的返回路径
+ * @param props 页面标题、返回路径和首页快捷入口配置
  * @returns 二级页面顶部导航
  */
-export function PageHeader({ title, backPath = '/mine' }: { title: string; backPath?: string }) {
+export function PageHeader({ title, backPath = '/mine', showHome = true, homePath = '/home' }: PageHeaderProps) {
   const navigate = useNavigate();
   return (
     <header className="page-header">
-      <button className="icon-button" type="button" aria-label="返回上一页" onClick={() => navigate(backPath)}><ArrowLeft size={22} /></button>
+      <div className="page-header__controls">
+        <button className="icon-button" type="button" aria-label="返回上一页" onClick={() => navigate(backPath)}><ArrowLeft size={22} /></button>
+        {showHome && <button className="page-header__home icon-button" type="button" aria-label="返回首页" onClick={() => navigate(homePath)}><House size={19} /></button>}
+      </div>
       <h1>{title}</h1>
-      <span />
+      <span aria-hidden="true" />
     </header>
   );
 }
