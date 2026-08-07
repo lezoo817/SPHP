@@ -60,6 +60,28 @@ export const AGENT_TOOL_LABELS: Record<string, string> = {
   query_drugs: '查询药品目录',
 };
 
+/**
+ * L2 卡片类型到对应工具名的反向映射（与 sphp-agent safety.py `_map_card_type` 对齐）。
+ *
+ * 前端收到 `card` 事件后，据此把对应 L2 工具的 loading 卡片收尾：L2 工具
+ * 不下发 observation（被挂起 pending_confirmations 等待确认），若不收尾会
+ * 永久显示"调用中"。收到确认卡时置 pending，用户确认成功后置 success。
+ */
+export const AGENT_CARD_TYPE_TO_TOOL: Record<string, string> = {
+  confirm_appointment: 'create_appointment',
+  confirm_cancel_appointment: 'cancel_appointment',
+  confirm_pre_consultation: 'save_pre_consultation',
+  confirm_send_message: 'send_consultation_message',
+  confirm_drug_order: 'create_drug_order',
+  confirm_cancel_drug_order: 'cancel_drug_order',
+  confirm_allergy: 'manage_allergy',
+  confirm_medical_history: 'manage_medical_history',
+  confirm_report: 'create_report',
+  confirm_medication_plan: 'update_medication_plan',
+  confirm_follow_up: 'confirm_follow_up',
+  confirm_draft_note: 'generate_draft_note',
+};
+
 /** L2 确认卡片错误码到面向医生的提示文案映射。 */
 export const AGENT_CONFIRM_ERROR_TEXT: Record<string, string> = {
   CONFIRM_INVALID: '确认参数无效，请重新发起操作',
@@ -90,3 +112,86 @@ export const AGENT_UNAVAILABLE_TEXT = 'AI 辅助暂不可用，不影响接诊�
 
 /** 医疗免责声明（生成草稿、报告解读、处方审核等均展示）。 */
 export const AGENT_DISCLAIMER = 'AI 辅助内容仅供医生参考，不替代临床判断与医生诊断。';
+
+/** 导航按钮中的单个菜单项。 */
+export interface AgentNavItem {
+  /** 路由路径 */
+  key: string;
+  /** 展示名称 */
+  label: string;
+  /** 仅 ADMIN 可见 */
+  requireAdmin?: boolean;
+  /** 需要 ADMIN 或 DEPT_HEAD（审核权限） */
+  requireAudit?: boolean;
+  /** ADMIN 角色下隐藏（用于仅医生可见的模块，如接诊台） */
+  hideForAdmin?: boolean;
+}
+
+/** 导航按钮中的菜单分组。 */
+export interface AgentNavGroup {
+  /** 分组标题 */
+  label: string;
+  /** 该组的菜单项 */
+  items: AgentNavItem[];
+}
+
+/**
+ * AI 助手导航按钮的分组菜单配置。
+ *
+ * 路由路径与侧边栏 buildMenuItems 对齐；角色过滤逻辑在组件内执行。
+ * 适用于：抽屉 AiPanel、/agent 全屏页、接诊台内嵌侧栏。
+ */
+export const AGENT_NAV_GROUPS: AgentNavGroup[] = [
+  {
+    label: '医院管理',
+    items: [
+      { key: '/admin/hospital', label: '医院信息', requireAdmin: true },
+      { key: '/admin/departments', label: '科室管理', requireAdmin: true },
+      { key: '/admin/doctors', label: '医生管理', requireAdmin: true },
+    ],
+  },
+  {
+    label: '排班管理',
+    items: [
+      { key: '/schedule/list', label: '排班列表' },
+      { key: '/schedule/source-pool', label: '号源池' },
+      { key: '/schedule/locked', label: '锁定时段' },
+    ],
+  },
+  {
+    label: '接诊台',
+    items: [{ key: '/consult/queue', label: '接诊台', hideForAdmin: true }],
+  },
+  {
+    label: '处方管理',
+    items: [
+      { key: '/prescription/list', label: '处方列表' },
+      { key: '/prescription/pending-audit', label: '待审核', requireAudit: true },
+      { key: '/prescription/templates', label: '处方模板' },
+    ],
+  },
+  {
+    label: '药品库存',
+    items: [
+      { key: '/drug/catalog', label: '药品目录', requireAdmin: true },
+      { key: '/drug/inventory', label: '库存管理', requireAdmin: true },
+      { key: '/drug/alerts', label: '库存预警', requireAdmin: true },
+    ],
+  },
+  {
+    label: '患者管理',
+    items: [{ key: '/patient/list', label: '患者管理' }],
+  },
+  {
+    label: '知识库',
+    items: [{ key: '/admin/knowledge', label: '知识库', requireAdmin: true }],
+  },
+  {
+    label: '统计报表',
+    items: [
+      { key: '/statistics/overview', label: '概览', requireAdmin: true },
+      { key: '/statistics/department', label: '科室统计', requireAdmin: true },
+      { key: '/statistics/daily', label: '日报统计', requireAdmin: true },
+    ],
+  },
+];

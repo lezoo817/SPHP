@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Clock, Loader, MessageSquare, Plus, Send, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Clock,
+  Compass,
+  Calendar,
+  FileText,
+  HeartPulse,
+  FolderHeart,
+  Loader,
+  MessageSquare,
+  Plus,
+  Send,
+  Trash2,
+} from 'lucide-react';
 import { useNavigate } from 'umi';
 import { useAgentStream } from '../../hooks/useAgentStream';
 import { getSessions, deleteSession } from '../../services/agent';
@@ -204,6 +217,24 @@ export function AgentChat({
     send(prompt, context);
   }
 
+  /** 快捷入口图标按 label 名称映射，便于美化常驻栏。 */
+  function getQuickIcon(label: string) {
+    switch (label) {
+      case '智能导诊':
+        return <Compass size={22} />;
+      case '查询挂号':
+        return <Calendar size={22} />;
+      case '处方解读':
+        return <FileText size={22} />;
+      case '在线问诊':
+        return <HeartPulse size={22} />;
+      case '健康档案':
+        return <FolderHeart size={22} />;
+      default:
+        return <MessageSquare size={22} />;
+    }
+  }
+
   /** 确认下单成功后使用 Agent 返回的订单与支付单 ID 进入支付页。 */
   async function handleConfirm(card: AgentConfirmCard) {
     const result = await confirm(card);
@@ -338,21 +369,32 @@ export function AgentChat({
             {showWelcome && (
               <div className="agent-chat__welcome">
                 <p className="agent-chat__welcome-text">{AGENT_WELCOME}</p>
-                <div className="agent-chat__quick">
-                  {AGENT_QUICK_PROMPTS.map((prompt) => (
-                    <button
-                      type="button"
-                      key={prompt.label}
-                      className="agent-chat__quick-item"
-                      onClick={() => handleQuick(prompt.content)}
-                      disabled={isStreaming || !contextReady}
-                    >
-                      {prompt.label}
-                    </button>
-                  ))}
-                </div>
               </div>
             )}
+
+            {/* 快捷入口：常驻在对话列表上方（不论是否有对话记录都可见）。 */}
+            <div className="agent-chat__quick-bar">
+              <h3 className="agent-chat__quick-title">常用服务</h3>
+              <div className="agent-chat__quick-grid">
+                {AGENT_QUICK_PROMPTS.map((prompt) => (
+                  <button
+                    type="button"
+                    key={prompt.label}
+                    className="agent-chat__quick-card"
+                    onClick={() => handleQuick(prompt.content)}
+                    disabled={isStreaming || !contextReady}
+                    title={prompt.content}
+                  >
+                    <i className="agent-chat__quick-icon" aria-hidden="true">
+                      {getQuickIcon(prompt.label)}
+                    </i>
+                    <b className="agent-chat__quick-label">{prompt.label}</b>
+                    <small className="agent-chat__quick-desc">{prompt.description}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {entries.map((entry) => {
               if (entry.kind === 'message') return <AgentMessageBubble key={entry.data.id} message={entry.data} />;
               if (entry.kind === 'thought') return <AgentThoughtPanel key={entry.data.id} thought={entry.data} />;

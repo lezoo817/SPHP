@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BulbOutlined, DownOutlined } from '@ant-design/icons';
-import type { AgentThought } from '../../typings/agent';
+import type { AgentThought } from '@/typings/agent';
 
 /** 推理过程折叠面板：默认折叠，按需展开查看 thought 增量。 */
 export function AgentThoughtPanel({ thought }: { thought: AgentThought }) {
