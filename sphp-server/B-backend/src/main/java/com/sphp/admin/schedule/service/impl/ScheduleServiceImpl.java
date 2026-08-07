@@ -14,9 +14,10 @@ import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.hospital.entity.Department;
 import com.sphp.admin.hospital.mapper.DepartmentMapper;
 import com.sphp.admin.schedule.dto.LockedSlotRow;
+import com.sphp.admin.schedule.dto.BatchPublishRequest;
+import com.sphp.admin.schedule.dto.BatchScheduleRequest;
 import com.sphp.admin.schedule.dto.ScheduleCreateRequest;
 import com.sphp.admin.schedule.dto.ScheduleSlotStat;
-import com.sphp.admin.schedule.dto.BatchScheduleRequest;
 import com.sphp.admin.schedule.dto.SlotConfigRequest;
 import com.sphp.admin.schedule.entity.Schedule;
 import com.sphp.admin.schedule.entity.Slot;
@@ -27,6 +28,7 @@ import com.sphp.admin.schedule.mapper.SlotSnapshotMapper;
 import com.sphp.admin.schedule.service.ScheduleService;
 import com.sphp.admin.schedule.vo.BatchCreateReportVO;
 import com.sphp.admin.schedule.vo.BatchPreviewVO;
+import com.sphp.admin.schedule.vo.BatchPublishReportVO;
 import com.sphp.admin.schedule.vo.ForceReleaseVO;
 import com.sphp.admin.schedule.vo.LockedSlotVO;
 import com.sphp.admin.schedule.vo.ScheduleCreateVO;
@@ -686,6 +688,64 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .createdItems(createdItems)
                 .reusedItems(reusedItems)
                 .skippedItems(skippedItems)
+                .build();
+    }
+
+    /**
+     * 批量发布排班（ADMIN）。
+     *
+     * <p>逐条复用 {@link #publish(Long)}；任何失败（非 DRAFT / 越权 / 未配置时段等）以明细形式返回，不抛错中断整批。
+     * 每条 publish() 自身为独立事务，部分失败不影响其他条目提交。
+     *
+     * @param request 批量发布请求
+     * @return 发布结果报告
+     */
+    @Override
+    public BatchPublishReportVO batchPublish(BatchPublishRequest request) {
+        Long hospitalId = currentUserService.getCurrentHospitalId();
+        List<BatchPublishReportVO.FailedItem> failedItems = new ArrayList<>();
+        int published = 0, failed = 0;
+
+        for (Long id : request.getScheduleIds()) {
+            Schedule s = scheduleMapper.selectById(id);
+            // 跨院/不存在/已逻辑删除统一视为不可发布（对外统一为"排班不存在"，不暴露医院隔离细节）
+            if (s == null || s.getDeletedAt() != null) {
+                failedItems.add(BatchPublishReportVO.FailedItem.builder()
+                        .scheduleId(id).reason("排班不存在").build());
+                failed++;
+                continue;
+            }
+            Doctor doctor = doctorMapper.selectById(s.getDoctorId());
+            if (doctor == null || doctor.getDeletedAt() == null
+                    || !hospitalId.equals(doctor.getHospitalId())) {
+                failedItems.add(BatchPublishReportVO.FailedItem.builder()
+                        .scheduleId(id).reason("排班不存在").build());
+                failed++;
+                continue;
+            }
+            if (!STATUS_DRAFT.equals(s.getStatus())) {
+                String reason = STATUS_PUBLISHED.equals(s.getStatus()) ? "已发布，无需重复发布" : "已作废，不可发布";
+                failedItems.add(BatchPublishReportVO.FailedItem.builder()
+                        .scheduleId(id).reason(reason).build());
+                failed++;
+                continue;
+            }
+            try {
+                publish(id);
+                published++;
+            } catch (BusinessException ex) {
+                // 时段未配置 / 号源和不匹配等业务校验失败，计入失败明细继续处理其他条目
+                failedItems.add(BatchPublishReportVO.FailedItem.builder()
+                        .scheduleId(id).reason(ex.getMessage()).build());
+                failed++;
+            }
+        }
+        log.info("批量发布排班 total={}, published={}, failed={}",
+                request.getScheduleIds().size(), published, failed);
+        return BatchPublishReportVO.builder()
+                .publishedCount(published)
+                .failedCount(failed)
+                .failedItems(failedItems)
                 .build();
     }
 

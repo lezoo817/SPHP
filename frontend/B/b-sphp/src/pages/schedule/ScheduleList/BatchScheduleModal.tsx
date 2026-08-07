@@ -2,10 +2,10 @@
  * 批量排班弹窗。
  *
  * 交互流程：
- * 1. 上半段 ProForm 录入（医生 / 日期范围 / 星期模式 / 班次 / 号源 / 拆分方式）
+ * 1. 上半段 ProForm 录入（医生 / 日期范围 / 星期模式 / 班次 / 号源 / 拆分方式 / 是否立即发布）
  * 2. 表单值变化时 debounce 300ms 调 preview 接口，下半段实时展示预览表
  * 3. 提交按钮按预览结果动态禁用/启用，文案显示「将创建 N 条，跳过 M 条」
- * 4. 创建成功后弹结果详情（新建/复用/跳过分类）
+ * 4. 创建成功后弹结果详情（新建/复用/跳过分类）；勾选「立即发布」时串联 batchPublish（仅对新建项）
  *
  * 设计要点：
  * - 与 ScheduleFormModal 共享医生/科室联动逻辑，但弹窗结构与状态机完全独立
@@ -28,6 +28,7 @@ import {
   getDoctors,
   previewBatchSchedule,
   createBatchSchedule,
+  batchPublishSchedules,
 } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
 import {
@@ -45,6 +46,8 @@ interface BatchFormValues {
   shifts: ('MORNING' | 'AFTERNOON')[];
   totalSlots: number;
   slotSplitMode: 'HOURLY' | 'HALF_HOUR' | 'FULL';
+  /** 创建成功后立即发布新创建的草稿（复用 CANCELLED 的不在发布范围内，避免打扰历史数据） */
+  publishImmediately: boolean;
 }
 
 interface Props {
@@ -174,11 +177,24 @@ export default function BatchScheduleModal({ open, onCancel, onCreated }: Props)
         totalSlots: v.totalSlots,
         slotSplitMode: v.slotSplitMode,
       });
+      // 立即发布：仅对本次新建的草稿（不含复用 CANCELLED）调用，避免在用户不知情下改动历史状态
+      let publishSummary = '';
+      if (v.publishImmediately && report.createdItems.length > 0) {
+        const publishReport = await batchPublishSchedules({
+          scheduleIds: report.createdItems.map((it) => it.scheduleId),
+        });
+        const publishParts: string[] = [];
+        if (publishReport.publishedCount)
+          publishParts.push(`发布 ${publishReport.publishedCount} 条`);
+        if (publishReport.failedCount)
+          publishParts.push(`发布失败 ${publishReport.failedCount} 条`);
+        publishSummary = publishParts.length ? `；${publishParts.join('，')}` : '；全部发布成功';
+      }
       const parts: string[] = [];
       if (report.createdCount) parts.push(`新建 ${report.createdCount} 条`);
       if (report.reusedCount) parts.push(`复用 ${report.reusedCount} 条`);
       if (report.skippedCount) parts.push(`跳过 ${report.skippedCount} 条`);
-      message.success(parts.length ? parts.join('，') : '批量创建完成');
+      message.success((parts.length ? parts.join('，') : '批量创建完成') + publishSummary);
       onCreated?.();
       onCancel();
     } catch (err: unknown) {
@@ -260,6 +276,7 @@ export default function BatchScheduleModal({ open, onCancel, onCreated }: Props)
           shifts: ['MORNING', 'AFTERNOON'],
           totalSlots: 20,
           slotSplitMode: 'HOURLY',
+          publishImmediately: true,
         }}
         layout="vertical"
       >
@@ -334,6 +351,9 @@ export default function BatchScheduleModal({ open, onCancel, onCreated }: Props)
             options={SLOT_SPLIT_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
           />
         </Space>
+        <ProFormCheckbox name="publishImmediately">
+          创建成功后立即发布（仅对本次新建的草稿生效）
+        </ProFormCheckbox>
       </ProForm>
 
       {preview && (

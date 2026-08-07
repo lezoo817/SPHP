@@ -1,12 +1,14 @@
 package com.sphp.admin.schedule.controller;
 
 import com.sphp.admin.common.vo.PageResult;
+import com.sphp.admin.schedule.dto.BatchPublishRequest;
 import com.sphp.admin.schedule.dto.BatchScheduleRequest;
 import com.sphp.admin.schedule.dto.ScheduleCreateRequest;
 import com.sphp.admin.schedule.dto.SlotConfigRequest;
 import com.sphp.admin.schedule.service.ScheduleService;
 import com.sphp.admin.schedule.vo.BatchCreateReportVO;
 import com.sphp.admin.schedule.vo.BatchPreviewVO;
+import com.sphp.admin.schedule.vo.BatchPublishReportVO;
 import com.sphp.admin.schedule.vo.ForceReleaseVO;
 import com.sphp.admin.schedule.vo.LockedSlotVO;
 import com.sphp.admin.schedule.vo.ScheduleCreateVO;
@@ -143,5 +145,11 @@ public class ScheduleController {
     @Operation(summary = "批量排班提交", description = "仅 ADMIN；按预览结果执行实际写入，跳过 DRAFT/PUBLISHED 冲突，复用 CANCELLED，新建其他，返回新建/复用/跳过分类报告")
     public Result<BatchCreateReportVO> createBatch(@Valid @RequestBody BatchScheduleRequest request) {
         return Result.success("批量创建完成", scheduleService.createBatch(request));
+    }
+
+    @PostMapping("/schedules/batch-publish")
+    @Operation(summary = "批量发布排班", description = "仅 ADMIN；逐条发布 DRAFT 排班，非 DRAFT/越权/未配置时段等失败原因以明细形式返回，不抛错中断整批")
+    public Result<BatchPublishReportVO> batchPublish(@Valid @RequestBody BatchPublishRequest request) {
+        return Result.success("批量发布完成", scheduleService.batchPublish(request));
     }
 }
