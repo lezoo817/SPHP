@@ -40,7 +40,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/b/admin")
-@Tag(name = "3-排班管理", description = "排班列表/创建/时段配置/发布/取消发布/锁定号源看板/手动释放")
+@Tag(name = "排班管理", description = "排班列表/创建/时段配置/发布/取消发布/锁定号源看板/手动释放")
 @RequiredArgsConstructor
 public class ScheduleController {
 
@@ -49,7 +49,7 @@ public class ScheduleController {
 
     /** 每页大小钳制到 [1, MAX_PAGE_SIZE]，避免越界 */
     private static int clampSize(int size) {
-        return Math.max(1, Math.min(size, MAX_PAGE_SIZE));
+        return Math.clamp(size, 1, MAX_PAGE_SIZE);
     }
 
     private final ScheduleService scheduleService;
