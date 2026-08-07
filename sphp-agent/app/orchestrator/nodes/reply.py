@@ -42,6 +42,34 @@ _OFFICIAL_READY_SOURCE = "OFFICIAL_READY"
 _AI_FALLBACK_SOURCE = "AI_FALLBACK"
 
 
+def _extract_degraded_health_record(
+    tool_results: list[dict[str, Any]] | None,
+) -> bool:
+    """识别健康档案是否发生了来源降级（2026-08-07）。
+
+    前端会话残留他账号就诊人 ID 时，``query_health_record`` 被 Java 数据隔离
+    拒绝（403 / A0301）后确定性降级为查当前账号本人档案，并在成功结果 data
+    中附 ``agent_degraded: True`` 来源标记（见 health.py 该函数）。本函数扫描
+    本轮工具结果，命中该标记即返回 True，供 reply_node 注入降级引导。
+
+    Args:
+        tool_results: 本轮工具执行结果列表。
+
+    Returns:
+        bool: 存在降级成功的健康档案来源标记时返回 True。
+    """
+    for result in tool_results or []:
+        if result.get("tool_name") != "query_health_record" or not result.get("success"):
+            continue
+        data = result.get("data")
+        if not isinstance(data, dict):
+            continue
+        payload = data.get("data")
+        if isinstance(payload, dict) and payload.get("agent_degraded"):
+            return True
+    return False
+
+
 def _extract_prescription_interpretation(
     tool_results: list[dict[str, Any]] | None,
 ) -> dict[str, Any] | None:
@@ -174,6 +202,26 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         if tool_results:
             tool_summary = _format_tool_results(tool_results)
             llm_messages.append({"role": "system", "content": f"工具调用结果：\n{tool_summary}"})
+
+        # 档案来源降级提示（2026-08-07）：前端会话残留了他账号的就诊人 ID 时，
+        # query_health_record 被 Java 数据隔离拒绝后降级为查当前账号本人档案
+        # （见 health.py query_health_record）。此处识别该来源标记，引导 LLM
+        # 如实说明档案来源、提示用户重新选择就诊人，且禁忌核对不得把本人档案
+        # 当成目标就诊人的档案，避免基于错误的过敏史做医疗判断。
+        degraded = _extract_degraded_health_record(tool_results)
+        if degraded:
+            llm_messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "当前读取的健康档案为**当前登录账号本人**的档案（前端选中的就诊人"
+                        "无权访问，系统已自动降级读取本人档案）。"
+                        "请如实告知用户：健康档案未能按所选就诊人读取，已改用本人档案；"
+                        "如需按指定就诊人查看，请返回首页重新选择就诊人。"
+                        "⚠️ 禁忌核对等医疗判断必须基于本人档案，不得声称已核对目标就诊人的过敏史。"
+                    ),
+                }
+            )
 
         if interpretation and interpretation.get("source") == _AI_FALLBACK_SOURCE:
             fallback_context = _build_ai_fallback_context(interpretation)
