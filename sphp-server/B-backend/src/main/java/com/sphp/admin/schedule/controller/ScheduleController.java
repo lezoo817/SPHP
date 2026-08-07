@@ -60,7 +60,7 @@ public class ScheduleController {
             @Parameter(description = "排班日期 yyyy-MM-dd，默认当天") @RequestParam(required = false) LocalDate date,
             @Parameter(description = "科室ID（仅 ADMIN 生效）") @RequestParam(required = false) Long deptId,
             @Parameter(description = "医生ID（仅 ADMIN 生效）") @RequestParam(required = false) Long doctorId,
-            @Parameter(description = "状态过滤：DRAFT / PUBLISHED / CANCELLED") @RequestParam(required = false) String status,
+            @Parameter(description = "状态过滤：DRAFT / PUBLISHED / CANCELLED / EXPIRED（已过期，PUBLISHED+日期<今天）") @RequestParam(required = false) String status,
             @Parameter(description = "页码，默认1") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页大小，默认10") @RequestParam(defaultValue = "10") int size) {
         return Result.success("查询成功",

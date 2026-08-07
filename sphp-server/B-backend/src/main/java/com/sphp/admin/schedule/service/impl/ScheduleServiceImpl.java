@@ -113,7 +113,8 @@ public class ScheduleServiceImpl implements ScheduleService {
      * @param date     排班日期（可空；不传则加载全部）
      * @param deptId   科室过滤（仅 ADMIN 生效）
      * @param doctorId 医生过滤（仅 ADMIN 生效）
-     * @param status   排班状态过滤（DRAFT / PUBLISHED / CANCELLED；可空）
+     * @param status   排班状态过滤（DRAFT / PUBLISHED / CANCELLED / EXPIRED；可空）
+     *                 "EXPIRED" 为虚拟查询值，识别后改写为 {@code status=PUBLISHED AND schedule_date<today}（不入库）
      * @param page     页码（1 起）
      * @param size     每页大小（调用方已钳制到 [1, MAX_PAGE_SIZE]）
      * @return 排班分页结果（含号源聚合计数）
@@ -142,7 +143,11 @@ public class ScheduleServiceImpl implements ScheduleService {
         } else {
             wrapper.eq(Schedule::getDoctorId, scope.doctorId());
         }
-        wrapper.eq(StringUtils.hasText(status), Schedule::getStatus, status)
+        // 特殊值"EXPIRED"：展开为 status=PUBLISHED AND schedule_date<today（虚拟状态，不入库）
+        boolean expired = "EXPIRED".equals(status);
+        wrapper.eq(!expired && StringUtils.hasText(status), Schedule::getStatus, status)
+                .eq(expired, Schedule::getStatus, STATUS_PUBLISHED)
+                .lt(expired, Schedule::getScheduleDate, LocalDate.now())
                 // 按排班日期倒序展示，最近的排班在最前
                 .orderByDesc(Schedule::getScheduleDate)
                 .orderByAsc(Schedule::getId);
