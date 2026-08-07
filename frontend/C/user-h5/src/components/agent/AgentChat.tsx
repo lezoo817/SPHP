@@ -12,6 +12,7 @@ import { AgentActionCardView } from './AgentActionCard';
 import { AgentSelectCardView } from './AgentSelectCard';
 import type { AgentActionCard, AgentChatContext, AgentConfirmCard, AgentPresetAction, AgentSession } from '../../typings/agent';
 import { resolveAppointmentPaymentResult, resolveDrugOrderPaymentResult } from '../../utils/agent-purchase';
+import { resolveAgentActionRequest } from '../../utils/agent-action';
 
 /**
  * 格式化会话时间：今天显示时分，昨天显示"昨天"，更早显示日期。
@@ -213,16 +214,12 @@ export function AgentChat({
     });
   }
 
-  /** 药店推荐交互卡只允许发送固定预设，不接受模型或用户文本拼装的参数。 */
+  /** 业务交互卡只允许发送固定预设，不接受模型或用户文本拼装的参数。 */
   function handleAction(card: AgentActionCard) {
-    if (card.actionType !== 'recommend_prescription_pharmacy') return;
-    const prescriptionId = Number(card.arguments.prescription_id);
-    if (!Number.isInteger(prescriptionId) || prescriptionId <= 0) return;
-    send('请为我推荐相关药店。', {
-      ...context,
-      preset_action: 'recommend_prescription_pharmacy',
-      prescription_id: prescriptionId,
-    });
+    const request = resolveAgentActionRequest(card, context);
+    if (!request) return;
+    // 固定业务 ID 仅用于生成受控预设，不会在当前会话外创建新对话。
+    send(request.content, request.context);
   }
 
   const showWelcome = entries.length === 0;

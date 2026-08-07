@@ -61,6 +61,7 @@ class AgentState(TypedDict):
             "interpret_prescription",
             "recommend_prescription_pharmacy",
             "notify_drug_order_paid",
+            "authorize_drug_order_reminder_after_receipt",
         ]
         | None
     ]

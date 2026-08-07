@@ -45,6 +45,7 @@ _AI_FALLBACK_SOURCE = "AI_FALLBACK"
 _PRESET_INTERPRET_PRESCRIPTION = "interpret_prescription"
 _PRESET_RECOMMEND_PRESCRIPTION_PHARMACY = "recommend_prescription_pharmacy"
 _PRESET_NOTIFY_DRUG_ORDER_PAID = "notify_drug_order_paid"
+_PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT = "authorize_drug_order_reminder_after_receipt"
 
 
 def _positive_int(value: Any) -> int | None:
@@ -165,6 +166,40 @@ def _format_paid_order_notification(state: AgentState) -> str | None:
         except ValueError:
             formatted_time = expected_delivery_at
         return f"您已购买成功，预计{formatted_time}送达。{address_message}"
+    return None
+
+
+def _paid_order_reminder_action_cards(state: AgentState) -> list[dict[str, Any]] | None:
+    """为未授权的已支付订单构造收货后自动提醒入口。
+
+    Args:
+        state: 含订单详情查询结果的 Agent 状态。
+
+    Returns:
+        待前端点击的受控交互卡；订单未支付、已授权或结果无效时返回 None。
+    """
+    drug_order_id = _positive_int(state.get("preset_drug_order_id"))
+    if drug_order_id is None:
+        return None
+    for result in state.get("tool_results") or []:
+        if result.get("tool_name") != "query_drug_orders" or not result.get("success"):
+            continue
+        payload = _response_payload(result)
+        if not isinstance(payload, dict) or payload.get("status") != "PAID":
+            return None
+        # Java 权威返回已有授权状态后不重复引导用户确认同一项设置。
+        activation_status = payload.get("reminderActivationStatus")
+        if isinstance(activation_status, str) and activation_status.strip():
+            return None
+        return [
+            {
+                "action_type": _PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT,
+                "title": "用药提醒",
+                "summary": "收货后是否需要为您自动开启用药提醒？",
+                "button_text": "开启提醒",
+                "arguments": {"drug_order_id": drug_order_id},
+            }
+        ]
     return None
 
 
@@ -473,7 +508,13 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
             notification = _format_paid_order_notification(state)
             if notification:
                 # 预计送达时间必须来自 Java 订单详情，不能交给模型生成。
-                return {"messages": [{"role": "assistant", "content": notification}]}
+                result: dict[str, Any] = {
+                    "messages": [{"role": "assistant", "content": notification}]
+                }
+                action_cards = _paid_order_reminder_action_cards(state)
+                if action_cards:
+                    result["action_cards"] = action_cards
+                return result
 
         if state.get("preset_action") == _PRESET_RECOMMEND_PRESCRIPTION_PHARMACY:
             pending_confirmations = state.get("pending_confirmations") or []

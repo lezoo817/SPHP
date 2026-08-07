@@ -24,9 +24,11 @@ from app.infrastructure.cache.redis_client import (
 )
 from app.orchestrator.graphs.main_graph import build_main_graph
 from app.orchestrator.nodes.preset import (
+    PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT,
     PRESET_INTERPRET_PRESCRIPTION,
     PRESET_NOTIFY_DRUG_ORDER_PAID,
     PRESET_RECOMMEND_PRESCRIPTION_PHARMACY,
+    resolve_preset_drug_order_reminder_authorization,
     resolve_preset_interpretation,
     resolve_preset_paid_order,
     resolve_preset_recommendation,
@@ -167,6 +169,11 @@ def _build_initial_state(
         resolve_preset_recommendation(req.context) if scope == "c_end" else None
     )
     preset_paid_order_id = resolve_preset_paid_order(req.context) if scope == "c_end" else None
+    preset_reminder_authorization_id = (
+        resolve_preset_drug_order_reminder_authorization(req.context)
+        if scope == "c_end"
+        else None
+    )
     preset_action: str | None = None
     preset_prescription_id: int | None = None
     if preset_interpretation_id is not None:
@@ -177,6 +184,9 @@ def _build_initial_state(
         preset_prescription_id = preset_recommendation_id
     elif preset_paid_order_id is not None:
         preset_action = PRESET_NOTIFY_DRUG_ORDER_PAID
+    elif preset_reminder_authorization_id is not None:
+        preset_action = PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT
+        preset_paid_order_id = preset_reminder_authorization_id
     return {
         "messages": messages,
         "session_id": session_id,
@@ -970,6 +980,7 @@ _TOOL_LABELS = {
     "save_pre_consultation": "确认提交预问诊给医生",
     "send_consultation_message": "确认发送问诊消息",
     "create_drug_order": "确认创建购药订单",
+    "authorize_drug_order_reminder_after_receipt": "确认收货后开启用药提醒",
     "cancel_drug_order": "确认取消购药订单",
     "confirm_drug_receipt": "确认收货",
     "join_waitlist": "确认登记候补",
@@ -1060,6 +1071,7 @@ _CARD_DETAILS_FIELDS: dict[str, tuple[str, ...]] = {
     "confirm_medical_history": ("content", "history_id"),
     "confirm_report": ("report_name", "report_date"),
     "confirm_medication_plan": ("plan_id", "action"),
+    "confirm_drug_order_reminder_after_receipt": ("drug_order_id",),
     "confirm_follow_up": ("follow_up_id", "remind_at"),
     "confirm_draft_note": ("consultation_id",),
     "confirm_patient_history": ("patient_id",),
@@ -1229,6 +1241,9 @@ def _success_message(tool_name: str) -> str:
         "save_pre_consultation": "预问诊已提交给医生",
         "send_consultation_message": "消息已发送",
         "create_drug_order": "购药订单已创建",
+        "authorize_drug_order_reminder_after_receipt": (
+            "相关操作已设置，收货后即可自动开启您的用药提醒。"
+        ),
         "cancel_drug_order": "购药订单已取消",
         "confirm_drug_receipt": "已确认收货",
         "manage_allergy": "过敏史已更新",

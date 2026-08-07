@@ -130,6 +130,7 @@ def _map_card_type(tool_name: str) -> str:
         "save_pre_consultation": "confirm_pre_consultation",
         "send_consultation_message": "confirm_send_message",
         "create_drug_order": "confirm_drug_order",
+        "authorize_drug_order_reminder_after_receipt": "confirm_drug_order_reminder_after_receipt",
         "cancel_drug_order": "confirm_cancel_drug_order",
         "confirm_drug_receipt": "confirm_drug_receipt",
         "join_waitlist": "confirm_waitlist",
