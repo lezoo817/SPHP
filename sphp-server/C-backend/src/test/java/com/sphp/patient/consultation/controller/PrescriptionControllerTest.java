@@ -34,10 +34,10 @@ class PrescriptionControllerTest {
     @Test
     void prescriptionListReturnsApprovedPrescriptionPage() throws Exception {
         PrescriptionService service = mock(PrescriptionService.class);
-        when(service.prescriptionList(20001L, 1, 20)).thenReturn(ConsultationPrescriptionPageVO.builder()
+        when(service.prescriptionList(20001L, 1, 20, null)).thenReturn(ConsultationPrescriptionPageVO.builder()
                 .pageNo(1).pageSize(20).total(1)
                 .records(List.of(ConsultationPrescriptionPageVO.Item.builder().id(13001L)
-                        .consultationId(11001L).doctorName("王医生").status("APPROVED")
+                        .consultationId(11001L).doctorName("王医生").displayName("阿莫西林胶囊").status("APPROVED")
                         .issuedAt(OffsetDateTime.now()).build()))
                 .build());
 

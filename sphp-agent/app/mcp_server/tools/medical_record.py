@@ -34,6 +34,29 @@ def _invalid_medical_record(message: str, trace_id: str = "") -> dict[str, Any]:
     return {"code": "A0400", "message": message, "data": None, "traceId": trace_id}
 
 
+async def query_medical_records(
+    patient_id: int | None = None,
+    recent_days: int | None = None,
+    user_id: int | None = None,
+) -> dict[str, Any]:
+    """查询可访问就诊人的医生病历列表。
+
+    Args:
+        patient_id: 可选就诊人 ID，未传时由 Java 查询本人。
+        recent_days: 可选最近天数，仅受控记录选择入口传入 30。
+        user_id: 经 JWT 鉴权得到的当前用户 ID。
+
+    Returns:
+        Java 返回的病历分页响应。
+    """
+    params: dict[str, Any] = {}
+    if patient_id is not None:
+        params["patient_id"] = patient_id
+    if recent_days is not None:
+        params["recent_days"] = recent_days
+    return await call_java_api(api_name="query_medical_records:list", params=params, user_id=user_id)
+
+
 async def interpret_medical_record(
     consult_id: int, user_id: int | None = None
 ) -> dict[str, Any]:

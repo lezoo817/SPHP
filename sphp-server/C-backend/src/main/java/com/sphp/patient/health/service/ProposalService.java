@@ -25,9 +25,11 @@ public interface ProposalService {
      * @param patientId 可选就诊人 ID，未传时使用本人
      * @param pageNo 可选页码
      * @param pageSize 可选每页数量
+     * @param recentDays 可选最近天数，仅允许 1 至 30 天
      * @return 病历分页结果
      */
-    ProposalMedicalRecordPageVO proposalListMedicalRecords(Long patientId, Integer pageNo, Integer pageSize);
+    ProposalMedicalRecordPageVO proposalListMedicalRecords(Long patientId, Integer pageNo, Integer pageSize,
+                                                            Integer recentDays);
 
     /**
      * 查询单份当前账号可访问的医生病历。

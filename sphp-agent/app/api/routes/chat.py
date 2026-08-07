@@ -31,6 +31,7 @@ from app.orchestrator.nodes.preset import (
     PRESET_RECOMMEND_PRESCRIPTION_PHARMACY,
     resolve_preset_drug_order_reminder_authorization,
     resolve_preset_interpretation,
+    resolve_preset_interpretation_picker,
     resolve_preset_medical_record_interpretation,
     resolve_preset_paid_order,
     resolve_preset_recommendation,
@@ -172,6 +173,9 @@ def _build_initial_state(
         if scope == "c_end"
         else None
     )
+    preset_interpretation_picker = (
+        resolve_preset_interpretation_picker(req.context) if scope == "c_end" else None
+    )
     preset_recommendation_id = (
         resolve_preset_recommendation(req.context) if scope == "c_end" else None
     )
@@ -188,6 +192,8 @@ def _build_initial_state(
         preset_prescription_id = preset_interpretation_id
     elif preset_medical_record_id is not None:
         preset_action = PRESET_INTERPRET_MEDICAL_RECORD
+    elif preset_interpretation_picker is not None:
+        preset_action = preset_interpretation_picker
     elif preset_recommendation_id is not None:
         preset_action = PRESET_RECOMMEND_PRESCRIPTION_PHARMACY
         preset_prescription_id = preset_recommendation_id
@@ -226,6 +232,7 @@ def _build_initial_state(
         "preset_drug_order_id": preset_paid_order_id,
         "preset_error": None,
         "action_cards": None,
+        "record_pickers": None,
         "tool_calls": None,
         "tool_results": None,
         "pending_confirmations": None,
@@ -422,6 +429,20 @@ def _handle_updates_chunk(
                 continue
             seen.add(action_sig)
             events.append(("action_card", _build_action_card(action_card)))
+        # 解读记录选择卡由受控预设生成，前端确认后才会发起实际解读。
+        for record_picker in node_update.get("record_pickers") or []:
+            if not isinstance(record_picker, dict):
+                continue
+            picker_type = str(record_picker.get("picker_type") or "")
+            if not picker_type:
+                continue
+            picker_sig = _call_signature(
+                "record_picker", picker_type, {"items": record_picker.get("items") or []}
+            )
+            if picker_sig in seen:
+                continue
+            seen.add(picker_sig)
+            events.append(("record_picker", record_picker))
         # 问诊选医生候选：options 按 options_id 去重（M8-6）
         choices = node_update.get("pending_doctor_choices")
         if choices:
@@ -579,7 +600,7 @@ async def _sse_generator(
                 elif mode == "updates":
                     for event, payload in _handle_updates_chunk(chunk, seen):
                         # 交互卡缓冲到回复之后；工具进度仍即时推送。
-                        if event in ("options", "card", "action_card"):
+                        if event in ("options", "card", "action_card", "record_picker"):
                             deferred.append((event, payload))
                         else:
                             yield _sse(event, payload)
@@ -976,6 +997,7 @@ _TOOL_LABELS = {
     "query_payment_status": "查询支付状态",
     "query_consultations": "查询问诊记录",
     "query_prescriptions": "查询处方",
+    "query_medical_records": "查询病历",
     "interpret_prescription": "解读处方",
     "interpret_medical_record": "解读病历",
     "query_pharmacy_stock": "查询药店库存",

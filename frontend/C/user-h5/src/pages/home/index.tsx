@@ -123,7 +123,7 @@ export default function HomePage() {
       return;
     }
     if (todo.type === 'APPOINTMENT') navigate('/assistant');
-    else if (todo.type === 'MEDICATION') navigate(`/mine/medication-plans?patientId=${todo.patientId}`);
+    else if (todo.type === 'MEDICATION') navigate(`/mine/medication-plans?patientId=${todo.patientId}&source=home`);
     else navigate('/mine/follow-ups');
   }
 
@@ -209,7 +209,7 @@ export default function HomePage() {
     { label: '在线问诊', icon: HeartPulse, action: () => navigate('/assistant') },
     { label: '处方购药', icon: Pill, action: () => navigate('/pharmacy') },
     { label: '病历报告', icon: FileChartColumn, action: () => navigate('/medical-records?source=home') },
-    { label: '用药提醒', icon: ClipboardPlus, action: () => navigate('/mine/medication-plans') },
+    { label: '用药提醒', icon: ClipboardPlus, action: () => navigate('/mine/medication-plans?source=home') },
   ];
 
   return <main className="home-page">

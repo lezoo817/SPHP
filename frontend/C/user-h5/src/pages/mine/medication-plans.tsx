@@ -25,7 +25,10 @@ export default function MedicationPlansPage() {
   const [notice, setNotice] = useState('');
   const operationKeys = useRef<Record<string, string>>({});
   const location = useLocation();
-  const patientIdFromUrl = useMemo(() => Number(new URLSearchParams(location.search).get('patientId')) || undefined, [location.search]);
+  const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const patientIdFromUrl = Number(queryParams.get('patientId')) || undefined;
+  // 首页入口显式传递来源，避免通用页面头默认返回“我的”。
+  const backPath = queryParams.get('source') === 'home' ? '/home' : '/mine';
   const displayedPlans = useMemo(() => filterMedicationPlansByTab(plans, planTab), [plans, planTab]);
 
   /** 依据页面选择、健康待办来源或“我的”专属选择读取用药计划。 */
@@ -92,7 +95,7 @@ export default function MedicationPlansPage() {
     }
   }
 
-  return <main className="subpage"><PageHeader title="用药提醒" /><section className="subpage-content plan-page"><button className="plan-page__intro plan-page__patient-switch" type="button" onClick={() => setPatientOpen(true)}><Pill size={25} /><div><h2>切换就诊人</h2><p>{patientName}{patientPhone ? ` · ${patientPhone}` : ''}</p></div><RefreshCw size={20} /></button>
+  return <main className="subpage"><PageHeader title="用药提醒" backPath={backPath} /><section className="subpage-content plan-page"><button className="plan-page__intro plan-page__patient-switch" type="button" onClick={() => setPatientOpen(true)}><Pill size={25} /><div><h2>切换就诊人</h2><p>{patientName}{patientPhone ? ` · ${patientPhone}` : ''}</p></div><RefreshCw size={20} /></button>
     <div className="medication-plan-tabs" role="tablist" aria-label="用药计划状态"><button className={planTab === 'IN_PROGRESS' ? 'active' : ''} type="button" role="tab" aria-selected={planTab === 'IN_PROGRESS'} onClick={() => selectPlanTab('IN_PROGRESS')}>执行中</button><button className={planTab === 'COMPLETED' ? 'active' : ''} type="button" role="tab" aria-selected={planTab === 'COMPLETED'} onClick={() => selectPlanTab('COMPLETED')}>已完成</button></div>
     {loading && <p className="empty-state">正在读取用药计划...</p>}
     {!loading && displayedPlans.map((plan) => {

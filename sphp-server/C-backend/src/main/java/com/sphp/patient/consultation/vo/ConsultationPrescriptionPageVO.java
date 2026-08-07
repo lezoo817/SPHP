@@ -41,6 +41,9 @@ public class ConsultationPrescriptionPageVO {
         /** 开方医生姓名 */
         private final String doctorName;
 
+        /** 处方药品展示名称，最多展示前三种药品 */
+        private final String displayName;
+
         /** 处方状态，固定为 APPROVED */
         private final String status;
 

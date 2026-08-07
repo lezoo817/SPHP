@@ -4,7 +4,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { cancelAppointment, getPayment, simulatePayment } from '../../services/registration';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatAmount, getRemainingSeconds } from '../../utils/medical';
-import { isDuplicateDoctorAppointmentError } from '../../utils/registration';
+import { isDuplicateDoctorAppointmentError, resolveAppointmentPaymentCancelPath } from '../../utils/registration';
 
 /** 挂号支付单在页面展示所需的最小字段。 */
 interface PaymentState {
@@ -22,7 +22,9 @@ interface PaymentState {
 export default function PaymentPage() {
   const { paymentId } = useParams();
   const navigate = useNavigate();
-  const appointmentId = Number(new URLSearchParams(location.search).get('appointmentId'));
+  const query = new URLSearchParams(location.search);
+  const appointmentId = Number(query.get('appointmentId'));
+  const cancelReturnPath = resolveAppointmentPaymentCancelPath(query.get('returnTo'));
   const [payment, setPayment] = useState<PaymentState>();
   const [password, setPassword] = useState('');
   const [seconds, setSeconds] = useState(0);
@@ -75,11 +77,11 @@ export default function PaymentPage() {
     }
   }
 
-  /** 取消尚未支付的挂号订单并返回就诊助手。 */
+  /** 取消尚未支付的挂号订单，并按入口上下文返回对应页面。 */
   async function cancel() {
     try {
       await cancelAppointment(appointmentId, createIdempotencyKey());
-      navigate('/assistant');
+      navigate(cancelReturnPath);
     } catch (error) {
       setNotice(getApiErrorMessage(error));
       await loadPayment();
@@ -96,7 +98,7 @@ export default function PaymentPage() {
   const canPay = isPending && !isDuplicatePaymentBlocked;
 
   return <main className="subpage">
-    <PageHeader title="挂号支付" />
+    <PageHeader title="挂号支付" showHome={false} />
     <section className="subpage-content payment-card">
       <h2>{isSuccess ? '支付成功' : '请完成支付'}</h2>
       <b>{formatAmount(payment?.amountCent || 0)}</b>

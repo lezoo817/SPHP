@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 import static com.sphp.patient.common.constant.PrescriptionConstant.*;
@@ -42,11 +43,13 @@ public class PrescriptionServiceImpl implements PrescriptionService {
      * @param patientId 可选就诊人 ID，未传时使用本人
      * @param pageNo 可选页码
      * @param pageSize 可选每页数量
+     * @param recentDays 可选最近天数，仅允许 1 至 30 天
      * @return 已批准处方分页结果
      * @throws CAuthException 患者归属或分页参数非法时抛出
      */
     @Override
-    public ConsultationPrescriptionPageVO prescriptionList(Long patientId, Integer pageNo, Integer pageSize) {
+    public ConsultationPrescriptionPageVO prescriptionList(Long patientId, Integer pageNo, Integer pageSize,
+                                                            Integer recentDays) {
         Long resolvedPatientId = prescriptionResolveAccessiblePatient(CUserContext.getRequired().userId(), patientId);
         //若未传页码/大小，则使用默认值
         int resolvedPageNo = pageNo == null ? DEFAULT_PAGE_NO : pageNo;
@@ -54,16 +57,18 @@ public class PrescriptionServiceImpl implements PrescriptionService {
         if (resolvedPageSize > MAX_PAGE_SIZE) {
             throw prescriptionBadRequest("pageSize 不能超过" + MAX_PAGE_SIZE);
         }
+        // 最近记录按服务端当前时间计算下界，避免前端时钟偏差影响筛选结果。
+        OffsetDateTime issuedSince = recentDays == null ? null : OffsetDateTime.now().minusDays(recentDays);
         long offset = (long) (resolvedPageNo - 1) * resolvedPageSize;
         List<ConsultationPrescriptionPageVO.Item> records = prescriptionDataMapper
-                .prescriptionSelectApprovedList(resolvedPatientId, resolvedPageSize, offset)
+                .prescriptionSelectApprovedList(resolvedPatientId, resolvedPageSize, offset, issuedSince)
                 .stream()
                 .map(this::prescriptionToListItem)
                 .toList();
         return ConsultationPrescriptionPageVO.builder()
                 .pageNo(resolvedPageNo)
                 .pageSize(resolvedPageSize)
-                .total(prescriptionDataMapper.prescriptionCountApprovedList(resolvedPatientId))
+                .total(prescriptionDataMapper.prescriptionCountApprovedList(resolvedPatientId, issuedSince))
                 .records(records)
                 .build();
     }
@@ -180,6 +185,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
                 .id(record.id())
                 .consultationId(record.consultationId())
                 .doctorName(record.doctorName())
+                .displayName(record.displayName())
                 .status(APPROVED.name())
                 .issuedAt(record.issuedAt()) // 已批准
                 .build();

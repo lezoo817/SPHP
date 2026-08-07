@@ -15,7 +15,7 @@ import { hasSearchKeyword, matchesDepartmentKeyword, resolveInitialDepartment } 
 import { buildProfileUpdatePayload, normalizeProfileIdCardNo, resolveProfileIdempotencyKey, validateProfileForm } from './profile';
 import { resolveMinePatientId } from '../models/mine-patient';
 import { isSessionTokenExpired, type SessionState } from '../models/session';
-import { buildDoctorPagePath, findDoctorById, getDoctorScheduleDates } from './doctor';
+import { buildDoctorPagePath, buildDoctorPaymentPath, findDoctorById, getDoctorScheduleDates } from './doctor';
 import { groupSlotsByHalfDay, summarizeHalfDaySlots } from './doctor';
 import { buildAppointmentsPath } from '../services/registration';
 import { buildNotificationsPath } from '../services/notification';
@@ -25,11 +25,11 @@ import { buildDeliveryAddressPayload, getDeliveryAddressInvalidFields, getDelive
 import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantAppointmentRecordStatusText, getAssistantTabs, getCurrentFlowAction, isCurrentAssistantFlow, shouldDisplayAssistantAppointmentRecord } from './assistant';
 import { buildMedicalRecordDetailPath, buildMedicalRecordListPath } from '../services/medical-record';
 import { buildLegacyReportRedirectPath, createMedicalRecordDisplayNumber, filterMedicalRecordsByDate, getRecentMedicalRecordRange, mergeMedicalRecordPages } from './medical-record';
-import { canCancelPaidAppointment, isDuplicateDoctorAppointmentError } from './registration';
+import { canCancelPaidAppointment, isDuplicateDoctorAppointmentError, resolveAppointmentPaymentCancelPath } from './registration';
 import { buildDoctorBookingStatusPath } from '../services/registration';
 import { buildPrescriptionsPath } from '../services/consultation';
 import { buildAssistantPrescriptionDetailPath, buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, createPrescriptionDisplayNumber, filterPrescriptionsByDate, getPrescriptionDisplayNumber, getRecentPrescriptionRange, mergePrescriptionPages, type PrescriptionDisplayNumberStorage } from './prescription';
-import { buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, formatDrugOrderLogisticsTime, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderPaymentId, shouldPollDrugOrderLogistics } from './pharmacy-order';
+import { buildDrugOrderDetailPath, buildDrugOrderListPagePath, buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, formatDrugOrderLogisticsTime, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderDetailPagePath, resolveDrugOrderListPagePath, resolveDrugOrderPaymentId, shouldPollDrugOrderLogistics } from './pharmacy-order';
 import { filterAppointmentRecordsByDate, getRecentAppointmentRecordRange, matchesAppointmentRecordTab, mergeAppointmentRecordPages } from './appointment-record';
 import { clearDismissedExpiredHealthTodos, dismissExpiredHealthTodo, getDismissedExpiredHealthTodoIds, isExpiredHealthTodoDismissed, type ExpiredHealthTodoStorage } from '../models/expired-health-todo';
 import type { Appointment } from '../typings/api';
@@ -272,6 +272,18 @@ describe('购药订单展示规则', () => {
     expect(buildDrugOrderLogisticsPath(1001)).toBe('/pharmacy/order/1001/logistics');
   });
 
+  it('订单列表、订单详情与物流详情保留安全的逐级返回路径', () => {
+    const listPath = buildDrugOrderListPagePath(20001, 'TO_RECEIVE', '布洛芬');
+    const detailPath = buildDrugOrderDetailPath(1001, listPath);
+    const logisticsPath = buildDrugOrderLogisticsPath(1001, detailPath);
+    expect(listPath).toBe('/pharmacy/orders?patientId=20001&tab=TO_RECEIVE&keyword=%E5%B8%83%E6%B4%9B%E8%8A%AC');
+    expect(resolveDrugOrderListPagePath(listPath)).toBe(listPath);
+    expect(resolveDrugOrderDetailPagePath(1001, detailPath)).toBe(detailPath);
+    expect(logisticsPath).toContain('returnTo=');
+    expect(resolveDrugOrderListPagePath('https://example.com')).toBeUndefined();
+    expect(resolveDrugOrderDetailPagePath(1001, '/pharmacy/order/1002')).toBe('/pharmacy');
+  });
+
   it('处方只关联已支付订单，并使用该订单进入物流详情', () => {
     const purchased = findPurchasedDrugOrder([
       { id: 1, prescriptionId: 101, orderName: '布洛芬', pharmacyName: '药房', status: 'PENDING_PAYMENT', amountCent: 2800 },
@@ -378,6 +390,13 @@ describe('医生个人挂号页规则', () => {
 
   it('携带科室上下文进入医生个人页', () => {
     expect(buildDoctorPagePath(11, 22)).toBe('/assistant/doctor/11?departmentId=22');
+    expect(buildDoctorPaymentPath(31, 41, 11, 22)).toBe('/assistant/pay/31?appointmentId=41&returnTo=%2Fassistant%2Fdoctor%2F11%3FdepartmentId%3D22');
+  });
+
+  it('取消医生页发起的待支付挂号时只回跳合法医生主页', () => {
+    expect(resolveAppointmentPaymentCancelPath('/assistant/doctor/11?departmentId=22')).toBe('/assistant/doctor/11?departmentId=22');
+    expect(resolveAppointmentPaymentCancelPath('https://example.com')).toBe('/assistant');
+    expect(resolveAppointmentPaymentCancelPath('/mine')).toBe('/assistant');
   });
 
   it('深链接回退查询时按医生 ID 定位资料', () => {

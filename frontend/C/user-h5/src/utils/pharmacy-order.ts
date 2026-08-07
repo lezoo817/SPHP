@@ -1,6 +1,6 @@
 import type { DrugOrder, DrugOrderDetail } from '../typings/api';
 import { formatAmount } from './medical';
-import { getLogisticsStatusText } from './pharmacy';
+import { drugOrderTabs, getLogisticsStatusText } from './pharmacy';
 
 /** 物流进度阶段状态。 */
 export type DrugOrderLogisticsStepState = 'done' | 'active' | 'pending';
@@ -149,10 +149,80 @@ export function canConfirmDrugOrderReceipt(detail: DrugOrderDetail | undefined):
 }
 
 /**
+ * 构建“我的订单”列表页地址，并保留当前筛选条件。
+ * @param patientId 当前购药就诊人 ID
+ * @param tab 当前订单状态 Tab
+ * @param keyword 已提交的订单搜索词
+ * @returns 可恢复订单列表状态的页面路径
+ */
+export function buildDrugOrderListPagePath(patientId: number, tab?: string, keyword?: string): string {
+  const query = new URLSearchParams({ patientId: String(patientId) });
+  if (tab) query.set('tab', tab);
+  if (keyword?.trim()) query.set('keyword', keyword.trim());
+  return `/pharmacy/orders?${query.toString()}`;
+}
+
+/**
+ * 构建购药订单详情页地址。
+ * @param drugOrderId 购药订单编号
+ * @param returnTo 可选的订单列表回跳地址
+ * @returns 携带列表来源上下文的订单详情路由
+ */
+export function buildDrugOrderDetailPath(drugOrderId: number, returnTo?: string): string {
+  if (!returnTo) return `/pharmacy/order/${drugOrderId}`;
+  return `/pharmacy/order/${drugOrderId}?${new URLSearchParams({ returnTo }).toString()}`;
+}
+
+/**
+ * 从地址栏恢复安全的“我的订单”列表回跳地址。
+ * @param returnTo 订单详情页接收的候选列表地址
+ * @returns 仅包含受支持筛选条件的订单列表地址；非法值返回 undefined
+ */
+export function resolveDrugOrderListPagePath(returnTo: string | null): string | undefined {
+  const url = parseInternalPharmacyPath(returnTo);
+  if (!url || url.pathname !== '/pharmacy/orders') return undefined;
+  const patientId = Number(url.searchParams.get('patientId'));
+  if (!Number.isInteger(patientId) || patientId <= 0) return undefined;
+  const tab = url.searchParams.get('tab') || undefined;
+  const validTab = tab && drugOrderTabs.some((item) => item.key === tab) ? tab : undefined;
+  return buildDrugOrderListPagePath(patientId, validTab, url.searchParams.get('keyword') || undefined);
+}
+
+/**
+ * 从物流详情页恢复安全的订单详情回跳地址。
+ * @param drugOrderId 当前购药订单编号
+ * @param returnTo 物流页接收的候选订单详情地址
+ * @returns 同一订单的详情地址；非法值回退至购药首页
+ */
+export function resolveDrugOrderDetailPagePath(drugOrderId: number, returnTo: string | null): string {
+  const url = parseInternalPharmacyPath(returnTo);
+  if (!url || url.pathname !== `/pharmacy/order/${drugOrderId}`) return '/pharmacy';
+  // 订单详情仅恢复已校验的订单列表来源，避免物流页地址栏夹带任意跳转地址。
+  return buildDrugOrderDetailPath(drugOrderId, resolveDrugOrderListPagePath(url.searchParams.get('returnTo')));
+}
+
+/**
  * 构建购药订单物流详情路径。
  * @param drugOrderId 购药订单编号
+ * @param returnToOrder 可选的订单详情回跳地址
  * @returns 独立物流详情路由
  */
-export function buildDrugOrderLogisticsPath(drugOrderId: number): string {
-  return `/pharmacy/order/${drugOrderId}/logistics`;
+export function buildDrugOrderLogisticsPath(drugOrderId: number, returnToOrder?: string): string {
+  if (!returnToOrder) return `/pharmacy/order/${drugOrderId}/logistics`;
+  return `/pharmacy/order/${drugOrderId}/logistics?${new URLSearchParams({ returnTo: returnToOrder }).toString()}`;
+}
+
+/**
+ * 将候选地址解析为受控的站内购药路径。
+ * @param path 地址栏传入的候选路径
+ * @returns 站内路径对应的 URL；跨站或非法值返回 undefined
+ */
+function parseInternalPharmacyPath(path: string | null): URL | undefined {
+  if (!path?.startsWith('/')) return undefined;
+  try {
+    const url = new URL(path, 'https://sphp.local');
+    return url.origin === 'https://sphp.local' ? url : undefined;
+  } catch {
+    return undefined;
+  }
 }

@@ -18,18 +18,22 @@ public interface ProposalDataMapper {
      * @param patientId 就诊人 ID
      * @param limit 分页大小
      * @param offset 分页偏移量
+     * @param completedSince 可选完成时间下界
      * @return 医生病历列表投影
      */
     List<ConsultationMedicalRecordListRecord> proposalSelectConsultationMedicalRecords(
-            @Param("patientId") Long patientId, @Param("limit") int limit, @Param("offset") long offset);
+            @Param("patientId") Long patientId, @Param("limit") int limit, @Param("offset") long offset,
+            @Param("completedSince") OffsetDateTime completedSince);
 
     /**
      * 统计已完成且保存病历正文的问诊记录数量。
      *
      * @param patientId 就诊人 ID
+     * @param completedSince 可选完成时间下界
      * @return 可见病历总数
      */
-    long proposalCountConsultationMedicalRecords(@Param("patientId") Long patientId);
+    long proposalCountConsultationMedicalRecords(@Param("patientId") Long patientId,
+                                                 @Param("completedSince") OffsetDateTime completedSince);
 
     /**
      * 按病历 ID 查询可向患者展示的医生病历。

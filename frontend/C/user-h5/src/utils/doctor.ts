@@ -41,6 +41,19 @@ export function buildDoctorPagePath(doctorId: number, departmentId?: number): st
 }
 
 /**
+ * 构造从医生排班页进入挂号支付页的地址。
+ * @param paymentId 挂号支付单 ID
+ * @param appointmentId 新创建的挂号订单 ID
+ * @param doctorId 当前医生 ID
+ * @param departmentId 当前科室 ID
+ * @returns 携带取消后回跳医生主页上下文的支付页地址
+ */
+export function buildDoctorPaymentPath(paymentId: number, appointmentId: number, doctorId: number, departmentId?: number): string {
+  const query = new URLSearchParams({ appointmentId: String(appointmentId), returnTo: buildDoctorPagePath(doctorId, departmentId) });
+  return `/assistant/pay/${paymentId}?${query.toString()}`;
+}
+
+/**
  * 在按科室查询的医生结果中定位指定医生。
  * @param doctorId 医生 ID
  * @param records 带科室上下文的医生列表

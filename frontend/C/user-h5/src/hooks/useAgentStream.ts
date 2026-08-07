@@ -34,6 +34,8 @@ import type {
   AgentEntry,
   AgentMessage,
   AgentOptionsEvent,
+  AgentRecordPickerCard,
+  AgentRecordPickerEvent,
   AgentSelectCard,
   AgentSelectItem,
   AgentSseEvent,
@@ -69,6 +71,10 @@ export interface UseAgentStream {
   confirm: (card: AgentConfirmCard) => Promise<AgentConfirmData | undefined>;
   /** 用户从可选项卡片中点选一项：标记已选并发送"我选择{label}"消息 */
   selectOption: (card: AgentSelectCard, item: AgentSelectItem) => void;
+  /** 选中解读记录，等待用户点击确认。 */
+  selectRecordPicker: (cardId: string, recordId: number) => void;
+  /** 更新记录选择卡确认或取消状态。 */
+  updateRecordPicker: (cardId: string, status: AgentRecordPickerCard['status']) => void;
   /** 中断当前流式请求 */
   cancel: () => void;
   /** 重试上一条消息 */
@@ -83,6 +89,8 @@ export interface UseAgentStream {
 export interface AgentSendOptions {
   /** 强制创建独立会话，不继承浏览器中保存的会话 ID。 */
   startNewSession?: boolean;
+  /** 受控快捷入口的内部触发文案不显示为用户消息。 */
+  hideUserMessage?: boolean;
 }
 
 /**
@@ -232,14 +240,16 @@ export function useAgentStream(): UseAgentStream {
       lastUserMessageRef.current = text;
       lastContextRef.current = context;
 
-      // 追加用户消息
-      const userMessage: AgentMessage = {
-        id: genId('u'),
-        role: 'user',
-        content: text,
-        createdAt: Date.now(),
-      };
-      setEntries((prev) => [...prev, { kind: 'message', data: userMessage }]);
+      // 受控快捷入口仅用于触发固定业务流程，不向对话区伪造用户输入。
+      if (!options.hideUserMessage) {
+        const userMessage: AgentMessage = {
+          id: genId('u'),
+          role: 'user',
+          content: text,
+          createdAt: Date.now(),
+        };
+        setEntries((prev) => [...prev, { kind: 'message', data: userMessage }]);
+      }
 
       setConnection('connecting');
       const currentSessionId = options.startNewSession ? undefined : sessionId;
@@ -308,6 +318,10 @@ export function useAgentStream(): UseAgentStream {
       case 'options':
         setConnection('streaming');
         appendSelectCard(event.data);
+        break;
+      case 'record_picker':
+        setConnection('streaming');
+        appendRecordPicker(event.data);
         break;
       case 'error':
         setConnection('error');
@@ -521,6 +535,17 @@ export function useAgentStream(): UseAgentStream {
     setEntries((prev) => [...prev, { kind: 'action', data: actionCard }]);
   }
 
+  /** 追加病历或处方解读前的单选确认卡。 */
+  function appendRecordPicker(card: AgentRecordPickerEvent): void {
+    const recordPicker: AgentRecordPickerCard = {
+      ...card,
+      id: genId('record-picker'),
+      status: 'pending',
+      createdAt: Date.now(),
+    };
+    setEntries((prev) => [...prev, { kind: 'record_picker', data: recordPicker }]);
+  }
+
   /** 追加一张可选项卡片（医生列表 / 科室列表 / 号源等）。 */
   function appendSelectCard(options: AgentOptionsEvent): void {
     const selectCard: AgentSelectCard = {
@@ -588,6 +613,20 @@ export function useAgentStream(): UseAgentStream {
     },
     [send],
   );
+
+  /** 记录本地选择，确认前不向 Agent 发送任何业务编号。 */
+  const selectRecordPicker = useCallback((cardId: string, recordId: number) => {
+    setEntries((prev) => prev.map((entry) => entry.kind === 'record_picker' && entry.data.id === cardId
+      ? { kind: 'record_picker', data: { ...entry.data, selectedId: recordId } }
+      : entry));
+  }, []);
+
+  /** 更新记录选择卡状态，防止确认或取消后重复操作。 */
+  const updateRecordPicker = useCallback((cardId: string, status: AgentRecordPickerCard['status']) => {
+    setEntries((prev) => prev.map((entry) => entry.kind === 'record_picker' && entry.data.id === cardId
+      ? { kind: 'record_picker', data: { ...entry.data, status } }
+      : entry));
+  }, []);
 
   /** 结束本轮流式：标记当前 AI 消息与思考为非流式。 */
   function finalizeStreaming(): void {
@@ -660,6 +699,8 @@ export function useAgentStream(): UseAgentStream {
     send,
     confirm,
     selectOption,
+    selectRecordPicker,
+    updateRecordPicker,
     cancel,
     retry,
     reset,

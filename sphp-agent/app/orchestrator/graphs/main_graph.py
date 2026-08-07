@@ -32,6 +32,8 @@ from app.orchestrator.nodes.preset import (
     PRESET_INTERPRET_PRESCRIPTION,
     PRESET_NOTIFY_DRUG_ORDER_PAID,
     PRESET_RECOMMEND_PRESCRIPTION_PHARMACY,
+    PRESET_SELECT_MEDICAL_RECORD_INTERPRETATION,
+    PRESET_SELECT_PRESCRIPTION_INTERPRETATION,
     preset_action_node,
 )
 from app.orchestrator.nodes.rag import rag_node
@@ -93,13 +95,21 @@ def route_after_auth(state: AgentState) -> str:
     is_medical_record_preset = (
         action == PRESET_INTERPRET_MEDICAL_RECORD and has_medical_record_id
     )
+    is_interpretation_picker = action in (
+        PRESET_SELECT_PRESCRIPTION_INTERPRETATION,
+        PRESET_SELECT_MEDICAL_RECORD_INTERPRETATION,
+    )
     is_paid_order_preset = action in (
         PRESET_NOTIFY_DRUG_ORDER_PAID,
         PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT,
     ) and has_drug_order_id
-    if state.get("scope") == "c_end" and (
-        is_prescription_preset or is_medical_record_preset or is_paid_order_preset
-    ):
+    has_controlled_preset = (
+        is_prescription_preset
+        or is_medical_record_preset
+        or is_interpretation_picker
+        or is_paid_order_preset
+    )
+    if state.get("scope") == "c_end" and has_controlled_preset:
         return "preset_action_node"
     return route_by_scope(state)
 

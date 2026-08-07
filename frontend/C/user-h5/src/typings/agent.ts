@@ -60,7 +60,7 @@ export interface AgentChatContext {
   /** 当前默认收货地址 ID（用于 Agent 推荐药店等需要收货地址的服务） */
   address_id?: number;
   /** 受控预设动作，仅业务页面一键入口发送。 */
-  preset_action?: AgentPresetAction['type'];
+  preset_action?: AgentPresetAction['type'] | 'select_prescription_interpretation' | 'select_medical_record_interpretation';
   /** 受控预设动作关联的真实处方 ID。 */
   prescription_id?: number;
   /** 受控病历解读关联的真实完成问诊记录 ID。 */
@@ -168,6 +168,20 @@ export interface AgentActionCardEvent {
   arguments: Record<string, unknown>;
 }
 
+/** record_picker 事件：解读前选择最近病历或处方。 */
+export interface AgentRecordPickerEvent {
+  /** 记录类型。 */
+  picker_type: 'prescription' | 'medical_record';
+  /** 卡片标题。 */
+  title: string;
+  /** 确认按钮文本。 */
+  confirm_text: string;
+  /** 取消按钮文本。 */
+  cancel_text: string;
+  /** 不包含病历正文的可选记录。 */
+  items: Array<{ id: number; title: string; description: string }>;
+}
+
 /** options 事件：可选项列表卡片（区别于"确认一个操作"的 L2 卡片）。
  *
  * 后端在多选项场景（如医生列表、科室列表、号源列表）下确定性下发，
@@ -237,6 +251,7 @@ export type AgentSseEvent =
   | { event: 'observation'; data: AgentObservationEvent }
   | { event: 'card'; data: AgentCardEvent }
   | { event: 'action_card'; data: AgentActionCardEvent }
+  | { event: 'record_picker'; data: AgentRecordPickerEvent }
   | { event: 'options'; data: AgentOptionsEvent }
   | { event: 'error'; data: AgentErrorEvent }
   | { event: 'done'; data: AgentDoneEvent };
@@ -343,6 +358,14 @@ export interface AgentActionCard {
   createdAt: number;
 }
 
+/** 解读记录选择卡的前端状态。 */
+export interface AgentRecordPickerCard extends AgentRecordPickerEvent {
+  id: string;
+  selectedId?: number;
+  status: 'pending' | 'confirmed' | 'cancelled';
+  createdAt: number;
+}
+
 /** 会话条目类型：消息、思考、工具卡片、确认卡片、可选项卡片按到达顺序排列。 */
 export type AgentEntry =
   | { kind: 'message'; data: AgentMessage }
@@ -350,6 +373,7 @@ export type AgentEntry =
   | { kind: 'tool'; data: AgentToolCard }
   | { kind: 'card'; data: AgentConfirmCard }
   | { kind: 'action'; data: AgentActionCard }
+  | { kind: 'record_picker'; data: AgentRecordPickerCard }
   | { kind: 'select'; data: AgentSelectCard };
 
 /** 流式连接状态。 */

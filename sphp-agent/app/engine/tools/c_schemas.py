@@ -282,6 +282,8 @@ def _register_prescription_tools() -> None:
             parameters={
                 "properties": {
                     "prescription_id": {"type": "integer", "description": "处方ID（选填）"},
+                    "patient_id": {"type": "integer", "description": "就诊人ID（选填）"},
+                    "recent_days": {"type": "integer", "description": "最近天数（选填，最大30）"},
                 },
                 "required": [],
             },
@@ -440,6 +442,23 @@ def _register_pharmacy_order_tools() -> None:
 
 def _register_health_record_tools() -> None:
     """注册健康档案类工具：病历解读、健康档案、过敏史和既往史管理。"""
+
+    ToolRegistry.register(
+        ToolSchema(
+            name="query_medical_records",
+            description="查询医生病历列表，可按就诊人和最近天数筛选",
+            parameters={
+                "properties": {
+                    "patient_id": {"type": "integer", "description": "就诊人ID（选填）"},
+                    "recent_days": {"type": "integer", "description": "最近天数（选填，最大30）"},
+                },
+                "required": [],
+            },
+            scope=ToolScope.C_END,
+            security_level=SecurityLevel.L1,
+            executor="mcp",
+        )
+    )
 
     ToolRegistry.register(
         ToolSchema(

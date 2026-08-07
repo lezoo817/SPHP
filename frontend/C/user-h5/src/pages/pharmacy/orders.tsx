@@ -1,10 +1,11 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Search, X } from 'lucide-react';
+import { ArrowLeft, House, Search, X } from 'lucide-react';
 import { useNavigate } from 'umi';
 import { getDrugOrders } from '../../services/pharmacy';
 import type { DrugOrder } from '../../typings/api';
 import { formatAmount } from '../../utils/medical';
 import { buildPharmacyHomePath, drugOrderTabs, getDrugOrderCardStatusText, isInvalidDrugOrder, matchesDrugOrderTab, type DrugOrderTab } from '../../utils/pharmacy';
+import { buildDrugOrderDetailPath, buildDrugOrderListPagePath } from '../../utils/pharmacy-order';
 import { getApiErrorMessage } from '../../utils/form';
 
 /** 将地址栏的 Tab 参数转换为受控物流分类。 */
@@ -18,8 +19,8 @@ export default function PharmacyOrdersPage() {
   const params = useMemo(() => new URLSearchParams(location.search), []);
   const patientId = Number(params.get('patientId'));
   const [tab, setTab] = useState<DrugOrderTab>(resolveTab(params.get('tab')));
-  const [keyword, setKeyword] = useState('');
-  const [searchedKeyword, setSearchedKeyword] = useState('');
+  const [keyword, setKeyword] = useState(params.get('keyword') || '');
+  const [searchedKeyword, setSearchedKeyword] = useState(params.get('keyword') || '');
   const [orders, setOrders] = useState<DrugOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState('');
@@ -61,8 +62,9 @@ export default function PharmacyOrdersPage() {
   }
 
   const visibleOrders = orders.filter((order) => matchesDrugOrderTab(order, tab));
+  const orderListPath = buildDrugOrderListPagePath(patientId, tab, searchedKeyword);
   return <main className="subpage discovery-page">
-    <header className="page-header"><button className="icon-button" type="button" aria-label="返回购药" onClick={() => nav(buildPharmacyHomePath(patientId))}><ArrowLeft size={22} /></button><h1>我的订单</h1><span /></header>
+    <header className="page-header"><div className="page-header__controls"><button className="icon-button" type="button" aria-label="返回购药" onClick={() => nav(buildPharmacyHomePath(patientId))}><ArrowLeft size={22} /></button><button className="page-header__home icon-button" type="button" aria-label="返回首页" onClick={() => nav('/home')}><House size={19} /></button></div><h1>我的订单</h1><span aria-hidden="true" /></header>
     <section className="subpage-content pharmacy-orders">
       <form className="discovery-input order-search" onSubmit={search}>
         <Search size={20} /><input aria-label="搜索订单名称" value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索订单名称" />
@@ -72,7 +74,7 @@ export default function PharmacyOrdersPage() {
       {loading && <p className="empty-state">订单加载中...</p>}
       {!loading && visibleOrders.map((order) => {
         const invalidOrder = isInvalidDrugOrder(order);
-        return <button className={invalidOrder ? 'order-list-card is-invalid' : 'order-list-card'} disabled={invalidOrder} key={order.id} type="button" onClick={() => nav(`/pharmacy/order/${order.id}`)}>
+        return <button className={invalidOrder ? 'order-list-card is-invalid' : 'order-list-card'} disabled={invalidOrder} key={order.id} type="button" onClick={() => nav(buildDrugOrderDetailPath(order.id, orderListPath))}>
           <div><b>{order.orderName || '药品订单'}</b><span>{order.pharmacyName}</span><small>就诊人：{order.patientName || '待确认'}</small></div>
           <aside><em>{getDrugOrderCardStatusText(order)}</em><strong>{formatAmount(order.amountCent)}</strong></aside>
         </button>;

@@ -19,6 +19,7 @@ import com.sphp.shared.common.constant.HeaderConstant;
 import com.sphp.shared.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
@@ -83,6 +84,7 @@ public class ProposalController {
      * @param patientId 可选就诊人 ID
      * @param pageNo 可选页码
      * @param pageSize 可选每页数量
+     * @param recentDays 可选最近天数，仅允许 1 至 30 天
      * @return 病历分页数据
      */
     @GetMapping("/medical-records")
@@ -90,8 +92,9 @@ public class ProposalController {
     public Result<ProposalMedicalRecordPageVO> proposalListMedicalRecords(
             @RequestParam(required = false) @Positive Long patientId,
             @RequestParam(required = false) @Positive Integer pageNo,
-            @RequestParam(required = false) @Positive Integer pageSize) {
-        return Result.success("查询成功", proposalService.proposalListMedicalRecords(patientId, pageNo, pageSize));
+            @RequestParam(required = false) @Positive Integer pageSize,
+            @RequestParam(required = false) @Positive @Max(value = 30, message = "recentDays 不能超过30") Integer recentDays) {
+        return Result.success("查询成功", proposalService.proposalListMedicalRecords(patientId, pageNo, pageSize, recentDays));
     }
 
     /**

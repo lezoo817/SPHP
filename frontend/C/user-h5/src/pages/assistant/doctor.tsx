@@ -5,7 +5,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { getSelection } from '../../models/selection';
 import { createAppointment, createWaitlist, getDepartments, getDoctorBookingStatus, getDoctors, getSlots } from '../../services/registration';
 import type { AppointmentSlot, Doctor } from '../../typings/api';
-import { findDoctorById, getDoctorScheduleDates, groupSlotsByHalfDay, summarizeHalfDaySlots, type DoctorScheduleDate } from '../../utils/doctor';
+import { buildDoctorPaymentPath, findDoctorById, getDoctorScheduleDates, groupSlotsByHalfDay, summarizeHalfDaySlots, type DoctorScheduleDate } from '../../utils/doctor';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatAmount } from '../../utils/medical';
 import { isDuplicateDoctorAppointmentError } from '../../utils/registration';
@@ -155,7 +155,8 @@ export default function DoctorBookingPage() {
       }
       const order = await createAppointment({ patientId: selection.patientId, hospitalId: selection.hospitalId, slotId: slot.slotId }, key);
       operationKey.current = undefined;
-      navigate(`/assistant/pay/${order.paymentId}?appointmentId=${order.appointmentId}`);
+      // 支付取消后需要回到当前医生的排班页，保留科室上下文以继续查看号源。
+      navigate(buildDoctorPaymentPath(order.paymentId, order.appointmentId, doctorId, doctor?.departmentId || initialDepartmentId));
     } catch (error) {
       if (isDuplicateDoctorAppointmentError(error)) {
         // 明确业务拒绝不应复用幂等键，后续仅允许用户查看已有挂号或取消待支付订单。

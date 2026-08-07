@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import { MapPin, PackageCheck, Truck } from 'lucide-react';
-import { useNavigate, useParams } from 'umi';
+import { useLocation, useParams } from 'umi';
 import { PageHeader } from '../../components/PageHeader';
 import { OrderDeliveryCard } from '../../components/OrderDeliveryCard';
 import { confirmReceipt, getDrugOrder } from '../../services/pharmacy';
 import type { DrugOrderDetail } from '../../typings/api';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatAmount } from '../../utils/medical';
-import { canConfirmDrugOrderReceipt, formatDrugOrderItemPrice, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, shouldPollDrugOrderLogistics } from '../../utils/pharmacy-order';
+import { canConfirmDrugOrderReceipt, formatDrugOrderItemPrice, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderDetailPagePath, shouldPollDrugOrderLogistics } from '../../utils/pharmacy-order';
 
 /** 展示支付完成后的购药配送状态、药品明细和确认收货操作。 */
 export default function DrugOrderLogisticsPage() {
   const { drugOrderId: drugOrderIdText } = useParams();
-  const navigate = useNavigate();
+  const location = useLocation();
   const drugOrderId = Number(drugOrderIdText);
+  const backPath = resolveDrugOrderDetailPagePath(drugOrderId, new URLSearchParams(location.search).get('returnTo'));
   const [detail, setDetail] = useState<DrugOrderDetail>();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -67,7 +68,7 @@ export default function DrugOrderLogisticsPage() {
   const logisticsStatus = detail?.delivery?.logisticsStatus || detail?.logisticsStatus;
   const steps = getDrugOrderLogisticsSteps(logisticsStatus);
 
-  return <main className="subpage pharmacy-logistics-page"><PageHeader title="物流详情" backPath="/pharmacy" /><section className="subpage-content">
+  return <main className="subpage pharmacy-logistics-page"><PageHeader title="物流详情" backPath={backPath} /><section className="subpage-content">
     {loading && <p className="empty-state">正在读取物流详情...</p>}
     {!loading && detail && <>
       {isPendingDrugOrder(detail.status) ? <section className="logistics-state-card"><Truck size={29} /><div><h2>订单待支付</h2><p>支付完成后将开始配送</p></div></section> : <section className="logistics-state-card"><Truck size={29} /><div><h2>{logisticsText}</h2>{arrival ? <p>预计 {arrival} 送达</p> : <p>预计送达时间待确认</p>}</div></section>}

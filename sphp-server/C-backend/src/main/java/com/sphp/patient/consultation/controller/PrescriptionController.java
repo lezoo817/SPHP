@@ -5,6 +5,7 @@ import com.sphp.patient.consultation.vo.ConsultationPrescriptionDetailVO;
 import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
 import com.sphp.patient.consultation.vo.PrescriptionInterpretationVO;
 import com.sphp.shared.result.Result;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
@@ -31,14 +32,16 @@ public class PrescriptionController {
      * @param patientId 可选就诊人 ID
      * @param pageNo 可选页码
      * @param pageSize 可选每页数量
+     * @param recentDays 可选最近天数，仅允许 1 至 30 天
      * @return 已批准处方分页数据
      */
     @GetMapping("/prescriptions")
     public Result<ConsultationPrescriptionPageVO> prescriptionList(
             @RequestParam(required = false) @Positive(message = "patientId 必须为正数") Long patientId,
             @RequestParam(required = false) @Positive(message = "pageNo 必须为正数") Integer pageNo,
-            @RequestParam(required = false) @Positive(message = "pageSize 必须为正数") Integer pageSize) {
-        return Result.success("查询成功", prescriptionService.prescriptionList(patientId, pageNo, pageSize));
+            @RequestParam(required = false) @Positive(message = "pageSize 必须为正数") Integer pageSize,
+            @RequestParam(required = false) @Positive @Max(value = 30, message = "recentDays 不能超过30") Integer recentDays) {
+        return Result.success("查询成功", prescriptionService.prescriptionList(patientId, pageNo, pageSize, recentDays));
     }
 
     /**

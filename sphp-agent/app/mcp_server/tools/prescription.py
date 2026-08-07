@@ -80,16 +80,34 @@ def _wrap_ai_fallback(detail: dict[str, Any]) -> dict[str, Any]:
 
 
 async def query_prescriptions(
-    prescription_id: int | None = None, user_id: int | None = None
+    prescription_id: int | None = None,
+    patient_id: int | None = None,
+    recent_days: int | None = None,
+    user_id: int | None = None,
 ) -> dict[str, Any]:
-    """查询处方列表或详情。"""
+    """查询处方列表或详情。
+
+    Args:
+        prescription_id: 处方 ID，传入时查询详情。
+        patient_id: 可选就诊人 ID，列表查询时由 Java 校验归属。
+        recent_days: 可选最近天数，仅受控记录选择入口传入 30。
+        user_id: 当前用户 ID。
+
+    Returns:
+        Java 处方列表或详情响应。
+    """
     if prescription_id is not None:
         return await call_java_api(
             api_name="query_prescriptions:detail",
             path_params={"prescription_id": prescription_id},
             user_id=user_id,
         )
-    return await call_java_api(api_name="query_prescriptions:list", user_id=user_id)
+    params: dict[str, Any] = {}
+    if patient_id is not None:
+        params["patient_id"] = patient_id
+    if recent_days is not None:
+        params["recent_days"] = recent_days
+    return await call_java_api(api_name="query_prescriptions:list", params=params, user_id=user_id)
 
 
 async def interpret_prescription(
