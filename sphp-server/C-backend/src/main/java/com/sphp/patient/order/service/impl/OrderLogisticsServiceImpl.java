@@ -69,6 +69,7 @@ public class OrderLogisticsServiceImpl implements OrderLogisticsService {
         }
         // 到达待收货状态后才创建提醒，查询目标失败时回滚本次状态推进以避免漏发通知。
         publishToReceiveNotification(event.drugOrderId());
+        log.info("购药订单待收货通知创建 drugOrderId={}", event.drugOrderId());
     }
 
     /**
@@ -96,5 +97,6 @@ public class OrderLogisticsServiceImpl implements OrderLogisticsService {
         // 通知事件在当前事务提交后才进入 RabbitMQ，避免回滚订单产生虚假送达提醒。
         notificationEventProducer.publishNotification("DRUG_ORDER_TO_RECEIVE", target.drugOrderId(),
                 target.payerUserId(), target.patientId(), LOGISTICS, "药品已送达", "药品已送达，请及时确认收货。");
+        log.info("购药订单待收货通知发布 drugOrderId={}", drugOrderId);
     }
 }

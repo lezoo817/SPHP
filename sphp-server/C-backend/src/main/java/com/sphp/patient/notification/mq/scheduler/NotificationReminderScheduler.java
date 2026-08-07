@@ -7,6 +7,7 @@ import com.sphp.patient.notification.mq.event.MedicationReminderEvent;
 import com.sphp.patient.notification.mq.event.NotificationCreateEvent;
 import com.sphp.patient.notification.mq.producer.NotificationReminderProducer;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -18,6 +19,7 @@ import static com.sphp.patient.health.support.ProposalMedicationReminderSupport.
 import static com.sphp.patient.health.support.ProposalMedicationReminderSupport.proposalParseReminderTimes;
 
 /** C端用药和随访提醒到期扫描任务。 */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class NotificationReminderScheduler {
@@ -45,6 +47,7 @@ public class NotificationReminderScheduler {
                 proposalParseReminderTimes(record.getReminderTimesJson()), record.getDueAt());
         String eventId = "REMINDER:" + record.getBusinessId() + ":"
                 + record.getDueAt().toInstant().toEpochMilli();
+        log.info("创建了一个用药提醒: {}", eventId);
         return new MedicationReminderEvent(eventId, record.getBusinessId(), record.getUserId(), record.getPatientId(),
                 record.getPatientName(), record.getDueAt(), nextRemindAt, OffsetDateTime.now());
     }
