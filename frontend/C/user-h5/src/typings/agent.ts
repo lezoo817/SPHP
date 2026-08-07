@@ -15,6 +15,12 @@ export type AgentPresetAction =
       prescriptionId: number;
     }
   | {
+      /** 固定调用病历解读工具。 */
+      type: 'interpret_medical_record';
+      /** 服务端真实病历 ID，对应完成问诊记录 ID。 */
+      consultId: number;
+    }
+  | {
       /** 固定查询已支付购药订单并发送配送通知。 */
       type: 'notify_drug_order_paid';
       /** 服务端真实购药订单 ID。 */
@@ -57,6 +63,8 @@ export interface AgentChatContext {
   preset_action?: AgentPresetAction['type'];
   /** 受控预设动作关联的真实处方 ID。 */
   prescription_id?: number;
+  /** 受控病历解读关联的真实完成问诊记录 ID。 */
+  medical_record_id?: number;
   /** 受控支付通知关联的真实购药订单 ID。 */
   drug_order_id?: number;
 }

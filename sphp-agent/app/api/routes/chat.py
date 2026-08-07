@@ -25,11 +25,13 @@ from app.infrastructure.cache.redis_client import (
 from app.orchestrator.graphs.main_graph import build_main_graph
 from app.orchestrator.nodes.preset import (
     PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT,
+    PRESET_INTERPRET_MEDICAL_RECORD,
     PRESET_INTERPRET_PRESCRIPTION,
     PRESET_NOTIFY_DRUG_ORDER_PAID,
     PRESET_RECOMMEND_PRESCRIPTION_PHARMACY,
     resolve_preset_drug_order_reminder_authorization,
     resolve_preset_interpretation,
+    resolve_preset_medical_record_interpretation,
     resolve_preset_paid_order,
     resolve_preset_recommendation,
 )
@@ -165,6 +167,11 @@ def _build_initial_state(
     preset_interpretation_id = (
         resolve_preset_interpretation(req.context) if scope == "c_end" else None
     )
+    preset_medical_record_id = (
+        resolve_preset_medical_record_interpretation(req.context)
+        if scope == "c_end"
+        else None
+    )
     preset_recommendation_id = (
         resolve_preset_recommendation(req.context) if scope == "c_end" else None
     )
@@ -179,6 +186,8 @@ def _build_initial_state(
     if preset_interpretation_id is not None:
         preset_action = PRESET_INTERPRET_PRESCRIPTION
         preset_prescription_id = preset_interpretation_id
+    elif preset_medical_record_id is not None:
+        preset_action = PRESET_INTERPRET_MEDICAL_RECORD
     elif preset_recommendation_id is not None:
         preset_action = PRESET_RECOMMEND_PRESCRIPTION_PHARMACY
         preset_prescription_id = preset_recommendation_id
@@ -213,6 +222,7 @@ def _build_initial_state(
         "address_id": (req.context or {}).get("address_id"),
         "preset_action": preset_action,
         "preset_prescription_id": preset_prescription_id,
+        "preset_medical_record_id": preset_medical_record_id,
         "preset_drug_order_id": preset_paid_order_id,
         "preset_error": None,
         "action_cards": None,
@@ -967,6 +977,7 @@ _TOOL_LABELS = {
     "query_consultations": "查询问诊记录",
     "query_prescriptions": "查询处方",
     "interpret_prescription": "解读处方",
+    "interpret_medical_record": "解读病历",
     "query_pharmacy_stock": "查询药店库存",
     "query_drug_orders": "查询购药订单",
     "query_health_record": "查询健康档案",

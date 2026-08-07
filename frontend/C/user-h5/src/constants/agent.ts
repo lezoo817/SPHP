@@ -60,6 +60,7 @@ export const AGENT_TOOL_LABELS: Record<string, string> = {
   query_prescriptions: '查询处方',
   query_prescription_detail: '查询处方详情',
   query_prescription_interpretation: '处方解读',
+  interpret_medical_record: '病历解读',
   query_pharmacy_inventory: '查询药房库存',
   query_drug_orders: '查询购药订单',
   query_drug_order_detail: '查询购药订单详情',

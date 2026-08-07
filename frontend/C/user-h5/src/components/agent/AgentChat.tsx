@@ -88,7 +88,9 @@ export function AgentChat({
     if (!context || !presetAction || !resumeReady) return;
     const businessId = presetAction.type === 'interpret_prescription'
       ? presetAction.prescriptionId
-      : presetAction.drugOrderId;
+      : presetAction.type === 'interpret_medical_record'
+        ? presetAction.consultId
+        : presetAction.drugOrderId;
     const presetKey = `${presetAction.type}:${businessId}:${resumeSessionId || 'new'}`;
     // 严格模式重挂载与上下文异步就绪时只允许自动发送一次。
     if (executedPresetRef.current === presetKey) return;
@@ -99,6 +101,15 @@ export function AgentChat({
         ...context,
         preset_action: presetAction.type,
         prescription_id: presetAction.prescriptionId,
+      }, { startNewSession: true });
+      return;
+    }
+    if (presetAction.type === 'interpret_medical_record') {
+      // 仅传病历编号，由 Agent 按 Java 权威返回的就诊人读取病历和健康档案。
+      send('请为我解读当前病历。', {
+        ...context,
+        preset_action: presetAction.type,
+        medical_record_id: presetAction.consultId,
       }, { startNewSession: true });
       return;
     }

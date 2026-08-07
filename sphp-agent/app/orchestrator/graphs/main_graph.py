@@ -28,6 +28,7 @@ from app.orchestrator.nodes.intent import intent_node
 from app.orchestrator.nodes.prescription_purchase import prepare_recommended_drug_order
 from app.orchestrator.nodes.preset import (
     PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT,
+    PRESET_INTERPRET_MEDICAL_RECORD,
     PRESET_INTERPRET_PRESCRIPTION,
     PRESET_NOTIFY_DRUG_ORDER_PAID,
     PRESET_RECOMMEND_PRESCRIPTION_PHARMACY,
@@ -68,6 +69,7 @@ def route_after_auth(state: AgentState) -> str:
     """
     action = state.get("preset_action")
     prescription_id = state.get("preset_prescription_id")
+    medical_record_id = state.get("preset_medical_record_id")
     drug_order_id = state.get("preset_drug_order_id")
     has_prescription_id = (
         isinstance(prescription_id, int)
@@ -79,15 +81,25 @@ def route_after_auth(state: AgentState) -> str:
         and not isinstance(drug_order_id, bool)
         and drug_order_id > 0
     )
+    has_medical_record_id = (
+        isinstance(medical_record_id, int)
+        and not isinstance(medical_record_id, bool)
+        and medical_record_id > 0
+    )
     is_prescription_preset = (
         action in (PRESET_INTERPRET_PRESCRIPTION, PRESET_RECOMMEND_PRESCRIPTION_PHARMACY)
         and has_prescription_id
+    )
+    is_medical_record_preset = (
+        action == PRESET_INTERPRET_MEDICAL_RECORD and has_medical_record_id
     )
     is_paid_order_preset = action in (
         PRESET_NOTIFY_DRUG_ORDER_PAID,
         PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT,
     ) and has_drug_order_id
-    if state.get("scope") == "c_end" and (is_prescription_preset or is_paid_order_preset):
+    if state.get("scope") == "c_end" and (
+        is_prescription_preset or is_medical_record_preset or is_paid_order_preset
+    ):
         return "preset_action_node"
     return route_by_scope(state)
 
