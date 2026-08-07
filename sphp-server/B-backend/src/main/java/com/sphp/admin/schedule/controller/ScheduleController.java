@@ -1,9 +1,12 @@
 package com.sphp.admin.schedule.controller;
 
 import com.sphp.admin.common.vo.PageResult;
+import com.sphp.admin.schedule.dto.BatchScheduleRequest;
 import com.sphp.admin.schedule.dto.ScheduleCreateRequest;
 import com.sphp.admin.schedule.dto.SlotConfigRequest;
 import com.sphp.admin.schedule.service.ScheduleService;
+import com.sphp.admin.schedule.vo.BatchCreateReportVO;
+import com.sphp.admin.schedule.vo.BatchPreviewVO;
 import com.sphp.admin.schedule.vo.ForceReleaseVO;
 import com.sphp.admin.schedule.vo.LockedSlotVO;
 import com.sphp.admin.schedule.vo.ScheduleCreateVO;
@@ -128,5 +131,17 @@ public class ScheduleController {
     @Operation(summary = "手动释放锁定号源", description = "仅 ADMIN；仅 LOCKED 快照可释放，释放后状态回到 AVAILABLE，B 端剩余与 C 端可约池均恢复")
     public Result<ForceReleaseVO> forceRelease(@PathVariable Long id) {
         return Result.success("号源已释放", scheduleService.forceRelease(id));
+    }
+
+    @PostMapping("/schedules/batch/preview")
+    @Operation(summary = "批量排班预览", description = "仅 ADMIN；按 1 医生×日期范围×星期模式×班次 展开候选，预测每个候选的去向与默认时段拆分")
+    public Result<BatchPreviewVO> previewBatch(@Valid @RequestBody BatchScheduleRequest request) {
+        return Result.success("预览成功", scheduleService.previewBatch(request));
+    }
+
+    @PostMapping("/schedules/batch")
+    @Operation(summary = "批量排班提交", description = "仅 ADMIN；按预览结果执行实际写入，跳过 DRAFT/PUBLISHED 冲突，复用 CANCELLED，新建其他，返回新建/复用/跳过分类报告")
+    public Result<BatchCreateReportVO> createBatch(@Valid @RequestBody BatchScheduleRequest request) {
+        return Result.success("批量创建完成", scheduleService.createBatch(request));
     }
 }

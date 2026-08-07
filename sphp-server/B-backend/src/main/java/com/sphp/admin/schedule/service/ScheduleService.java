@@ -1,8 +1,11 @@
 package com.sphp.admin.schedule.service;
 
 import com.sphp.admin.common.vo.PageResult;
+import com.sphp.admin.schedule.dto.BatchScheduleRequest;
 import com.sphp.admin.schedule.dto.ScheduleCreateRequest;
 import com.sphp.admin.schedule.dto.SlotConfigRequest;
+import com.sphp.admin.schedule.vo.BatchCreateReportVO;
+import com.sphp.admin.schedule.vo.BatchPreviewVO;
 import com.sphp.admin.schedule.vo.ForceReleaseVO;
 import com.sphp.admin.schedule.vo.LockedSlotVO;
 import com.sphp.admin.schedule.vo.ScheduleCreateVO;
@@ -106,4 +109,26 @@ public interface ScheduleService {
      * @return 释放结果（快照 ID、状态 AVAILABLE、释放时间）
      */
     ForceReleaseVO forceRelease(Long snapshotId);
+
+    /**
+     * 批量排班预览（ADMIN，只读不写库）。
+     *
+     * <p>对 (医生 × 日期范围 × 星期模式 × 班次) 笛卡尔积展开为候选集，
+     * 为每个候选预判去向：新建 / 复用 CANCELLED / 跳过，并附带默认时段拆分预览。
+     *
+     * @param request 批量请求
+     * @return 预览结果
+     */
+    BatchPreviewVO previewBatch(BatchScheduleRequest request);
+
+    /**
+     * 批量排班提交（ADMIN；按预览结果执行实际写入）。
+     *
+     * <p>复用 {@link #create(ScheduleCreateRequest)} 与 {@link #configureSlots(Long, SlotConfigRequest)} 逐条处理，
+     * 每条独立事务；冲突（DRAFT/PUBLISHED）跳过，CANCELLED 复用为 DRAFT，新建为 DRAFT。
+     *
+     * @param request 批量请求
+     * @return 提交结果报告（新建/复用/跳过分类汇总）
+     */
+    BatchCreateReportVO createBatch(BatchScheduleRequest request);
 }

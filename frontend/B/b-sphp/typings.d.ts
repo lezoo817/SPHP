@@ -205,6 +205,75 @@ declare global {
       count: number;
     }
 
+    /** 批量排班请求（1 医生 × 日期范围 × 星期模式 × 班次 + 号源 + 拆分方式） */
+    interface BatchScheduleReq {
+      doctorId: number;
+      startDate: string; // yyyy-MM-dd
+      endDate: string; // yyyy-MM-dd（含）
+      /** 星期模式：1=周一, 7=周日（与 DayOfWeek 对齐） */
+      weekdays: number[];
+      shifts: ('MORNING' | 'AFTERNOON')[];
+      totalSlots: number; // 1~99
+      /** 时段拆分方式：HOURLY=1小时/段, HALF_HOUR=30分钟/段, FULL=整段 */
+      slotSplitMode: 'HOURLY' | 'HALF_HOUR' | 'FULL';
+    }
+
+    /** 批量排班预览 - 单班次时段拆分预览 */
+    interface BatchSlotSplitItem {
+      startTime: string;
+      endTime: string;
+      count: number;
+    }
+
+    /** 批量排班预览 - 单个候选 */
+    interface BatchPreviewItem {
+      scheduleDate: string; // yyyy-MM-dd
+      shift: 'MORNING' | 'AFTERNOON';
+      /** 去向：CREATE=新建, REUSE=复用已作废, SKIP=跳过 */
+      action: 'CREATE' | 'REUSE' | 'SKIP';
+      skipReason?: string;
+    }
+
+    /** 批量排班预览响应 */
+    interface BatchPreviewResp {
+      doctorId: number;
+      doctorName: string;
+      startDate: string;
+      endDate: string;
+      weekdays: number[];
+      shifts: ('MORNING' | 'AFTERNOON')[];
+      totalSlots: number;
+      slotSplitMode: 'HOURLY' | 'HALF_HOUR' | 'FULL';
+      slotSplitPreview: API.BatchSlotSplitItem[];
+      items: API.BatchPreviewItem[];
+      toCreateCount: number;
+      toSkipCount: number;
+    }
+
+    /** 批量排班提交 - 单条结果 */
+    interface BatchItem {
+      scheduleId: number;
+      scheduleDate: string;
+      shift: 'MORNING' | 'AFTERNOON';
+    }
+
+    /** 批量排班提交 - 跳过项 */
+    interface BatchSkipItem {
+      scheduleDate: string;
+      shift: 'MORNING' | 'AFTERNOON';
+      reason: string;
+    }
+
+    /** 批量排班提交报告 */
+    interface BatchCreateReport {
+      createdCount: number;
+      reusedCount: number;
+      skippedCount: number;
+      createdItems: API.BatchItem[];
+      reusedItems: API.BatchItem[];
+      skippedItems: API.BatchSkipItem[];
+    }
+
     /** 锁定号源看板查询参数 */
     interface LockedSlotsParams extends PageParams {
       date: string; // yyyy-MM-dd（必填）
