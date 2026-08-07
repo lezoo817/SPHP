@@ -190,6 +190,65 @@ def _extract_degraded_health_record(
     return False
 
 
+def _build_triage_guide(state: AgentState) -> str | None:
+    """构造导诊推荐完成后的下一步引导（2026-08-07）。
+
+    对齐原始需求"智能导诊与挂号"：导诊子图推荐科室与医生后，必须询问用户
+    "是否需要预约挂号或在线问诊"，不能推荐完就结束。本函数在导诊评估
+    （create_triage_assessment）已成功时返回引导提示，供 reply_node 注入
+    LLM 输入；否则返回 None（不注入）。
+
+    Args:
+        state: 当前图状态，含 intent / tool_results。
+
+    Returns:
+        str | None: 导诊引导提示；非导诊意图或评估未成功时返回 None。
+    """
+    if state.get("intent") != "triage":
+        return None
+    assessed = any(
+        r.get("tool_name") == "create_triage_assessment" and r.get("success")
+        for r in state.get("tool_results") or []
+    )
+    if not assessed:
+        return None
+    return (
+        "导诊评估与科室/医生推荐已完成。请在本轮回复末尾**明确询问用户**："
+        "'需要我帮您预约挂号，还是发起在线问诊？'并根据用户下一步选择引导到"
+        "对应流程（挂号查号源/创建订单，问诊填主诉/选医生）。不要推荐完就结束。"
+    )
+
+
+def _build_triage_followup_guide(state: AgentState) -> str | None:
+    """构造导诊首轮症状追问引导（2026-08-07）。
+
+    对齐原始需求"多轮对话理解"：导诊子图首轮（用户仅描述症状，评估尚未成功）
+    时，引导 LLM 追问症状细节（部位/持续时间/体温/过敏史等），保证最少两轮
+    对话再评估。本函数在 intent=triage 且 create_triage_assessment 尚未成功时
+    返回提示，供 reply_node 注入；否则返回 None。
+
+    Args:
+        state: 当前图状态，含 intent / tool_results。
+
+    Returns:
+        str | None: 首轮追问引导；非导诊意图或评估已成功时返回 None。
+    """
+    if state.get("intent") != "triage":
+        return None
+    assessed = any(
+        r.get("tool_name") == "create_triage_assessment" and r.get("success")
+        for r in state.get("tool_results") or []
+    )
+    if assessed:
+        return None
+    return (
+        "当前处于导诊首轮：用户刚描述症状，**导诊评估尚未完成**。"
+        "请追问 1-2 个关键症状细节（如部位、持续时间、体温、有无伴随症状、过敏史），"
+        "**不要在本轮下科室/医生推荐结论**，也不要调用导诊评估工具——待用户补充"
+        "症状信息后再做评估与推荐。"
+    )
+
+
 def _extract_prescription_interpretation(
     tool_results: list[dict[str, Any]] | None,
 ) -> dict[str, Any] | None:
@@ -373,6 +432,21 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
                     ),
                 }
             )
+
+        # 导诊推荐完成引导（2026-08-07）：导诊子图（intent=triage）推荐科室与医生
+        # 后，必须询问用户是否需要预约挂号或在线问诊（原始需求"智能导诊与挂号"）。
+        # 软约束（TRIAGE_SCENE_PROMPT）不可靠，此处确定性注入引导：LLM 已成功调
+        # 用 create_triage_assessment 完成评估后，回复末尾询问下一步。
+        triage_guide = _build_triage_guide(state)
+        if triage_guide:
+            llm_messages.append({"role": "system", "content": triage_guide})
+
+        # 导诊首轮追问引导（2026-08-07）：导诊子图首轮（评估被 tool_caller 拦截、
+        # 尚未成功评估）时，注入"继续追问症状细节"引导，保证最少两轮对话——
+        # 用户仅描述症状后不直接下结论，先追问部位/持续时间/体温/过敏史等。
+        triage_followup = _build_triage_followup_guide(state)
+        if triage_followup:
+            llm_messages.append({"role": "system", "content": triage_followup})
 
         if interpretation and interpretation.get("source") == _AI_FALLBACK_SOURCE:
             fallback_context = _build_ai_fallback_context(interpretation)
