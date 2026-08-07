@@ -14,6 +14,8 @@ import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.hospital.entity.Department;
 import com.sphp.admin.hospital.mapper.DepartmentMapper;
 import com.sphp.admin.schedule.dto.LockedSlotRow;
+import com.sphp.admin.schedule.dto.BatchPublishRequest;
+import com.sphp.admin.schedule.dto.BatchScheduleRequest;
 import com.sphp.admin.schedule.dto.ScheduleCreateRequest;
 import com.sphp.admin.schedule.dto.ScheduleSlotStat;
 import com.sphp.admin.schedule.dto.SlotConfigRequest;
@@ -24,6 +26,9 @@ import com.sphp.admin.schedule.mapper.ScheduleMapper;
 import com.sphp.admin.schedule.mapper.SlotMapper;
 import com.sphp.admin.schedule.mapper.SlotSnapshotMapper;
 import com.sphp.admin.schedule.service.ScheduleService;
+import com.sphp.admin.schedule.vo.BatchCreateReportVO;
+import com.sphp.admin.schedule.vo.BatchPreviewVO;
+import com.sphp.admin.schedule.vo.BatchPublishReportVO;
 import com.sphp.admin.schedule.vo.ForceReleaseVO;
 import com.sphp.admin.schedule.vo.LockedSlotVO;
 import com.sphp.admin.schedule.vo.ScheduleCreateVO;
@@ -46,6 +51,8 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -95,6 +102,28 @@ public class ScheduleServiceImpl implements ScheduleService {
     /** 号源池默认查询窗口（天），含今天 */
     private static final int SOURCE_POOL_DEFAULT_DAYS = 7;
     private static final int SOURCE_POOL_OFFSET_DAYS = 6;
+
+    /** 批量排班：班次时间窗（小时），与前端 SHIFT_WINDOWS 保持一致 */
+    private static final Map<String, int[]> SHIFT_WINDOWS = Map.of(
+            "MORNING", new int[]{8, 12},
+            "AFTERNOON", new int[]{14, 18}
+    );
+
+    /** 批量排班：默认时段拆分方式（每段分钟数） */
+    private static final Map<String, Integer> SPLIT_MINUTES = Map.of(
+            "HOURLY", 60,
+            "HALF_HOUR", 30,
+            "FULL", -1
+    );
+
+    /** 批量预览：候选去向 */
+    private static final String ACTION_CREATE = "CREATE";
+    private static final String ACTION_REUSE = "REUSE";
+    private static final String ACTION_SKIP = "SKIP";
+
+    /** 批量提交：跳过原因文案 */
+    private static final String SKIP_REASON_DRAFT = "该日期班次已存在草稿排班";
+    private static final String SKIP_REASON_PUBLISHED = "该日期班次已发布排班";
 
     private final ScheduleMapper scheduleMapper;
     private final SlotMapper slotMapper;
@@ -537,6 +566,344 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .releasedAt(OffsetDateTime.now())
                 .build();
     }
+
+    /**
+     * 批量排班预览（ADMIN，只读）。
+     *
+     * <p>展开 (医生 × 日期范围 × 星期模式 × 班次) 笛卡尔积为候选集，预判每个候选的去向：
+     * 同一日期同一班次已存在 DRAFT/PUBLISHED 排班时跳过；CANCELLED 视为可复用；不存在时新建。
+     *
+     * @param request 批量请求
+     * @return 预览结果（含默认时段拆分 + 每个候选的去向）
+     * @throws BusinessException 医生越权 / 日期不合法 / 时段拆分与号源数不匹配时抛出
+     */
+    @Override
+    public BatchPreviewVO previewBatch(BatchScheduleRequest request) {
+        Doctor doctor = resolveBatchDoctor(request.getDoctorId());
+        List<Candidate> candidates = expandCandidates(request);
+        Map<String, String> existingStatus = loadExistingScheduleStatuses(doctor.getId(), candidates);
+
+        List<BatchPreviewVO.BatchPreviewItem> items = new ArrayList<>(candidates.size());
+        int toCreate = 0, toSkip = 0;
+        for (Candidate c : candidates) {
+            String key = c.date() + "|" + c.shift();
+            String existStatus = existingStatus.get(key);
+            BatchPreviewVO.BatchPreviewItem.BatchPreviewItemBuilder b = BatchPreviewVO.BatchPreviewItem.builder()
+                    .scheduleDate(c.date())
+                    .shift(c.shift());
+            if (existStatus == null) {
+                b.action(ACTION_CREATE);
+                toCreate++;
+            } else if (STATUS_CANCELLED.equals(existStatus)) {
+                b.action(ACTION_REUSE);
+                toCreate++;
+            } else {
+                b.action(ACTION_SKIP)
+                        .skipReason(STATUS_DRAFT.equals(existStatus) ? SKIP_REASON_DRAFT : SKIP_REASON_PUBLISHED);
+                toSkip++;
+            }
+            items.add(b.build());
+        }
+
+        return BatchPreviewVO.builder()
+                .doctorId(doctor.getId())
+                .doctorName(doctor.getName())
+                .startDate(request.getStartDate())
+                .endDate(request.getEndDate())
+                .weekdays(request.getWeekdays())
+                .shifts(request.getShifts())
+                .totalSlots(request.getTotalSlots())
+                .slotSplitMode(request.getSlotSplitMode())
+                .slotSplitPreview(buildSlotSplitPreview(request))
+                .items(items)
+                .toCreateCount(toCreate)
+                .toSkipCount(toSkip)
+                .build();
+    }
+
+    /**
+     * 批量排班提交（ADMIN；按预览结果执行实际写入）。
+     *
+     * <p>复用 {@link #create(ScheduleCreateRequest)} 与 {@link #configureSlots(Long, SlotConfigRequest)}
+     * 逐条处理；每对 (create, configureSlots) 独立事务（Spring REQUIRED 传播 + 调用方非事务）。
+     * 跳过 DRAFT/PUBLISHED 冲突、复用 CANCELLED、新建 DRAFT。
+     *
+     * @param request 批量请求
+     * @return 提交结果报告（新建/复用/跳过分类汇总）
+     */
+    @Override
+    public BatchCreateReportVO createBatch(BatchScheduleRequest request) {
+        Doctor doctor = resolveBatchDoctor(request.getDoctorId());
+        List<Candidate> candidates = expandCandidates(request);
+        Map<String, String> existingStatus = loadExistingScheduleStatuses(doctor.getId(), candidates);
+
+        // 不同班次使用不同时间窗，slot 配置按 shift 缓存复用
+        Map<String, List<SlotConfigRequest.SlotConfigItem>> slotConfigByShift = new HashMap<>();
+        for (String shift : request.getShifts()) {
+            slotConfigByShift.put(shift, buildSlotConfigItems(shift, request.getSlotSplitMode(), request.getTotalSlots()));
+        }
+
+        List<BatchCreateReportVO.BatchItem> createdItems = new ArrayList<>();
+        List<BatchCreateReportVO.BatchItem> reusedItems = new ArrayList<>();
+        List<BatchCreateReportVO.BatchSkipItem> skippedItems = new ArrayList<>();
+        int createdCount = 0, reusedCount = 0, skippedCount = 0;
+
+        for (Candidate c : candidates) {
+            String key = c.date() + "|" + c.shift();
+            String existStatus = existingStatus.get(key);
+            if (existStatus != null && !STATUS_CANCELLED.equals(existStatus)) {
+                String reason = STATUS_DRAFT.equals(existStatus) ? SKIP_REASON_DRAFT : SKIP_REASON_PUBLISHED;
+                skippedItems.add(BatchCreateReportVO.BatchSkipItem.builder()
+                        .scheduleDate(c.date()).shift(c.shift()).reason(reason).build());
+                skippedCount++;
+                continue;
+            }
+            ScheduleCreateRequest single = new ScheduleCreateRequest();
+            single.setDoctorId(doctor.getId());
+            single.setScheduleDate(c.date().toString());
+            single.setShift(c.shift());
+            single.setTotalSlots(request.getTotalSlots());
+            ScheduleCreateVO created = create(single);
+            configureSlots(created.getId(), slotItemsOf(slotConfigByShift.get(c.shift())));
+            if (STATUS_CANCELLED.equals(existStatus)) {
+                reusedItems.add(BatchCreateReportVO.BatchItem.builder()
+                        .scheduleId(created.getId()).scheduleDate(c.date()).shift(c.shift()).build());
+                reusedCount++;
+            } else {
+                createdItems.add(BatchCreateReportVO.BatchItem.builder()
+                        .scheduleId(created.getId()).scheduleDate(c.date()).shift(c.shift()).build());
+                createdCount++;
+            }
+        }
+
+        log.info("批量排班提交 doctorId={}, range={}~{}, weekdays={}, shifts={}, totalSlots={}, split={}, created={}, reused={}, skipped={}",
+                doctor.getId(), request.getStartDate(), request.getEndDate(), request.getWeekdays(),
+                request.getShifts(), request.getTotalSlots(), request.getSlotSplitMode(),
+                createdCount, reusedCount, skippedCount);
+
+        return BatchCreateReportVO.builder()
+                .createdCount(createdCount)
+                .reusedCount(reusedCount)
+                .skippedCount(skippedCount)
+                .createdItems(createdItems)
+                .reusedItems(reusedItems)
+                .skippedItems(skippedItems)
+                .build();
+    }
+
+    /**
+     * 批量发布排班（ADMIN）。
+     *
+     * <p>逐条复用 {@link #publish(Long)}；任何失败（非 DRAFT / 越权 / 未配置时段等）以明细形式返回，不抛错中断整批。
+     * 每条 publish() 自身为独立事务，部分失败不影响其他条目提交。
+     *
+     * @param request 批量发布请求
+     * @return 发布结果报告
+     */
+    @Override
+    public BatchPublishReportVO batchPublish(BatchPublishRequest request) {
+        Long hospitalId = currentUserService.getCurrentHospitalId();
+        List<BatchPublishReportVO.FailedItem> failedItems = new ArrayList<>();
+        int published = 0, failed = 0;
+
+        for (Long id : request.getScheduleIds()) {
+            Schedule s = scheduleMapper.selectById(id);
+            // 跨院/不存在/已逻辑删除统一视为不可发布（对外统一为"排班不存在"，不暴露医院隔离细节）
+            if (s == null || s.getDeletedAt() != null) {
+                failedItems.add(BatchPublishReportVO.FailedItem.builder()
+                        .scheduleId(id).reason("排班不存在").build());
+                failed++;
+                continue;
+            }
+            Doctor doctor = doctorMapper.selectById(s.getDoctorId());
+            if (doctor == null || doctor.getDeletedAt() == null
+                    || !hospitalId.equals(doctor.getHospitalId())) {
+                failedItems.add(BatchPublishReportVO.FailedItem.builder()
+                        .scheduleId(id).reason("排班不存在").build());
+                failed++;
+                continue;
+            }
+            if (!STATUS_DRAFT.equals(s.getStatus())) {
+                String reason = STATUS_PUBLISHED.equals(s.getStatus()) ? "已发布，无需重复发布" : "已作废，不可发布";
+                failedItems.add(BatchPublishReportVO.FailedItem.builder()
+                        .scheduleId(id).reason(reason).build());
+                failed++;
+                continue;
+            }
+            try {
+                publish(id);
+                published++;
+            } catch (BusinessException ex) {
+                // 时段未配置 / 号源和不匹配等业务校验失败，计入失败明细继续处理其他条目
+                failedItems.add(BatchPublishReportVO.FailedItem.builder()
+                        .scheduleId(id).reason(ex.getMessage()).build());
+                failed++;
+            }
+        }
+        log.info("批量发布排班 total={}, published={}, failed={}",
+                request.getScheduleIds().size(), published, failed);
+        return BatchPublishReportVO.builder()
+                .publishedCount(published)
+                .failedCount(failed)
+                .failedItems(failedItems)
+                .build();
+    }
+
+    /**
+     * 校验批量请求中的医生归属：必须存在、启用、属于本院。
+     */
+    private Doctor resolveBatchDoctor(Long doctorId) {
+        Long hospitalId = currentUserService.getCurrentHospitalId();
+        Doctor doctor = doctorMapper.selectById(doctorId);
+        if (doctor == null || doctor.getDeletedAt() != null || !doctor.getHospitalId().equals(hospitalId)) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_USER_INPUT, "医生不存在或不属于本院");
+        }
+        if (!BUserStatusEnum.isEnabled(doctor.getStatus())) {
+            throw new BusinessException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID, "医生当前状态不可排班");
+        }
+        return doctor;
+    }
+
+    /**
+     * 解析日期范围 + 星期模式 + 班次为 (date, shift) 候选列表，并校验日期范围与时段拆分兼容性。
+     */
+    private List<Candidate> expandCandidates(BatchScheduleRequest request) {
+        LocalDate start = LocalDate.parse(request.getStartDate());
+        LocalDate end = LocalDate.parse(request.getEndDate());
+        if (end.isBefore(start)) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "结束日期不能早于开始日期");
+        }
+        if (start.isBefore(LocalDate.now())) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "开始日期不能早于今天");
+        }
+        long span = end.toEpochDay() - start.toEpochDay() + 1;
+        if (span > BatchScheduleRequest.MAX_DATE_RANGE_DAYS) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER,
+                    "日期范围不能超过 " + BatchScheduleRequest.MAX_DATE_RANGE_DAYS + " 天");
+        }
+
+        Set<Integer> weekdaySet = request.getWeekdays().stream().collect(Collectors.toSet());
+        // 候选去重：使用 LinkedHashMap 保持展开顺序
+        Map<String, Candidate> map = new LinkedHashMap<>();
+        for (LocalDate d = start; !d.isAfter(end); d = d.plusDays(1)) {
+            if (!weekdaySet.contains(d.getDayOfWeek().getValue())) {
+                continue;
+            }
+            for (String shift : request.getShifts()) {
+                map.put(d + "|" + shift, new Candidate(d, shift));
+            }
+        }
+        if (map.isEmpty()) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "在所选范围内没有匹配的日期");
+        }
+
+        validateSplitCompatibility(request.getSlotSplitMode(), request.getTotalSlots());
+        return new ArrayList<>(map.values());
+    }
+
+    /**
+     * 一次性加载医生在 [min(candidates), max(candidates)] 区间内所有排班状态，
+     * 用 (date|shift) 作为 key 索引，避免逐条查询。
+     */
+    private Map<String, String> loadExistingScheduleStatuses(Long doctorId, List<Candidate> candidates) {
+        LocalDate min = candidates.get(0).date();
+        LocalDate max = candidates.get(0).date();
+        for (Candidate c : candidates) {
+            if (c.date().isBefore(min)) min = c.date();
+            if (c.date().isAfter(max)) max = c.date();
+        }
+        List<Schedule> existing = scheduleMapper.selectList(Wrappers.<Schedule>lambdaQuery()
+                .eq(Schedule::getDoctorId, doctorId)
+                .between(Schedule::getScheduleDate, min, max)
+                .isNull(Schedule::getDeletedAt));
+        Map<String, String> result = new HashMap<>(existing.size() * 2);
+        for (Schedule s : existing) {
+            result.put(s.getScheduleDate() + "|" + s.getShift(), s.getStatus());
+        }
+        return result;
+    }
+
+    /**
+     * 校验时段拆分与号源总数兼容性：FULL 模式无要求；其余模式需每段至少 1 个号源。
+     */
+    private void validateSplitCompatibility(String splitMode, int totalSlots) {
+        int minutes = SPLIT_MINUTES.get(splitMode);
+        if (minutes < 0) {
+            return; // FULL 模式
+        }
+        // 任一班次的时间窗最大 4 小时，HALF_HOUR 最多 8 段
+        int maxSegments = 0;
+        for (int[] win : SHIFT_WINDOWS.values()) {
+            int segs = (win[1] - win[0]) * 60 / minutes;
+            if (segs > maxSegments) maxSegments = segs;
+        }
+        if (totalSlots < maxSegments) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER,
+                    "号源总数(" + totalSlots + ")小于所选拆分方式最少需要的段数(" + maxSegments + ")，请减少拆分粒度或增加号源");
+        }
+    }
+
+    /**
+     * 生成默认时段拆分预览（取首个班次的拆分结果展示）。
+     */
+    private List<BatchPreviewVO.SlotSplitItem> buildSlotSplitPreview(BatchScheduleRequest request) {
+        List<SlotConfigRequest.SlotConfigItem> items =
+                buildSlotConfigItems(request.getShifts().get(0), request.getSlotSplitMode(), request.getTotalSlots());
+        return items.stream()
+                .map(it -> BatchPreviewVO.SlotSplitItem.builder()
+                        .startTime(it.getStartTime())
+                        .endTime(it.getEndTime())
+                        .count(it.getCount())
+                        .build())
+                .toList();
+    }
+
+    /**
+     * 按 (班次时段窗 + 拆分方式 + 号源总数) 生成等比时段配置，余量从首段开始 +1。
+     */
+    private List<SlotConfigRequest.SlotConfigItem> buildSlotConfigItems(String shift, String splitMode, int totalSlots) {
+        int minutes = SPLIT_MINUTES.get(splitMode);
+        int[] win = SHIFT_WINDOWS.get(shift);
+        if (minutes < 0) {
+            return List.of(buildItem(timeOf(win[0]), timeOf(win[1]), totalSlots));
+        }
+        int segs = (win[1] - win[0]) * 60 / minutes;
+        int base = totalSlots / segs;
+        int rem = totalSlots % segs;
+        List<SlotConfigRequest.SlotConfigItem> items = new ArrayList<>(segs);
+        for (int i = 0; i < segs; i++) {
+            int count = base + (i < rem ? 1 : 0);
+            int startMin = win[0] * 60 + i * minutes;
+            int endMin = startMin + minutes;
+            items.add(buildItem(timeOf(startMin), timeOf(endMin), count));
+        }
+        return items;
+    }
+
+    private SlotConfigRequest.SlotConfigItem buildItem(String start, String end, int count) {
+        SlotConfigRequest.SlotConfigItem it = new SlotConfigRequest.SlotConfigItem();
+        it.setStartTime(start);
+        it.setEndTime(end);
+        it.setCount(count);
+        return it;
+    }
+
+    /** 时段配置项装入请求（configureSlots 期望 {@code SlotConfigRequest}） */
+    private SlotConfigRequest slotItemsOf(List<SlotConfigRequest.SlotConfigItem> items) {
+        SlotConfigRequest req = new SlotConfigRequest();
+        req.setSlotConfigs(items);
+        return req;
+    }
+
+    /** 把小时数（可含小数）格式化为 HH:mm；批量拆分只用整点偏移 */
+    private static String timeOf(int minutesOfDay) {
+        int h = minutesOfDay / 60;
+        int m = minutesOfDay % 60;
+        return String.format("%02d:%02d", h, m);
+    }
+
+    /** 候选 (日期, 班次) 不可变记录 */
+    private record Candidate(LocalDate date, String shift) { }
 
     /**
      * 分页记录组装为列表 VO（批量加载医生/科室名与号源聚合，避免 N+1）。

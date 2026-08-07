@@ -47,6 +47,8 @@ def build_llm(provider: str | None = None, temperature: float | None = None) -> 
         base_url=base_url,
         temperature=temperature,
         streaming=True,
+        stream_chunk_timeout=300.0,
+        request_timeout=300.0,
     )
 
 

@@ -32,6 +32,7 @@ export default function MinePage() {
   const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
   const [notice, setNotice] = useState('');
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [passwords, setPasswords] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
   const [submitting, setSubmitting] = useState(false);
 
@@ -84,14 +85,19 @@ export default function MinePage() {
   /** 二次确认后调用退出接口并清除本地会话。 */
   async function submitLogout() {
     const session = getSession();
-    if (!session || !window.confirm('确认退出当前账号吗？')) return;
+    if (!session) {
+      setShowLogoutDialog(false);
+      return;
+    }
     setSubmitting(true);
     try {
       await logout(session.refreshToken);
     } catch (requestError) {
       setNotice(getApiErrorMessage(requestError));
     } finally {
+      // 无论服务端退出是否成功，本地凭证都必须清除，避免继续使用失效会话。
       clearSession();
+      setShowLogoutDialog(false);
       setSubmitting(false);
       navigate('/login');
     }
@@ -125,9 +131,10 @@ export default function MinePage() {
     <section className="profile-card">{loading ? <p>正在读取资料...</p> : current ? <><div className="profile-card__top"><div><h1>{current.name}<em>{isSelf ? '本人' : getRelationLabel(selectedMember?.relation || '')}</em></h1><p>{genderText} · {current.birthday || '生日待完善'}</p></div><button className="profile-card__switch icon-button" type="button" aria-label="管理就诊人" onClick={() => navigate('/mine/family-members')}><ChevronRight color="#7a7477" /></button></div><div className="profile-lines"><p>手机号 <span>{current.phone || '资料暂未完善'}</span></p><p>身份证号 <span>{current.idCardNo || '资料暂未完善'}</span></p></div><div className="profile-card__footer"><button type="button" className="text-button" onClick={() => navigate('/mine/family-members')}>管理就诊人</button><button type="button" className="text-button" onClick={openCurrentPatientProfile}>{isSelf ? '查看资料' : '管理资料'} <ChevronRight size={15} /></button></div></> : <p>暂无可展示的就诊人资料</p>}</section>
     <section className="mine-section"><h2>健康服务</h2><div className="health-grid">{healthEntries.map(({ label, icon: Icon, path, showUnreadBadge }) => <button className="health-entry" key={label} type="button" onClick={() => openHealthEntry(path)}><span className="health-entry__icon"><Icon size={34} />{showUnreadBadge && hasUnreadNotifications && <i className="health-entry__badge" aria-label="有未读消息" />}</span><span className="health-entry__label">{label}</span></button>)}</div></section>
     <section className="menu-card"><MenuItem icon={UsersRound} label="就诊人管理" onClick={() => navigate('/mine/family-members')} /><MenuItem icon={MapPin} label="我的地址" onClick={() => navigate('/mine/addresses')} /><MenuItem icon={ShieldCheck} label="账号与安全" onClick={() => setShowPasswordDialog(true)} /></section>
-    <button className="logout-button" disabled={submitting} type="button" onClick={submitLogout}><LogOut size={18} />退出登录</button>
+    <button className="logout-button" disabled={submitting} type="button" onClick={() => setShowLogoutDialog(true)}><LogOut size={18} />退出登录</button>
     {notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}
     {showPasswordDialog && <Dialog title="修改登录密码" onClose={() => setShowPasswordDialog(false)}><div className="form-stack"><label>当前密码<input type="password" autoComplete="current-password" value={passwords.oldPassword} onChange={(event) => setPasswords({ ...passwords, oldPassword: event.target.value })} /></label><label>新密码<input type="password" autoComplete="new-password" value={passwords.newPassword} onChange={(event) => setPasswords({ ...passwords, newPassword: event.target.value })} /></label><label>确认新密码<input type="password" autoComplete="new-password" value={passwords.confirmPassword} onChange={(event) => setPasswords({ ...passwords, confirmPassword: event.target.value })} /></label><button className="primary-button" disabled={submitting} type="button" onClick={submitPasswordChange}>{submitting ? '保存中...' : '保存新密码'}</button></div></Dialog>}
+    {showLogoutDialog && <Dialog title="退出登录" onClose={() => { if (!submitting) setShowLogoutDialog(false); }}><p className="dialog-hint">退出后需要重新登录才能继续使用服务。</p><div className="logout-dialog-actions"><button className="secondary-button" disabled={submitting} type="button" onClick={() => setShowLogoutDialog(false)}>取消</button><button className="primary-button" disabled={submitting} type="button" onClick={() => void submitLogout()}>{submitting ? '退出中...' : '确认退出'}</button></div></Dialog>}
     <BottomTab onUnavailable={() => setNotice('该页面暂未开放')} />
   </main>;
 }

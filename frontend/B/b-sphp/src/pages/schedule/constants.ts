@@ -41,6 +41,46 @@ export const STATUS_OPTIONS: { label: string; value: ScheduleStatus | 'EXPIRED' 
 /** 排班已发布时对增删改操作的统一禁用提示 */
 export const PUBLISHED_LOCK_TOOLTIP = '排班已发布，不可修改';
 
+/** 批量排班：默认时段拆分方式（与后端 SPLIT_MINUTES 对齐） */
+export const SLOT_SPLIT_OPTIONS: {
+  label: string;
+  value: 'HOURLY' | 'HALF_HOUR' | 'FULL';
+  description: string;
+}[] = [
+  { label: '1小时/段', value: 'HOURLY', description: '上午 4 段 / 下午 4 段' },
+  { label: '30分钟/段', value: 'HALF_HOUR', description: '上午 8 段 / 下午 8 段' },
+  { label: '整段', value: 'FULL', description: '整班次 1 段' },
+];
+
+/** 周一~周日 label（1~7 与 DayOfWeek.getValue() 对齐） */
+export const WEEKDAY_OPTIONS: { label: string; value: number }[] = [
+  { label: '周一', value: 1 },
+  { label: '周二', value: 2 },
+  { label: '周三', value: 3 },
+  { label: '周四', value: 4 },
+  { label: '周五', value: 5 },
+  { label: '周六', value: 6 },
+  { label: '周日', value: 7 },
+];
+
+/** 批量预览候选 action 标签 */
+export const BATCH_ACTION_MAP: Record<
+  'CREATE' | 'REUSE' | 'SKIP',
+  { text: string; color: string }
+> = {
+  CREATE: { text: '新建', color: 'green' },
+  REUSE: { text: '复用', color: 'blue' },
+  SKIP: { text: '跳过', color: 'default' },
+};
+
+/** 安全取批量预览 action 展示配置 */
+export function getBatchActionConfig(action: string) {
+  if (action === 'CREATE' || action === 'REUSE' || action === 'SKIP') {
+    return BATCH_ACTION_MAP[action];
+  }
+  return undefined;
+}
+
 /** 安全取班次展示配置；未知班次返回 undefined */
 export function getShiftConfig(shift: string): { text: string; color: string } | undefined {
   if (shift === 'MORNING' || shift === 'AFTERNOON') {

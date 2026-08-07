@@ -46,6 +46,7 @@ async def safety_check(state: AgentState) -> dict[str, Any]:
 
         if tool.security_level == SecurityLevel.L2:
             tool_arguments = tc.get("arguments", {})
+            display = tc.get("display")
             session_id = state.get("session_id") or ""
             user_id = str(state.get("user_id") or "")
 
@@ -99,6 +100,8 @@ async def safety_check(state: AgentState) -> dict[str, Any]:
                     "card_type": _map_card_type(tool_name),
                     "session_id": session_id,
                     "expires_at": expires_at,
+                    # 展示信息只用于前端确认卡，不参与 MCP 执行或 Redis 幂等比对。
+                    "display": display if isinstance(display, dict) else None,
                 }
             )
             # L2 工具不直接执行（等确认），也不放入 allowed_calls

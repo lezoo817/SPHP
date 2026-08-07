@@ -169,6 +169,36 @@ export function unpublishSchedule(id: number): Promise<void> {
   return request(`/api/b/admin/schedules/${id}/unpublish`, { method: 'PUT' });
 }
 
+/** 批量排班预览（仅 ADMIN） */
+export function previewBatchSchedule(
+  data: API.BatchScheduleReq,
+): Promise<API.BatchPreviewResp> {
+  return requestData<API.BatchPreviewResp>(
+    '/api/b/admin/schedules/batch/preview',
+    { method: 'POST', data },
+  );
+}
+
+/** 批量排班提交（仅 ADMIN） */
+export function createBatchSchedule(
+  data: API.BatchScheduleReq,
+): Promise<API.BatchCreateReport> {
+  return requestData<API.BatchCreateReport>('/api/b/admin/schedules/batch', {
+    method: 'POST',
+    data,
+  });
+}
+
+/** 批量发布排班（仅 ADMIN） */
+export function batchPublishSchedules(
+  data: API.BatchPublishReq,
+): Promise<API.BatchPublishReport> {
+  return requestData<API.BatchPublishReport>(
+    '/api/b/admin/schedules/batch-publish',
+    { method: 'POST', data },
+  );
+}
+
 /** 查询锁定号源看板（分页，date 必填） */
 export function getLockedSlots(
   params: API.LockedSlotsParams,
