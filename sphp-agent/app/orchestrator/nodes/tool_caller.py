@@ -546,6 +546,23 @@ def _latest_user_text(messages: list[Any]) -> str:
     return ""
 
 
+def _is_user_message(m: Any) -> bool:
+    """判断消息是否为用户消息（dict 或 LangChain BaseMessage，2026-08-07）。
+
+    导诊首轮拦截依赖统计用户消息条数：messages 可能含 dict（OpenAI 格式）与
+    LangChain BaseMessage 两种类型，此处统一判定 role=user / type=human。
+
+    Args:
+        m: 单条消息（dict 或 BaseMessage）。
+
+    Returns:
+        bool: 用户消息返回 True。
+    """
+    if isinstance(m, dict):
+        return m.get("role") == "user"
+    return getattr(m, "type", "") == "human" or str(getattr(m, "role", "")).lower() == "user"
+
+
 def _build_doctor_choice_context(choice: dict[str, Any]) -> str:
     """构造已选医生上下文（注入 tool_caller 的 LLM 输入）。
 
@@ -616,6 +633,24 @@ async def tool_caller(
     # M8-8 过滤成只剩 save_pre_consultation，挂号白名单无此工具 -> 无工具可用
     # -> LLM 转而索要症状主诉，挂号流程走成在线问诊）。
     is_consultation_scene = bool(allowed_tools) and "save_pre_consultation" in allowed_tools
+
+    # 导诊场景识别（2026-08-07）：白名单含 create_triage_assessment 即为导诊子图。
+    # 导诊需"最少两轮症状追问"（原始需求），首轮用户仅描述症状时不允许直接调
+    # 评估工具下结论——确定性拦截，软约束（TRIAGE_SCENE_PROMPT）不可靠。
+    is_triage_scene = bool(allowed_tools) and "create_triage_assessment" in allowed_tools
+
+    # 导诊首轮拦截（2026-08-07 硬兜底）：首轮用户消息（messages 中 user 消息
+    # 不超过 1 条）时，强制拦截 create_triage_assessment，本轮只允许追问查询类
+    # 工具（query_health_record 拉档案参考），让 LLM 至少追问一轮症状细节再评估。
+    # ⚠️ 导诊首轮消息 = 用户刚描述症状（如"我头疼三天了"），此时直接调评估
+    # 工具会跳过症状追问（原始需求"Agent 能追问细节：部位、体温、过敏史等"）。
+    # 拦截后工具仍可能返回 query_health_record / search_medical_knowledge 等
+    # 查询（L1），子图正常执行并在 reply 注入追问引导，下一轮 user 消息到达后
+    # 放行 create_triage_assessment。
+    is_first_round = sum(
+        1 for m in state.get("messages", []) if _is_user_message(m)
+    ) <= 1
+    block_triage_assessment = is_triage_scene and is_first_round
 
     # M8-6 问诊选医生：用户已从 options 卡回传选择（"我选择X医生"）时，**在
     # LLM 推理前**确定性匹配候选并注入 doctor_id 上下文，让 LLM 本轮就知道
@@ -753,6 +788,14 @@ async def tool_caller(
     try:
         response = await llm_with_tools.ainvoke(messages)
         tool_calls = _extract_tool_calls(response, tool_scope, effective_allowed)
+        # 导诊首轮拦截评估（2026-08-07）：首轮强制剔除 create_triage_assessment，
+        # 保证"最少两轮症状追问"（原始需求）。LLM 首轮仍可调 query_health_record
+        # / search_medical_knowledge（L1 查询），下一轮 user 消息到达后放行评估。
+        if block_triage_assessment:
+            blocked = [tc for tc in tool_calls if tc["name"] == "create_triage_assessment"]
+            if blocked:
+                logger.info("导诊首轮拦截评估工具: %s（待追问症状后放行）", len(blocked))
+                tool_calls = [tc for tc in tool_calls if tc["name"] != "create_triage_assessment"]
         # M8-5：必填 patient_id / hospital_id 工具漏填时确定性补全（放在去重前——
         # 补全后的参数才是实际执行参数，去重按补全后对比，避免"轮 2 漏填未被去重、
         # 补全后与轮 1 实际执行参数相同仍被执行"的重复调用）。patient_id 兜底 B 端
