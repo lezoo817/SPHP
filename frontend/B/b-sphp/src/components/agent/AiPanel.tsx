@@ -39,7 +39,9 @@ import { AgentMessageBubble } from './AgentMessage';
 import { AgentThoughtPanel } from './AgentThought';
 import { AgentToolCardView } from './AgentToolCard';
 import { AgentConfirmCardView } from './AgentConfirmCard';
-import type { AgentChatContext, AgentSession } from '@/typings/agent';
+import { AgentActionCardView } from './AgentActionCard';
+import { AgentSelectCardView } from './AgentSelectCard';
+import type { AgentActionCard, AgentChatContext, AgentSession } from '@/typings/agent';
 import './agent.css';
 
 const { Text, Paragraph } = Typography;
@@ -65,9 +67,11 @@ export interface AiPanelProps {
   embedded?: boolean;
   /** 嵌入式场景下，切换患者时由父组件触发会话重置（传入新的 consultationId 即重置） */
   consultationId?: number;
+  /** 跳转到业务模块后的回调（抽屉场景用于关闭自身） */
+  onNavigate?: () => void;
 }
 
-export function AiPanel({ context, embedded = false, consultationId }: AiPanelProps) {
+export function AiPanel({ context, embedded = false, consultationId, onNavigate }: AiPanelProps) {
   const {
     entries,
     connection,
@@ -76,7 +80,9 @@ export function AiPanel({ context, embedded = false, consultationId }: AiPanelPr
     sessionId,
     send,
     confirm,
+    selectOption,
     cancel,
+    retry,
     reset,
     loadSession,
     sessions,
@@ -121,6 +127,15 @@ export function AiPanel({ context, embedded = false, consultationId }: AiPanelPr
     (prompt: string) => {
       if (isStreaming) return;
       send(prompt, context);
+    },
+    [isStreaming, send, context],
+  );
+
+  /** 非 L2 业务交互卡：发送 buttonText 作为用户消息触发动作。 */
+  const handleAction = useCallback(
+    (card: AgentActionCard) => {
+      if (isStreaming) return;
+      send(card.buttonText, context);
     },
     [isStreaming, send, context],
   );
@@ -234,7 +249,7 @@ export function AiPanel({ context, embedded = false, consultationId }: AiPanelPr
           banner
           style={{ borderRadius: 0 }}
           action={
-            <Button size="small" onClick={() => input && handleSubmit()}>
+            <Button size="small" onClick={retry}>
               重试
             </Button>
           }
@@ -290,7 +305,25 @@ export function AiPanel({ context, embedded = false, consultationId }: AiPanelPr
               <AgentConfirmCardView
                 key={entry.data.id}
                 card={entry.data}
-                onConfirm={(card: Agent.ConfirmCard) => void confirm(card)}
+                onConfirm={(card) => void confirm(card)}
+              />
+            );
+          if (entry.kind === 'action')
+            return (
+              <AgentActionCardView
+                key={entry.data.id}
+                card={entry.data}
+                disabled={isStreaming}
+                onAction={handleAction}
+              />
+            );
+          if (entry.kind === 'select')
+            return (
+              <AgentSelectCardView
+                key={entry.data.id}
+                card={entry.data}
+                disabled={isStreaming}
+                onSelect={(item) => selectOption(entry.data, item)}
               />
             );
           return null;
