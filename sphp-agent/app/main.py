@@ -3,7 +3,9 @@
 FastAPI + MCP Server 启动 + lifespan 管理。
 """
 
+import asyncio
 import logging
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -12,6 +14,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.infrastructure.config.settings import get_settings
+
+# Windows 下 Python/uvicorn 默认 ProactorEventLoop，psycopg 异步驱动不兼容
+# （'Psycopg cannot use the ProactorEventLoop'），导致 checkpointer=postgres /
+# session_store 建连失败。此处**模块顶层**切换为 Selector 兼容策略——覆盖
+# ``python -m app.main``、``uvicorn app.main:app``、IDE 直跑等所有启动路径
+# （uvicorn 在创建事件循环前读取 policy）。仅 Windows 生效，Linux/macOS 默认
+# Selector/epoll 无影响。参考 tests/integration/test_rag_e2e.py 先例。
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 logger = logging.getLogger(__name__)
 
@@ -218,17 +229,7 @@ def run() -> None:
     python -m app.main
     等价于 uvicorn app.main:app --host <AGENT_HOST> --port <AGENT_PORT>。
     """
-    import asyncio
-    import sys
-
     import uvicorn
-
-    # P3：Windows 下 uvicorn 默认 ProactorEventLoop，psycopg 异步驱动不兼容
-    # （'Psycopg cannot use the ProactorEventLoop'），导致 checkpointer=postgres /
-    # session_store 建连失败。切换为 Selector 兼容策略（仅 Windows 生效，
-    # Linux/macOS 默认 Selector 或 epoll 无影响）。参考 tests/integration/test_rag_e2e.py。
-    if sys.platform == "win32":
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     settings = get_settings()
     uvicorn.run(
