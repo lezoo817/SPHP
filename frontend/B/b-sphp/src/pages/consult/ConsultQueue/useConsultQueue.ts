@@ -104,7 +104,7 @@ export function useConsultQueue() {
   const [reportGeneratedAt, setReportGeneratedAt] = useState<string>('');
   const [savingNote, setSavingNote] = useState(false);
 
-  /** 患者变化时重置病历表单；有已保存的结构化病历则回显 */
+  /** 患者变化时重置病历表单；有已保存的纯文本病历则按"字段名：值"格式回显 */
   useEffect(() => {
     setNoteChanged(false);
     setReportChiefComplaint('');
@@ -114,21 +114,29 @@ export function useConsultQueue() {
     setReportTreatmentPlan('');
     setReportGeneratedAt('');
     if (patientDetail?.doctorNote) {
-      try {
-        const parsedNote: unknown = JSON.parse(patientDetail.doctorNote);
-        if (parsedNote && typeof parsedNote === 'object') {
-          const n = parsedNote as Record<string, string>;
-          setReportChiefComplaint(n.chiefComplaint ?? '');
-          setReportPresentIllness(n.presentIllness ?? '');
-          // 兼容旧数据：旧版 key 为 physicalExamination
-          setReportPhysicalExam(n.physicalExam ?? n.physicalExamination ?? '');
-          setReportDiagnosis(n.diagnosis ?? '');
-          setReportTreatmentPlan(n.treatmentPlan ?? '');
-          setReportGeneratedAt(n.generatedAt ?? '');
+      // 按"字段名：值"格式逐行解析（与 saveNote 输出对齐）
+      const fieldMap: Record<string, NoteField> = {
+        主诉: 'chiefComplaint',
+        现病史: 'presentIllness',
+        查体: 'physicalExam',
+        诊断: 'diagnosis',
+        治疗方案: 'treatmentPlan',
+      };
+      const parsed: Partial<Record<NoteField, string>> = {};
+      patientDetail.doctorNote.split('\n').forEach((line) => {
+        for (const [label, field] of Object.entries(fieldMap)) {
+          const prefix = `${label}：`;
+          if (line.startsWith(prefix)) {
+            parsed[field] = line.substring(prefix.length);
+            break;
+          }
         }
-      } catch {
-        // 旧版纯文本病历不回显到结构化表单
-      }
+      });
+      if (parsed.chiefComplaint) setReportChiefComplaint(parsed.chiefComplaint);
+      if (parsed.presentIllness) setReportPresentIllness(parsed.presentIllness);
+      if (parsed.physicalExam) setReportPhysicalExam(parsed.physicalExam);
+      if (parsed.diagnosis) setReportDiagnosis(parsed.diagnosis);
+      if (parsed.treatmentPlan) setReportTreatmentPlan(parsed.treatmentPlan);
     }
   }, [patientDetail]);
 
@@ -253,27 +261,24 @@ export function useConsultQueue() {
 
   const handleSaveNote = async () => {
     if (!selectedConsultId) return;
-    // 构建结构化病历 JSON
-    const reportData: Record<string, string> = {
-      chiefComplaint: reportChiefComplaint,
-      presentIllness: reportPresentIllness,
-      physicalExam: reportPhysicalExam,
-      diagnosis: reportDiagnosis,
-      treatmentPlan: reportTreatmentPlan,
-      doctorName: currentUser?.name ?? '',
-      generatedAt: dayjs().format('YYYY-MM-DD HH:mm'),
-    };
     if (!reportChiefComplaint.trim() && !reportDiagnosis.trim()) {
       message.warning('请至少填写主诉或诊断');
       return;
     }
-    const noteJson = JSON.stringify(reportData, null, 2);
+    // 拼接为纯文本（按"字段名：值"换行分隔），不再使用 JSON 格式
+    const lines: string[] = [];
+    if (reportChiefComplaint.trim()) lines.push(`主诉：${reportChiefComplaint.trim()}`);
+    if (reportPresentIllness.trim()) lines.push(`现病史：${reportPresentIllness.trim()}`);
+    if (reportPhysicalExam.trim()) lines.push(`查体：${reportPhysicalExam.trim()}`);
+    if (reportDiagnosis.trim()) lines.push(`诊断：${reportDiagnosis.trim()}`);
+    if (reportTreatmentPlan.trim()) lines.push(`治疗方案：${reportTreatmentPlan.trim()}`);
+    const noteText = lines.join('\n');
     setSavingNote(true);
     try {
-      await saveNote(selectedConsultId, { doctorNote: noteJson });
+      await saveNote(selectedConsultId, { doctorNote: noteText });
       message.success('病历已保存');
       setNoteChanged(false);
-      setReportGeneratedAt(reportData.generatedAt);
+      setReportGeneratedAt(dayjs().format('YYYY-MM-DD HH:mm'));
     } catch (err: unknown) {
       message.error(getErrorMessage(err, '保存病历失败'));
     } finally {

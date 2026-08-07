@@ -30,11 +30,12 @@ export const STATUS_MAP: Record<ScheduleStatus, { text: string; color: string }>
   CANCELLED: { text: '已作废', color: 'red' },
 };
 
-/** 状态筛选选项 */
-export const STATUS_OPTIONS: { label: string; value: ScheduleStatus }[] = [
+/** 状态筛选选项（EXPIRED 为虚拟查询值，DB 无此状态；后端识别后改写为 PUBLISHED+日期<今天） */
+export const STATUS_OPTIONS: { label: string; value: ScheduleStatus | 'EXPIRED' }[] = [
   { label: '草稿', value: 'DRAFT' },
   { label: '已发布', value: 'PUBLISHED' },
   { label: '已作废', value: 'CANCELLED' },
+  { label: '已过期', value: 'EXPIRED' },
 ];
 
 /** 排班已发布时对增删改操作的统一禁用提示 */

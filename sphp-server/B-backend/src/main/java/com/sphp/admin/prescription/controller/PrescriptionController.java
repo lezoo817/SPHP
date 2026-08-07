@@ -32,14 +32,14 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/b")
-@Tag(name = "5-处方管理", description = "处方提交/列表/详情")
+@Tag(name = "处方管理", description = "处方提交/列表/详情")
 @RequiredArgsConstructor
 public class PrescriptionController {
 
     private static final int MAX_PAGE_SIZE = 100;
 
     private static int clampSize(int size) {
-        return Math.max(1, Math.min(size, MAX_PAGE_SIZE));
+        return Math.clamp(size, 1, MAX_PAGE_SIZE);
     }
 
     private final PrescriptionService prescriptionService;

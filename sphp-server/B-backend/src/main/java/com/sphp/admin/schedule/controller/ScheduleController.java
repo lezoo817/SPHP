@@ -40,7 +40,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/b/admin")
-@Tag(name = "3-排班管理", description = "排班列表/创建/时段配置/发布/取消发布/锁定号源看板/手动释放")
+@Tag(name = "排班管理", description = "排班列表/创建/时段配置/发布/取消发布/锁定号源看板/手动释放")
 @RequiredArgsConstructor
 public class ScheduleController {
 
@@ -49,7 +49,7 @@ public class ScheduleController {
 
     /** 每页大小钳制到 [1, MAX_PAGE_SIZE]，避免越界 */
     private static int clampSize(int size) {
-        return Math.max(1, Math.min(size, MAX_PAGE_SIZE));
+        return Math.clamp(size, 1, MAX_PAGE_SIZE);
     }
 
     private final ScheduleService scheduleService;
@@ -60,11 +60,12 @@ public class ScheduleController {
             @Parameter(description = "排班日期 yyyy-MM-dd，默认当天") @RequestParam(required = false) LocalDate date,
             @Parameter(description = "科室ID（仅 ADMIN 生效）") @RequestParam(required = false) Long deptId,
             @Parameter(description = "医生ID（仅 ADMIN 生效）") @RequestParam(required = false) Long doctorId,
-            @Parameter(description = "状态过滤：DRAFT / PUBLISHED / CANCELLED") @RequestParam(required = false) String status,
+            @Parameter(description = "状态过滤：DRAFT / PUBLISHED / CANCELLED / EXPIRED（已过期，PUBLISHED+日期<今天）") @RequestParam(required = false) String status,
+            @Parameter(description = "隐藏失效排班：true 时排除 CANCELLED + 已过期 PUBLISHED") @RequestParam(required = false) Boolean hideInvalid,
             @Parameter(description = "页码，默认1") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页大小，默认10") @RequestParam(defaultValue = "10") int size) {
         return Result.success("查询成功",
-                scheduleService.page(date, deptId, doctorId, status, page, clampSize(size)));
+                scheduleService.page(date, deptId, doctorId, status, hideInvalid, page, clampSize(size)));
     }
 
     @PostMapping("/schedules")

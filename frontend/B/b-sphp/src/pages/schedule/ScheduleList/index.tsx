@@ -4,7 +4,7 @@
  * - 写操作（新增/配置时段/发布/取消发布/作废）仅 ADMIN
  * - 业务铁律：PUBLISHED 状态下增/删/改类按钮置灰禁用并附 Tooltip「排班已发布，不可修改」
  */
-import { Button, Modal, message } from 'antd';
+import { Button, Checkbox, Form, Modal, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { ProTable } from '@ant-design/pro-components';
 import type { ActionType } from '@ant-design/pro-components';
@@ -147,6 +147,7 @@ export default function ScheduleList() {
               deptId: rest.deptId,
               doctorId: rest.doctorId,
               status: rest.status,
+              hideInvalid: rest.hideInvalid,
             });
             return { data: res.list, total: res.total, success: true };
           } catch (err: unknown) {
@@ -159,6 +160,19 @@ export default function ScheduleList() {
           // span=6 → 一行放 4 个筛选项；defaultFormItemsNumber=4 使全部默认展示
           span: 6,
           defaultFormItemsNumber: 4,
+          // 在"重置/查询"按钮左侧插入"过滤失效"勾选：与 status 筛 AND 组合
+          optionRender: (searchConfig, formProps, dom) => [
+            <Form.Item
+              key="hideInvalid"
+              name="hideInvalid"
+              valuePropName="checked"
+              noStyle
+              style={{ marginRight: 12 }}
+            >
+              <Checkbox>过滤失效的排班信息</Checkbox>
+            </Form.Item>,
+            ...dom,
+          ],
         }}
         toolBarRender={() =>
           isAdmin

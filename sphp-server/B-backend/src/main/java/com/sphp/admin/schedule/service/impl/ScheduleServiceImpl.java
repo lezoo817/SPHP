@@ -113,13 +113,15 @@ public class ScheduleServiceImpl implements ScheduleService {
      * @param date     排班日期（可空；不传则加载全部）
      * @param deptId   科室过滤（仅 ADMIN 生效）
      * @param doctorId 医生过滤（仅 ADMIN 生效）
-     * @param status   排班状态过滤（DRAFT / PUBLISHED / CANCELLED；可空）
-     * @param page     页码（1 起）
-     * @param size     每页大小（调用方已钳制到 [1, MAX_PAGE_SIZE]）
+     * @param status      排班状态过滤（DRAFT / PUBLISHED / CANCELLED / EXPIRED；可空）
+     *                    "EXPIRED" 为虚拟查询值，识别后改写为 {@code status=PUBLISHED AND schedule_date<today}（不入库）
+     * @param hideInvalid 隐藏失效排班（可空）；true 时排除 {@code CANCELLED} 与 {@code (PUBLISHED AND schedule_date<today)}
+     * @param page        页码（1 起）
+     * @param size        每页大小（调用方已钳制到 [1, MAX_PAGE_SIZE]）
      * @return 排班分页结果（含号源聚合计数）
      */
     @Override
-    public PageResult<ScheduleListVO> page(LocalDate date, Long deptId, Long doctorId, String status, int page, int size) {
+    public PageResult<ScheduleListVO> page(LocalDate date, Long deptId, Long doctorId, String status, Boolean hideInvalid, int page, int size) {
         DataScope scope = currentUserService.getCurrentDataScope();
         // 数据权限标识缺失（DEPT_HEAD 无科室 / DOCTOR 无本人医生）时按空数据返回，避免越权
         if ((BRoleEnum.DEPT_HEAD.equalsCode(scope.role()) && scope.deptId() == null)
@@ -142,7 +144,15 @@ public class ScheduleServiceImpl implements ScheduleService {
         } else {
             wrapper.eq(Schedule::getDoctorId, scope.doctorId());
         }
-        wrapper.eq(StringUtils.hasText(status), Schedule::getStatus, status)
+        // 特殊值"EXPIRED"：展开为 status=PUBLISHED AND schedule_date<today（虚拟状态，不入库）
+        boolean expired = "EXPIRED".equals(status);
+        wrapper.eq(!expired && StringUtils.hasText(status), Schedule::getStatus, status)
+                .eq(expired, Schedule::getStatus, STATUS_PUBLISHED)
+                .lt(expired, Schedule::getScheduleDate, LocalDate.now())
+                // hideInvalid=true：排除 CANCELLED + (PUBLISHED AND schedule_date<today)；与 status 过滤 AND 组合
+                .apply(hideInvalid != null && hideInvalid,
+                        "NOT (status = {0} OR (status = {1} AND schedule_date < {2}))",
+                        STATUS_CANCELLED, STATUS_PUBLISHED, LocalDate.now())
                 // 按排班日期倒序展示，最近的排班在最前
                 .orderByDesc(Schedule::getScheduleDate)
                 .orderByAsc(Schedule::getId);
