@@ -77,9 +77,9 @@ class RegisteringServiceImplTest {
     void registeringListAppointmentsAcceptsAndReturnsNoShowDisplayStatus() {
         RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
         RegisteringAppointmentRecord noShowRecord = new RegisteringAppointmentRecord(7001L, 20001L, 9001L,
-                501L, 401L, "张医生", "呼吸内科", "门诊楼三层", LocalDate.now().minusDays(1),
+                501L, 401L, "张医生", "呼吸内科", "门诊楼三层", LocalDate.of(2026, 8, 5),
                 LocalTime.of(9, 0), LocalTime.of(9, 30), "NO_SHOW", 5000,
-                OffsetDateTime.now().minusDays(1), 8001L, "SUCCESS");
+                OffsetDateTime.parse("2026-08-05T08:00:00+08:00"), 8001L, "SUCCESS");
         when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
         when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
         when(dataMapper.selectRegisteringAppointments(20001L, "NO_SHOW", 20, 0L)).thenReturn(List.of(noShowRecord));
