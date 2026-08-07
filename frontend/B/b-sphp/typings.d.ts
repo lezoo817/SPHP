@@ -177,6 +177,8 @@ declare global {
       deptId?: number;
       doctorId?: number;
       status?: string;
+      /** 隐藏失效排班：true 时排除 CANCELLED + 已过期 PUBLISHED（与 status 过滤 AND 组合） */
+      hideInvalid?: boolean;
     }
 
     /** 创建排班请求 */

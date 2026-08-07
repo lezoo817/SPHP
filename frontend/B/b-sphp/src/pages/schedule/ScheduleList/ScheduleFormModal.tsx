@@ -1,7 +1,8 @@
 /**
  * 新增排班弹窗。
  *
- * - 医生/日期/班次/号源总数表单；
+ * - 科室→医生级联：先选科室（可选）再选医生，切换科室时清空已选医生，避免医生与所选科室不一致的脏数据；
+ * - 医生/日期/班次/号源总数表单（医生按所选科室联动过滤，未选科室时拉取全院启用医生）；
  * - 班次按时间窗动态禁用：仅当天窗口已结束的班次不可选，未来日期均可选；
  * - 日期变化时若当前班次已过时，自动切换到首个可选班次（全部过时则清空，提交时必选校验拦截）。
  */
@@ -13,13 +14,14 @@ import {
   ProFormDatePicker,
   ProFormDigit,
 } from '@ant-design/pro-components';
-import { getDoctors } from '@/services/admin';
+import { getDepartments, getDoctors } from '@/services/admin';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import { getShiftWindow } from '../constants';
 
-/** 新增排班表单值（scheduleDate 兼容 Dayjs 与字符串） */
+/** 新增排班表单值（scheduleDate 兼容 Dayjs 与字符串；deptId 仅 UI 联动状态，不参与提交） */
 interface CreateScheduleFormValues {
+  deptId?: number;
   doctorId: number;
   scheduleDate: Dayjs | string;
   shift: 'MORNING' | 'AFTERNOON';
@@ -42,6 +44,8 @@ export default function ScheduleFormModal({
   const [createForm] = Form.useForm<CreateScheduleFormValues>();
   /** 当前选择的排班日期（用于按班次时间窗动态禁用选项） */
   const createDate = Form.useWatch('scheduleDate', createForm);
+  /** 当前选择的科室（用于联动过滤医生下拉；undefined 表示未选，回退到全院启用医生） */
+  const createDeptId = Form.useWatch('deptId', createForm);
 
   /** 班次是否已过时：仅当天生效（窗口结束时刻过后不可选），未来日期均可选 */
   const isShiftExpired = (
@@ -90,10 +94,31 @@ export default function ScheduleFormModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createDate]);
 
-  /** 医生选项（供搜索下拉，仅启用医生） */
-  const fetchDoctors = async (keyword?: string) => {
+  /** 科室变化时清空已选医生：避免出现"医生属 A 科室、却挂了 B 科室排班"的脏数据 */
+  useEffect(() => {
+    // 初次挂载时 createDeptId 为 undefined，setFieldsValue({ doctorId: undefined }) 为 no-op
+    createForm.setFieldsValue({ doctorId: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createDeptId]);
+
+  /** 科室选项（取自当前管理员所属医院，全量拉取后转为 label/value 列表） */
+  const fetchDepartments = async () => {
+    try {
+      const res = await getDepartments({ page: 1, size: 200 });
+      return (res.list ?? []).map((dept) => ({
+        label: dept.name,
+        value: dept.id,
+      }));
+    } catch {
+      return [];
+    }
+  };
+
+  /** 医生选项（按所选科室联动过滤；未传 deptId 时拉取全院启用医生） */
+  const fetchDoctors = async (keyword: string, deptId?: number) => {
     try {
       const res = await getDoctors({
+        deptId,
         name: keyword || undefined,
         status: 'ENABLED',
         page: 1,
@@ -133,11 +158,27 @@ export default function ScheduleFormModal({
         submitter={{ submitButtonProps: { loading: submitting } }}
       >
         <ProFormSelect
+          name="deptId"
+          label="科室"
+          placeholder="请选择科室（可选，用于筛选医生）"
+          showSearch
+          allowClear
+          request={() => fetchDepartments()}
+        />
+        <ProFormSelect
           name="doctorId"
           label="医生"
           rules={[{ required: true, message: '请选择医生' }]}
           showSearch
-          request={(input) => fetchDoctors(input?.key ?? '')}
+          request={async (input) => {
+            const { keyWords, deptId } = (input ?? {}) as {
+              keyWords?: string;
+              deptId?: number;
+            };
+            return fetchDoctors(keyWords ?? '', deptId);
+          }}
+          // params 变化会触发 ProFormSelect 重新拉取：科室切换时强制重拉医生列表
+          params={{ deptId: createDeptId }}
           debounceTime={300}
           placeholder="请选择医生"
         />
