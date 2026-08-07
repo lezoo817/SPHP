@@ -53,6 +53,12 @@ export function AgentChat({ context, presetAction }: { context?: AgentChatContex
   const listRef = useRef<HTMLDivElement>(null);
   const executedPresetRef = useRef<string>();
 
+  // 会话上下文就绪状态：address_id / hospital_id / patient_id 等需在 send 前
+  // 注入请求体，后端 tool_caller 据此决定是否注入"当前收货地址/医院/就诊人"
+  // 系统提示词。context 未就绪时发送会让 LLM 拿不到 address_id，购药流程
+  // recommend_pharmacies 工具因缺必填参数不敢调用，回复"我不知道您所在的具体位置"。
+  const contextReady = context !== undefined;
+
   useEffect(() => {
     if (!context || !presetAction) return;
     const presetKey = `${presetAction.type}:${presetAction.prescriptionId}`;
@@ -136,14 +142,17 @@ export function AgentChat({ context, presetAction }: { context?: AgentChatContex
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const text = input.trim();
-    if (!text || isStreaming) return;
+    // context 未就绪时禁止发送：address_id / hospital_id 等关键字段缺失会
+    // 导致后端 LLM 拿不到"当前收货地址"等上下文，购药流程工具因缺必填参数
+    // 不敢调用（如 recommend_pharmacies 缺 address_id → "我不知道您所在的具体位置"）。
+    if (!text || isStreaming || !contextReady) return;
     send(text, context);
     setInput('');
   }
 
   /** 点击快捷入口。 */
   function handleQuick(prompt: string) {
-    if (isStreaming) return;
+    if (isStreaming || !contextReady) return;
     send(prompt, context);
   }
 
@@ -259,7 +268,7 @@ export function AgentChat({ context, presetAction }: { context?: AgentChatContex
                       key={prompt.label}
                       className="agent-chat__quick-item"
                       onClick={() => handleQuick(prompt.content)}
-                      disabled={isStreaming}
+                      disabled={isStreaming || !contextReady}
                     >
                       {prompt.label}
                     </button>
@@ -300,11 +309,11 @@ export function AgentChat({ context, presetAction }: { context?: AgentChatContex
           <form className="agent-chat__input-bar" onSubmit={handleSubmit}>
             <textarea
               className="agent-chat__input"
-              placeholder="输入咨询内容，1 至 2000 字"
+              placeholder={contextReady ? '输入咨询内容，1 至 2000 字' : '正在加载地址等信息，请稍候…'}
               value={input}
               onChange={(e) => setInput(e.target.value.slice(0, AGENT_CONTENT_MAX))}
               rows={1}
-              disabled={isStreaming}
+              disabled={isStreaming || !contextReady}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
@@ -312,7 +321,7 @@ export function AgentChat({ context, presetAction }: { context?: AgentChatContex
                 }
               }}
             />
-            <button type="submit" className="agent-chat__send" disabled={isStreaming || !input.trim()}>
+            <button type="submit" className="agent-chat__send" disabled={isStreaming || !input.trim() || !contextReady}>
               <Send size={18} />
             </button>
           </form>

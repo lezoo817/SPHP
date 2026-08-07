@@ -485,9 +485,9 @@ export function useAgentStream(): UseAgentStream {
     resolveL2ToolCard(card.card_type, { status: 'pending', summary: '待您确认操作' });
   }
 
-  /** 追加一张可选项卡片（医生列表 / 科室列表 / 号源等）。 */
-  function appendSelectCard(options: AgentOptionsEvent): void {
-    const selectCard: AgentSelectCard = {
+  /** 构建一张可选项卡片数据结构。 */
+  function buildSelectCard(options: AgentOptionsEvent): AgentSelectCard {
+    return {
       id: genId('sel'),
       selectType: options.type,
       items: options.items,
@@ -495,7 +495,33 @@ export function useAgentStream(): UseAgentStream {
       replyTemplate: options.reply_template || '我选择{label}',
       createdAt: Date.now(),
     };
-    setEntries((prev) => [...prev, { kind: 'select', data: selectCard }]);
+  }
+
+  /**
+   * 追加一张可选项卡片（医生列表 / 科室列表 / 号源等）。
+   *
+   * 去重策略（防后端跨轮重复推送选医生选项卡）：
+   * - 如果已有同类型卡片且用户已点选（selectedId 非空）→ 忽略，不追加
+   * - 如果已有同类型卡片但用户未点选 → 替换旧卡片（避免多张同类型卡堆叠）
+   * - 无同类型卡片 → 正常追加
+   */
+  function appendSelectCard(options: AgentOptionsEvent): void {
+    setEntries((prev) => {
+      for (let i = prev.length - 1; i >= 0; i -= 1) {
+        const entry = prev[i];
+        if (entry.kind === 'select' && entry.data.selectType === options.type) {
+          // 用户已点选过同类型卡片：忽略后续重复推送
+          if (entry.data.selectedId) {
+            return prev;
+          }
+          // 未点选：替换旧卡片（更新数据，避免同类型卡片堆积）
+          const next = prev.slice();
+          next[i] = { kind: 'select', data: buildSelectCard(options) };
+          return next;
+        }
+      }
+      return [...prev, { kind: 'select', data: buildSelectCard(options) }];
+    });
   }
 
   /** 更新指定可选项卡片的部分字段（目前仅 selectedId）。 */
