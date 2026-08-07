@@ -74,6 +74,7 @@ public interface NotificationMapper extends BaseMapper<Notification> {
      * @param userId C端用户 ID
      * @param patientId 可选就诊人 ID
      * @param read 可选已读状态
+     * @param type 可选通知类型
      * @param limit 分页大小
      * @param offset 分页偏移量
      * @return 通知投影列表
@@ -81,6 +82,7 @@ public interface NotificationMapper extends BaseMapper<Notification> {
     List<NotificationRecord> selectNotifications(@Param("userId") Long userId,
                                                  @Param("patientId") Long patientId,
                                                  @Param("read") Boolean read,
+                                                 @Param("type") String type,
                                                  @Param("limit") int limit,
                                                  @Param("offset") long offset);
 
@@ -90,10 +92,11 @@ public interface NotificationMapper extends BaseMapper<Notification> {
      * @param userId C端用户 ID
      * @param patientId 可选就诊人 ID
      * @param read 可选已读状态
+     * @param type 可选通知类型
      * @return 通知数量
      */
     long countNotifications(@Param("userId") Long userId, @Param("patientId") Long patientId,
-                            @Param("read") Boolean read);
+                            @Param("read") Boolean read, @Param("type") String type);
 
     /**
      * 按通知 ID 查询通知归属与已读状态。

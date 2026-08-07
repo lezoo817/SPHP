@@ -3,6 +3,7 @@ package com.sphp.patient.notification.service.impl;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.common.constant.NotificationConstant;
+import com.sphp.patient.common.enums.NotificationTypeEnum;
 import com.sphp.patient.notification.mapper.NotificationMapper;
 import com.sphp.patient.notification.mapper.NotificationRecord;
 import com.sphp.patient.notification.service.NotificationService;
@@ -33,28 +34,30 @@ public class NotificationServiceImpl implements NotificationService {
      *
      * @param patientId 可选就诊人 ID
      * @param read 可选已读状态
+     * @param type 可选通知类型
      * @param pageNo 页号
      * @param pageSize 页大小
      * @return 通知分页数据
      * @throws CAuthException 就诊人不存在、无归属权限或分页参数超出范围时抛出
      */
     @Override
-    public NotificationPageVO listNotifications(Long patientId, Boolean read, Integer pageNo, Integer pageSize) {
+    public NotificationPageVO listNotifications(Long patientId, Boolean read, String type, Integer pageNo, Integer pageSize) {
         Long userId = CUserContext.getRequired().userId();
         // 校验可选就诊人存在且属于当前账号。
         validateAccessiblePatient(userId, patientId);
+        String resolvedType = resolveNotificationType(type);
         int resolvedPageNo = pageNo == null ? DEFAULT_PAGE_NO : pageNo;
         int resolvedPageSize = pageSize == null ? DEFAULT_PAGE_SIZE : pageSize;
         if (resolvedPageNo < 1 || resolvedPageSize < 1 || resolvedPageSize > MAX_PAGE_SIZE) {
             throw new CAuthException(PARAMETER_OUT_OF_RANGE, HttpStatus.BAD_REQUEST, "分页参数超出允许范围");
         }
-        List<NotificationPageVO.Item> records = notificationMapper.selectNotifications(userId, patientId, read,
+        List<NotificationPageVO.Item> records = notificationMapper.selectNotifications(userId, patientId, read, resolvedType,
                         resolvedPageSize, (long) (resolvedPageNo - 1) * resolvedPageSize)
                 .stream().map(this::toPageItem).toList();
         return NotificationPageVO.builder()
                 .pageNo(resolvedPageNo)
                 .pageSize(resolvedPageSize)
-                .total(notificationMapper.countNotifications(userId, patientId, read))
+                .total(notificationMapper.countNotifications(userId, patientId, read, resolvedType))
                 .records(records)
                 .build();
     }
@@ -106,6 +109,24 @@ public class NotificationServiceImpl implements NotificationService {
         }
         if (!notificationMapper.hasActivePatientRelation(userId, patientId)) {
             throw new CAuthException(UNAUTHORIZED, HttpStatus.FORBIDDEN, "无权访问该就诊人");
+        }
+    }
+
+    /**
+     * 校验并规范通知类型筛选条件。
+     *
+     * @param type 前端传入的可选通知类型
+     * @return 合法通知类型；空白条件返回 null
+     * @throws CAuthException 类型不在枚举范围内时抛出
+     */
+    private String resolveNotificationType(String type) {
+        if (type == null || type.isBlank()) {
+            return null;
+        }
+        try {
+            return NotificationTypeEnum.valueOf(type).name();
+        } catch (IllegalArgumentException exception) {
+            throw new CAuthException(INVALID_PARAMETER, HttpStatus.BAD_REQUEST, "通知类型不在允许范围内");
         }
     }
 

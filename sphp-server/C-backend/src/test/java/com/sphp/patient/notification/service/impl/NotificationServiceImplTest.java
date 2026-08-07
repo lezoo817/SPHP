@@ -43,10 +43,10 @@ class NotificationServiceImplTest {
         CUserContext.set(new CUserPrincipal(10001L, "zhangsan", OffsetDateTime.now().plusHours(1), "session"));
         when(mapper.existsActivePatient(20001L)).thenReturn(true);
         when(mapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
-        when(mapper.selectNotifications(10001L, 20001L, false, 20, 0)).thenReturn(List.of(record()));
-        when(mapper.countNotifications(10001L, 20001L, false)).thenReturn(1L);
+        when(mapper.selectNotifications(10001L, 20001L, false, "APPOINTMENT", 20, 0)).thenReturn(List.of(record()));
+        when(mapper.countNotifications(10001L, 20001L, false, "APPOINTMENT")).thenReturn(1L);
 
-        NotificationPageVO result = service.listNotifications(20001L, false, null, null);
+        NotificationPageVO result = service.listNotifications(20001L, false, "APPOINTMENT", null, null);
 
         assertEquals(1, result.getTotal());
         assertEquals("APPOINTMENT", result.getRecords().getFirst().getType());
@@ -65,7 +65,7 @@ class NotificationServiceImplTest {
         when(mapper.hasActivePatientRelation(10001L, 20002L)).thenReturn(false);
 
         CAuthException exception = assertThrows(CAuthException.class,
-                () -> service.listNotifications(20002L, null, 1, 20));
+                () -> service.listNotifications(20002L, null, null, 1, 20));
 
         assertEquals("A0301", exception.getCode());
         assertEquals(403, exception.getHttpStatus().value());
@@ -81,9 +81,24 @@ class NotificationServiceImplTest {
         CUserContext.set(new CUserPrincipal(10001L, "zhangsan", OffsetDateTime.now().plusHours(1), "session"));
 
         CAuthException exception = assertThrows(CAuthException.class,
-                () -> service.listNotifications(null, null, 1, 101));
+                () -> service.listNotifications(null, null, null, 1, 101));
 
         assertEquals("A0420", exception.getCode());
+    }
+
+    /**
+     * 验证未知通知类型被服务层拒绝，防止非 Web 调用绕过参数校验。
+     */
+    @Test
+    void listNotificationsRejectsInvalidType() {
+        NotificationMapper mapper = mock(NotificationMapper.class);
+        NotificationServiceImpl service = new NotificationServiceImpl(mapper);
+        CUserContext.set(new CUserPrincipal(10001L, "zhangsan", OffsetDateTime.now().plusHours(1), "session"));
+
+        CAuthException exception = assertThrows(CAuthException.class,
+                () -> service.listNotifications(null, null, "UNKNOWN", 1, 20));
+
+        assertEquals("A0400", exception.getCode());
     }
 
     /**
