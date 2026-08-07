@@ -15,14 +15,27 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.infrastructure.config.settings import get_settings
 
-# Windows 下 Python/uvicorn 默认 ProactorEventLoop，psycopg 异步驱动不兼容
+# Windows 下 psycopg 异步驱动不兼容 ProactorEventLoop
 # （'Psycopg cannot use the ProactorEventLoop'），导致 checkpointer=postgres /
-# session_store 建连失败。此处**模块顶层**切换为 Selector 兼容策略——覆盖
-# ``python -m app.main``、``uvicorn app.main:app``、IDE 直跑等所有启动路径
-# （uvicorn 在创建事件循环前读取 policy）。仅 Windows 生效，Linux/macOS 默认
-# Selector/epoll 无影响。参考 tests/integration/test_rag_e2e.py 先例。
+# session_store 建连失败。而 uvicorn 0.36+ 的 ``asyncio_loop_factory`` 在
+# Windows 上**硬编码返回 ProactorEventLoop**，并通过 ``asyncio.run(...,
+# loop_factory=...)`` 创建 loop——**绕过 event loop policy**，仅设置 policy
+# 无效。故在模块顶层**替换 uvicorn 的 loop factory**：Windows 下返回
+# SelectorEventLoop。因 ``import_from_string`` 每次动态 getattr，此 patch 对
+# 所有启动路径生效（python -m app.main / uvicorn app.main:app / IDE 直跑）。
+# 仅 Windows 生效，Linux/macOS 默认 Selector/epoll 无影响。
+# 参考 tests/integration/test_rag_e2e.py 先例。
 if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    import uvicorn.loops.asyncio as _uv_loops
+
+    _ORIGINAL_LOOP_FACTORY = _uv_loops.asyncio_loop_factory
+
+    def _selector_loop_factory(use_subprocess: bool = False) -> type[asyncio.AbstractEventLoop]:
+        """Windows 下返回 SelectorEventLoop，其余行为与原实现一致。"""
+        return asyncio.SelectorEventLoop
+
+    # 仅替换原硬编码 Proactor 的实现（Windows + 非子进程场景）
+    _uv_loops.asyncio_loop_factory = _selector_loop_factory
 
 logger = logging.getLogger(__name__)
 
