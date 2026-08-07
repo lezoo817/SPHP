@@ -145,7 +145,7 @@ class ProposalControllerTest {
     @Test
     void proposalListMedicalRecordsRouteExists() throws Exception {
         ProposalService service = mock(ProposalService.class);
-        when(service.proposalListMedicalRecords(null, null, null)).thenReturn(ProposalMedicalRecordPageVO.builder()
+        when(service.proposalListMedicalRecords(null, null, null, null)).thenReturn(ProposalMedicalRecordPageVO.builder()
                 .pageNo(1).pageSize(20).total(1)
                 .records(List.of(ProposalMedicalRecordPageVO.Item.builder().id(7001L)
                         .patientId(20001L).doctorName("张医生").departmentName("呼吸内科")

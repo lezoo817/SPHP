@@ -42,16 +42,17 @@ class PrescriptionServiceImplTest {
     @Test
     void prescriptionListUsesAccessiblePatientAndDefaultPagination() {
         PrescriptionDataMapper mapper = authorizedMapper();
-        when(mapper.prescriptionSelectApprovedList(20001L, 20, 0)).thenReturn(List.of(
-                new PrescriptionListRecord(13001L, 11001L, "王医生", OffsetDateTime.now())));
-        when(mapper.prescriptionCountApprovedList(20001L)).thenReturn(1L);
+        when(mapper.prescriptionSelectApprovedList(20001L, 20, 0, null)).thenReturn(List.of(
+                new PrescriptionListRecord(13001L, 11001L, "王医生", "阿莫西林胶囊", OffsetDateTime.now())));
+        when(mapper.prescriptionCountApprovedList(20001L, null)).thenReturn(1L);
         PrescriptionServiceImpl service = new PrescriptionServiceImpl(mapper);
         setUserContext();
 
-        ConsultationPrescriptionPageVO result = service.prescriptionList(null, null, null);
+        ConsultationPrescriptionPageVO result = service.prescriptionList(null, null, null, null);
 
         assertEquals(1L, result.getTotal());
         assertEquals(20, result.getPageSize());
+        assertEquals("阿莫西林胶囊", result.getRecords().getFirst().getDisplayName());
         assertEquals("APPROVED", result.getRecords().getFirst().getStatus());
     }
 

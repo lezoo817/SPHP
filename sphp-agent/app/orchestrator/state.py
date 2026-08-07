@@ -60,6 +60,8 @@ class AgentState(TypedDict):
         Literal[
             "interpret_prescription",
             "interpret_medical_record",
+            "select_prescription_interpretation",
+            "select_medical_record_interpretation",
             "recommend_prescription_pharmacy",
             "notify_drug_order_paid",
             "authorize_drug_order_reminder_after_receipt",
@@ -81,6 +83,9 @@ class AgentState(TypedDict):
 
     # 非 L2 的业务交互卡，例如处方解读后的药店推荐入口。
     action_cards: NotRequired[list[dict[str, Any]] | None]
+
+    # 病历或处方解读前的记录选择卡，仅由 reply_node 构造并经 SSE 下发。
+    record_pickers: NotRequired[list[dict[str, Any]] | None]
 
     # LLM 决定调用的工具列表，由 tool_caller 节点写入
     tool_calls: list[dict[str, Any]] | None

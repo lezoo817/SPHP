@@ -206,6 +206,8 @@ function parseSseFrame(frame: string): AgentSseEvent | null {
         return { event: 'card', data };
       case 'action_card':
         return { event: 'action_card', data };
+      case 'record_picker':
+        return { event: 'record_picker', data };
       case 'options':
         return { event: 'options', data };
       case 'error':

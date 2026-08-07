@@ -193,7 +193,7 @@ export interface Consultation { id: number; appointmentId: number; doctorName: s
 /** 问诊详情与文字消息。 */
 export interface ConsultationDetail extends Consultation { doctor: { id: number; name: string; title?: string }; preConsultation?: { chiefComplaint: string; historyOfPresentIllness?: string; attachments?: { name: string; url: string }[]; savedAt?: string; submittedAt?: string }; messages: { id: number; senderType: string; content: string; createdAt: string }[]; prescriptionIds: number[]; }
 /** 已批准处方列表项。 */
-export interface Prescription { id: number; consultationId: number; doctorName: string; status: 'APPROVED'; issuedAt: string; }
+export interface Prescription { id: number; consultationId: number; doctorName: string; displayName?: string; status: 'APPROVED'; issuedAt: string; }
 /** 已批准处方详情。 */
 export interface PrescriptionDetail extends Prescription { doctor: { id: number; name: string; title?: string }; items: { drugId: number; drugName: string; specification?: string; dosage?: string; frequency?: string; usage?: string; durationDays?: number }[]; }
 /** 药房处方库存。 */ export interface PharmacyInventory { pharmacyId:number; name:string; isDefault:boolean; items:{drugId:number;availableCount:number;unitPriceCent:number}[]; }

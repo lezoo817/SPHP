@@ -116,6 +116,11 @@ JAVA_API_MAP: dict[str, dict[str, str]] = {
         "path": "/api/c/v1/medical-records/{consult_id}",
         "scope": "c_end",
     },
+    "query_medical_records:list": {
+        "method": "GET",
+        "path": "/api/c/v1/medical-records",
+        "scope": "c_end",
+    },
     # ---- C 端：健康档案 ----
     "query_health_record": {
         "method": "GET",

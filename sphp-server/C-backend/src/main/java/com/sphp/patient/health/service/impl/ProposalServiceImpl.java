@@ -72,11 +72,13 @@ public class ProposalServiceImpl implements ProposalService {
      * @param patientId 可选就诊人 ID，未传时使用本人
      * @param pageNo 可选页码
      * @param pageSize 可选每页数量
+     * @param recentDays 可选最近天数，仅允许 1 至 30 天
      * @return 病历分页结果
      * @throws CAuthException 就诊人无权访问或分页参数越界时抛出
      */
     @Override
-    public ProposalMedicalRecordPageVO proposalListMedicalRecords(Long patientId, Integer pageNo, Integer pageSize) {
+    public ProposalMedicalRecordPageVO proposalListMedicalRecords(Long patientId, Integer pageNo, Integer pageSize,
+                                                                   Integer recentDays) {
         // 统一解析本人或当前账号已绑定的家庭成员，防止跨账号读取病历。
         Long resolvedPatientId = proposalResolvePatientId(patientId);
         int resolvedPageNo = pageNo == null ? DEFAULT_PAGE_NO : pageNo;
@@ -86,9 +88,11 @@ public class ProposalServiceImpl implements ProposalService {
         }
 
         long offset = (long) (resolvedPageNo - 1) * resolvedPageSize;
+        // 最近病历按服务端完成时间筛选，统一以服务端时钟定义最近窗口。
+        OffsetDateTime completedSince = recentDays == null ? null : OffsetDateTime.now().minusDays(recentDays);
         // 仅返回已完成且医生已保存正文的病历，不向患者暴露接诊过程中的草稿。
         List<ConsultationMedicalRecordListRecord> medicalRecords =
-                dataMapper.proposalSelectConsultationMedicalRecords(resolvedPatientId, resolvedPageSize, offset);
+                dataMapper.proposalSelectConsultationMedicalRecords(resolvedPatientId, resolvedPageSize, offset, completedSince);
         List<ProposalMedicalRecordPageVO.Item> records = medicalRecords.stream()
                 .map(item -> ProposalMedicalRecordPageVO.Item.builder()
                         .id(item.id())
@@ -102,7 +106,7 @@ public class ProposalServiceImpl implements ProposalService {
         return ProposalMedicalRecordPageVO.builder()
                 .pageNo(resolvedPageNo)
                 .pageSize(resolvedPageSize)
-                .total(dataMapper.proposalCountConsultationMedicalRecords(resolvedPatientId))
+                .total(dataMapper.proposalCountConsultationMedicalRecords(resolvedPatientId, completedSince))
                 .records(records)
                 .build();
     }

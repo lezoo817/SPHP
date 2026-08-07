@@ -122,14 +122,14 @@ class ProposalServiceImplTest {
         ProposalDataMapper dataMapper = mock(ProposalDataMapper.class);
         OffsetDateTime completedAt = OffsetDateTime.parse("2026-08-02T09:30:00+08:00");
         OffsetDateTime updatedAt = OffsetDateTime.parse("2026-08-02T09:35:00+08:00");
-        when(dataMapper.proposalSelectConsultationMedicalRecords(20001L, 20, 0L)).thenReturn(List.of(
+        when(dataMapper.proposalSelectConsultationMedicalRecords(20001L, 20, 0L, null)).thenReturn(List.of(
                 new ConsultationMedicalRecordListRecord(7001L, 20001L, "张医生", "呼吸内科", completedAt, updatedAt)));
-        when(dataMapper.proposalCountConsultationMedicalRecords(20001L)).thenReturn(1L);
+        when(dataMapper.proposalCountConsultationMedicalRecords(20001L, null)).thenReturn(1L);
         ProposalServiceImpl service = service(authorizedPatientMapper(), mock(ProposalReportMapper.class),
                 mock(ProposalReportIndicatorMapper.class), dataMapper);
         setUserContext();
 
-        ProposalMedicalRecordPageVO result = service.proposalListMedicalRecords(null, null, null);
+        ProposalMedicalRecordPageVO result = service.proposalListMedicalRecords(null, null, null, null);
 
         assertEquals(1, result.getPageNo());
         assertEquals(20, result.getPageSize());
@@ -137,7 +137,7 @@ class ProposalServiceImplTest {
         assertEquals("张医生", result.getRecords().getFirst().getDoctorName());
         assertEquals("呼吸内科", result.getRecords().getFirst().getDepartmentName());
         assertEquals(completedAt, result.getRecords().getFirst().getCompletedAt());
-        verify(dataMapper).proposalSelectConsultationMedicalRecords(20001L, 20, 0L);
+        verify(dataMapper).proposalSelectConsultationMedicalRecords(20001L, 20, 0L, null);
     }
 
     /**

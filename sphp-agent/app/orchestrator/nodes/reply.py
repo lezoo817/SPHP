@@ -44,6 +44,8 @@ _OFFICIAL_READY_SOURCE = "OFFICIAL_READY"
 _AI_FALLBACK_SOURCE = "AI_FALLBACK"
 _PRESET_INTERPRET_PRESCRIPTION = "interpret_prescription"
 _PRESET_INTERPRET_MEDICAL_RECORD = "interpret_medical_record"
+_PRESET_SELECT_PRESCRIPTION_INTERPRETATION = "select_prescription_interpretation"
+_PRESET_SELECT_MEDICAL_RECORD_INTERPRETATION = "select_medical_record_interpretation"
 _PRESET_RECOMMEND_PRESCRIPTION_PHARMACY = "recommend_prescription_pharmacy"
 _PRESET_NOTIFY_DRUG_ORDER_PAID = "notify_drug_order_paid"
 _PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT = "authorize_drug_order_reminder_after_receipt"
@@ -128,6 +130,84 @@ def _response_payload(result: dict[str, Any]) -> Any:
     if isinstance(response, dict) and "data" in response:
         return response.get("data")
     return response
+
+
+def _build_interpretation_record_picker(state: AgentState) -> dict[str, Any] | None:
+    """将最近病历或处方查询结果转换为受控选择卡。
+
+    Args:
+        state: 含受控列表查询结果的当前 Agent 状态。
+
+    Returns:
+        选择卡与提示消息；查询失败时返回原始失败说明；非选择预设时返回 None。
+    """
+    action = state.get("preset_action")
+    if action not in {
+        _PRESET_SELECT_PRESCRIPTION_INTERPRETATION,
+        _PRESET_SELECT_MEDICAL_RECORD_INTERPRETATION,
+    }:
+        return None
+    tool_name = (
+        "query_prescriptions"
+        if action == _PRESET_SELECT_PRESCRIPTION_INTERPRETATION
+        else "query_medical_records"
+    )
+    for result in state.get("tool_results") or []:
+        if result.get("tool_name") != tool_name:
+            continue
+        if not result.get("success"):
+            error = result.get("error")
+            message = error.get("message") if isinstance(error, dict) else None
+            return {
+                "messages": [
+                    {"role": "assistant", "content": message or "记录查询失败，请稍后重试。"}
+                ]
+            }
+        payload = _response_payload(result)
+        records = payload.get("records") if isinstance(payload, dict) else None
+        if not isinstance(records, list) or not records:
+            record_name = "处方" if tool_name == "query_prescriptions" else "病历"
+            return {
+                "messages": [
+                    {"role": "assistant", "content": f"最近 30 天暂无可解读的{record_name}。"}
+                ]
+            }
+        items: list[dict[str, Any]] = []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            record_id = _positive_int(record.get("id"))
+            if record_id is None:
+                continue
+            if tool_name == "query_prescriptions":
+                title = record.get("displayName") or "处方药品"
+                date_text = record.get("issuedAt") or "开方时间待确认"
+                doctor = record.get("doctorName") or "医生待确认"
+                description = f"{doctor} · {date_text}"
+                picker_type = "prescription"
+            else:
+                department = record.get("departmentName") or "就诊"
+                doctor = record.get("doctorName") or "医生"
+                title = f"{department} · {doctor}病历"
+                description = str(record.get("completedAt") or "完成时间待确认")
+                picker_type = "medical_record"
+            items.append({"id": record_id, "title": str(title), "description": description})
+        if not items:
+            return {"messages": [{"role": "assistant", "content": "最近 30 天暂无可解读的记录。"}]}
+        label = "处方" if picker_type == "prescription" else "病历"
+        return {
+            "messages": [
+                {"role": "assistant", "content": f"请从最近 30 天记录中选择需要解读的{label}。"}
+            ],
+            "record_pickers": [{
+                "picker_type": picker_type,
+                "title": f"请选择要解读的{label}",
+                "confirm_text": "确认",
+                "cancel_text": "取消",
+                "items": items,
+            }],
+        }
+    return None
 
 
 def _extract_medical_record_interpretation(
@@ -578,6 +658,10 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         if isinstance(preset_error, str) and preset_error.strip():
             # 受控预设的校验和推荐失败由服务端直接说明，避免模型自行推断原因。
             return {"messages": [{"role": "assistant", "content": preset_error.strip()}]}
+
+        record_picker = _build_interpretation_record_picker(state)
+        if record_picker is not None:
+            return record_picker
 
         if state.get("preset_action") == _PRESET_NOTIFY_DRUG_ORDER_PAID:
             notification = _format_paid_order_notification(state)

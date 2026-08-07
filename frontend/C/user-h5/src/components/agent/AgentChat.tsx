@@ -23,7 +23,8 @@ import { AgentToolCardView } from './AgentToolCard';
 import { AgentConfirmCardView } from './AgentConfirmCard';
 import { AgentActionCardView } from './AgentActionCard';
 import { AgentSelectCardView } from './AgentSelectCard';
-import type { AgentActionCard, AgentChatContext, AgentConfirmCard, AgentPresetAction, AgentSession } from '../../typings/agent';
+import { AgentRecordPickerCardView } from './AgentRecordPickerCard';
+import type { AgentActionCard, AgentChatContext, AgentConfirmCard, AgentPresetAction, AgentRecordPickerCard, AgentSession } from '../../typings/agent';
 import { resolveAppointmentPaymentResult, resolveDrugOrderPaymentResult } from '../../utils/agent-purchase';
 import { resolveAgentActionRequest } from '../../utils/agent-action';
 
@@ -71,6 +72,8 @@ export function AgentChat({
     send,
     confirm,
     selectOption,
+    selectRecordPicker,
+    updateRecordPicker,
     cancel,
     retry,
     reset,
@@ -212,9 +215,24 @@ export function AgentChat({
   }
 
   /** 点击快捷入口。 */
-  function handleQuick(prompt: string) {
+  function handleQuick(prompt: (typeof AGENT_QUICK_PROMPTS)[number]) {
     if (isStreaming || !contextReady) return;
-    send(prompt, context);
+    if (prompt.pickerAction) {
+      send(prompt.content, { ...context, preset_action: prompt.pickerAction });
+      return;
+    }
+    send(prompt.content, context);
+  }
+
+  /** 确认选择的记录并固定进入对应解读预设。 */
+  function handleRecordPickerConfirm(card: AgentRecordPickerCard) {
+    if (!card.selectedId || !context || isStreaming) return;
+    updateRecordPicker(card.id, 'confirmed');
+    if (card.picker_type === 'prescription') {
+      send('请解读我确认选择的处方。', { ...context, preset_action: 'interpret_prescription', prescription_id: card.selectedId });
+      return;
+    }
+    send('请解读我确认选择的病历。', { ...context, preset_action: 'interpret_medical_record', medical_record_id: card.selectedId });
   }
 
   /** 快捷入口图标按 label 名称映射，便于美化常驻栏。 */
@@ -226,6 +244,8 @@ export function AgentChat({
         return <Calendar size={22} />;
       case '处方解读':
         return <FileText size={22} />;
+      case '病历解读':
+        return <FolderHeart size={22} />;
       case '在线问诊':
         return <HeartPulse size={22} />;
       case '健康档案':
@@ -381,7 +401,7 @@ export function AgentChat({
                     type="button"
                     key={prompt.label}
                     className="agent-chat__quick-card"
-                    onClick={() => handleQuick(prompt.content)}
+                    onClick={() => handleQuick(prompt)}
                     disabled={isStreaming || !contextReady}
                     title={prompt.content}
                   >
@@ -423,6 +443,17 @@ export function AgentChat({
                     card={entry.data}
                     disabled={isStreaming}
                     onSelect={(item) => selectOption(entry.data, item)}
+                  />
+                );
+              if (entry.kind === 'record_picker')
+                return (
+                  <AgentRecordPickerCardView
+                    key={entry.data.id}
+                    card={entry.data}
+                    disabled={isStreaming}
+                    onSelect={(recordId) => selectRecordPicker(entry.data.id, recordId)}
+                    onConfirm={handleRecordPickerConfirm}
+                    onCancel={(card) => updateRecordPicker(card.id, 'cancelled')}
                   />
                 );
               return null;

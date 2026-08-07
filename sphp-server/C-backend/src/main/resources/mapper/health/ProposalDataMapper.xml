@@ -18,6 +18,9 @@
           AND cr.doctor_note IS NOT NULL
           AND btrim(cr.doctor_note) != ''
           AND cr.deleted_at IS NULL
+        <if test="completedSince != null">
+          AND cr.ended_at &gt;= #{completedSince}
+        </if>
         ORDER BY cr.ended_at DESC NULLS LAST, cr.id DESC
         LIMIT #{limit} OFFSET #{offset}
     </select>
@@ -30,6 +33,9 @@
           AND cr.doctor_note IS NOT NULL
           AND btrim(cr.doctor_note) != ''
           AND cr.deleted_at IS NULL
+        <if test="completedSince != null">
+          AND cr.ended_at &gt;= #{completedSince}
+        </if>
     </select>
 
     <select id="proposalSelectConsultationMedicalRecord"

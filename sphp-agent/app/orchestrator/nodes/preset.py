@@ -9,6 +9,8 @@ from app.orchestrator.state import AgentState
 
 PRESET_INTERPRET_PRESCRIPTION = "interpret_prescription"
 PRESET_INTERPRET_MEDICAL_RECORD = "interpret_medical_record"
+PRESET_SELECT_PRESCRIPTION_INTERPRETATION = "select_prescription_interpretation"
+PRESET_SELECT_MEDICAL_RECORD_INTERPRETATION = "select_medical_record_interpretation"
 PRESET_RECOMMEND_PRESCRIPTION_PHARMACY = "recommend_prescription_pharmacy"
 PRESET_NOTIFY_DRUG_ORDER_PAID = "notify_drug_order_paid"
 PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT = "authorize_drug_order_reminder_after_receipt"
@@ -30,6 +32,24 @@ def resolve_preset_interpretation(context: dict[str, Any] | None) -> int | None:
     if isinstance(prescription_id, bool) or not isinstance(prescription_id, int):
         return None
     return prescription_id if prescription_id > 0 else None
+
+
+def resolve_preset_interpretation_picker(context: dict[str, Any] | None) -> str | None:
+    """解析合法的病历或处方解读记录选择预设。
+
+    Args:
+        context: 前端随对话请求传入的页面上下文。
+
+    Returns:
+        合法的选择预设动作；非法值返回 None。
+    """
+    if not context:
+        return None
+    action = context.get("preset_action")
+    return action if action in {
+        PRESET_SELECT_PRESCRIPTION_INTERPRETATION,
+        PRESET_SELECT_MEDICAL_RECORD_INTERPRETATION,
+    } else None
 
 
 def resolve_preset_medical_record_interpretation(
@@ -123,6 +143,28 @@ async def preset_action_node(state: AgentState) -> dict[str, Any]:
     """
     action = state.get("preset_action")
     prescription_id = state.get("preset_prescription_id")
+    if action in (
+        PRESET_SELECT_PRESCRIPTION_INTERPRETATION,
+        PRESET_SELECT_MEDICAL_RECORD_INTERPRETATION,
+    ):
+        # 快捷入口只读取当前就诊人最近 30 天记录，选择结果再进入既有受控解读预设。
+        tool_name = (
+            "query_prescriptions"
+            if action == PRESET_SELECT_PRESCRIPTION_INTERPRETATION
+            else "query_medical_records"
+        )
+        return {
+            "tool_calls": [
+                {
+                    "name": tool_name,
+                    "arguments": {
+                        "patient_id": state.get("patient_id"),
+                        "recent_days": 30,
+                    },
+                }
+            ]
+        }
+
     if action in (PRESET_INTERPRET_PRESCRIPTION, PRESET_RECOMMEND_PRESCRIPTION_PHARMACY):
         if (
             isinstance(prescription_id, bool)

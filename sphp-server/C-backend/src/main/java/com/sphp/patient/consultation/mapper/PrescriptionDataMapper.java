@@ -3,6 +3,7 @@ package com.sphp.patient.consultation.mapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -43,19 +44,23 @@ public interface PrescriptionDataMapper {
      * @param patientId 就诊人 ID
      * @param limit 分页大小
      * @param offset 分页偏移量
+     * @param issuedSince 可选开方时间下界
      * @return 处方列表投影
      */
     List<PrescriptionListRecord> prescriptionSelectApprovedList(@Param("patientId") Long patientId,
                                                                  @Param("limit") int limit,
-                                                                 @Param("offset") long offset);
+                                                                 @Param("offset") long offset,
+                                                                 @Param("issuedSince") OffsetDateTime issuedSince);
 
     /**
      * 统计患者的已批准处方数量。
      *
      * @param patientId 就诊人 ID
+     * @param issuedSince 可选开方时间下界
      * @return 已批准处方数量
      */
-    long prescriptionCountApprovedList(@Param("patientId") Long patientId);
+    long prescriptionCountApprovedList(@Param("patientId") Long patientId,
+                                       @Param("issuedSince") OffsetDateTime issuedSince);
 
     /**
      * 查询处方资源归属及状态。

@@ -15,9 +15,11 @@ public interface PrescriptionService {
      * @param patientId 可选就诊人 ID，未传时使用本人
      * @param pageNo 可选页码
      * @param pageSize 可选每页数量
+     * @param recentDays 可选最近天数，仅允许 1 至 30 天
      * @return 已批准处方分页结果
      */
-    ConsultationPrescriptionPageVO prescriptionList(Long patientId, Integer pageNo, Integer pageSize);
+    ConsultationPrescriptionPageVO prescriptionList(Long patientId, Integer pageNo, Integer pageSize,
+                                                     Integer recentDays);
 
     /**
      * 查询当前账号可访问的已批准处方详情。
