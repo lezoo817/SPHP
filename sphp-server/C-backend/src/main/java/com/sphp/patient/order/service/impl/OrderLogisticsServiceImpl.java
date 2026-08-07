@@ -1,8 +1,10 @@
 package com.sphp.patient.order.service.impl;
 
 import com.sphp.patient.order.mapper.OrderDataMapper;
+import com.sphp.patient.order.mapper.DrugOrderNotificationTargetRecord;
 import com.sphp.patient.order.mq.event.DrugOrderLogisticsAdvanceEvent;
 import com.sphp.patient.order.service.OrderLogisticsService;
+import com.sphp.patient.notification.mq.producer.NotificationEventProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -16,6 +18,7 @@ import static com.sphp.patient.common.constant.OrderConstant.DRUG_ORDER_TO_RECEI
 import static com.sphp.patient.common.enums.DrugOrderLogisticsStatusEnum.IN_TRANSIT;
 import static com.sphp.patient.common.enums.DrugOrderLogisticsStatusEnum.PENDING_SHIPMENT;
 import static com.sphp.patient.common.enums.DrugOrderLogisticsStatusEnum.TO_RECEIVE;
+import static com.sphp.patient.common.enums.NotificationTypeEnum.LOGISTICS;
 
 /**
  * C端购药订单模拟物流状态推进服务实现。
@@ -30,6 +33,9 @@ public class OrderLogisticsServiceImpl implements OrderLogisticsService {
 
     /** Spring 领域事件发布器 */
     private final ApplicationEventPublisher eventPublisher;
+
+    /** 站内通知事务后事件生产器 */
+    private final NotificationEventProducer notificationEventProducer;
 
     /**
      * 在已支付订单上执行一个受限的物流状态推进，并在运输开始后安排下一次推进。
@@ -59,7 +65,10 @@ public class OrderLogisticsServiceImpl implements OrderLogisticsService {
         if (event.targetLogisticsStatus() == IN_TRANSIT) {
             // 事务提交后再投递第二段延迟消息，避免失败事务提前安排待收货状态。
             eventPublisher.publishEvent(DrugOrderLogisticsAdvanceEvent.toReceive(event.drugOrderId()));
+            return;
         }
+        // 到达待收货状态后才创建提醒，查询目标失败时回滚本次状态推进以避免漏发通知。
+        publishToReceiveNotification(event.drugOrderId());
     }
 
     /**
@@ -71,5 +80,21 @@ public class OrderLogisticsServiceImpl implements OrderLogisticsService {
     private boolean isSupportedTransition(DrugOrderLogisticsAdvanceEvent event) {
         return (event.expectedLogisticsStatus() == PENDING_SHIPMENT && event.targetLogisticsStatus() == IN_TRANSIT)
                 || (event.expectedLogisticsStatus() == IN_TRANSIT && event.targetLogisticsStatus() == TO_RECEIVE);
+    }
+
+    /**
+     * 为已送达的购药订单发布待收货站内通知。
+     *
+     * @param drugOrderId 已完成待收货状态推进的购药订单 ID
+     * @throws IllegalStateException 订单通知接收目标缺失时抛出并触发事务回滚
+     */
+    private void publishToReceiveNotification(Long drugOrderId) {
+        DrugOrderNotificationTargetRecord target = orderDataMapper.selectDrugOrderNotificationTarget(drugOrderId);
+        if (target == null) {
+            throw new IllegalStateException("购药订单通知接收目标不存在");
+        }
+        // 通知事件在当前事务提交后才进入 RabbitMQ，避免回滚订单产生虚假送达提醒。
+        notificationEventProducer.publishNotification("DRUG_ORDER_TO_RECEIVE", target.drugOrderId(),
+                target.payerUserId(), target.patientId(), LOGISTICS, "药品已送达", "药品已送达，请及时确认收货。");
     }
 }

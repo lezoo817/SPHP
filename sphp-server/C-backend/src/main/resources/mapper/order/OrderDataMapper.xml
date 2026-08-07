@@ -128,6 +128,16 @@
         INSERT INTO drug_order_logistics_trace (drug_order_id, node, occurred_at)
         VALUES (#{drugOrderId}, #{node}, #{occurredAt})
     </insert>
+    <select id="selectDrugOrderNotificationTarget" resultType="com.sphp.patient.order.mapper.DrugOrderNotificationTargetRecord">
+        SELECT o.id AS drug_order_id, o.patient_id, po.payer_user_id
+        FROM drug_order o
+        INNER JOIN payment_order po ON po.drug_order_id = o.id AND po.status = 'SUCCESS'
+        WHERE o.id = #{drugOrderId}
+          AND o.status = 'PAID'
+          AND o.deleted_at IS NULL
+        ORDER BY po.id ASC
+        LIMIT 1
+    </select>
     <insert id="createMedicationPlans">
         INSERT INTO medication_plan (patient_id, prescription_item_id, drug_name_snapshot, frequency, usage_method, dosage, duration_days,
                                      status, reminder_enabled, created_at, updated_at)

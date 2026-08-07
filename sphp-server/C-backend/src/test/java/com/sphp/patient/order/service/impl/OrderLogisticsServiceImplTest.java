@@ -1,7 +1,9 @@
 package com.sphp.patient.order.service.impl;
 
 import com.sphp.patient.order.mapper.OrderDataMapper;
+import com.sphp.patient.order.mapper.DrugOrderNotificationTargetRecord;
 import com.sphp.patient.order.mq.event.DrugOrderLogisticsAdvanceEvent;
+import com.sphp.patient.notification.mq.producer.NotificationEventProducer;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 
@@ -28,7 +30,7 @@ class OrderLogisticsServiceImplTest {
     void advanceToInTransitWritesTraceAndSchedulesNextEvent() {
         OrderDataMapper mapper = mock(OrderDataMapper.class);
         ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
-        OrderLogisticsServiceImpl service = new OrderLogisticsServiceImpl(mapper, eventPublisher);
+        OrderLogisticsServiceImpl service = new OrderLogisticsServiceImpl(mapper, eventPublisher, mock(NotificationEventProducer.class));
         when(mapper.advanceDrugOrderLogistics(eq(15001L), eq("PENDING_SHIPMENT"), eq("IN_TRANSIT"), any()))
                 .thenReturn(1);
         when(mapper.insertDrugOrderLogisticsTrace(eq(15001L), eq(DRUG_ORDER_IN_TRANSIT_TRACE), any()))
@@ -51,16 +53,21 @@ class OrderLogisticsServiceImplTest {
     void advanceToReceiveStopsAutomaticFlow() {
         OrderDataMapper mapper = mock(OrderDataMapper.class);
         ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
-        OrderLogisticsServiceImpl service = new OrderLogisticsServiceImpl(mapper, eventPublisher);
+        NotificationEventProducer notificationEventProducer = mock(NotificationEventProducer.class);
+        OrderLogisticsServiceImpl service = new OrderLogisticsServiceImpl(mapper, eventPublisher, notificationEventProducer);
         when(mapper.advanceDrugOrderLogistics(eq(15001L), eq("IN_TRANSIT"), eq("TO_RECEIVE"), any()))
                 .thenReturn(1);
         when(mapper.insertDrugOrderLogisticsTrace(eq(15001L), eq(DRUG_ORDER_TO_RECEIVE_TRACE), any()))
                 .thenReturn(1);
+        when(mapper.selectDrugOrderNotificationTarget(15001L))
+                .thenReturn(new DrugOrderNotificationTargetRecord(15001L, 20001L, 10001L));
 
         service.advanceDrugOrderLogistics(DrugOrderLogisticsAdvanceEvent.toReceive(15001L));
 
         verify(mapper).insertDrugOrderLogisticsTrace(eq(15001L), eq(DRUG_ORDER_TO_RECEIVE_TRACE), any());
         verify(eventPublisher, never()).publishEvent(any());
+        verify(notificationEventProducer).publishNotification("DRUG_ORDER_TO_RECEIVE", 15001L, 10001L, 20001L,
+                com.sphp.patient.common.enums.NotificationTypeEnum.LOGISTICS, "药品已送达", "药品已送达，请及时确认收货。");
     }
 
     /**
@@ -70,7 +77,7 @@ class OrderLogisticsServiceImplTest {
     void advanceSkipsTraceWhenConditionalUpdateMisses() {
         OrderDataMapper mapper = mock(OrderDataMapper.class);
         ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
-        OrderLogisticsServiceImpl service = new OrderLogisticsServiceImpl(mapper, eventPublisher);
+        OrderLogisticsServiceImpl service = new OrderLogisticsServiceImpl(mapper, eventPublisher, mock(NotificationEventProducer.class));
         when(mapper.advanceDrugOrderLogistics(eq(15001L), eq("PENDING_SHIPMENT"), eq("IN_TRANSIT"), any()))
                 .thenReturn(0);
 
