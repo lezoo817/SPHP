@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { DownOutlined, LoadingOutlined, ToolOutlined } from '@ant-design/icons';
-import type { AgentToolCard } from '../../typings/agent';
+import { ClockCircleOutlined, DownOutlined, LoadingOutlined, ToolOutlined } from '@ant-design/icons';
+import type { AgentToolCard } from '@/typings/agent';
 
 /** 工具调用卡片：action 与 observation 配对，展示 loading / 成功 / 失败。 */
 export function AgentToolCardView({ card }: { card: AgentToolCard }) {
@@ -13,6 +13,8 @@ export function AgentToolCardView({ card }: { card: AgentToolCard }) {
         <span className="agent-tool__icon">
           {card.status === 'loading' ? (
             <LoadingOutlined style={{ color: '#1890ff' }} />
+          ) : card.status === 'pending' ? (
+            <ClockCircleOutlined style={{ color: '#faad14' }} />
           ) : (
             <ToolOutlined style={{ color: '#8c8c8c' }} />
           )}
@@ -20,6 +22,7 @@ export function AgentToolCardView({ card }: { card: AgentToolCard }) {
         <span className="agent-tool__label">{card.label}</span>
         <span className="agent-tool__status">
           {card.status === 'loading' && '调用中'}
+          {card.status === 'pending' && '待确认'}
           {card.status === 'success' && '成功'}
           {card.status === 'error' && '失败'}
         </span>
