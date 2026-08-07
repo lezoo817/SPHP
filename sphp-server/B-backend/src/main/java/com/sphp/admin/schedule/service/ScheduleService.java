@@ -33,7 +33,7 @@ public interface ScheduleService {
      * @param size     每页大小
      * @return 排班分页结果（含号源聚合计数）
      */
-    PageResult<ScheduleListVO> page(LocalDate date, Long deptId, Long doctorId, String status, int page, int size);
+    PageResult<ScheduleListVO> page(LocalDate date, Long deptId, Long doctorId, String status, Boolean hideInvalid, int page, int size);
 
     /**
      * 创建排班（ADMIN，自动填充 dept_id 与 DRAFT 状态；同医生同日期同班次唯一）。
