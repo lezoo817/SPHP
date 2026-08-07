@@ -109,6 +109,9 @@ label { display: grid; gap: 8px; margin: 18px 0; color: #1e293c; font-weight: 70
 /* 就诊助手精简为两项分类，已支付订单显示等待状态和预约开始前的取消入口。 */
 .assistant-page .assistant-tabs{grid-template-columns:repeat(2,1fr)}.assistant-page .assistant-waiting-button:disabled{cursor:not-allowed;background:#c8c4c5;color:#fff;opacity:1}
 
+/* 通知页分类使用四等分标签，切换时保持窄屏下的稳定点击区域。 */
+.notification-filter-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:0 0 14px}.notification-filter-tabs button{min-height:42px;border:0;border-bottom:2px solid #ded8d9;background:transparent;color:#6e6a73;font-size:15px}.notification-filter-tabs button.active{border-color:#b33444;color:#b33444;font-weight:700}
+
 /* 已支付挂号在预约开始前允许通过密码确认取消，记录操作区保持状态和命令对齐。 */
 .registration-record-actions{display:grid;justify-items:end;align-content:space-between;gap:8px;flex:0 0 auto}.registration-record-actions .text-button{font-size:13px;font-weight:700}
 

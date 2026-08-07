@@ -19,7 +19,7 @@ import { buildDoctorPagePath, findDoctorById, getDoctorScheduleDates } from './d
 import { groupSlotsByHalfDay, summarizeHalfDaySlots } from './doctor';
 import { buildAppointmentsPath } from '../services/registration';
 import { buildNotificationsPath } from '../services/notification';
-import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotification, formatMedicationReminderTimes, getMedicationPlanActions, getMedicationReminderAction, getNotificationTypeText, resolveNotificationReadKey } from './health-notification';
+import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotification, formatMedicationReminderTimes, getMedicationPlanActions, getMedicationReminderAction, getNotificationTypeText, resolveNotificationListType, resolveNotificationReadKey } from './health-notification';
 import { buildDeliveryAddressPath } from '../services/delivery-address';
 import { buildDeliveryAddressPayload, getDeliveryAddressInvalidFields, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
 import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantAppointmentRecordStatusText, getAssistantTabs, getCurrentFlowAction, isCurrentAssistantFlow, shouldDisplayAssistantAppointmentRecord } from './assistant';
@@ -474,11 +474,18 @@ describe('健康待办、提醒与通知规则', () => {
   it('通知列表不传递未选择的筛选参数', () => {
     expect(buildNotificationsPath({ pageNo: 2, pageSize: 50 })).toBe('/c/v1/notifications?pageNo=2&pageSize=50');
     expect(buildNotificationsPath({ patientId: 2, read: false })).toContain('patientId=2&read=false');
+    expect(buildNotificationsPath({ type: 'LOGISTICS' })).toContain('type=LOGISTICS');
   });
 
   it('将后端通知类型转换为患者可读文案', () => {
     expect(getNotificationTypeText('MEDICATION_REMINDER')).toBe('用药提醒');
+    expect(getNotificationTypeText('LOGISTICS')).toBe('物流通知');
     expect(getNotificationTypeText('SYSTEM')).toBe('系统通知');
+  });
+
+  it('通知分类将全部分类与后端类型条件正确对应', () => {
+    expect(resolveNotificationListType('ALL')).toBeUndefined();
+    expect(resolveNotificationListType('LOGISTICS')).toBe('LOGISTICS');
   });
 
   it('仅弹出最新未读的候补可预约挂号通知', () => {

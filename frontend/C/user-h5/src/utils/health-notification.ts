@@ -8,7 +8,19 @@ export interface HealthTodo { id: number; type: 'APPOINTMENT' | 'MEDICATION' | '
 
 /** 将通知类型映射为患者可理解的页面文案。 */
 export function getNotificationTypeText(type: NotificationType): string {
-  return ({ APPOINTMENT: '挂号通知', DRUG_ORDER: '购药通知', MEDICATION_REMINDER: '用药提醒', FOLLOW_UP_REMINDER: '随访提醒', SYSTEM: '系统通知' } as Record<NotificationType, string>)[type];
+  return ({ APPOINTMENT: '挂号通知', DRUG_ORDER: '购药通知', LOGISTICS: '物流通知', MEDICATION_REMINDER: '用药提醒', FOLLOW_UP_REMINDER: '随访提醒', SYSTEM: '系统通知' } as Record<NotificationType, string>)[type];
+}
+
+/** 通知页可切换的展示分类。 */
+export type NotificationListCategory = 'ALL' | 'APPOINTMENT' | 'DRUG_ORDER' | 'LOGISTICS';
+
+/**
+ * 将通知页分类转换为后端通知类型筛选条件。
+ * @param category 当前选择的通知分类
+ * @returns 全部分类返回 undefined，其余返回对应的后端类型
+ */
+export function resolveNotificationListType(category: NotificationListCategory): NotificationType | undefined {
+  return category === 'ALL' ? undefined : category;
 }
 
 /**

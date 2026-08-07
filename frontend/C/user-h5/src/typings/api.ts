@@ -211,7 +211,7 @@ export type FollowUpStatus = 'PENDING_CONFIRM' | 'CONFIRMED' | 'COMPLETED' | 'CA
 /** 当前就诊人的随访计划。 */
 export interface FollowUpPlan { id: number; type: string; dueAt?: string; content: string; status: FollowUpStatus; remindAt?: string; }
 /** 站内通知类型。 */
-export type NotificationType = 'APPOINTMENT' | 'DRUG_ORDER' | 'MEDICATION_REMINDER' | 'FOLLOW_UP_REMINDER' | 'SYSTEM';
+export type NotificationType = 'APPOINTMENT' | 'DRUG_ORDER' | 'LOGISTICS' | 'MEDICATION_REMINDER' | 'FOLLOW_UP_REMINDER' | 'SYSTEM';
 /** 站内通知列表项。 */
 export interface NotificationItem { id: number; type: NotificationType; patientId?: number; patientName?: string; title: string; content: string; read: boolean; createdAt: string; }
 /** 标记站内通知已读后的结果。 */
