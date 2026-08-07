@@ -19,7 +19,7 @@ import { buildDoctorPagePath, findDoctorById, getDoctorScheduleDates } from './d
 import { groupSlotsByHalfDay, summarizeHalfDaySlots } from './doctor';
 import { buildAppointmentsPath } from '../services/registration';
 import { buildNotificationsPath } from '../services/notification';
-import { buildHealthTodos, canConfirmFollowUp, findLatestWaitlistPromotionNotification, formatMedicationReminderTimes, getMedicationPlanActions, getMedicationReminderAction, getNotificationTypeText, resolveNotificationListType, resolveNotificationReadKey } from './health-notification';
+import { buildHealthTodos, canConfirmFollowUp, filterMedicationPlansByTab, findLatestWaitlistPromotionNotification, formatMedicationReminderTimes, getMedicationPlanActions, getMedicationReminderAction, getNotificationTypeText, resolveNotificationListType, resolveNotificationReadKey } from './health-notification';
 import { buildDeliveryAddressPath } from '../services/delivery-address';
 import { buildDeliveryAddressPayload, getDeliveryAddressInvalidFields, getDeliveryCities, getDeliveryProvinces, resolveDeliveryIdempotencyKey, validateDeliveryAddress } from './delivery-address';
 import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantAppointmentRecordStatusText, getAssistantTabs, getCurrentFlowAction, isCurrentAssistantFlow, shouldDisplayAssistantAppointmentRecord } from './assistant';
@@ -537,6 +537,12 @@ describe('健康待办、提醒与通知规则', () => {
     expect(getMedicationReminderAction({ status: 'COMPLETED', reminderEnabled: false })).toBeUndefined();
     expect(formatMedicationReminderTimes(['08:00', '20:00'])).toBe('08:00、20:00');
     expect(formatMedicationReminderTimes([])).toBe('');
+  });
+
+  it('用药计划按执行中与已完成分类，暂停计划保留在执行中', () => {
+    const plans = [{ id: 1, status: 'ACTIVE' as const }, { id: 2, status: 'PAUSED' as const }, { id: 3, status: 'COMPLETED' as const }];
+    expect(filterMedicationPlansByTab(plans, 'IN_PROGRESS').map((plan) => plan.id)).toEqual([1, 2]);
+    expect(filterMedicationPlansByTab(plans, 'COMPLETED').map((plan) => plan.id)).toEqual([3]);
   });
 });
 

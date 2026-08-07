@@ -5,6 +5,8 @@ import { createIdempotencyKey } from './form';
 export interface PatientHealthSource { patientId: number; patientName: string; appointments: Appointment[]; medicationPlans: MedicationPlan[]; followUps: FollowUpPlan[]; }
 /** 首页统一展示的健康待办卡片数据。 */
 export interface HealthTodo { id: number; type: 'APPOINTMENT' | 'MEDICATION' | 'FOLLOW_UP'; patientId: number; patientName: string; title: string; detail: string; departmentLocation?: string; occurredAt?: string; isExpired?: boolean; }
+/** 用药提醒页可切换的计划分类。 */
+export type MedicationPlanTab = 'IN_PROGRESS' | 'COMPLETED';
 
 /** 将通知类型映射为患者可理解的页面文案。 */
 export function getNotificationTypeText(type: NotificationType): string {
@@ -47,6 +49,17 @@ export function getMedicationPlanActions(status: MedicationPlan['status']): Medi
   if (status === 'ACTIVE') return ['PAUSE', 'COMPLETE'];
   if (status === 'PAUSED') return ['RESUME', 'COMPLETE'];
   return [];
+}
+
+/**
+ * 按用药提醒页的 Tab 筛选计划。
+ * @param plans 当前就诊人的全部用药计划
+ * @param tab 当前选择的计划分类
+ * @returns 与当前 Tab 匹配的用药计划
+ */
+export function filterMedicationPlansByTab<T extends Pick<MedicationPlan, 'status'>>(plans: T[], tab: MedicationPlanTab): T[] {
+  // 暂停计划尚未完成，保留在执行中分类中，避免用户无法恢复或完成该计划。
+  return plans.filter((plan) => tab === 'COMPLETED' ? plan.status === 'COMPLETED' : plan.status !== 'COMPLETED');
 }
 
 /**
