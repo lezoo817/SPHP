@@ -151,14 +151,38 @@ def _format_paid_order_notification(state: AgentState) -> str | None:
         expected_delivery_at = (
             delivery.get("expectedDeliveryAt") if isinstance(delivery, dict) else None
         )
+        address = delivery.get("address") if isinstance(delivery, dict) else None
+        address_message = (
+            f"\n收货地址：{address}" if isinstance(address, str) and address.strip() else ""
+        )
         if not isinstance(expected_delivery_at, str) or not expected_delivery_at.strip():
-            return "您已购买成功，预计送达时间待药房确认，请留意订单物流状态。"
+            return f"您已购买成功，预计送达时间待药房确认，请留意订单物流状态。{address_message}"
         try:
             expected_time = datetime.fromisoformat(expected_delivery_at.replace("Z", "+00:00"))
             formatted_time = expected_time.strftime("%Y/%m/%d %H:%M")
         except ValueError:
             formatted_time = expected_delivery_at
-        return f"您已购买成功，预计{formatted_time}送达。"
+        return f"您已购买成功，预计{formatted_time}送达。{address_message}"
+    return None
+
+
+def _recommended_pharmacy_name(state: AgentState) -> str | None:
+    """从待确认购药订单的受控展示信息中读取药房名称。
+
+    Args:
+        state: 当前 Agent 状态，含推荐后生成的待确认订单。
+
+    Returns:
+        推荐药房名称；展示信息缺失时返回 None。
+    """
+    for confirmation in state.get("pending_confirmations") or []:
+        if confirmation.get("tool_name") != "create_drug_order":
+            continue
+        display = confirmation.get("display")
+        details = display.get("details") if isinstance(display, dict) else None
+        pharmacy_name = details.get("pharmacy_name") if isinstance(details, dict) else None
+        if isinstance(pharmacy_name, str) and pharmacy_name.strip():
+            return pharmacy_name.strip()
     return None
 
 
@@ -366,11 +390,14 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
             pending_confirmations = state.get("pending_confirmations") or []
             if pending_confirmations:
                 # 推荐第一项已确定，用户只需对创建待支付订单做既有 L2 确认。
+                pharmacy_name = _recommended_pharmacy_name(state) or "推荐药店"
                 return {
                     "messages": [
                         {
                             "role": "assistant",
-                            "content": "已为您找到综合推荐的有货药店，请确认是否购买。",
+                            "content": (
+                                f"已为您找到综合推荐的有货药店“{pharmacy_name}”，请确认是否购买。"
+                            ),
                         }
                     ]
                 }
