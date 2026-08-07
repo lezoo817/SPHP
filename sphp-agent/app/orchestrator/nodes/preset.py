@@ -8,6 +8,7 @@ from typing import Any
 from app.orchestrator.state import AgentState
 
 PRESET_INTERPRET_PRESCRIPTION = "interpret_prescription"
+PRESET_INTERPRET_MEDICAL_RECORD = "interpret_medical_record"
 PRESET_RECOMMEND_PRESCRIPTION_PHARMACY = "recommend_prescription_pharmacy"
 PRESET_NOTIFY_DRUG_ORDER_PAID = "notify_drug_order_paid"
 PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT = "authorize_drug_order_reminder_after_receipt"
@@ -29,6 +30,26 @@ def resolve_preset_interpretation(context: dict[str, Any] | None) -> int | None:
     if isinstance(prescription_id, bool) or not isinstance(prescription_id, int):
         return None
     return prescription_id if prescription_id > 0 else None
+
+
+def resolve_preset_medical_record_interpretation(
+    context: dict[str, Any] | None,
+) -> int | None:
+    """解析合法的病历解读预设动作。
+
+    Args:
+        context: 前端随对话请求传入的页面上下文。
+
+    Returns:
+        合法病历 ID；不是指定预设动作或编号非法时返回 None。
+    """
+    if not context or context.get("preset_action") != PRESET_INTERPRET_MEDICAL_RECORD:
+        return None
+    consult_id = context.get("medical_record_id")
+    # bool 是 int 的子类，需显式拒绝，避免 True 被错误当作病历 ID。
+    if isinstance(consult_id, bool) or not isinstance(consult_id, int):
+        return None
+    return consult_id if consult_id > 0 else None
 
 
 def resolve_preset_recommendation(context: dict[str, Any] | None) -> int | None:
@@ -92,7 +113,7 @@ def resolve_preset_drug_order_reminder_authorization(
 
 
 async def preset_action_node(state: AgentState) -> dict[str, Any]:
-    """构造受控处方解读、药店推荐、支付通知或提醒授权工具调用。
+    """构造受控处方/病历解读、药店推荐、支付通知或提醒授权工具调用。
 
     Args:
         state: 已经完成鉴权的 Agent 状态。
@@ -136,6 +157,20 @@ async def preset_action_node(state: AgentState) -> dict[str, Any]:
                         "prescription_id": prescription_id,
                         "address_id": address_id,
                     },
+                }
+            ]
+        }
+
+    if action == PRESET_INTERPRET_MEDICAL_RECORD:
+        consult_id = state.get("preset_medical_record_id")
+        if isinstance(consult_id, bool) or not isinstance(consult_id, int) or consult_id <= 0:
+            return {"tool_calls": [], "preset_error": "病历编号无效，请返回病历详情后重试。"}
+        # 受控入口仅读取病历和病历所属患者的健康档案，不开放任何病历修改操作。
+        return {
+            "tool_calls": [
+                {
+                    "name": PRESET_INTERPRET_MEDICAL_RECORD,
+                    "arguments": {"consult_id": consult_id},
                 }
             ]
         }

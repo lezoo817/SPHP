@@ -439,7 +439,23 @@ def _register_pharmacy_order_tools() -> None:
 
 
 def _register_health_record_tools() -> None:
-    """注册健康档案类工具（3 个）：健康档案、过敏史、既往史管理。"""
+    """注册健康档案类工具：病历解读、健康档案、过敏史和既往史管理。"""
+
+    ToolRegistry.register(
+        ToolSchema(
+            name="interpret_medical_record",
+            description="读取医生病历正文并结合该病历所属就诊人的过敏史、既往史生成解读输入",
+            parameters={
+                "properties": {
+                    "consult_id": {"type": "integer", "description": "病历对应的完成问诊记录ID"},
+                },
+                "required": ["consult_id"],
+            },
+            scope=ToolScope.C_END,
+            security_level=SecurityLevel.L1,
+            executor="mcp",
+        )
+    )
 
     ToolRegistry.register(
         ToolSchema(

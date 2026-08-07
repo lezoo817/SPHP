@@ -51,6 +51,9 @@ function resolvePresetAction(action: AgentPresetAction | undefined): AgentPreset
   if (action?.type === 'interpret_prescription' && Number.isInteger(action.prescriptionId) && action.prescriptionId > 0) {
     return action;
   }
+  if (action?.type === 'interpret_medical_record' && Number.isInteger(action.consultId) && action.consultId > 0) {
+    return action;
+  }
   if (action?.type === 'notify_drug_order_paid' && Number.isInteger(action.drugOrderId) && action.drugOrderId > 0) {
     return action;
   }
