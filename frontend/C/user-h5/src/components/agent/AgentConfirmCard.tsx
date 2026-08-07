@@ -22,6 +22,7 @@ function renderDetails(details: Record<string, unknown> | undefined): { key: str
     distance_meters: '距离',
     estimated_delivery_at: '预计送达时间',
     drug_order_id: '购药订单',
+    reminder_activation_status: '自动提醒状态',
     allergen: '过敏原',
     reaction: '过敏反应',
     action: '操作',

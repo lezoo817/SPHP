@@ -1,4 +1,4 @@
-import { MapPinned } from 'lucide-react';
+import { Bell, MapPinned } from 'lucide-react';
 import { useState } from 'react';
 import type { AgentActionCard } from '@/typings/agent';
 
@@ -27,16 +27,20 @@ export function AgentActionCardView({
     onAction(card);
   }
 
+  const isReminderAction = card.actionType === 'authorize_drug_order_reminder_after_receipt';
+
   return (
     <div className="agent-card agent-action-card">
       <div className="agent-card__header">
-        <span className="agent-card__icon"><MapPinned size={16} /></span>
+        <span className="agent-card__icon">
+          {isReminderAction ? <Bell size={16} /> : <MapPinned size={16} />}
+        </span>
         <span className="agent-card__title">{card.title}</span>
       </div>
       <p className="agent-card__summary">{card.summary}</p>
       <div className="agent-card__actions">
         <button type="button" className="agent-card__confirm" disabled={unavailable} onClick={handleAction}>
-          {submitted ? '正在推荐...' : card.buttonText}
+          {submitted ? '正在处理...' : card.buttonText}
         </button>
       </div>
     </div>

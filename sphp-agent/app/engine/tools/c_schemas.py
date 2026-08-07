@@ -369,6 +369,22 @@ def _register_pharmacy_query_tools() -> None:
 
     ToolRegistry.register(
         ToolSchema(
+            name="authorize_drug_order_reminder_after_receipt",
+            description="登记购药订单确认收货后自动开启用药提醒",
+            parameters={
+                "properties": {
+                    "drug_order_id": {"type": "integer", "description": "已支付购药订单ID"},
+                },
+                "required": ["drug_order_id"],
+            },
+            scope=ToolScope.C_END,
+            security_level=SecurityLevel.L2,
+            executor="mcp",
+        )
+    )
+
+    ToolRegistry.register(
+        ToolSchema(
             name="query_drug_orders",
             description="查询购药订单列表或详情（不带 drug_order_id 返回列表，带 id 返回详情）",
             parameters={

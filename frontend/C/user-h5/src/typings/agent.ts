@@ -19,6 +19,12 @@ export type AgentPresetAction =
       type: 'notify_drug_order_paid';
       /** 服务端真实购药订单 ID。 */
       drugOrderId: number;
+    }
+  | {
+      /** 固定登记订单收货后自动开启用药提醒。 */
+      type: 'authorize_drug_order_reminder_after_receipt';
+      /** 服务端真实购药订单 ID。 */
+      drugOrderId: number;
     };
 
 /** 跳转 AI 页面时携带的路由状态。 */
@@ -115,6 +121,7 @@ export type AgentCardType =
   | 'confirm_medical_history'
   | 'confirm_report'
   | 'confirm_medication_plan'
+  | 'confirm_drug_order_reminder_after_receipt'
   | 'confirm_follow_up'
   | 'confirm_generic';
 
@@ -139,7 +146,10 @@ export interface AgentCardEvent {
 /** action_card 事件：不产生 L2 操作的受控业务交互卡。 */
 export interface AgentActionCardEvent {
   /** 用户点击后发起的受控预设动作。 */
-  action_type: 'recommend_prescription_pharmacy' | string;
+  action_type:
+    | 'recommend_prescription_pharmacy'
+    | 'authorize_drug_order_reminder_after_receipt'
+    | string;
   /** 卡片标题。 */
   title: string;
   /** 卡片说明。 */

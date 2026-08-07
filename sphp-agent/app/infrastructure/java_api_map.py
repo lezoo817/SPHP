@@ -207,6 +207,11 @@ JAVA_API_MAP: dict[str, dict[str, str]] = {
         "path": "/api/c/v1/drug-orders",
         "scope": "c_end",
     },
+    "authorize_drug_order_reminder_after_receipt": {
+        "method": "POST",
+        "path": "/api/c/v1/drug-orders/{drug_order_id}/reminder-after-receipt",
+        "scope": "c_end",
+    },
     "query_drug_orders:list": {
         "method": "GET",
         "path": "/api/c/v1/drug-orders",
