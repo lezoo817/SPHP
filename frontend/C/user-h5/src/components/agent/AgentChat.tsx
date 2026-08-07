@@ -218,7 +218,7 @@ export function AgentChat({
   function handleQuick(prompt: (typeof AGENT_QUICK_PROMPTS)[number]) {
     if (isStreaming || !contextReady) return;
     if (prompt.pickerAction) {
-      send(prompt.content, { ...context, preset_action: prompt.pickerAction });
+      send(prompt.content, { ...context, preset_action: prompt.pickerAction }, { hideUserMessage: true });
       return;
     }
     send(prompt.content, context);
@@ -229,10 +229,10 @@ export function AgentChat({
     if (!card.selectedId || !context || isStreaming) return;
     updateRecordPicker(card.id, 'confirmed');
     if (card.picker_type === 'prescription') {
-      send('请解读我确认选择的处方。', { ...context, preset_action: 'interpret_prescription', prescription_id: card.selectedId });
+      send('请解读我确认选择的处方。', { ...context, preset_action: 'interpret_prescription', prescription_id: card.selectedId }, { hideUserMessage: true });
       return;
     }
-    send('请解读我确认选择的病历。', { ...context, preset_action: 'interpret_medical_record', medical_record_id: card.selectedId });
+    send('请解读我确认选择的病历。', { ...context, preset_action: 'interpret_medical_record', medical_record_id: card.selectedId }, { hideUserMessage: true });
   }
 
   /** 快捷入口图标按 label 名称映射，便于美化常驻栏。 */

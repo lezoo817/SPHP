@@ -89,6 +89,8 @@ export interface UseAgentStream {
 export interface AgentSendOptions {
   /** 强制创建独立会话，不继承浏览器中保存的会话 ID。 */
   startNewSession?: boolean;
+  /** 受控快捷入口的内部触发文案不显示为用户消息。 */
+  hideUserMessage?: boolean;
 }
 
 /**
@@ -238,14 +240,16 @@ export function useAgentStream(): UseAgentStream {
       lastUserMessageRef.current = text;
       lastContextRef.current = context;
 
-      // 追加用户消息
-      const userMessage: AgentMessage = {
-        id: genId('u'),
-        role: 'user',
-        content: text,
-        createdAt: Date.now(),
-      };
-      setEntries((prev) => [...prev, { kind: 'message', data: userMessage }]);
+      // 受控快捷入口仅用于触发固定业务流程，不向对话区伪造用户输入。
+      if (!options.hideUserMessage) {
+        const userMessage: AgentMessage = {
+          id: genId('u'),
+          role: 'user',
+          content: text,
+          createdAt: Date.now(),
+        };
+        setEntries((prev) => [...prev, { kind: 'message', data: userMessage }]);
+      }
 
       setConnection('connecting');
       const currentSessionId = options.startNewSession ? undefined : sessionId;
