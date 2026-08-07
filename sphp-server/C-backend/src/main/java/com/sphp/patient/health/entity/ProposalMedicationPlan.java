@@ -11,6 +11,10 @@ import java.time.OffsetDateTime;
 @TableName("medication_plan")
 public class ProposalMedicationPlan extends BaseDeleteDO {
 
+    // 创建该计划的购药订单 ID；历史计划可为空
+    @TableField("drug_order_id")
+    private Long drugOrderId;
+
     // 目标就诊人 ID
     @TableField("patient_id")
     private Long patientId;

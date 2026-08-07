@@ -39,6 +39,9 @@ public class DrugOrderDetailVO {
     /** 支付信息 */
     private final Payment payment;
 
+    /** 收货后自动开启用药提醒的授权状态；未授权时为空。 */
+    private final String reminderActivationStatus;
+
     /** 药房信息。 */
     @Getter
     @Builder

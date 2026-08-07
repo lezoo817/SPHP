@@ -93,6 +93,68 @@ public interface OrderDataMapper {
     /** 条件确认收货。 */
     int confirmOrderReceipt(@Param("drugOrderId") Long drugOrderId, @Param("now") OffsetDateTime now);
 
+    /**
+     * 锁定购药订单，保证授权登记与确认收货不会发生状态竞态。
+     *
+     * @param drugOrderId 购药订单 ID
+     * @return 锁定的订单投影；订单不存在时返回 null
+     */
+    DrugOrderReminderOrderRecord selectDrugOrderReminderOrderForUpdate(@Param("drugOrderId") Long drugOrderId);
+
+    /**
+     * 查询订单的自动提醒授权状态。
+     *
+     * @param drugOrderId 购药订单 ID
+     * @return 授权状态；尚未授权时返回 null
+     */
+    String selectDrugOrderReminderActivationStatus(@Param("drugOrderId") Long drugOrderId);
+
+    /**
+     * 幂等登记订单收货后的自动提醒授权。
+     *
+     * @param drugOrderId 购药订单 ID
+     * @param userId 授权用户 ID
+     * @param patientId 订单所属就诊人 ID
+     * @param now 授权时间
+     * @return 实际写入或更新行数
+     */
+    int upsertDrugOrderReminderActivation(@Param("drugOrderId") Long drugOrderId,
+                                           @Param("userId") Long userId,
+                                           @Param("patientId") Long patientId,
+                                           @Param("now") OffsetDateTime now);
+
+    /**
+     * 查询指定订单支付后创建的用药计划。
+     *
+     * @param drugOrderId 购药订单 ID
+     * @return 仅属于该订单的提醒计划列表
+     */
+    List<MedicationReminderPlanRecord> selectOrderMedicationReminderPlans(@Param("drugOrderId") Long drugOrderId);
+
+    /**
+     * 条件开启单个订单用药计划的提醒，不能覆盖用户已经做出的状态变更。
+     *
+     * @param planId 用药计划 ID
+     * @param nextRemindAt 下次提醒时间
+     * @param reminderTimesJson 每日提醒时刻 JSON
+     * @param now 更新时间
+     * @return 实际更新行数
+     */
+    int enableOrderMedicationReminderPlan(@Param("planId") Long planId,
+                                           @Param("nextRemindAt") OffsetDateTime nextRemindAt,
+                                           @Param("reminderTimesJson") String reminderTimesJson,
+                                           @Param("now") OffsetDateTime now);
+
+    /**
+     * 将待收货授权标记为已完成自动启用。
+     *
+     * @param drugOrderId 购药订单 ID
+     * @param activatedAt 实际启用时间
+     * @return 实际更新行数
+     */
+    int markDrugOrderReminderActivationActivated(@Param("drugOrderId") Long drugOrderId,
+                                                  @Param("activatedAt") OffsetDateTime activatedAt);
+
     /** 查询支付单关联业务类型。 */
     PaymentBusinessRecord selectPaymentBusiness(@Param("paymentId") Long paymentId);
 

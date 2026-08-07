@@ -8,6 +8,7 @@ import com.sphp.patient.order.vo.DrugOrderCreateVO;
 import com.sphp.patient.order.vo.DrugOrderDetailVO;
 import com.sphp.patient.order.vo.DrugOrderPageVO;
 import com.sphp.patient.order.vo.DrugOrderReceiptVO;
+import com.sphp.patient.order.vo.DrugOrderReminderActivationVO;
 import com.sphp.patient.order.vo.PharmacyInventoryVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
@@ -136,5 +137,36 @@ public class OrderController {
                         ()->new IdempotencyPayload<>("确认收货成功"
                                 ,orderService.confirmDrugOrderReceipt(drugOrderId)));
         return Result.success(payload.message(),payload.data());
+    }
+
+    /**
+     * 登记订单收货后自动开启用药提醒。
+     *
+     * @param drugOrderId 购药订单 ID
+     * @param idempotencyKey 请求幂等性标识
+     * @return 自动提醒授权结果
+     */
+    @PostMapping("/drug-orders/{drugOrderId}/reminder-after-receipt")
+    @Operation(summary = "登记收货后自动开启用药提醒")
+    public Result<DrugOrderReminderActivationVO> authorizeDrugOrderReminderAfterReceipt(
+            @PathVariable @Positive Long drugOrderId,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank String idempotencyKey) {
+        Long userId = CUserContext.getRequired().userId();
+        IdempotencyPayload<DrugOrderReminderActivationVO> payload = idempotencyService.execute(
+                userId,
+                "/c/v1/drug-orders/" + drugOrderId + "/reminder-after-receipt",
+                idempotencyKey,
+                drugOrderId,
+                DrugOrderReminderActivationVO.class,
+                () -> {
+                    // 根据实际是否已经收货返回准确提示，避免承诺尚未发生的状态。
+                    DrugOrderReminderActivationVO result = orderService
+                            .authorizeDrugOrderReminderAfterReceipt(drugOrderId);
+                    String message = "ACTIVATED".equals(result.getStatus())
+                            ? "相关操作已设置，您的用药提醒已开启。"
+                            : "相关操作已设置，收货后即可自动开启您的用药提醒。";
+                    return new IdempotencyPayload<>(message, result);
+                });
+        return Result.success(payload.message(), payload.data());
     }
 }
