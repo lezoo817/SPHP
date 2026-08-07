@@ -9,6 +9,8 @@ import com.sphp.patient.order.mapper.DrugOrderMapper;
 import com.sphp.patient.order.mapper.DrugOrderPaymentMapper;
 import com.sphp.patient.order.mapper.OrderDataMapper;
 import com.sphp.patient.order.mapper.DrugOrderPaymentRecord;
+import com.sphp.patient.order.mapper.DrugOrderReminderOrderRecord;
+import com.sphp.patient.order.mapper.MedicationReminderPlanRecord;
 import com.sphp.patient.order.mapper.OrderDetailRecord;
 import com.sphp.patient.order.mapper.OrderItemRecord;
 import com.sphp.patient.order.mapper.OrderListRecord;
@@ -19,6 +21,7 @@ import com.sphp.patient.order.mapper.OrderStockRecord;
 import com.sphp.patient.order.service.DeliveryService;
 import com.sphp.patient.order.support.DeliveryOrderSnapshot;
 import com.sphp.patient.order.service.OrderService;
+import com.sphp.patient.order.vo.DrugOrderReminderActivationVO;
 import com.sphp.patient.order.support.OrderStockLockService;
 import com.sphp.patient.order.vo.DrugOrderPageVO;
 import com.sphp.patient.registration.config.RegistrationProperties;
@@ -66,6 +69,30 @@ class OrderServiceImplTest {
         RegisteringPaymentSimulateRequest request=new RegisteringPaymentSimulateRequest(); request.setLoginPassword("P@ssw0rd123");
         service.simulateDrugOrderPayment(80001L,request);
         verify(eventPublisher).publishEvent(org.mockito.ArgumentMatchers.<Object>argThat(event -> event instanceof DrugOrderLogisticsAdvanceEvent logistics && logistics.expectedLogisticsStatus().name().equals("PENDING_SHIPMENT") && logistics.targetLogisticsStatus().name().equals("IN_TRANSIT")));
+    }
+    /** 验证收货前授权只登记待收货状态且校验处方频次。 */ @Test void authorizeReminderWaitsForReceipt(){
+        OrderDataMapper mapper=mock(OrderDataMapper.class); OrderService service=service(mapper);
+        CUserContext.set(new CUserPrincipal(10001L,"patient",OffsetDateTime.now().plusHours(1),"session"));
+        when(mapper.selectDrugOrderReminderOrderForUpdate(15001L)).thenReturn(new DrugOrderReminderOrderRecord(15001L,20001L,"PAID","TO_RECEIVE"));
+        when(mapper.existsOrderActivePatient(20001L)).thenReturn(true); when(mapper.hasOrderActivePatientRelation(10001L,20001L)).thenReturn(true);
+        when(mapper.selectOrderMedicationReminderPlans(15001L)).thenReturn(List.of(new MedicationReminderPlanRecord(90001L,"每日2次")));
+        DrugOrderReminderActivationVO result=service.authorizeDrugOrderReminderAfterReceipt(15001L);
+        assertEquals("PENDING_RECEIPT",result.getStatus());
+        verify(mapper).upsertDrugOrderReminderActivation(eq(15001L),eq(10001L),eq(20001L),any());
+        verify(mapper,never()).enableOrderMedicationReminderPlan(any(),any(),any(),any());
+    }
+    /** 验证确认收货仅自动开启本订单关联的待启用计划。 */ @Test void receiptActivatesAuthorizedOrderPlansOnly(){
+        OrderDataMapper mapper=mock(OrderDataMapper.class); OrderService service=service(mapper);
+        CUserContext.set(new CUserPrincipal(10001L,"patient",OffsetDateTime.now().plusHours(1),"session"));
+        when(mapper.selectDrugOrderReminderOrderForUpdate(15001L)).thenReturn(new DrugOrderReminderOrderRecord(15001L,20001L,"PAID","TO_RECEIVE"));
+        when(mapper.existsOrderActivePatient(20001L)).thenReturn(true); when(mapper.hasOrderActivePatientRelation(10001L,20001L)).thenReturn(true);
+        when(mapper.confirmOrderReceipt(eq(15001L),any())).thenReturn(1);
+        when(mapper.selectDrugOrderReminderActivationStatus(15001L)).thenReturn("PENDING_RECEIPT");
+        when(mapper.selectOrderMedicationReminderPlans(15001L)).thenReturn(List.of(new MedicationReminderPlanRecord(90001L,"每日2次")));
+        when(mapper.markDrugOrderReminderActivationActivated(eq(15001L),any())).thenReturn(1);
+        service.confirmDrugOrderReceipt(15001L);
+        verify(mapper).enableOrderMedicationReminderPlan(eq(90001L),any(),eq("[\"08:00\",\"20:00\"]"),any());
+        verify(mapper).markDrugOrderReminderActivationActivated(eq(15001L),any());
     }
     /** 创建购药服务测试对象。 */ private OrderService service(OrderDataMapper mapper){ RegistrationProperties properties=new RegistrationProperties(); properties.setPaymentTimeout(900); return new OrderServiceImpl(mapper,mock(DrugOrderMapper.class),mock(DrugOrderItemMapper.class),mock(DrugOrderPaymentMapper.class),mock(OrderStockLockService.class),properties,mock(ApplicationEventPublisher.class),mock(NotificationEventProducer.class),mock(DeliveryService.class)); }
 }
