@@ -2,7 +2,7 @@
  * AI 助手（Agent）相关类型定义。
  *
  * 与 sphp-agent 的 `app/api/routes/chat.py` SSE 事件格式对齐，覆盖
- * 七类事件：message / thought / action / observation / card / error / done，
+ * 九类事件：message / thought / action / observation / card / action_card / options / error / done，
  * 以及 L2 确认回调的请求与响应结构。
  */
 
@@ -104,6 +104,48 @@ export interface AgentCardEvent {
   expires_at?: string;
 }
 
+/** action_card 事件：不产生 L2 写操作的受控业务交互卡（如推荐药店）。 */
+export interface AgentActionCardEvent {
+  /** 用户点击后发起的受控预设动作类型 */
+  action_type: 'recommend_prescription_pharmacy' | string;
+  /** 卡片标题 */
+  title: string;
+  /** 卡片说明 */
+  summary: string;
+  /** 点击按钮文本 */
+  button_text: string;
+  /** 受控动作所需的最小业务参数 */
+  arguments: Record<string, unknown>;
+}
+
+/** options 事件：可选项列表卡片（区别于"确认一个操作"的 L2 卡片）。
+ *
+ * 后端在多选项场景（如医生列表、科室列表、号源列表）下确定性下发，
+ * 让前端以"单选点选"形式承载选择动作，避免纯文本让 LLM 配对 ID。
+ */
+export interface AgentOptionsEvent {
+  /** 选项卡类型：select_doctor / select_department / select_slot / select_pharmacy */
+  type: 'select_doctor' | 'select_department' | 'select_slot' | 'select_pharmacy' | string;
+  /** 选项列表 */
+  items: AgentSelectItem[];
+  /** 引导用户选择的提示语 */
+  prompt?: string;
+  /** 用户选择后会发送的文本模板，{label} 占位为选项展示名，默认"我选择{label}" */
+  reply_template?: string;
+}
+
+/** 单个可选项。 */
+export interface AgentSelectItem {
+  /** 选项 ID，与后端配对的字段 */
+  id: string;
+  /** 展示标题（用户点击的可见文案） */
+  label: string;
+  /** 副标题（科室 / 职称 / 等） */
+  description?: string;
+  /** 附加元数据（前端可选消费） */
+  meta?: Record<string, unknown>;
+}
+
 /** error 事件：对话或工具执行错误。 */
 export interface AgentErrorEvent {
   /** Agent、MCP 或下游业务错误码 */
@@ -124,13 +166,15 @@ export interface AgentDoneEvent {
   trace_id?: string;
 }
 
-/** 七类 SSE 事件的联合类型。 */
+/** 九类 SSE 事件的联合类型（含非 L2 action_card 与 options）。 */
 export type AgentSseEvent =
   | { event: 'message'; data: AgentMessageEvent }
   | { event: 'thought'; data: AgentThoughtEvent }
   | { event: 'action'; data: AgentActionEvent }
   | { event: 'observation'; data: AgentObservationEvent }
   | { event: 'card'; data: AgentCardEvent }
+  | { event: 'action_card'; data: AgentActionCardEvent }
+  | { event: 'options'; data: AgentOptionsEvent }
   | { event: 'error'; data: AgentErrorEvent }
   | { event: 'done'; data: AgentDoneEvent };
 
@@ -184,8 +228,8 @@ export interface AgentToolCard {
   label: string;
   /** 传入工具的参数 */
   arguments?: Record<string, unknown>;
-  /** 执行状态 */
-  status: 'loading' | 'success' | 'error';
+  /** 执行状态：loading 调用中 / success 成功 / error 失败 / pending 待用户确认（L2 工具不下发 observation，收到确认卡后置此态收尾） */
+  status: 'loading' | 'success' | 'error' | 'pending';
   /** 结果摘要 */
   summary?: string;
   /** 失败原因 */
@@ -217,12 +261,46 @@ export interface AgentConfirmCard {
   createdAt: number;
 }
 
-/** 会话条目类型：消息、思考、工具卡片、确认卡片按到达顺序排列。 */
+/** 非 L2 业务交互卡片运行时对象。 */
+export interface AgentActionCard {
+  id: string;
+  /** 受控动作类型（如 recommend_prescription_pharmacy） */
+  actionType: AgentActionCardEvent['action_type'];
+  /** 卡片标题 */
+  title: string;
+  /** 卡片说明 */
+  summary: string;
+  /** 按钮文本 */
+  buttonText: string;
+  /** 受控动作所需业务参数 */
+  arguments: Record<string, unknown>;
+  createdAt: number;
+}
+
+/** 可选项卡片运行时对象（医生 / 科室 / 号源等单选）。 */
+export interface AgentSelectCard {
+  id: string;
+  /** 选项卡类型 */
+  selectType: AgentOptionsEvent['type'];
+  /** 选项列表 */
+  items: AgentSelectItem[];
+  /** 引导提示语 */
+  prompt?: string;
+  /** 构造"我选择{label}"等消息所用的模板 */
+  replyTemplate: string;
+  /** 用户已选项的 ID（单选） */
+  selectedId?: string;
+  createdAt: number;
+}
+
+/** 会话条目类型：消息、思考、工具卡片、确认卡片、业务交互卡、可选项卡片按到达顺序排列。 */
 export type AgentEntry =
   | { kind: 'message'; data: AgentMessage }
   | { kind: 'thought'; data: AgentThought }
   | { kind: 'tool'; data: AgentToolCard }
-  | { kind: 'card'; data: AgentConfirmCard };
+  | { kind: 'card'; data: AgentConfirmCard }
+  | { kind: 'action'; data: AgentActionCard }
+  | { kind: 'select'; data: AgentSelectCard };
 
 /** 流式连接状态。 */
 export type AgentConnectionState = 'idle' | 'connecting' | 'streaming' | 'error';
