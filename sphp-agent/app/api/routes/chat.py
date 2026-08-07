@@ -25,7 +25,11 @@ from app.infrastructure.cache.redis_client import (
 from app.orchestrator.graphs.main_graph import build_main_graph
 from app.orchestrator.nodes.preset import (
     PRESET_INTERPRET_PRESCRIPTION,
+    PRESET_NOTIFY_DRUG_ORDER_PAID,
+    PRESET_RECOMMEND_PRESCRIPTION_PHARMACY,
     resolve_preset_interpretation,
+    resolve_preset_paid_order,
+    resolve_preset_recommendation,
 )
 from app.orchestrator.nodes.tool_executor import execute_mcp_tool
 from app.orchestrator.session_store import get_session_store
@@ -155,10 +159,24 @@ def _build_initial_state(
         )
 
     scope = getattr(request.state, "scope", req.scope)
-    # 仅在 C 端接受处方解读预设，B 端与非法输入均保持普通对话流程。
-    preset_prescription_id = (
+    # 仅在 C 端接受受控预设，B 端与非法输入均保持普通对话流程。
+    preset_interpretation_id = (
         resolve_preset_interpretation(req.context) if scope == "c_end" else None
     )
+    preset_recommendation_id = (
+        resolve_preset_recommendation(req.context) if scope == "c_end" else None
+    )
+    preset_paid_order_id = resolve_preset_paid_order(req.context) if scope == "c_end" else None
+    preset_action: str | None = None
+    preset_prescription_id: int | None = None
+    if preset_interpretation_id is not None:
+        preset_action = PRESET_INTERPRET_PRESCRIPTION
+        preset_prescription_id = preset_interpretation_id
+    elif preset_recommendation_id is not None:
+        preset_action = PRESET_RECOMMEND_PRESCRIPTION_PHARMACY
+        preset_prescription_id = preset_recommendation_id
+    elif preset_paid_order_id is not None:
+        preset_action = PRESET_NOTIFY_DRUG_ORDER_PAID
     return {
         "messages": messages,
         "session_id": session_id,
@@ -183,10 +201,11 @@ def _build_initial_state(
         # 对齐原始需求 §3：用户收货地址 ID 只来自请求 context（前端页面选中的配送地址），
         # 供 recommend_pharmacies 工具确定性补全与 LLM 上下文注入。
         "address_id": (req.context or {}).get("address_id"),
-        "preset_action": (
-            PRESET_INTERPRET_PRESCRIPTION if preset_prescription_id is not None else None
-        ),
+        "preset_action": preset_action,
         "preset_prescription_id": preset_prescription_id,
+        "preset_drug_order_id": preset_paid_order_id,
+        "preset_error": None,
+        "action_cards": None,
         "tool_calls": None,
         "tool_results": None,
         "pending_confirmations": None,
@@ -298,7 +317,7 @@ def _call_signature(kind: str, name: str, arguments: dict[str, Any] | None) -> t
 def _handle_updates_chunk(
     chunk: dict[str, Any], seen: set[tuple[str, str, str]] | None = None
 ) -> list[tuple[str, dict[str, Any]]]:
-    """updates 分支处理：从子图更新重建 action / observation / card / options 事件。
+    """updates 分支处理：从子图更新重建 action、卡片和选项事件。
 
     subgraphs=True（方案 B 实时上报）：子图内部节点（tool_caller /
     safety_check / tool_executor）的 updates 逐节点实时上浮到主图流，每轮
@@ -313,6 +332,7 @@ def _handle_updates_chunk(
           重复结果只推一次
         - card：``("card", confirm_token or tool_name, arguments)``--
           子图与主图层级重复上报只推一次
+        - action_card：``("action_card", action_type, arguments)``--按动作及业务参数去重
         - options：``("options", options_id, "")``--按 options_id 去重，
           选医生候选只在首次写入时推一次
 
@@ -324,7 +344,7 @@ def _handle_updates_chunk(
 
     Returns:
         list[tuple[str, dict[str, Any]]]：(event, payload) 事件列表，
-            event ∈ {"action", "observation", "card", "options"}。
+            event ∈ {"action", "observation", "card", "action_card", "options"}。
     """
     if seen is None:
         seen = set()
@@ -367,6 +387,21 @@ def _handle_updates_chunk(
                 continue
             seen.add(card_sig)
             events.append(("card", _build_card(p)))
+        # 非 L2 的业务交互卡：用户点击后发起受控预设查询，不生成确认令牌。
+        for action_card in node_update.get("action_cards") or []:
+            if not isinstance(action_card, dict):
+                continue
+            action_type = str(action_card.get("action_type") or "")
+            if not action_type:
+                continue
+            action_arguments = action_card.get("arguments")
+            if not isinstance(action_arguments, dict):
+                action_arguments = {}
+            action_sig = _call_signature("action_card", action_type, action_arguments)
+            if action_sig in seen:
+                continue
+            seen.add(action_sig)
+            events.append(("action_card", _build_action_card(action_card)))
         # 问诊选医生候选：options 按 options_id 去重（M8-6）
         choices = node_update.get("pending_doctor_choices")
         if choices:
@@ -484,7 +519,7 @@ async def _sse_generator(
     # subgraphs=True 去重签名集：跨帧累积，防止子图自累积 + 主图层级重复
     # 上报导致同一工具结果/确认卡片被重复推送（方案 B 实时上报）
     seen: set[tuple[str, str, str]] = set()
-    # 延迟事件缓冲（M8-6 时序）：options / card 在子图执行中产生，但需在
+    # 延迟事件缓冲（M8-6 时序）：options / card / action_card 在子图执行中产生，但需在
     # 回复文本流式完毕后再推给前端，保证「先回复说明、再弹卡」的体验。
     # action / observation 仍即时推（工具执行进度需实时反馈）。
     deferred: list[tuple[str, dict[str, Any]]] = []
@@ -523,8 +558,8 @@ async def _sse_generator(
                         yield _sse(event, payload)
                 elif mode == "updates":
                     for event, payload in _handle_updates_chunk(chunk, seen):
-                        # options / card 缓冲到回复之后；action / observation 即时推
-                        if event in ("options", "card"):
+                        # 交互卡缓冲到回复之后；工具进度仍即时推送。
+                        if event in ("options", "card", "action_card"):
                             deferred.append((event, payload))
                         else:
                             yield _sse(event, payload)
@@ -965,12 +1000,20 @@ def _build_card(pending: dict[str, Any]) -> dict[str, Any]:
     """
     tool_name = pending.get("tool_name", "")
     card_type = pending.get("card_type", "confirm_generic")
+    display = pending.get("display")
     title = _TOOL_LABELS.get(tool_name, "操作确认")
     # summary 取关键参数（slot_id/doctor_id/prescription_id 等）
     args = pending.get("tool_arguments", {})
     key_params = [v for v in args.values() if v is not None][:3]
     summary = f"{title}（参数: {', '.join(str(v) for v in key_params)}）" if key_params else title
     details = {k: args[k] for k in _CARD_DETAILS_FIELDS.get(card_type, ()) if k in args}
+    if isinstance(display, dict):
+        # 受控推荐节点提供的药房、金额和时效只用于展示，不能覆盖确认令牌中的实际参数。
+        title = str(display.get("title") or title)
+        summary = str(display.get("summary") or summary)
+        shown_details = display.get("details")
+        if isinstance(shown_details, dict):
+            details = shown_details
 
     return {
         "card_type": card_type,
@@ -983,6 +1026,25 @@ def _build_card(pending: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _build_action_card(action_card: dict[str, Any]) -> dict[str, Any]:
+    """构造非 L2 的业务交互卡事件。
+
+    Args:
+        action_card: 回复节点写入的受控交互卡定义。
+
+    Returns:
+        前端可渲染并回传受控预设的事件负载。
+    """
+    arguments = action_card.get("arguments")
+    return {
+        "action_type": action_card.get("action_type", ""),
+        "title": action_card.get("title", "下一步操作"),
+        "summary": action_card.get("summary", ""),
+        "button_text": action_card.get("button_text", "继续"),
+        "arguments": arguments if isinstance(arguments, dict) else {},
+    }
+
+
 # card.details 字段映射（系分 §6.2.1）：从 tool_arguments 提取确认前可得的字段。
 # 名称类字段（department_name/doctor_name 等）依赖执行后回填，确认前仅透出 ID 类参数。
 _CARD_DETAILS_FIELDS: dict[str, tuple[str, ...]] = {
@@ -990,7 +1052,7 @@ _CARD_DETAILS_FIELDS: dict[str, tuple[str, ...]] = {
     "confirm_cancel_appointment": ("appointment_id",),
     "confirm_pre_consultation": ("doctor_id", "chief_complaint"),
     "confirm_send_message": ("consultation_id", "content"),
-    "confirm_drug_order": ("prescription_id", "pharmacy_id", "delivery_address"),
+    "confirm_drug_order": ("prescription_id", "pharmacy_id", "address_id"),
     "confirm_cancel_drug_order": ("drug_order_id",),
     "confirm_drug_receipt": ("drug_order_id",),
     "confirm_waitlist": ("slot_id", "patient_id"),

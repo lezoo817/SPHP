@@ -5,7 +5,7 @@
 
 import json
 import logging
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from app.engine.llm.factory import build_llm
@@ -40,6 +40,126 @@ REPLY_SYSTEM_PROMPT = """你是一个医疗健康助手，正在为用户提供�
 # 处方解读来源标识，与 MCP 处方工具返回的数据契约一致。
 _OFFICIAL_READY_SOURCE = "OFFICIAL_READY"
 _AI_FALLBACK_SOURCE = "AI_FALLBACK"
+_PRESET_INTERPRET_PRESCRIPTION = "interpret_prescription"
+_PRESET_RECOMMEND_PRESCRIPTION_PHARMACY = "recommend_prescription_pharmacy"
+_PRESET_NOTIFY_DRUG_ORDER_PAID = "notify_drug_order_paid"
+
+
+def _positive_int(value: Any) -> int | None:
+    """校验正整数业务编号。
+
+    Args:
+        value: 待校验值。
+
+    Returns:
+        合法正整数；非法值返回 None。
+    """
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def _interpretation_prescription_id(state: AgentState) -> int | None:
+    """读取本轮成功处方解读对应的处方 ID。
+
+    Args:
+        state: 当前 Agent 状态。
+
+    Returns:
+        合法处方 ID；无法确认时返回 None。
+    """
+    preset_id = _positive_int(state.get("preset_prescription_id"))
+    if preset_id is not None:
+        return preset_id
+    for result in state.get("tool_results") or []:
+        if result.get("tool_name") != "interpret_prescription" or not result.get("success"):
+            continue
+        arguments = result.get("arguments")
+        if isinstance(arguments, dict):
+            return _positive_int(arguments.get("prescription_id"))
+    return None
+
+
+def _interpretation_action_cards(
+    state: AgentState,
+) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """按处方解读结果构造药店推荐入口或无地址提示。
+
+    Args:
+        state: 当前 Agent 状态。
+
+    Returns:
+        交互卡列表及可追加到解读后的提示文本。
+    """
+    prescription_id = _interpretation_prescription_id(state)
+    if prescription_id is None:
+        return None, None
+    address_id = _positive_int(state.get("address_id"))
+    if address_id is None:
+        return None, "请先在地址簿设置默认收货地址后，再为您推荐药店。"
+    return (
+        [
+            {
+                "action_type": _PRESET_RECOMMEND_PRESCRIPTION_PHARMACY,
+                "title": "药店推荐",
+                "summary": "需要我为您推荐相关药店吗？",
+                "button_text": "推荐药店",
+                "arguments": {"prescription_id": prescription_id},
+            }
+        ],
+        None,
+    )
+
+
+def _response_payload(result: dict[str, Any]) -> Any:
+    """提取标准工具结果中的 Java 业务数据。
+
+    Args:
+        result: MCP 工具执行结果。
+
+    Returns:
+        Java 响应 data；结构不符合预期时返回原始数据。
+    """
+    response = result.get("data")
+    if isinstance(response, dict) and "data" in response:
+        return response.get("data")
+    return response
+
+
+def _format_paid_order_notification(state: AgentState) -> str | None:
+    """基于订单详情生成确定性的支付成功配送通知。
+
+    Args:
+        state: 含 query_drug_orders 执行结果的 Agent 状态。
+
+    Returns:
+        支付状态通知；本轮没有订单查询结果时返回 None。
+    """
+    for result in state.get("tool_results") or []:
+        if result.get("tool_name") != "query_drug_orders":
+            continue
+        if not result.get("success"):
+            error = result.get("error")
+            message = error.get("message") if isinstance(error, dict) else None
+            return f"暂时无法确认购药订单状态：{message or '订单查询失败，请稍后重试。'}"
+        payload = _response_payload(result)
+        if not isinstance(payload, dict):
+            return "暂时无法确认购药订单状态，请稍后在购药订单中查看。"
+        if payload.get("status") != "PAID":
+            return "订单尚未确认支付成功，请以购药订单中的实际状态为准。"
+        delivery = payload.get("delivery")
+        expected_delivery_at = (
+            delivery.get("expectedDeliveryAt") if isinstance(delivery, dict) else None
+        )
+        if not isinstance(expected_delivery_at, str) or not expected_delivery_at.strip():
+            return "您已购买成功，预计送达时间待药房确认，请留意订单物流状态。"
+        try:
+            expected_time = datetime.fromisoformat(expected_delivery_at.replace("Z", "+00:00"))
+            formatted_time = expected_time.strftime("%Y/%m/%d %H:%M")
+        except ValueError:
+            formatted_time = expected_delivery_at
+        return f"您已购买成功，预计{formatted_time}送达。"
+    return None
 
 
 def _extract_prescription_interpretation(
@@ -144,12 +264,43 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         无：生成失败时返回降级话术。
     """
     try:
+        preset_error = state.get("preset_error")
+        if isinstance(preset_error, str) and preset_error.strip():
+            # 受控预设的校验和推荐失败由服务端直接说明，避免模型自行推断原因。
+            return {"messages": [{"role": "assistant", "content": preset_error.strip()}]}
+
+        if state.get("preset_action") == _PRESET_NOTIFY_DRUG_ORDER_PAID:
+            notification = _format_paid_order_notification(state)
+            if notification:
+                # 预计送达时间必须来自 Java 订单详情，不能交给模型生成。
+                return {"messages": [{"role": "assistant", "content": notification}]}
+
+        if state.get("preset_action") == _PRESET_RECOMMEND_PRESCRIPTION_PHARMACY:
+            pending_confirmations = state.get("pending_confirmations") or []
+            if pending_confirmations:
+                # 推荐第一项已确定，用户只需对创建待支付订单做既有 L2 确认。
+                return {
+                    "messages": [
+                        {
+                            "role": "assistant",
+                            "content": "已为您找到综合推荐的有货药店，请确认是否购买。",
+                        }
+                    ]
+                }
+
         interpretation = _extract_prescription_interpretation(state.get("tool_results"))
         if interpretation and interpretation.get("source") == _OFFICIAL_READY_SOURCE:
             official_content = _format_official_interpretation(interpretation)
             if official_content:
                 # 正式解读由医生或既有生产链路确认，必须原样展示，不能交给 LLM 改写。
-                return {"messages": [{"role": "assistant", "content": official_content}]}
+                action_cards, address_message = _interpretation_action_cards(state)
+                content = official_content
+                if address_message:
+                    content = f"{content}\n\n{address_message}"
+                result: dict[str, Any] = {"messages": [{"role": "assistant", "content": content}]}
+                if action_cards:
+                    result["action_cards"] = action_cards
+                return result
 
         llm = build_llm()
 
@@ -226,8 +377,17 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         raw_content = response.content
         reply_content = raw_content if isinstance(raw_content, str) else str(raw_content)
 
+        action_cards: list[dict[str, Any]] | None = None
+        if interpretation:
+            action_cards, address_message = _interpretation_action_cards(state)
+            if address_message:
+                reply_content = f"{reply_content.rstrip()}\n\n{address_message}"
+
         logger.info("回复生成成功: 长度=%d, 意图=%s", len(reply_content), intent)
-        return {"messages": [{"role": "assistant", "content": reply_content}]}
+        result = {"messages": [{"role": "assistant", "content": reply_content}]}
+        if action_cards:
+            result["action_cards"] = action_cards
+        return result
 
     except Exception as e:
         logger.error("回复生成失败: %s", e)

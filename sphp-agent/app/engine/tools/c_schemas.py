@@ -353,13 +353,13 @@ def _register_pharmacy_query_tools() -> None:
             name="create_drug_order",
             description="创建购药订单草稿（待付款状态）",
             parameters={
-                "properties": {
-                    "prescription_id": {"type": "integer", "description": "处方ID"},
-                    "pharmacy_id": {"type": "integer", "description": "药店ID"},
-                    "delivery_address": {"type": "string", "description": "配送地址"},
-                    "patient_id": {"type": "integer", "description": "就诊人ID（选填）"},
-                },
-                "required": ["prescription_id", "pharmacy_id", "delivery_address"],
+                    "properties": {
+                        "prescription_id": {"type": "integer", "description": "处方ID"},
+                        "pharmacy_id": {"type": "integer", "description": "药店ID"},
+                        "address_id": {"type": "integer", "description": "当前账号收货地址ID"},
+                        "patient_id": {"type": "integer", "description": "就诊人ID（选填）"},
+                    },
+                    "required": ["prescription_id", "pharmacy_id", "address_id"],
             },
             scope=ToolScope.C_END,
             security_level=SecurityLevel.L2,

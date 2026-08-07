@@ -7,12 +7,19 @@
  */
 
 /** 受控预设动作：用于从业务页面直接发起确定性的 Agent 查询。 */
-export interface AgentPresetAction {
-  /** 当前仅支持固定调用处方解读工具。 */
-  type: 'interpret_prescription';
-  /** 服务端真实处方 ID，不使用仅供展示的处方编号。 */
-  prescriptionId: number;
-}
+export type AgentPresetAction =
+  | {
+      /** 固定调用处方解读工具。 */
+      type: 'interpret_prescription';
+      /** 服务端真实处方 ID，不使用仅供展示的处方编号。 */
+      prescriptionId: number;
+    }
+  | {
+      /** 固定查询已支付购药订单并发送配送通知。 */
+      type: 'notify_drug_order_paid';
+      /** 服务端真实购药订单 ID。 */
+      drugOrderId: number;
+    };
 
 /** 跳转 AI 页面时携带的路由状态。 */
 export interface AgentNavigationState {
@@ -20,6 +27,8 @@ export interface AgentNavigationState {
   from: string;
   /** 首次进入后自动执行的一次性预设动作。 */
   presetAction?: AgentPresetAction;
+  /** 支付成功后需要恢复展示的既有 AI 会话。 */
+  resumeSessionId?: string;
 }
 
 /** 对话上下文：描述当前页面业务状态，辅助 Agent 决策。 */
@@ -42,6 +51,8 @@ export interface AgentChatContext {
   preset_action?: AgentPresetAction['type'];
   /** 受控预设动作关联的真实处方 ID。 */
   prescription_id?: number;
+  /** 受控支付通知关联的真实购药订单 ID。 */
+  drug_order_id?: number;
 }
 
 /** 发起流式对话的请求体（POST /api/chat/stream）。 */
@@ -125,6 +136,20 @@ export interface AgentCardEvent {
   expires_at?: string;
 }
 
+/** action_card 事件：不产生 L2 操作的受控业务交互卡。 */
+export interface AgentActionCardEvent {
+  /** 用户点击后发起的受控预设动作。 */
+  action_type: 'recommend_prescription_pharmacy' | string;
+  /** 卡片标题。 */
+  title: string;
+  /** 卡片说明。 */
+  summary: string;
+  /** 点击按钮文本。 */
+  button_text: string;
+  /** 受控动作所需的最小业务参数。 */
+  arguments: Record<string, unknown>;
+}
+
 /** options 事件：可选项列表卡片（区别于"确认一个操作"的 L2 卡片）。
  *
  * 后端在多选项场景（如医生列表、科室列表、号源列表）下确定性下发，
@@ -186,13 +211,14 @@ export interface AgentDoneEvent {
   trace_id?: string;
 }
 
-/** 八类 SSE 事件的联合类型（message/thought/action/observation/card/options/error/done）。 */
+/** 九类 SSE 事件的联合类型（含非 L2 action_card）。 */
 export type AgentSseEvent =
   | { event: 'message'; data: AgentMessageEvent }
   | { event: 'thought'; data: AgentThoughtEvent }
   | { event: 'action'; data: AgentActionEvent }
   | { event: 'observation'; data: AgentObservationEvent }
   | { event: 'card'; data: AgentCardEvent }
+  | { event: 'action_card'; data: AgentActionCardEvent }
   | { event: 'options'; data: AgentOptionsEvent }
   | { event: 'error'; data: AgentErrorEvent }
   | { event: 'done'; data: AgentDoneEvent };
@@ -209,6 +235,14 @@ export interface AgentConfirmData {
   action_result?: unknown;
   /** 面向患者的业务结果提示 */
   message?: string;
+}
+
+/** 支付页返回 AI 会话所需的最小路由状态。 */
+export interface DrugOrderAgentReturnState {
+  /** 需要恢复的既有 Agent 会话。 */
+  sessionId: string;
+  /** AI 页用于恢复页面上下文的来源路径。 */
+  from: string;
 }
 
 /** 确认卡片在 UI 中的运行时状态。 */
@@ -280,12 +314,24 @@ export interface AgentConfirmCard {
   createdAt: number;
 }
 
+/** 非 L2 业务交互卡片运行时对象。 */
+export interface AgentActionCard {
+  id: string;
+  actionType: AgentActionCardEvent['action_type'];
+  title: string;
+  summary: string;
+  buttonText: string;
+  arguments: Record<string, unknown>;
+  createdAt: number;
+}
+
 /** 会话条目类型：消息、思考、工具卡片、确认卡片、可选项卡片按到达顺序排列。 */
 export type AgentEntry =
   | { kind: 'message'; data: AgentMessage }
   | { kind: 'thought'; data: AgentThought }
   | { kind: 'tool'; data: AgentToolCard }
   | { kind: 'card'; data: AgentConfirmCard }
+  | { kind: 'action'; data: AgentActionCard }
   | { kind: 'select'; data: AgentSelectCard };
 
 /** 流式连接状态。 */

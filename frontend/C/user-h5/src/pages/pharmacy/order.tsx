@@ -7,6 +7,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { cancelDrugOrder, getDrugOrder } from '../../services/pharmacy';
 import { simulatePayment } from '../../services/registration';
 import type { DrugOrderDetail } from '../../typings/api';
+import { resolveDrugOrderAgentReturnState } from '../../utils/agent-purchase';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatAmount } from '../../utils/medical';
 import { buildDrugOrderLogisticsPath, formatDrugOrderItemPrice, isPendingDrugOrder, resolveDrugOrderPaymentId } from '../../utils/pharmacy-order';
@@ -18,6 +19,7 @@ export default function DrugOrderPage() {
   const navigate = useNavigate();
   const drugOrderId = Number(drugOrderIdText);
   const paymentIdFromUrl = useMemo(() => Number(new URLSearchParams(location.search).get('paymentId')) || undefined, [location.search]);
+  const returnToAgent = resolveDrugOrderAgentReturnState((location.state as { returnToAgent?: unknown } | null)?.returnToAgent);
   const [detail, setDetail] = useState<DrugOrderDetail>();
   const [password, setPassword] = useState('');
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -54,7 +56,7 @@ export default function DrugOrderPage() {
     setPaymentOpen(true);
   }
 
-  /** 在弹窗内调用模拟支付，支付成功后切换到独立物流详情页。 */
+  /** 在弹窗内调用模拟支付；AI 创建的订单成功后恢复原会话并通知配送信息。 */
   async function pay() {
     const paymentId = resolveDrugOrderPaymentId(detail, paymentIdFromUrl);
     if (!paymentId) {
@@ -69,6 +71,17 @@ export default function DrugOrderPage() {
     try {
       await simulatePayment(paymentId, password, createIdempotencyKey());
       setPaymentOpen(false);
+      if (returnToAgent) {
+        navigate('/agent', {
+          replace: true,
+          state: {
+            from: returnToAgent.from,
+            resumeSessionId: returnToAgent.sessionId,
+            presetAction: { type: 'notify_drug_order_paid', drugOrderId },
+          },
+        });
+        return;
+      }
       navigate(buildDrugOrderLogisticsPath(drugOrderId));
     } catch (error) {
       setNotice(getApiErrorMessage(error));

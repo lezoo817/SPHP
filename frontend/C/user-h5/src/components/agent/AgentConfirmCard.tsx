@@ -3,8 +3,8 @@ import { CheckCircle2, ShieldAlert, XCircle } from 'lucide-react';
 import type { AgentConfirmCard } from '@/typings/agent';
 import { AGENT_CONFIRM_ERROR_TEXT } from '@/constants/agent';
 
-/** 渲染 details 关键字段为可读键值对。 */
-function renderDetails(details: Record<string, unknown> | undefined): { label: string; value: string }[] {
+/** 渲染 details 关键字段为可读键值对，并保留原始字段名供数值格式化。 */
+function renderDetails(details: Record<string, unknown> | undefined): { key: string; label: string; value: string }[] {
   if (!details) return [];
   const labelMap: Record<string, string> = {
     department_name: '科室',
@@ -18,6 +18,9 @@ function renderDetails(details: Record<string, unknown> | undefined): { label: s
     pharmacy_name: '药房',
     drug_list: '药品',
     total_cent: '金额',
+    total_amount_cent: '订单金额',
+    distance_meters: '距离',
+    estimated_delivery_at: '预计送达时间',
     drug_order_id: '购药订单',
     allergen: '过敏原',
     reaction: '过敏反应',
@@ -34,15 +37,19 @@ function renderDetails(details: Record<string, unknown> | undefined): { label: s
   return Object.entries(details)
     .filter(([, v]) => v !== null && v !== undefined && v !== '')
     .map(([k, v]) => ({
+      key: k,
       label: labelMap[k] || k,
       value: typeof v === 'object' ? JSON.stringify(v) : String(v),
     }));
 }
 
 /** 金额分转元展示。 */
-function formatAmount(value: string, key: string): string {
-  if ((key === 'fee_cent' || key === 'total_cent') && /^\d+$/.test(value)) {
+function formatDetailValue(value: string, key: string): string {
+  if ((key === 'fee_cent' || key === 'total_cent' || key === 'total_amount_cent') && /^\d+$/.test(value)) {
     return `¥${(Number(value) / 100).toFixed(2)}`;
+  }
+  if (key === 'distance_meters' && /^\d+$/.test(value)) {
+    return `${(Number(value) / 1000).toFixed(1)} km`;
   }
   return value;
 }
@@ -98,7 +105,7 @@ export function AgentConfirmCardView({
               {detailRows.map((row) => (
                 <div className="agent-card__detail-row" key={row.label}>
                   <dt>{row.label}</dt>
-                  <dd>{formatAmount(row.value, row.label)}</dd>
+                  <dd>{formatDetailValue(row.value, row.key)}</dd>
                 </div>
               ))}
             </dl>
