@@ -41,6 +41,7 @@ import { AgentToolCardView } from './AgentToolCard';
 import { AgentConfirmCardView } from './AgentConfirmCard';
 import { AgentActionCardView } from './AgentActionCard';
 import { AgentSelectCardView } from './AgentSelectCard';
+import { AgentNavButton } from './AgentNavButton';
 import type { AgentActionCard, AgentChatContext, AgentSession } from '@/typings/agent';
 import './agent.css';
 
@@ -237,6 +238,7 @@ export function AiPanel({ context, embedded = false, consultationId, onNavigate 
             onClick={() => setShowHistory(true)}
             title="历史会话"
           />
+          <AgentNavButton onNavigate={onNavigate} />
         </Space>
       </div>
 
