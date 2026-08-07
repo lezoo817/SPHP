@@ -75,6 +75,12 @@ export function AgentChat({
   // recommend_pharmacies 工具因缺必填参数不敢调用，回复"我不知道您所在的具体位置"。
   const contextReady = context !== undefined;
 
+  // 会话上下文就绪状态：address_id / hospital_id / patient_id 等需在 send 前
+  // 注入请求体，后端 tool_caller 据此决定是否注入"当前收货地址/医院/就诊人"
+  // 系统提示词。context 未就绪时发送会让 LLM 拿不到 address_id，购药流程
+  // recommend_pharmacies 工具因缺必填参数不敢调用，回复"我不知道您所在的具体位置"。
+  const contextReady = context !== undefined;
+
   useEffect(() => {
     if (!resumeSessionId || restoredSessionRef.current === resumeSessionId) return;
     restoredSessionRef.current = resumeSessionId;
