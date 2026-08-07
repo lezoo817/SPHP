@@ -44,15 +44,15 @@ async def recommend_pharmacies(
 async def create_drug_order(
     prescription_id: int,
     pharmacy_id: int,
-    delivery_address: str,
+    address_id: int,
     patient_id: int | None = None,
     user_id: int | None = None,
 ) -> dict[str, Any]:
-    """创建购药订单草稿（待付款状态）。"""
+    """使用当前账号地址簿创建购药订单草稿（待付款状态）。"""
     body = {
         "prescription_id": prescription_id,
         "pharmacy_id": pharmacy_id,
-        "delivery_address": delivery_address,
+        "address_id": address_id,
     }
     if patient_id is not None:
         body["patient_id"] = patient_id

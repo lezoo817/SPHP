@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Clock, Loader, MessageSquare, Plus, Send, Trash2 } from 'lucide-react';
+import { useNavigate } from 'umi';
 import { useAgentStream } from '../../hooks/useAgentStream';
 import { getSessions, deleteSession } from '../../services/agent';
 import { AGENT_CONTENT_MAX, AGENT_QUICK_PROMPTS, AGENT_WELCOME } from '../../constants/agent';
@@ -7,8 +8,10 @@ import { AgentMessageBubble } from './AgentMessage';
 import { AgentThoughtPanel } from './AgentThought';
 import { AgentToolCardView } from './AgentToolCard';
 import { AgentConfirmCardView } from './AgentConfirmCard';
+import { AgentActionCardView } from './AgentActionCard';
 import { AgentSelectCardView } from './AgentSelectCard';
-import type { AgentChatContext, AgentConfirmCard, AgentPresetAction, AgentSession } from '../../typings/agent';
+import type { AgentActionCard, AgentChatContext, AgentConfirmCard, AgentPresetAction, AgentSession } from '../../typings/agent';
+import { resolveDrugOrderPaymentResult } from '../../utils/agent-purchase';
 
 /**
  * 格式化会话时间：今天显示时分，昨天显示"昨天"，更早显示日期。
@@ -35,7 +38,17 @@ function formatSessionTime(isoString: string): string {
  *
  * 由 /agent 全屏页承载。对外部传入的上下文（当前页面、医院、就诊人）透传给 Agent。
  */
-export function AgentChat({ context, presetAction }: { context?: AgentChatContext; presetAction?: AgentPresetAction }) {
+export function AgentChat({
+  context,
+  presetAction,
+  resumeSessionId,
+  returnPath,
+}: {
+  context?: AgentChatContext;
+  presetAction?: AgentPresetAction;
+  resumeSessionId?: string;
+  returnPath: string;
+}) {
   const {
     entries,
     connection,
@@ -49,9 +62,18 @@ export function AgentChat({ context, presetAction }: { context?: AgentChatContex
     reset,
     loadSession,
   } = useAgentStream();
+  const navigate = useNavigate();
   const [input, setInput] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
   const executedPresetRef = useRef<string>();
+  const restoredSessionRef = useRef<string>();
+  const [resumeReady, setResumeReady] = useState(!resumeSessionId);
+
+  // 会话上下文就绪状态：address_id / hospital_id / patient_id 等需在 send 前
+  // 注入请求体，后端 tool_caller 据此决定是否注入"当前收货地址/医院/就诊人"
+  // 系统提示词。context 未就绪时发送会让 LLM 拿不到 address_id，购药流程
+  // recommend_pharmacies 工具因缺必填参数不敢调用，回复"我不知道您所在的具体位置"。
+  const contextReady = context !== undefined;
 
   // 会话上下文就绪状态：address_id / hospital_id / patient_id 等需在 send 前
   // 注入请求体，后端 tool_caller 据此决定是否注入"当前收货地址/医院/就诊人"
@@ -60,18 +82,37 @@ export function AgentChat({ context, presetAction }: { context?: AgentChatContex
   const contextReady = context !== undefined;
 
   useEffect(() => {
-    if (!context || !presetAction) return;
-    const presetKey = `${presetAction.type}:${presetAction.prescriptionId}`;
+    if (!resumeSessionId || restoredSessionRef.current === resumeSessionId) return;
+    restoredSessionRef.current = resumeSessionId;
+    // 先恢复历史消息，再发送支付成功通知，确保通知归入原会话且用户能看见完整上下文。
+    void loadSession(resumeSessionId).finally(() => setResumeReady(true));
+  }, [loadSession, resumeSessionId]);
+
+  useEffect(() => {
+    if (!context || !presetAction || !resumeReady) return;
+    const businessId = presetAction.type === 'interpret_prescription'
+      ? presetAction.prescriptionId
+      : presetAction.drugOrderId;
+    const presetKey = `${presetAction.type}:${businessId}:${resumeSessionId || 'new'}`;
     // 严格模式重挂载与上下文异步就绪时只允许自动发送一次。
     if (executedPresetRef.current === presetKey) return;
     executedPresetRef.current = presetKey;
-    // 仅传业务 ID，由 Agent 固定调用受控处方解读工具，避免暴露处方正文。
-    send('请为我解读当前处方。', {
+    if (presetAction.type === 'interpret_prescription') {
+      // 仅传业务 ID，由 Agent 固定调用受控处方解读工具，避免暴露处方正文。
+      send('请为我解读当前处方。', {
+        ...context,
+        preset_action: presetAction.type,
+        prescription_id: presetAction.prescriptionId,
+      }, { startNewSession: true });
+      return;
+    }
+    // 支付成功后仅查询订单真实状态，不让前端伪造预计送达时间。
+    send('请通知我本次购药订单的配送信息。', {
       ...context,
       preset_action: presetAction.type,
-      prescription_id: presetAction.prescriptionId,
-    }, { startNewSession: true });
-  }, [context, presetAction, send]);
+      drug_order_id: presetAction.drugOrderId,
+    });
+  }, [context, presetAction, resumeReady, resumeSessionId, send]);
 
   // 历史会话相关状态
   const [showHistory, setShowHistory] = useState(false);
@@ -154,6 +195,29 @@ export function AgentChat({ context, presetAction }: { context?: AgentChatContex
   function handleQuick(prompt: string) {
     if (isStreaming || !contextReady) return;
     send(prompt, context);
+  }
+
+  /** 确认下单成功后使用 Agent 返回的订单与支付单 ID 进入支付页。 */
+  async function handleConfirm(card: AgentConfirmCard) {
+    const result = await confirm(card);
+    if (card.cardType !== 'confirm_drug_order') return;
+    const paymentResult = resolveDrugOrderPaymentResult(result?.action_result);
+    if (!paymentResult) return;
+    navigate(`/pharmacy/order/${paymentResult.drugOrderId}?paymentId=${paymentResult.paymentId}`, {
+      state: { returnToAgent: { sessionId: card.sessionId, from: returnPath } },
+    });
+  }
+
+  /** 药店推荐交互卡只允许发送固定预设，不接受模型或用户文本拼装的参数。 */
+  function handleAction(card: AgentActionCard) {
+    if (card.actionType !== 'recommend_prescription_pharmacy') return;
+    const prescriptionId = Number(card.arguments.prescription_id);
+    if (!Number.isInteger(prescriptionId) || prescriptionId <= 0) return;
+    send('请为我推荐相关药店。', {
+      ...context,
+      preset_action: 'recommend_prescription_pharmacy',
+      prescription_id: prescriptionId,
+    });
   }
 
   const showWelcome = entries.length === 0;
@@ -285,7 +349,16 @@ export function AgentChat({ context, presetAction }: { context?: AgentChatContex
                   <AgentConfirmCardView
                     key={entry.data.id}
                     card={entry.data}
-                    onConfirm={(card: AgentConfirmCard) => void confirm(card)}
+                    onConfirm={(card: AgentConfirmCard) => void handleConfirm(card)}
+                  />
+                );
+              if (entry.kind === 'action')
+                return (
+                  <AgentActionCardView
+                    key={entry.data.id}
+                    card={entry.data}
+                    disabled={isStreaming}
+                    onAction={handleAction}
                   />
                 );
               if (entry.kind === 'select')

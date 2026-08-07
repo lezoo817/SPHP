@@ -12,6 +12,7 @@ export default function AgentPage() {
   const routeState = location.state as AgentNavigationState | null;
   const fromPath = routeState?.from || location.pathname;
   const presetAction = resolvePresetAction(routeState?.presetAction);
+  const resumeSessionId = resolveResumeSessionId(routeState?.resumeSessionId);
   // 异步加载完整对话上下文（默认收货地址 + 基础字段）
   const [context, setContext] = useState<AgentChatContext | undefined>(undefined);
 
@@ -31,7 +32,12 @@ export default function AgentPage() {
         </button>
         <h1>AI 助手</h1>
       </header>
-      <AgentChat context={context} presetAction={presetAction} />
+      <AgentChat
+        context={context}
+        presetAction={presetAction}
+        resumeSessionId={resumeSessionId}
+        returnPath={fromPath}
+      />
     </main>
   );
 }
@@ -42,8 +48,23 @@ export default function AgentPage() {
  * @returns 合法预设动作；非法数据不触发自动调用
  */
 function resolvePresetAction(action: AgentPresetAction | undefined): AgentPresetAction | undefined {
-  if (action?.type !== 'interpret_prescription' || !Number.isInteger(action.prescriptionId) || action.prescriptionId <= 0) {
+  if (action?.type === 'interpret_prescription' && Number.isInteger(action.prescriptionId) && action.prescriptionId > 0) {
+    return action;
+  }
+  if (action?.type === 'notify_drug_order_paid' && Number.isInteger(action.drugOrderId) && action.drugOrderId > 0) {
+    return action;
+  }
+  return undefined;
+}
+
+/**
+ * 校验支付后恢复的原会话 ID。
+ * @param sessionId 路由状态传入的候选会话 ID。
+ * @returns 可恢复会话 ID；非法值返回 undefined。
+ */
+function resolveResumeSessionId(sessionId: string | undefined): string | undefined {
+  if (!sessionId || !sessionId.trim()) {
     return undefined;
   }
-  return action;
+  return sessionId;
 }

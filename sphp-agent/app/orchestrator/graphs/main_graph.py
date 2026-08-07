@@ -25,9 +25,16 @@ from app.orchestrator.graphs.triage_graph import build_triage_graph
 from app.orchestrator.nodes.auth import auth_node
 from app.orchestrator.nodes.chitchat import chitchat_node
 from app.orchestrator.nodes.intent import intent_node
-from app.orchestrator.nodes.preset import PRESET_INTERPRET_PRESCRIPTION, preset_action_node
+from app.orchestrator.nodes.prescription_purchase import prepare_recommended_drug_order
+from app.orchestrator.nodes.preset import (
+    PRESET_INTERPRET_PRESCRIPTION,
+    PRESET_NOTIFY_DRUG_ORDER_PAID,
+    PRESET_RECOMMEND_PRESCRIPTION_PHARMACY,
+    preset_action_node,
+)
 from app.orchestrator.nodes.rag import rag_node
 from app.orchestrator.nodes.reply import reply_node
+from app.orchestrator.nodes.safety import safety_check
 from app.orchestrator.nodes.tool_executor import tool_executor
 from app.orchestrator.state import AgentState
 
@@ -58,16 +65,41 @@ def route_after_auth(state: AgentState) -> str:
     Returns:
         预设动作节点或既有按服务端分流的目标名称。
     """
+    action = state.get("preset_action")
     prescription_id = state.get("preset_prescription_id")
-    if (
-        state.get("scope") == "c_end"
-        and state.get("preset_action") == PRESET_INTERPRET_PRESCRIPTION
-        and isinstance(prescription_id, int)
+    drug_order_id = state.get("preset_drug_order_id")
+    has_prescription_id = (
+        isinstance(prescription_id, int)
         and not isinstance(prescription_id, bool)
         and prescription_id > 0
-    ):
+    )
+    has_drug_order_id = (
+        isinstance(drug_order_id, int)
+        and not isinstance(drug_order_id, bool)
+        and drug_order_id > 0
+    )
+    is_prescription_preset = (
+        action in (PRESET_INTERPRET_PRESCRIPTION, PRESET_RECOMMEND_PRESCRIPTION_PHARMACY)
+        and has_prescription_id
+    )
+    is_paid_order_preset = action == PRESET_NOTIFY_DRUG_ORDER_PAID and has_drug_order_id
+    if state.get("scope") == "c_end" and (is_prescription_preset or is_paid_order_preset):
         return "preset_action_node"
     return route_by_scope(state)
+
+
+def route_after_preset_execution(state: AgentState) -> str:
+    """在受控工具执行后选择回复或创建购药确认。
+
+    Args:
+        state: 已完成受控 L1 工具调用的 Agent 状态。
+
+    Returns:
+        药店推荐进入确定性下单确认编排，其余预设直接回复。
+    """
+    if state.get("preset_action") == PRESET_RECOMMEND_PRESCRIPTION_PHARMACY:
+        return "prepare_recommended_drug_order"
+    return "reply_node"
 
 
 def route_by_intent(state: AgentState) -> str:
@@ -100,6 +132,8 @@ def build_main_graph() -> Any:
     builder.add_node("chitchat_node", chitchat_node)
     builder.add_node("preset_action_node", preset_action_node)
     builder.add_node("preset_tool_executor", tool_executor)
+    builder.add_node("prepare_recommended_drug_order", prepare_recommended_drug_order)
+    builder.add_node("preset_safety_check", safety_check)
     builder.add_node("reply_node", reply_node)
 
     # 注册业务子图（编译后的 CompiledGraph）
@@ -128,9 +162,19 @@ def build_main_graph() -> Any:
         },
     )
 
-    # 预设仅构造固定的 L1 处方解读调用，再复用标准执行器和回复节点。
+    # 预设只构造固定 L1 查询；药店推荐结果再确定性转为既有 L2 下单确认。
     builder.add_edge("preset_action_node", "preset_tool_executor")
-    builder.add_edge("preset_tool_executor", "reply_node")
+    builder.add_conditional_edges(
+        "preset_tool_executor",
+        route_after_preset_execution,
+        {
+            "prepare_recommended_drug_order": "prepare_recommended_drug_order",
+            "reply_node": "reply_node",
+        },
+    )
+    builder.add_edge("prepare_recommended_drug_order", "preset_safety_check")
+    # 推荐阶段只可能生成 L2 下单确认；无候选和安全拒绝都交由回复节点如实说明。
+    builder.add_edge("preset_safety_check", "reply_node")
 
     # 条件边：意图路由（仅 C 端执行）
     builder.add_conditional_edges(

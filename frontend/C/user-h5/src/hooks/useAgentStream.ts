@@ -25,8 +25,11 @@ import {
 } from '../models/agent';
 import type {
   AgentCardEvent,
+  AgentActionCard,
+  AgentActionCardEvent,
   AgentChatContext,
   AgentConfirmCard,
+  AgentConfirmData,
   AgentConnectionState,
   AgentEntry,
   AgentMessage,
@@ -63,7 +66,7 @@ export interface UseAgentStream {
   /** 发送一条用户消息并开启流式对话 */
   send: (content: string, context?: AgentChatContext, options?: AgentSendOptions) => void;
   /** 确认一张 L2 卡片 */
-  confirm: (card: AgentConfirmCard) => Promise<void>;
+  confirm: (card: AgentConfirmCard) => Promise<AgentConfirmData | undefined>;
   /** 用户从可选项卡片中点选一项：标记已选并发送"我选择{label}"消息 */
   selectOption: (card: AgentSelectCard, item: AgentSelectItem) => void;
   /** 中断当前流式请求 */
@@ -127,7 +130,7 @@ export function useAgentStream(): UseAgentStream {
 
   /** 确认一张 L2 卡片：调用确认回调并按结果更新卡片状态。 */
   const confirm = useCallback(
-    async (card: AgentConfirmCard) => {
+    async (card: AgentConfirmCard): Promise<AgentConfirmData | undefined> => {
       // 令牌过期校验：到期后禁用卡片，不再调用确认接口
       if (card.expiresAt && Date.parse(card.expiresAt) <= Date.now()) {
         updateConfirmCard(card.id, {
@@ -135,7 +138,7 @@ export function useAgentStream(): UseAgentStream {
           errorCode: 'CONFIRM_EXPIRED',
           errorMessage: '确认已超时，请重新发起操作',
         });
-        return;
+        return undefined;
       }
       updateConfirmCard(card.id, { status: 'confirming' });
       try {
@@ -167,6 +170,7 @@ export function useAgentStream(): UseAgentStream {
             },
           },
         ]);
+        return result;
       } catch (error) {
         const code = (error as Error & { code?: string }).code;
         // 鉴权失败：清理登录态由服务层完成，这里仅更新卡片
@@ -184,6 +188,7 @@ export function useAgentStream(): UseAgentStream {
           errorCode: code,
           errorMessage: text,
         });
+        return undefined;
       }
     },
     [], // updateConfirmCard 通过 setEntries 闭包稳定引用
@@ -292,10 +297,14 @@ export function useAgentStream(): UseAgentStream {
         setConnection('streaming');
         updateToolCard(event.data);
         break;
-      case 'card':
+        case 'card':
         setConnection('streaming');
-        appendConfirmCard(event.data);
-        break;
+          appendConfirmCard(event.data);
+          break;
+        case 'action_card':
+          setConnection('streaming');
+          appendActionCard(event.data);
+          break;
       case 'options':
         setConnection('streaming');
         appendSelectCard(event.data);
@@ -331,6 +340,18 @@ export function useAgentStream(): UseAgentStream {
       // 复用当前轮 AI 消息 ID
       let messageId = currentMessageIdRef.current;
       if (!messageId) {
+        const lastEntry = prev[prev.length - 1];
+        // SSE 末尾片段偶发晚于当前消息引用的清理时，继续拼接紧邻的助手消息，
+        // 避免“请及时联系医生”这类同一句话被错误渲染成新的气泡。
+        if (lastEntry?.kind === 'message' && lastEntry.data.role === 'assistant') {
+          messageId = lastEntry.data.id;
+          currentMessageIdRef.current = messageId;
+          return prev.map((entry) =>
+            entry.kind === 'message' && entry.data.id === messageId
+              ? { kind: 'message', data: { ...entry.data, content: entry.data.content + delta, streaming: true } }
+              : entry,
+          );
+        }
         messageId = genId('a');
         currentMessageIdRef.current = messageId;
         const aiMessage: AgentMessage = {
@@ -485,9 +506,25 @@ export function useAgentStream(): UseAgentStream {
     resolveL2ToolCard(card.card_type, { status: 'pending', summary: '待您确认操作' });
   }
 
-  /** 构建一张可选项卡片数据结构。 */
-  function buildSelectCard(options: AgentOptionsEvent): AgentSelectCard {
-    return {
+
+  /** 追加不涉及 L2 写操作的受控业务交互卡。 */
+  function appendActionCard(card: AgentActionCardEvent): void {
+    const actionCard: AgentActionCard = {
+      id: genId('action'),
+      actionType: card.action_type,
+      title: card.title,
+      summary: card.summary,
+      buttonText: card.button_text,
+      arguments: card.arguments || {},
+      createdAt: Date.now(),
+    };
+    setEntries((prev) => [...prev, { kind: 'action', data: actionCard }]);
+  }
+
+  /** 追加一张可选项卡片（医生列表 / 科室列表 / 号源等）。 */
+  function appendSelectCard(options: AgentOptionsEvent): void {
+    const selectCard: AgentSelectCard = {
+
       id: genId('sel'),
       selectType: options.type,
       items: options.items,
