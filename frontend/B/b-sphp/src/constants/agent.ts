@@ -60,6 +60,28 @@ export const AGENT_TOOL_LABELS: Record<string, string> = {
   query_drugs: '查询药品目录',
 };
 
+/**
+ * L2 卡片类型到对应工具名的反向映射（与 sphp-agent safety.py `_map_card_type` 对齐）。
+ *
+ * 前端收到 `card` 事件后，据此把对应 L2 工具的 loading 卡片收尾：L2 工具
+ * 不下发 observation（被挂起 pending_confirmations 等待确认），若不收尾会
+ * 永久显示"调用中"。收到确认卡时置 pending，用户确认成功后置 success。
+ */
+export const AGENT_CARD_TYPE_TO_TOOL: Record<string, string> = {
+  confirm_appointment: 'create_appointment',
+  confirm_cancel_appointment: 'cancel_appointment',
+  confirm_pre_consultation: 'save_pre_consultation',
+  confirm_send_message: 'send_consultation_message',
+  confirm_drug_order: 'create_drug_order',
+  confirm_cancel_drug_order: 'cancel_drug_order',
+  confirm_allergy: 'manage_allergy',
+  confirm_medical_history: 'manage_medical_history',
+  confirm_report: 'create_report',
+  confirm_medication_plan: 'update_medication_plan',
+  confirm_follow_up: 'confirm_follow_up',
+  confirm_draft_note: 'generate_draft_note',
+};
+
 /** L2 确认卡片错误码到面向医生的提示文案映射。 */
 export const AGENT_CONFIRM_ERROR_TEXT: Record<string, string> = {
   CONFIRM_INVALID: '确认参数无效，请重新发起操作',
