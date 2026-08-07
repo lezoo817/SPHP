@@ -608,6 +608,15 @@ async def tool_caller(
         logger.warning("未知 scope=%s，默认使用 c_end 工具集", scope)
         tool_scope = ToolScope.C_END
 
+    # 选医生卡片（M8-6/7/8）是**在线问诊子图专属**流程：仅当白名单含
+    # save_pre_consultation（问诊需用户选医生后提交预问诊）时触发。
+    # ⚠️ 挂号等子图同样复用 query_doctors 查医生，但不需要"选医生发卡"——
+    # 若无条件发卡，挂号流程会被问诊逻辑劫持（2026-08-07 日志复现：挂号场景
+    # query_doctors 返回后发"请选择您想咨询的医生"卡，用户点选后绑定工具被
+    # M8-8 过滤成只剩 save_pre_consultation，挂号白名单无此工具 -> 无工具可用
+    # -> LLM 转而索要症状主诉，挂号流程走成在线问诊）。
+    is_consultation_scene = bool(allowed_tools) and "save_pre_consultation" in allowed_tools
+
     # M8-6 问诊选医生：用户已从 options 卡回传选择（"我选择X医生"）时，**在
     # LLM 推理前**确定性匹配候选并注入 doctor_id 上下文，让 LLM 本轮就知道
     # "已选医生、直接调 save_pre_consultation"，避免 LLM 把点选误当成普通消息
@@ -617,8 +626,9 @@ async def tool_caller(
     # M8-8：命中后把绑定工具**过滤成只剩 save_pre_consultation**（硬约束，
     # 不依赖模型遵循提示词）——DeepSeek 对"直接 save 别重跑查询"遵循度不足，
     # 仍会先调查询工具；过滤后 LLM 想查也无从调起，只能 save。
+    # 仅问诊场景执行；挂号等场景无 pending_doctor_choices（不写不发卡），不进入。
     selected_choice: dict[str, Any] | None = None
-    pending_choices = state.get("pending_doctor_choices")
+    pending_choices = state.get("pending_doctor_choices") if is_consultation_scene else None
     if pending_choices:
         selected_choice = _match_doctor_choice(state.get("messages", []), pending_choices)
         if selected_choice:
@@ -646,7 +656,8 @@ async def tool_caller(
         subgraph_tools = [t for t in subgraph_tools if t.name in allowed_set]
     # M8-8 硬约束：用户已选医生时，本轮只暴露 save_pre_consultation，
     # 让 LLM 无法重跑查询（query_health_record / query_departments / query_doctors
-    # 均不绑定），只能直接提交预问诊。
+    # 均不绑定），只能直接提交预问诊。仅问诊场景（selected_choice 来自问诊
+    # 场景的 pending_doctor_choices，非问诊场景不写入故恒为 None）。
     if selected_choice is not None:
         subgraph_tools = [t for t in subgraph_tools if t.name == "save_pre_consultation"]
     tools = [
@@ -768,16 +779,26 @@ async def tool_caller(
             result_extra["pending_doctor_choices"] = None
         # 问诊场景拦截：同轮 query_doctors + save_pre_consultation -> 剔除
         # save_pre_consultation（改由 SSE 发 options 卡让用户点选，防 LLM 替用户选）。
-        tool_calls, intercepted_candidates = _intercept_save_pre_consultation(
-            tool_calls, state.get("tool_results") or []
+        # 仅问诊场景执行；挂号等场景不拦截（tool_calls 原样放行，LLM 继续
+        # 查号源/创建挂号，不受"选医生发卡"干预）。
+        tool_calls, intercepted_candidates = (
+            _intercept_save_pre_consultation(tool_calls, state.get("tool_results") or [])
+            if is_consultation_scene
+            else (tool_calls, None)
         )
         # 确定性发卡（M8-7）：只要 query_doctors 返回了候选医生（无论 LLM 本轮
         # 是否调 save_pre_consultation），就缓存候选供 SSE 发选择卡。修复日志
         # "LLM 老实了不调 save -> 拦截器静默 -> 不发卡、只给文字回复"的漏卡问题。
+        # 仅问诊场景执行——挂号场景 query_doctors 同样返回医生，但无需发
+        # "选医生"卡（发卡会把挂号流程劫持成问诊选医生，见 is_consultation_scene 注释）。
         candidates = (
             intercepted_candidates
             if intercepted_candidates is not None
-            else _parse_doctor_candidates(state.get("tool_results") or [])
+            else (
+                _parse_doctor_candidates(state.get("tool_results") or [])
+                if is_consultation_scene
+                else []
+            )
         )
         if candidates:
             result_extra["pending_doctor_choices"] = candidates
