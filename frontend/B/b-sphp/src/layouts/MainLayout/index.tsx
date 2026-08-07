@@ -284,7 +284,7 @@ export default function MainLayout() {
         onClose={() => setShowAgentDrawer(false)}
         styles={{ body: { padding: 0, overflow: 'hidden' } }}
       >
-        <AiPanel context={agentContext} embedded={true} />
+        <AiPanel context={agentContext} embedded={true} onNavigate={() => setShowAgentDrawer(false)} />
       </Drawer>
     </Layout>
   );
