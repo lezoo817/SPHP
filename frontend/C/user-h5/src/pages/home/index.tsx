@@ -36,6 +36,8 @@ export default function HomePage() {
   const waitlistTimer = useRef<number>();
   const swipeStartX = useRef<number>();
   const swipeMoved = useRef(false);
+  const bannerTransitioning = useRef(false);
+  const bannerResetFrame = useRef<number>();
 
   /** 读取单个就诊人的三类待办，供首页统一展示。 */
   async function loadPatientHealthSource(member: FamilyMember): Promise<PatientHealthSource> {
@@ -96,6 +98,11 @@ export default function HomePage() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => () => {
+    // 页面切走时取消待执行的回正帧，防止卸载后继续更新轮播状态。
+    if (bannerResetFrame.current) window.cancelAnimationFrame(bannerResetFrame.current);
+  }, []);
+
   /** 关闭顶部候补提醒，不调用已读接口以保留通知入口的未读红点。 */
   function dismissWaitlistNotification() {
     setWaitlistNotification(undefined);
@@ -122,17 +129,43 @@ export default function HomePage() {
 
   /** 沿滑动方向切换宣传窗页码，首尾页通过克隆卡片保持连续运动。 */
   function changeBanner(offset: number) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      // 减少动态效果模式下没有 transitionend，直接在真实页之间切换，避免轮播锁无法释放。
+      setBannerTransitionEnabled(false);
+      setBannerSlideIndex((index) => {
+        const currentIndex = index === 0 ? homeBanners.length : index === homeBanners.length + 1 ? 1 : index;
+        if (offset > 0) return currentIndex === homeBanners.length ? 1 : currentIndex + 1;
+        return currentIndex === 1 ? homeBanners.length : currentIndex - 1;
+      });
+      return;
+    }
+    // 自动轮换与快速手势共用此锁，避免过渡未完成时页码越过首尾克隆卡。
+    if (bannerTransitioning.current) return;
+    bannerTransitioning.current = true;
     setBannerTransitionEnabled(true);
-    setBannerSlideIndex((index) => index + offset);
+    setBannerSlideIndex((index) => {
+      // 若上一次在边界帧被打断，先恢复为真实页再计算下一页。
+      const currentIndex = index === 0 ? homeBanners.length : index === homeBanners.length + 1 ? 1 : index;
+      return currentIndex + (offset > 0 ? 1 : -1);
+    });
   }
 
   /** 动画到达首尾克隆卡后，无感重置到对应真实卡片。 */
   function normalizeBannerSlide() {
-    if (bannerSlideIndex !== 0 && bannerSlideIndex !== homeBanners.length + 1) return;
+    if (bannerSlideIndex !== 0 && bannerSlideIndex !== homeBanners.length + 1) {
+      bannerTransitioning.current = false;
+      return;
+    }
     // 关闭一次过渡再回到真实卡片，避免循环边界产生反方向回弹。
     setBannerTransitionEnabled(false);
     setBannerSlideIndex(bannerSlideIndex === 0 ? homeBanners.length : 1);
-    window.requestAnimationFrame(() => window.requestAnimationFrame(() => setBannerTransitionEnabled(true)));
+    window.requestAnimationFrame(() => {
+      bannerResetFrame.current = window.requestAnimationFrame(() => {
+        setBannerTransitionEnabled(true);
+        // 回正完成后才允许下一次手势或自动轮换，保证索引始终处于有效范围。
+        bannerTransitioning.current = false;
+      });
+    });
   }
 
   /** 记录宣传窗手势起点，用于区分点击按钮与左右滑动。 */
