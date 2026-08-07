@@ -53,11 +53,15 @@ public class OrderLogisticsServiceImpl implements OrderLogisticsService {
         // 条件更新是消息幂等边界，重复或过期消息不会再次推进订单。
         if (orderDataMapper.advanceDrugOrderLogistics(event.drugOrderId(), event.expectedLogisticsStatus().name(),
                 event.targetLogisticsStatus().name(), now) != 1) {
+            // 记录幂等跳过原因，便于区分重复投递、订单已被确认收货或状态已由其他流程推进。
+            log.info("购药订单物流状态推进跳过 eventId={}, drugOrderId={}, expectedLogisticsStatus={}, targetLogisticsStatus={}, reason=条件更新未命中",
+                    event.eventId(), event.drugOrderId(), event.expectedLogisticsStatus(), event.targetLogisticsStatus());
             return;
         }
         String node = event.targetLogisticsStatus() == IN_TRANSIT
                 ? DRUG_ORDER_IN_TRANSIT_TRACE : DRUG_ORDER_TO_RECEIVE_TRACE;
-        log.info("购药订单物流状态推进 drugOrderId={}, expectedLogisticsStatus={}, targetLogisticsStatus={}",event.drugOrderId(), event.expectedLogisticsStatus(), event.targetLogisticsStatus());
+        log.info("购药订单物流状态推进 eventId={}, drugOrderId={}, expectedLogisticsStatus={}, targetLogisticsStatus={}",
+                event.eventId(), event.drugOrderId(), event.expectedLogisticsStatus(), event.targetLogisticsStatus());
         // 状态与轨迹必须同一事务提交，避免详情出现无轨迹的物流节点。
         if (orderDataMapper.insertDrugOrderLogisticsTrace(event.drugOrderId(), node, now) != 1) {
             throw new IllegalStateException("购药订单物流轨迹写入失败");

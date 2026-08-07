@@ -7,13 +7,16 @@ import com.sphp.patient.order.mq.event.DrugOrderLogisticsAdvanceEvent;
 import com.sphp.patient.order.mq.producer.DrugOrderLogisticsEventProducer;
 import com.sphp.patient.order.service.OrderLogisticsService;
 import org.junit.jupiter.api.Test;
+import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doThrow;
 
 /**
  * 购药订单模拟物流 RabbitMQ 测试。
@@ -36,6 +39,8 @@ class OrderLogisticsMqTest {
         assertEquals("cend.drug-order.logistics.delay.queue", delayQueue.getName());
         assertEquals(30000, delayQueue.getArguments().get("x-message-ttl"));
         assertEquals("cend.drug-order.logistics.advance.queue", advanceQueue.getName());
+        assertEquals("cend.dlx.exchange", advanceQueue.getArguments().get("x-dead-letter-exchange"));
+        assertEquals("notification.dead", advanceQueue.getArguments().get("x-dead-letter-routing-key"));
         assertEquals("drug-order.logistics.schedule", delayBinding.getRoutingKey());
         assertEquals("drug-order.logistics.advance", advanceBinding.getRoutingKey());
     }
@@ -64,6 +69,22 @@ class OrderLogisticsMqTest {
         DrugOrderLogisticsAdvanceEvent event = DrugOrderLogisticsAdvanceEvent.toReceive(15001L);
 
         consumer.consumeDrugOrderLogisticsAdvance(event);
+
+        verify(service).advanceDrugOrderLogistics(event);
+    }
+
+    /**
+     * 验证物流服务处理失败时拒绝消息且不重回原队列。
+     */
+    @Test
+    void logisticsConsumerRejectsFailedMessageWithoutRequeue() {
+        OrderLogisticsService service = mock(OrderLogisticsService.class);
+        DrugOrderLogisticsAdvanceConsumer consumer = new DrugOrderLogisticsAdvanceConsumer(service);
+        DrugOrderLogisticsAdvanceEvent event = DrugOrderLogisticsAdvanceEvent.toReceive(15001L);
+        doThrow(new IllegalStateException("模拟物流处理失败")).when(service).advanceDrugOrderLogistics(event);
+
+        assertThrows(AmqpRejectAndDontRequeueException.class,
+                () -> consumer.consumeDrugOrderLogisticsAdvance(event));
 
         verify(service).advanceDrugOrderLogistics(event);
     }

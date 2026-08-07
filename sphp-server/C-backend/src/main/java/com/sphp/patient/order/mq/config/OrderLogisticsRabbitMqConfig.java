@@ -14,6 +14,7 @@ import static com.sphp.patient.common.constant.OrderConstant.DRUG_ORDER_LOGISTIC
 import static com.sphp.patient.common.constant.OrderConstant.DRUG_ORDER_LOGISTICS_ADVANCE_ROUTING_KEY;
 import static com.sphp.patient.common.constant.OrderConstant.DRUG_ORDER_LOGISTICS_DELAY_QUEUE;
 import static com.sphp.patient.common.constant.OrderConstant.DRUG_ORDER_LOGISTICS_SCHEDULE_ROUTING_KEY;
+import static com.sphp.patient.common.constant.NotificationConstant.DEAD_LETTER_ROUTING_KEY;
 
 /**
  * C端购药订单模拟物流 RabbitMQ 队列与绑定配置。
@@ -44,7 +45,11 @@ public class OrderLogisticsRabbitMqConfig {
      */
     @Bean
     public Queue drugOrderLogisticsAdvanceQueue() {
-        return QueueBuilder.durable(DRUG_ORDER_LOGISTICS_ADVANCE_QUEUE).build();
+        return QueueBuilder.durable(DRUG_ORDER_LOGISTICS_ADVANCE_QUEUE)
+                // 消费或消息转换失败后统一进入既有死信队列，避免物流事件静默丢失。
+                .deadLetterExchange(DLX_EXCHANGE)
+                .deadLetterRoutingKey(DEAD_LETTER_ROUTING_KEY)
+                .build();
     }
 
     /**
