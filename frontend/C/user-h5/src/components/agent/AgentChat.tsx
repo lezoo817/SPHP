@@ -255,6 +255,24 @@ export function AgentChat({
     }
   }
 
+  /** 快捷入口图标按 label 名称映射，便于美化常驻栏。 */
+  function getQuickIcon(label: string) {
+    switch (label) {
+      case '智能导诊':
+        return <Compass size={22} />;
+      case '查询挂号':
+        return <Calendar size={22} />;
+      case '处方解读':
+        return <FileText size={22} />;
+      case '在线问诊':
+        return <HeartPulse size={22} />;
+      case '健康档案':
+        return <FolderHeart size={22} />;
+      default:
+        return <MessageSquare size={22} />;
+    }
+  }
+
   /** 确认下单成功后使用 Agent 返回的订单与支付单 ID 进入支付页。 */
   async function handleConfirm(card: AgentConfirmCard) {
     const result = await confirm(card);
