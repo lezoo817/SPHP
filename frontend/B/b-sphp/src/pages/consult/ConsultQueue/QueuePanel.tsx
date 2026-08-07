@@ -81,11 +81,19 @@ export default function QueuePanel({
                       onClick={() => handleSelectHistoryItem(item)}
                     >
                       <div className={styles.queueItemHeader}>
-                        <Space>
+                        <Space style={{ minWidth: 0, flexShrink: 1 }}>
                           <span style={{ color: gender.color }}>{gender.icon}</span>
-                          <Text strong>{item.patientName}</Text>
+                          <Text
+                            strong
+                            style={{ wordBreak: 'keep-all', overflowWrap: 'normal' }}
+                          >
+                            {item.patientName}
+                          </Text>
                           {age !== null && (
-                            <Text type="secondary" style={{ fontSize: 12 }}>
+                            <Text
+                              type="secondary"
+                              style={{ fontSize: 12, wordBreak: 'keep-all', overflowWrap: 'normal' }}
+                            >
                               {age}岁
                             </Text>
                           )}
@@ -100,12 +108,20 @@ export default function QueuePanel({
                         </div>
                       )}
                       <div style={{ marginTop: 2 }}>
-                        <Text type="secondary" style={{ fontSize: 11 }}>
+                        <Text
+                          type="secondary"
+                          style={{
+                            fontSize: 11,
+                            wordBreak: 'break-word',
+                            overflowWrap: 'anywhere',
+                          }}
+                        >
                           {item.endedAt
                             ? dayjs(item.endedAt).format('MM-DD HH:mm')
                             : dayjs(item.createdAt).format('MM-DD HH:mm')}
                           接诊
-                          {item.noteSummary && ` · ${item.noteSummary}`}
+                          {item.noteSummary &&
+                            ` · ${item.noteSummary.replace(/[\r\n]+/g, ' ').trim()}`}
                         </Text>
                       </div>
                     </List.Item>

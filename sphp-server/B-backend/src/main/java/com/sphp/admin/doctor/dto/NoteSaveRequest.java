@@ -14,6 +14,6 @@ public class NoteSaveRequest {
 
     @NotBlank(message = "病历内容不能为空")
     @Size(max = 65535, message = "病历内容不能超过65535字符")
-    @Schema(description = "病历文本（结构化 JSON，含主诉/现病史/查体/诊断/治疗方案）", maxLength = 65535)
+    @Schema(description = "病历文本（纯文本，按 “主诉：xxx\\n现病史：yyy\\n查体：zzz\\n诊断：aaa\\n治疗方案：bbb” 格式拼接）", maxLength = 65535)
     private String doctorNote;
 }

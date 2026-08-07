@@ -1,9 +1,8 @@
 /**
  * 接诊历史详情面板。
  *
- * 展示结构化病历报告（JSON 解析）或兼容旧版纯文本病历，以及关联处方与接诊时间。
+ * 展示病历全文（纯文本）、接诊医生姓名、关联处方与接诊时间。
  */
-import type { ReactNode } from 'react';
 import { Divider, Empty, List, Space, Spin, Tag, Typography } from 'antd';
 import { MedicineBoxOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -16,58 +15,34 @@ interface HistoryDetailPanelProps {
   detail: API.ConsultHistoryDetail | undefined;
 }
 
-/** 病历字段区块 */
-function ReportSection({ title, text }: { title: string; text: string }) {
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <div className={styles.sectionTitle}>{title}</div>
-      <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.7, marginTop: 4 }}>
-        {text}
-      </div>
-    </div>
-  );
-}
-
-/** 渲染病历内容：结构化 JSON → 分区块；纯文本 → 原样展示 */
-function renderReport(doctorNote?: string): ReactNode {
-  if (!doctorNote) return <Text type="secondary">无病历记录</Text>;
-
-  let reportData: Record<string, string> | null = null;
-  try {
-    reportData = JSON.parse(doctorNote);
-  } catch {
-    // 兼容旧数据（纯文本病历）
-  }
-
-  if (reportData && reportData.chiefComplaint !== undefined) {
-    return (
-      <div>
-        {reportData.chiefComplaint && <ReportSection title="主诉" text={reportData.chiefComplaint} />}
-        {reportData.presentIllness && <ReportSection title="现病史" text={reportData.presentIllness} />}
-        {reportData.physicalExamination && <ReportSection title="查体" text={reportData.physicalExamination} />}
-        {reportData.diagnosis && <ReportSection title="诊断" text={reportData.diagnosis} />}
-        {reportData.treatmentPlan && <ReportSection title="治疗方案" text={reportData.treatmentPlan} />}
-        {(reportData.doctorName || reportData.generatedAt) && (
-          <div style={{ fontSize: 12, color: '#999', marginTop: 8 }}>
-            {reportData.doctorName && (
-              <span style={{ marginRight: 16 }}>医生签名：{reportData.doctorName}</span>
-            )}
-            {reportData.generatedAt && <>病历报告生成时间：{reportData.generatedAt}</>}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{doctorNote}</div>;
+/**
+ * 将文本中的换行/回车归一化为空格，避免脏数据（如 "u\ns\ne\nr\n1"）
+ * 导致 React 渲染为每字符一行的竖排。
+ */
+function flattenText(value: string | undefined | null): string {
+  if (!value) return '';
+  return value.replace(/[\r\n]+/g, ' ').trim();
 }
 
 export default function HistoryDetailPanel({ loading, detail }: HistoryDetailPanelProps) {
+  const doctorName = flattenText(detail?.doctorName);
+  const doctorNote = flattenText(detail?.doctorNote);
   return (
     <Spin spinning={loading}>
       {detail ? (
         <div style={{ padding: '4px 0' }}>
-          {renderReport(detail.doctorNote)}
+          {/* 病历全文：纯文本（按"字段名：值"换行），wordBreak 防止窄容器字符级竖排 */}
+          <div
+            style={{
+              fontSize: 13,
+              whiteSpace: 'pre-wrap',
+              lineHeight: 1.7,
+              wordBreak: 'break-word',
+              overflowWrap: 'break-word',
+            }}
+          >
+            {doctorNote || '无病历记录'}
+          </div>
 
           {detail.prescriptions.length > 0 && (
             <>
@@ -101,13 +76,16 @@ export default function HistoryDetailPanel({ loading, detail }: HistoryDetailPan
           )}
 
           <Divider style={{ margin: '12px 0' }} />
-          <div style={{ fontSize: 12, color: '#999' }}>
-            {detail.endedAt ? (
-              <>接诊时间：{dayjs(detail.endedAt).format('YYYY-MM-DD HH:mm')}</>
-            ) : (
-              <>创建时间：{dayjs(detail.createdAt).format('YYYY-MM-DD HH:mm')}</>
+          <Space size={16} wrap style={{ fontSize: 12, color: '#999', width: '100%' }}>
+            {doctorName && (
+              <span style={{ whiteSpace: 'nowrap' }}>接诊医生：{doctorName}</span>
             )}
-          </div>
+            <span style={{ whiteSpace: 'nowrap' }}>
+              {detail.endedAt
+                ? `接诊时间：${dayjs(detail.endedAt).format('YYYY-MM-DD HH:mm')}`
+                : `创建时间：${dayjs(detail.createdAt).format('YYYY-MM-DD HH:mm')}`}
+            </span>
+          </Space>
         </div>
       ) : (
         <Empty description="加载中..." />
