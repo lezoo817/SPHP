@@ -35,6 +35,8 @@ REPLY_SYSTEM_PROMPT = """你是一个医疗健康助手，正在为用户提供�
 - 不要编造医疗数据
 - 不要替代医生做诊断
 - 不确定的内容要明确告知
+- **输出必须是纯文本**：不得使用 Markdown 星号（**加粗**、*斜体*、列表项 - / *）、
+  井号标题、反引号等标记语法。需要强调的内容用自然语言表述即可。
 """
 
 # 处方解读来源标识，与 MCP 处方工具返回的数据契约一致。
@@ -612,6 +614,8 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         # BaseMessage.content 可为 str 或多段内容列表（OpenAI 格式），统一转 str
         raw_content = response.content
         reply_content = raw_content if isinstance(raw_content, str) else str(raw_content)
+        # 确定性去除 Markdown 强调标记（提示词约束的兜底，见 _strip_markdown_emphasis）
+        reply_content = _strip_markdown_emphasis(reply_content)
 
         action_cards: list[dict[str, Any]] | None = None
         if interpretation:
@@ -695,3 +699,47 @@ def _format_tool_results(tool_results: list[dict[str, Any]]) -> str:
             summaries.append(f"✗ {tool_name}: 执行失败 - {error_msg}")
 
     return "\n".join(summaries)
+
+
+def _strip_markdown_emphasis(text: str) -> str:
+    """去除回复文本中的 Markdown 强调标记（2026-08-07）。
+
+    LLM 输出可能残留 ``**加粗**``、``*斜体*``、``- 列表`` 等 Markdown 标记，
+    前端纯文本渲染会把星号/井号原样显示。本函数确定性清除这些标记，作为
+    提示词约束（REPLY_SYSTEM_PROMPT）的兜底——不依赖模型遵循。
+
+    处理规则（不破坏合法文本）：
+        - ``**...**`` / ``__...__``：成对加粗，保留内部文本
+        - ``*...*`` / ``_..._``：成对斜体，保留内部文本；**星号须紧贴非数字
+          文本**——数字间的 ``*``（如剂量 "2*2"、体温 "37*5"）是乘号，不删
+        - 行首 ``-`` / ``*`` 列表项标记：删除（保留后续内容）
+        - 行首 ``#`` / ``##`` 标题标记：删除（保留后续内容）
+        - 反引号对 ``...``：成对，保留内部文本
+        - 孤立的 ``*`` / ``#`` / ``_``（不成对、不在行首、紧贴数字）保留，
+          避免误删正常文本
+
+    Args:
+        text: LLM 生成的回复原文。
+
+    Returns:
+        去除 Markdown 强调标记后的纯文本。
+    """
+    import re
+
+    # 成对加粗 / 下划线加粗 / 反引号：内部任意，保留内部文本
+    for pattern in (r"\*\*(.+?)\*\*", r"__(.+?)__", r"`(.+?)`"):
+        text = re.sub(pattern, r"\1", text)
+    # 成对斜体：星号紧贴非数字文本（数字间乘号不删）。
+    #   *注意* / *孙医生*     -> 删除星号（主正则，星号后紧贴非数字）
+    #   2*2 / 37*5            -> 保留（星号两侧是数字，是乘号非斜体）
+    #   *3次* / *5片*         -> 删除星号（兜底正则，数字后紧跟汉字）
+    # 规则：内部必须含至少一个非数字字符才按斜体处理；纯数字（剂量/乘号）保留。
+    for pattern in (r"\*(?!\d)(.+?)(?<!\d)\*", r"_(?!\d)(.+?)(?<!\d)_"):
+        text = re.sub(pattern, r"\1", text)
+    # 兜底：数字开头的斜体（*3次*、*5片*——数字后紧跟汉字，中文语境为强调
+    # 标记）。星号后须为「数字+汉字」开头，杜绝误删乘号（"37*5（剂量 2*2"：
+    # "5" 后是括号非汉字，不匹配）。
+    text = re.sub(r"\*(\d[一-鿿][^*\n]*?)\*", r"\1", text)
+    # 行首列表/标题标记：- / * / #+ / > 后跟空白
+    text = re.sub(r"(?m)^[ \t]*(?:[-*>]|#+)[ \t]+", "", text)
+    return text
