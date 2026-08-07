@@ -84,6 +84,7 @@
         WHERE n.user_id = #{userId}
           AND n.deleted_at IS NULL
           <if test="patientId != null">AND n.patient_id = #{patientId}</if>
+          <if test="type != null and type != ''">AND n.type = #{type}</if>
           <if test="read != null">
               AND <choose><when test="read">n.read_at IS NOT NULL</when><otherwise>n.read_at IS NULL</otherwise></choose>
           </if>
@@ -97,6 +98,7 @@
         WHERE n.user_id = #{userId}
           AND n.deleted_at IS NULL
           <if test="patientId != null">AND n.patient_id = #{patientId}</if>
+          <if test="type != null and type != ''">AND n.type = #{type}</if>
           <if test="read != null">
               AND <choose><when test="read">n.read_at IS NOT NULL</when><otherwise>n.read_at IS NULL</otherwise></choose>
           </if>

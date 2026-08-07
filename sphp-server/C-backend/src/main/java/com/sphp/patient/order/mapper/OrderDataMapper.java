@@ -131,6 +131,14 @@ public interface OrderDataMapper {
                                       @Param("node") String node,
                                       @Param("occurredAt") OffsetDateTime occurredAt);
 
+    /**
+     * 查询已支付购药订单的物流通知接收账号和就诊人。
+     *
+     * @param drugOrderId 购药订单 ID
+     * @return 通知接收目标；订单状态或支付单不满足时返回 null
+     */
+    DrugOrderNotificationTargetRecord selectDrugOrderNotificationTarget(@Param("drugOrderId") Long drugOrderId);
+
     /** 根据已支付购药订单创建用药计划。 */
     int createMedicationPlans(@Param("drugOrderId") Long drugOrderId, @Param("now") OffsetDateTime now);
 

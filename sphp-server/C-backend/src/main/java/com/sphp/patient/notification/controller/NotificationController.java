@@ -6,6 +6,7 @@ import com.sphp.patient.notification.vo.NotificationReadVO;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.common.constant.NotificationConstant;
+import com.sphp.patient.common.enums.NotificationTypeEnum;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.sphp.shared.common.constant.HeaderConstant;
@@ -48,6 +49,7 @@ public class NotificationController {
      *
      * @param patientId 可选就诊人 ID
      * @param read 可选已读状态
+     * @param type 可选通知类型
      * @param pageNo 页号
      * @param pageSize 页大小
      * @return 通知分页数据
@@ -57,23 +59,32 @@ public class NotificationController {
     public Result<NotificationPageVO> listNotifications(
             @RequestParam(required = false) @Positive(message = "就诊人ID必须为正整数") Long patientId,
             @RequestParam(required = false) Boolean read,
+            @RequestParam(required = false) String type,
             @RequestParam(required = false) Integer pageNo,
             @RequestParam(required = false) Integer pageSize) {
-        validateListParameters(patientId, pageNo, pageSize);
-        return Result.success("查询成功", notificationService.listNotifications(patientId, read, pageNo, pageSize));
+        validateListParameters(patientId, type, pageNo, pageSize);
+        return Result.success("查询成功", notificationService.listNotifications(patientId, read, type, pageNo, pageSize));
     }
 
     /**
      * 校验通知查询的正数分页参数，保证独立调用与 Web 参数校验行为一致。
      *
      * @param patientId 可选就诊人 ID
+     * @param type 可选通知类型
      * @param pageNo 可选页号
      * @param pageSize 可选页大小
      * @throws CAuthException 参数非正数时抛出
      */
-    private void validateListParameters(Long patientId, Integer pageNo, Integer pageSize) {
+    private void validateListParameters(Long patientId, String type, Integer pageNo, Integer pageSize) {
         if ((patientId != null && patientId < 1) || (pageNo != null && pageNo < 1) || (pageSize != null && pageSize < 1)) {
             throw new CAuthException(INVALID_PARAMETER, HttpStatus.BAD_REQUEST, "分页参数或就诊人ID必须为正整数");
+        }
+        if (type != null && !type.isBlank()) {
+            try {
+                NotificationTypeEnum.valueOf(type);
+            } catch (IllegalArgumentException exception) {
+                throw new CAuthException(INVALID_PARAMETER, HttpStatus.BAD_REQUEST, "通知类型不在允许范围内");
+            }
         }
     }
 

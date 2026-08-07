@@ -11,6 +11,9 @@ public enum NotificationTypeEnum {
     /** 购药订单相关通知 */
     DRUG_ORDER,
 
+    /** 药品配送物流相关通知 */
+    LOGISTICS,
+
     /** 用药计划提醒 */
     MEDICATION_REMINDER,
 
