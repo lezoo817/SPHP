@@ -86,7 +86,7 @@
         SELECT o.id, o.prescription_id, o.patient_id, o.pharmacy_id, COALESCE(o.pharmacy_name_snapshot, ph.name) AS pharmacy_name, o.status,
                o.delivery_method, o.delivery_address, o.logistics_company, o.tracking_no, o.logistics_status, o.amount_cent, o.expire_at,
                po.id AS payment_id, po.status AS payment_status, p.name AS patient_name, p.phone_ciphertext AS patient_phone,
-               po.paid_at + INTERVAL '60 seconds' AS expected_delivery_at
+               po.paid_at + COALESCE(o.estimated_delivery_minutes, 1) * INTERVAL '1 minute' AS expected_delivery_at
         FROM drug_order o INNER JOIN patient p ON p.id=o.patient_id AND p.deleted_at IS NULL
         LEFT JOIN pharmacy ph ON ph.id=o.pharmacy_id LEFT JOIN payment_order po ON po.drug_order_id=o.id
         WHERE o.id=#{drugOrderId} AND o.deleted_at IS NULL

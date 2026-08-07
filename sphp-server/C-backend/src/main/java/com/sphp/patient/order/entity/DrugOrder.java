@@ -42,6 +42,10 @@ public class DrugOrder extends BaseDeleteDO {
     @TableField("delivery_address")
     private String deliveryAddress;
 
+    /** 下单时固化的模拟预计配送时长，单位分钟。 */
+    @TableField("estimated_delivery_minutes")
+    private Integer estimatedDeliveryMinutes;
+
     /** 订单状态 */
     @TableField("status")
     private String status;

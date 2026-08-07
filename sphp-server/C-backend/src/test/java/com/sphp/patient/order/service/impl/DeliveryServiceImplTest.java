@@ -12,6 +12,7 @@ import com.sphp.patient.order.mapper.OrderDataMapper;
 import com.sphp.patient.order.mapper.OrderPharmacyStockRecord;
 import com.sphp.patient.order.mapper.OrderPrescriptionItemRecord;
 import com.sphp.patient.order.mapper.OrderPrescriptionRecord;
+import com.sphp.patient.order.support.DeliveryOrderSnapshot;
 import com.sphp.patient.order.support.DeliverySimulationCalculator;
 import com.sphp.patient.order.vo.DeliveryAddressDeleteVO;
 import com.sphp.patient.order.vo.DeliveryAddressVO;
@@ -97,6 +98,30 @@ class DeliveryServiceImplTest {
                 () -> service.deliveryResolveOrderAddress(30001L, null));
 
         assertEquals("A0301", exception.getCode());
+    }
+
+    /** 验证下单冻结的配送时效与药房推荐使用同一套确定性计算规则。 */
+    @Test
+    void deliveryResolveOrderSnapshotUsesSameSimulationAsRecommendation() {
+        DeliveryAddressMapper addressMapper = mock(DeliveryAddressMapper.class);
+        DeliveryDataMapper dataMapper = mock(DeliveryDataMapper.class);
+        DeliveryProperties properties = new DeliveryProperties();
+        properties.setProvinceCoefficients(java.util.Map.of("henan-shanghai", 1.6D));
+        DeliverySimulationCalculator calculator = new DeliverySimulationCalculator();
+        DeliveryServiceImpl service = new DeliveryServiceImpl(addressMapper, dataMapper, mock(OrderDataMapper.class),
+                properties, calculator);
+        context();
+        DeliveryAddress address = address(30001L, true);
+        when(dataMapper.deliverySelectAddress(30001L)).thenReturn(address);
+        when(dataMapper.deliverySelectHospitalAddress(101L)).thenReturn("上海市示范区中心路1号");
+
+        DeliveryOrderSnapshot snapshot = service.deliveryResolveOrderSnapshot(30001L, null, 101L, 14001L);
+
+        int expectedMinutes = calculator.deliveryCalculate(com.sphp.patient.common.enums.DeliveryProvinceEnum.HENAN,
+                address.getDetailAddress(), 101L, 14001L,
+                com.sphp.patient.common.enums.DeliveryProvinceEnum.SHANGHAI, 1.6D).estimatedDeliveryMinutes();
+        assertEquals(expectedMinutes, snapshot.estimatedDeliveryMinutes());
+        assertEquals("张三 13800138000 河南省郑州市中心路1号", snapshot.deliveryAddress());
     }
 
     /** 验证药房推荐只基于已批准处方库存计算真实总价和稳定配送结果。 */

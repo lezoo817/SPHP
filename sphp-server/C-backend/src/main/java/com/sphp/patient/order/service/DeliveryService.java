@@ -2,6 +2,7 @@ package com.sphp.patient.order.service;
 
 import com.sphp.patient.order.dto.DeliveryAddressCreateRequest;
 import com.sphp.patient.order.dto.DeliveryAddressUpdateRequest;
+import com.sphp.patient.order.support.DeliveryOrderSnapshot;
 import com.sphp.patient.order.vo.DeliveryAddressDeleteVO;
 import com.sphp.patient.order.vo.DeliveryAddressVO;
 import com.sphp.patient.order.vo.DeliveryPharmacyRecommendationVO;
@@ -61,6 +62,18 @@ public interface DeliveryService {
      * @return 可写入订单的不可变地址快照
      */
     String deliveryResolveOrderAddress(Long addressId, String legacyDeliveryAddress);
+
+    /**
+     * 为购药订单解析不可变地址与模拟配送时效快照。
+     *
+     * @param addressId 新版地址簿 ID
+     * @param legacyDeliveryAddress 旧版完整地址文本
+     * @param hospitalId 药房所属医院 ID
+     * @param pharmacyId 选定院内药房 ID
+     * @return 可写入订单的地址与预计配送分钟数快照
+     */
+    DeliveryOrderSnapshot deliveryResolveOrderSnapshot(Long addressId, String legacyDeliveryAddress,
+                                                       Long hospitalId, Long pharmacyId);
 
     /**
      * 基于已批准处方、当前账号地址和真实库存推荐院内药房。
