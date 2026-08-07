@@ -1,11 +1,13 @@
 package com.sphp.admin.schedule.service;
 
 import com.sphp.admin.common.vo.PageResult;
+import com.sphp.admin.schedule.dto.BatchPublishRequest;
 import com.sphp.admin.schedule.dto.BatchScheduleRequest;
 import com.sphp.admin.schedule.dto.ScheduleCreateRequest;
 import com.sphp.admin.schedule.dto.SlotConfigRequest;
 import com.sphp.admin.schedule.vo.BatchCreateReportVO;
 import com.sphp.admin.schedule.vo.BatchPreviewVO;
+import com.sphp.admin.schedule.vo.BatchPublishReportVO;
 import com.sphp.admin.schedule.vo.ForceReleaseVO;
 import com.sphp.admin.schedule.vo.LockedSlotVO;
 import com.sphp.admin.schedule.vo.ScheduleCreateVO;
@@ -131,4 +133,14 @@ public interface ScheduleService {
      * @return 提交结果报告（新建/复用/跳过分类汇总）
      */
     BatchCreateReportVO createBatch(BatchScheduleRequest request);
+
+    /**
+     * 批量发布排班（ADMIN）。
+     *
+     * <p>对给定 ID 列表逐条调 {@link #publish(Long)}；非 DRAFT / 越权 / 未配置时段等失败原因以明细形式返回，不抛错中断整批。
+     *
+     * @param request 批量发布请求
+     * @return 发布结果报告
+     */
+    BatchPublishReportVO batchPublish(BatchPublishRequest request);
 }

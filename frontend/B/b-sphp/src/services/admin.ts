@@ -189,6 +189,16 @@ export function createBatchSchedule(
   });
 }
 
+/** 批量发布排班（仅 ADMIN） */
+export function batchPublishSchedules(
+  data: API.BatchPublishReq,
+): Promise<API.BatchPublishReport> {
+  return requestData<API.BatchPublishReport>(
+    '/api/b/admin/schedules/batch-publish',
+    { method: 'POST', data },
+  );
+}
+
 /** 查询锁定号源看板（分页，date 必填） */
 export function getLockedSlots(
   params: API.LockedSlotsParams,

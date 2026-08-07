@@ -274,6 +274,24 @@ declare global {
       skippedItems: API.BatchSkipItem[];
     }
 
+    /** 批量发布排班请求 */
+    interface BatchPublishReq {
+      scheduleIds: number[];
+    }
+
+    /** 批量发布排班 - 失败项 */
+    interface BatchPublishFailedItem {
+      scheduleId: number;
+      reason: string;
+    }
+
+    /** 批量发布排班报告 */
+    interface BatchPublishReport {
+      publishedCount: number;
+      failedCount: number;
+      failedItems: API.BatchPublishFailedItem[];
+    }
+
     /** 锁定号源看板查询参数 */
     interface LockedSlotsParams extends PageParams {
       date: string; // yyyy-MM-dd（必填）
