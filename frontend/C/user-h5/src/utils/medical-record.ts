@@ -1,4 +1,18 @@
 import type { MedicalRecordItem } from '../typings/api';
+import type { AgentNavigationState } from '../typings/agent';
+
+/**
+ * 构建病历“AI 一键解读”跳转状态。
+ * @param from 病历详情页的完整地址
+ * @param consultId 服务端真实完成问诊记录 ID
+ * @returns 跳转 AI 页面时使用的路由状态
+ */
+export function buildMedicalRecordInterpretationAgentState(from: string, consultId: number): AgentNavigationState {
+  return {
+    from,
+    presetAction: { type: 'interpret_medical_record', consultId },
+  };
+}
 
 /** 病历列表的日期筛选范围。 */
 export interface MedicalRecordDateRange {

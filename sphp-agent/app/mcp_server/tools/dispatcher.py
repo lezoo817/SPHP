@@ -87,6 +87,7 @@ _MCP_TOOL_MODULES = {
     "notification": "app.mcp_server.tools.notification",
     "pharmacy": "app.mcp_server.tools.pharmacy",
     "prescription": "app.mcp_server.tools.prescription",
+    "medical_record": "app.mcp_server.tools.medical_record",
     "b_doctor": "app.mcp_server.tools.b_doctor",
 }
 
@@ -111,10 +112,12 @@ _MCP_TOOL_FUNCS: dict[str, tuple[str, str]] = {
     # 处方
     "query_prescriptions": ("prescription", "query_prescriptions"),
     "interpret_prescription": ("prescription", "interpret_prescription"),
+    "interpret_medical_record": ("medical_record", "interpret_medical_record"),
     # 购药
     "query_pharmacy_stock": ("pharmacy", "query_pharmacy_stock"),
     "recommend_pharmacies": ("pharmacy", "recommend_pharmacies"),
     "create_drug_order": ("pharmacy", "create_drug_order"),
+    "authorize_drug_order_reminder_after_receipt": ("pharmacy", "authorize_drug_order_reminder_after_receipt"),
     "query_drug_orders": ("pharmacy", "query_drug_orders"),
     "cancel_drug_order": ("pharmacy", "cancel_drug_order"),
     "confirm_drug_receipt": ("pharmacy", "confirm_drug_receipt"),

@@ -101,6 +101,49 @@
     <update id="expirePendingDrugOrder">UPDATE drug_order SET status='EXPIRED', updated_at=#{now} WHERE id=#{drugOrderId} AND status='PENDING_PAYMENT' AND deleted_at IS NULL</update>
     <update id="closePendingDrugOrderPayment">UPDATE payment_order SET status='CLOSED', updated_at=#{now} WHERE drug_order_id=#{drugOrderId} AND status='PENDING'</update>
     <update id="confirmOrderReceipt">UPDATE drug_order SET logistics_status='RECEIVED', received_at=#{now}, updated_at=#{now} WHERE id=#{drugOrderId} AND status='PAID' AND logistics_status='TO_RECEIVE' AND deleted_at IS NULL</update>
+    <select id="selectDrugOrderReminderOrderForUpdate" resultType="com.sphp.patient.order.mapper.DrugOrderReminderOrderRecord">
+        SELECT id AS drug_order_id, patient_id, status AS order_status, logistics_status
+        FROM drug_order
+        WHERE id = #{drugOrderId} AND deleted_at IS NULL
+        FOR UPDATE
+    </select>
+    <select id="selectDrugOrderReminderActivationStatus" resultType="java.lang.String">
+        SELECT status
+        FROM drug_order_medication_reminder_activation
+        WHERE drug_order_id = #{drugOrderId} AND deleted_at IS NULL
+    </select>
+    <insert id="upsertDrugOrderReminderActivation">
+        INSERT INTO drug_order_medication_reminder_activation
+            (drug_order_id, user_id, patient_id, status, authorized_at, created_at, updated_at)
+        VALUES (#{drugOrderId}, #{userId}, #{patientId}, 'PENDING_RECEIPT', #{now}, #{now}, #{now})
+        ON CONFLICT (drug_order_id) DO UPDATE
+        SET updated_at = EXCLUDED.updated_at
+        WHERE drug_order_medication_reminder_activation.status = 'PENDING_RECEIPT'
+    </insert>
+    <select id="selectOrderMedicationReminderPlans" resultType="com.sphp.patient.order.mapper.MedicationReminderPlanRecord">
+        SELECT id AS plan_id, frequency
+        FROM medication_plan
+        WHERE drug_order_id = #{drugOrderId} AND deleted_at IS NULL
+        ORDER BY id ASC
+    </select>
+    <update id="enableOrderMedicationReminderPlan">
+        UPDATE medication_plan
+        SET reminder_enabled = true,
+            reminder_times = CAST(#{reminderTimesJson, jdbcType=VARCHAR} AS jsonb),
+            next_remind_at = #{nextRemindAt},
+            updated_at = #{now}
+        WHERE id = #{planId}
+          AND status = 'ACTIVE'
+          AND reminder_enabled = false
+          AND deleted_at IS NULL
+    </update>
+    <update id="markDrugOrderReminderActivationActivated">
+        UPDATE drug_order_medication_reminder_activation
+        SET status = 'ACTIVATED', activated_at = #{activatedAt}, updated_at = #{activatedAt}
+        WHERE drug_order_id = #{drugOrderId}
+          AND status = 'PENDING_RECEIPT'
+          AND deleted_at IS NULL
+    </update>
     <select id="selectPaymentBusiness" resultType="com.sphp.patient.order.mapper.PaymentBusinessRecord">
         SELECT id, appointment_id, drug_order_id FROM payment_order WHERE id=#{paymentId}
     </select>
@@ -128,10 +171,20 @@
         INSERT INTO drug_order_logistics_trace (drug_order_id, node, occurred_at)
         VALUES (#{drugOrderId}, #{node}, #{occurredAt})
     </insert>
+    <select id="selectDrugOrderNotificationTarget" resultType="com.sphp.patient.order.mapper.DrugOrderNotificationTargetRecord">
+        SELECT o.id AS drug_order_id, o.patient_id, po.payer_user_id
+        FROM drug_order o
+        INNER JOIN payment_order po ON po.drug_order_id = o.id AND po.status = 'SUCCESS'
+        WHERE o.id = #{drugOrderId}
+          AND o.status = 'PAID'
+          AND o.deleted_at IS NULL
+        ORDER BY po.id ASC
+        LIMIT 1
+    </select>
     <insert id="createMedicationPlans">
-        INSERT INTO medication_plan (patient_id, prescription_item_id, drug_name_snapshot, frequency, usage_method, dosage, duration_days,
+        INSERT INTO medication_plan (drug_order_id, patient_id, prescription_item_id, drug_name_snapshot, frequency, usage_method, dosage, duration_days,
                                      status, reminder_enabled, created_at, updated_at)
-        SELECT o.patient_id, pi.id, LEFT(doi.drug_name_snapshot, 128), COALESCE(pi.frequency, '按医嘱'), pi.usage_method,
+        SELECT o.id, o.patient_id, pi.id, LEFT(doi.drug_name_snapshot, 128), COALESCE(pi.frequency, '按医嘱'), pi.usage_method,
                pi.dosage, pi.days, 'ACTIVE', false, #{now}, #{now}
         FROM drug_order o INNER JOIN drug_order_item doi ON doi.drug_order_id=o.id
         INNER JOIN prescription_item pi ON pi.prescription_id=o.prescription_id AND pi.drug_id=doi.drug_id

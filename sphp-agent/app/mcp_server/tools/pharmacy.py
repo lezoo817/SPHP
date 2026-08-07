@@ -59,6 +59,25 @@ async def create_drug_order(
     return await call_java_api(tool_name="create_drug_order", body=body, user_id=user_id)
 
 
+async def authorize_drug_order_reminder_after_receipt(
+    drug_order_id: int, user_id: int | None = None
+) -> dict[str, Any]:
+    """登记订单确认收货后自动开启用药提醒。
+
+    Args:
+        drug_order_id: 已支付购药订单 ID。
+        user_id: 经 JWT 鉴权得到的当前用户 ID。
+
+    Returns:
+        Java 返回的订单自动提醒授权结果。
+    """
+    return await call_java_api(
+        api_name="authorize_drug_order_reminder_after_receipt",
+        path_params={"drug_order_id": drug_order_id},
+        user_id=user_id,
+    )
+
+
 async def query_drug_orders(
     drug_order_id: int | None = None,
     status: str | None = None,

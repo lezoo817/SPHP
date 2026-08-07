@@ -5,6 +5,7 @@ import com.sphp.patient.order.vo.DrugOrderCancelVO;
 import com.sphp.patient.order.vo.DrugOrderCreateVO;
 import com.sphp.patient.order.vo.DrugOrderDetailVO;
 import com.sphp.patient.order.vo.DrugOrderPageVO;
+import com.sphp.patient.order.vo.DrugOrderReminderActivationVO;
 import com.sphp.patient.order.vo.DrugOrderReceiptVO;
 import com.sphp.patient.order.vo.PharmacyInventoryVO;
 import com.sphp.patient.registration.dto.RegisteringPaymentSimulateRequest;
@@ -61,6 +62,14 @@ public interface OrderService {
      * @return 收货结果
      */
     DrugOrderReceiptVO confirmDrugOrderReceipt(Long drugOrderId);
+
+    /**
+     * 登记购药订单收货后自动开启用药提醒的授权。
+     *
+     * @param drugOrderId 购药订单 ID
+     * @return 授权结果
+     */
+    DrugOrderReminderActivationVO authorizeDrugOrderReminderAfterReceipt(Long drugOrderId);
 
 
     /**

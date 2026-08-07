@@ -369,6 +369,22 @@ def _register_pharmacy_query_tools() -> None:
 
     ToolRegistry.register(
         ToolSchema(
+            name="authorize_drug_order_reminder_after_receipt",
+            description="登记购药订单确认收货后自动开启用药提醒",
+            parameters={
+                "properties": {
+                    "drug_order_id": {"type": "integer", "description": "已支付购药订单ID"},
+                },
+                "required": ["drug_order_id"],
+            },
+            scope=ToolScope.C_END,
+            security_level=SecurityLevel.L2,
+            executor="mcp",
+        )
+    )
+
+    ToolRegistry.register(
+        ToolSchema(
             name="query_drug_orders",
             description="查询购药订单列表或详情（不带 drug_order_id 返回列表，带 id 返回详情）",
             parameters={
@@ -423,7 +439,23 @@ def _register_pharmacy_order_tools() -> None:
 
 
 def _register_health_record_tools() -> None:
-    """注册健康档案类工具（3 个）：健康档案、过敏史、既往史管理。"""
+    """注册健康档案类工具：病历解读、健康档案、过敏史和既往史管理。"""
+
+    ToolRegistry.register(
+        ToolSchema(
+            name="interpret_medical_record",
+            description="读取医生病历正文并结合该病历所属就诊人的过敏史、既往史生成解读输入",
+            parameters={
+                "properties": {
+                    "consult_id": {"type": "integer", "description": "病历对应的完成问诊记录ID"},
+                },
+                "required": ["consult_id"],
+            },
+            scope=ToolScope.C_END,
+            security_level=SecurityLevel.L1,
+            executor="mcp",
+        )
+    )
 
     ToolRegistry.register(
         ToolSchema(
@@ -557,14 +589,22 @@ def _register_medication_plan_tools() -> None:
     ToolRegistry.register(
         ToolSchema(
             name="update_medication_plan",
-            description="暂停/恢复/完成用药计划",
+            description="更新用药计划：开启/关闭用药提醒、暂停/恢复/完成计划",
             parameters={
                 "properties": {
                     "plan_id": {"type": "integer", "description": "用药计划ID"},
                     "action": {
                         "type": "string",
-                        "enum": ["PAUSE", "RESUME", "COMPLETE"],
-                        "description": "操作类型",
+                        "enum": [
+                            "ENABLE_REMINDER",
+                            "DISABLE_REMINDER",
+                            "PAUSE",
+                            "RESUME",
+                            "COMPLETE",
+                        ],
+                        "description": "操作类型：ENABLE_REMINDER=开启用药提醒，"
+                        "DISABLE_REMINDER=关闭用药提醒，PAUSE=暂停，RESUME=恢复，"
+                        "COMPLETE=完成",
                     },
                 },
                 "required": ["plan_id", "action"],

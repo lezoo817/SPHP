@@ -37,21 +37,22 @@ class NotificationControllerTest {
     void listNotificationsReturnsExpectedPage() throws Exception {
         NotificationService notificationService = mock(NotificationService.class);
         CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
-        when(notificationService.listNotifications(20001L, false, 1, 20)).thenReturn(NotificationPageVO.builder()
+        when(notificationService.listNotifications(20001L, false, "LOGISTICS", 1, 20)).thenReturn(NotificationPageVO.builder()
                 .pageNo(1).pageSize(20).total(1)
-                .records(List.of(NotificationPageVO.Item.builder().id(21001L).type("APPOINTMENT")
-                        .patientId(20001L).patientName("张三").title("挂号订单待支付")
-                        .content("请在规定时间内完成支付。 ").read(false).createdAt(OffsetDateTime.now()).build()))
+                .records(List.of(NotificationPageVO.Item.builder().id(21001L).type("LOGISTICS")
+                        .patientId(20001L).patientName("张三").title("药品已送达")
+                        .content("药品已送达，请及时确认收货。 ").read(false).createdAt(OffsetDateTime.now()).build()))
                 .build());
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new NotificationController(notificationService, idempotencyService))
                 .setControllerAdvice(new NotificationExceptionHandler()).build();
 
         mockMvc.perform(get("/c/v1/notifications").param("patientId", "20001")
-                        .param("read", "false").param("pageNo", "1").param("pageSize", "20"))
+                        .param("read", "false").param("type", "LOGISTICS")
+                        .param("pageNo", "1").param("pageSize", "20"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("00000"))
                 .andExpect(jsonPath("$.data.total").value(1))
-                .andExpect(jsonPath("$.data.records[0].type").value("APPOINTMENT"))
+                .andExpect(jsonPath("$.data.records[0].type").value("LOGISTICS"))
                 .andExpect(jsonPath("$.data.records[0].read").value(false));
     }
 
@@ -68,6 +69,23 @@ class NotificationControllerTest {
                 .setControllerAdvice(new NotificationExceptionHandler()).build();
 
         mockMvc.perform(get("/c/v1/notifications").param("patientId", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("A0400"));
+    }
+
+    /**
+     * 验证未知通知类型被查询参数校验拒绝。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void listNotificationsRejectsInvalidType() throws Exception {
+        NotificationService notificationService = mock(NotificationService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new NotificationController(notificationService, idempotencyService))
+                .setControllerAdvice(new NotificationExceptionHandler()).build();
+
+        mockMvc.perform(get("/c/v1/notifications").param("type", "UNKNOWN"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("A0400"));
     }

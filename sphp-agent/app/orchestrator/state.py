@@ -59,14 +59,19 @@ class AgentState(TypedDict):
     preset_action: NotRequired[
         Literal[
             "interpret_prescription",
+            "interpret_medical_record",
             "recommend_prescription_pharmacy",
             "notify_drug_order_paid",
+            "authorize_drug_order_reminder_after_receipt",
         ]
         | None
     ]
 
     # 预设处方解读对应的处方 ID，由接入层完成格式校验后写入。
     preset_prescription_id: NotRequired[int | None]
+
+    # 病历解读对应的完成问诊记录 ID，由接入层完成格式校验后写入。
+    preset_medical_record_id: NotRequired[int | None]
 
     # 购药支付成功通知关联的订单 ID，仅允许受控预设写入。
     preset_drug_order_id: NotRequired[int | None]

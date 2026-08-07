@@ -111,6 +111,11 @@ JAVA_API_MAP: dict[str, dict[str, str]] = {
         "path": "/api/c/v1/prescriptions/{prescription_id}/interpretation",
         "scope": "c_end",
     },
+    "query_medical_record:detail": {
+        "method": "GET",
+        "path": "/api/c/v1/medical-records/{consult_id}",
+        "scope": "c_end",
+    },
     # ---- C 端：健康档案 ----
     "query_health_record": {
         "method": "GET",
@@ -205,6 +210,11 @@ JAVA_API_MAP: dict[str, dict[str, str]] = {
     "create_drug_order": {
         "method": "POST",
         "path": "/api/c/v1/drug-orders",
+        "scope": "c_end",
+    },
+    "authorize_drug_order_reminder_after_receipt": {
+        "method": "POST",
+        "path": "/api/c/v1/drug-orders/{drug_order_id}/reminder-after-receipt",
         "scope": "c_end",
     },
     "query_drug_orders:list": {

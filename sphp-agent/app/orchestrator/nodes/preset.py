@@ -8,8 +8,10 @@ from typing import Any
 from app.orchestrator.state import AgentState
 
 PRESET_INTERPRET_PRESCRIPTION = "interpret_prescription"
+PRESET_INTERPRET_MEDICAL_RECORD = "interpret_medical_record"
 PRESET_RECOMMEND_PRESCRIPTION_PHARMACY = "recommend_prescription_pharmacy"
 PRESET_NOTIFY_DRUG_ORDER_PAID = "notify_drug_order_paid"
+PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT = "authorize_drug_order_reminder_after_receipt"
 
 
 def resolve_preset_interpretation(context: dict[str, Any] | None) -> int | None:
@@ -28,6 +30,26 @@ def resolve_preset_interpretation(context: dict[str, Any] | None) -> int | None:
     if isinstance(prescription_id, bool) or not isinstance(prescription_id, int):
         return None
     return prescription_id if prescription_id > 0 else None
+
+
+def resolve_preset_medical_record_interpretation(
+    context: dict[str, Any] | None,
+) -> int | None:
+    """解析合法的病历解读预设动作。
+
+    Args:
+        context: 前端随对话请求传入的页面上下文。
+
+    Returns:
+        合法病历 ID；不是指定预设动作或编号非法时返回 None。
+    """
+    if not context or context.get("preset_action") != PRESET_INTERPRET_MEDICAL_RECORD:
+        return None
+    consult_id = context.get("medical_record_id")
+    # bool 是 int 的子类，需显式拒绝，避免 True 被错误当作病历 ID。
+    if isinstance(consult_id, bool) or not isinstance(consult_id, int):
+        return None
+    return consult_id if consult_id > 0 else None
 
 
 def resolve_preset_recommendation(context: dict[str, Any] | None) -> int | None:
@@ -66,14 +88,38 @@ def resolve_preset_paid_order(context: dict[str, Any] | None) -> int | None:
     return drug_order_id if drug_order_id > 0 else None
 
 
+def resolve_preset_drug_order_reminder_authorization(
+    context: dict[str, Any] | None,
+) -> int | None:
+    """解析合法的收货后自动提醒授权预设动作。
+
+    Args:
+        context: 前端随对话请求传入的页面上下文。
+
+    Returns:
+        合法购药订单 ID；不是指定预设动作或编号非法时返回 None。
+    """
+    if (
+        not context
+        or context.get("preset_action")
+        != PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT
+    ):
+        return None
+    drug_order_id = context.get("drug_order_id")
+    # bool 是 int 的子类，需显式拒绝，避免 True 被错误当作订单 ID。
+    if isinstance(drug_order_id, bool) or not isinstance(drug_order_id, int):
+        return None
+    return drug_order_id if drug_order_id > 0 else None
+
+
 async def preset_action_node(state: AgentState) -> dict[str, Any]:
-    """构造受控处方解读、药店推荐或支付通知工具调用。
+    """构造受控处方/病历解读、药店推荐、支付通知或提醒授权工具调用。
 
     Args:
         state: 已经完成鉴权的 Agent 状态。
 
     Returns:
-        仅包含指定 L1 工具调用的状态更新；非法预设不产生调用。
+        包含固定 L1 查询或待安全确认的 L2 授权调用；非法预设不产生调用。
     """
     action = state.get("preset_action")
     prescription_id = state.get("preset_prescription_id")
@@ -115,6 +161,20 @@ async def preset_action_node(state: AgentState) -> dict[str, Any]:
             ]
         }
 
+    if action == PRESET_INTERPRET_MEDICAL_RECORD:
+        consult_id = state.get("preset_medical_record_id")
+        if isinstance(consult_id, bool) or not isinstance(consult_id, int) or consult_id <= 0:
+            return {"tool_calls": [], "preset_error": "病历编号无效，请返回病历详情后重试。"}
+        # 受控入口仅读取病历和病历所属患者的健康档案，不开放任何病历修改操作。
+        return {
+            "tool_calls": [
+                {
+                    "name": PRESET_INTERPRET_MEDICAL_RECORD,
+                    "arguments": {"consult_id": consult_id},
+                }
+            ]
+        }
+
     if action == PRESET_NOTIFY_DRUG_ORDER_PAID:
         drug_order_id = state.get("preset_drug_order_id")
         if (
@@ -129,6 +189,32 @@ async def preset_action_node(state: AgentState) -> dict[str, Any]:
                 {
                     "name": "query_drug_orders",
                     "arguments": {"drug_order_id": drug_order_id},
+                }
+            ]
+        }
+
+    if action == PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT:
+        drug_order_id = state.get("preset_drug_order_id")
+        if (
+            isinstance(drug_order_id, bool)
+            or not isinstance(drug_order_id, int)
+            or drug_order_id <= 0
+        ):
+            return {
+                "tool_calls": [],
+                "preset_error": "购药订单编号无效，暂时无法设置自动用药提醒。",
+            }
+        # 用户点击入口后仍经过 L2 确认，不能由受控预设直接写入授权。
+        return {
+            "tool_calls": [
+                {
+                    "name": PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT,
+                    "arguments": {"drug_order_id": drug_order_id},
+                    "display": {
+                        "title": "确认开启收货后用药提醒",
+                        "summary": "订单确认收货后，将自动开启该订单药品的用药提醒。",
+                        "details": {"drug_order_id": drug_order_id},
+                    },
                 }
             ]
         }

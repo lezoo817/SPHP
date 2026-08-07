@@ -35,14 +35,18 @@ REPLY_SYSTEM_PROMPT = """你是一个医疗健康助手，正在为用户提供�
 - 不要编造医疗数据
 - 不要替代医生做诊断
 - 不确定的内容要明确告知
+- **输出必须是纯文本**：不得使用 Markdown 星号（**加粗**、*斜体*、列表项 - / *）、
+  井号标题、反引号等标记语法。需要强调的内容用自然语言表述即可。
 """
 
 # 处方解读来源标识，与 MCP 处方工具返回的数据契约一致。
 _OFFICIAL_READY_SOURCE = "OFFICIAL_READY"
 _AI_FALLBACK_SOURCE = "AI_FALLBACK"
 _PRESET_INTERPRET_PRESCRIPTION = "interpret_prescription"
+_PRESET_INTERPRET_MEDICAL_RECORD = "interpret_medical_record"
 _PRESET_RECOMMEND_PRESCRIPTION_PHARMACY = "recommend_prescription_pharmacy"
 _PRESET_NOTIFY_DRUG_ORDER_PAID = "notify_drug_order_paid"
+_PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT = "authorize_drug_order_reminder_after_receipt"
 
 
 def _positive_int(value: Any) -> int | None:
@@ -126,6 +130,80 @@ def _response_payload(result: dict[str, Any]) -> Any:
     return response
 
 
+def _extract_medical_record_interpretation(
+    tool_results: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """提取受控病历解读工具返回的病历与健康档案信息。
+
+    Args:
+        tool_results: 本轮 MCP 工具执行结果。
+
+    Returns:
+        含 medical_record 和 health_record 的解读数据；无有效结果时返回 None。
+    """
+    for result in tool_results or []:
+        if result.get("tool_name") != _PRESET_INTERPRET_MEDICAL_RECORD:
+            continue
+        if not result.get("success"):
+            return None
+        payload = _response_payload(result)
+        if not isinstance(payload, dict):
+            return None
+        medical_record = payload.get("medical_record")
+        health_record = payload.get("health_record")
+        if isinstance(medical_record, dict) and isinstance(health_record, dict):
+            return payload
+    return None
+
+
+def _build_medical_record_interpretation_context(
+    interpretation: dict[str, Any],
+) -> str | None:
+    """构造病历与健康档案解读的受限 LLM 输入。
+
+    Args:
+        interpretation: 受控病历解读工具成功返回的结构化数据。
+
+    Returns:
+        限制模型解读范围、格式和医疗安全边界的系统提示；数据异常时返回 None。
+    """
+    medical_record = interpretation.get("medical_record")
+    health_record = interpretation.get("health_record")
+    if not isinstance(medical_record, dict) or not isinstance(health_record, dict):
+        return None
+    try:
+        detail = json.dumps(medical_record, ensure_ascii=False)
+        health = json.dumps(health_record, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return None
+    return (
+        "当前回复必须且只能基于以下真实医生病历和健康档案生成解读。\n"
+        f"医生病历：{detail}\n"
+        f"健康档案：{health}\n\n"
+        "你是医疗 AI 助手。请遵循“先共情、再翻译、后行动、边界明”的顺序，"
+        "将病历翻译为患者能理解的说明，而不是逐句复述或生成新的诊疗意见。\n\n"
+        "输出必须是自然的纯文本段落，不得使用 Markdown 标题、列表、编号、星号、"
+        "反引号或其他标记语法；每个部分必须使用空行分隔。\n\n"
+        "第一段必须原样以这句话开始：“您好，以下是我根据病历信息为您整理的通俗版解读，"
+        "这不能替代主治医生的面诊建议。如有任何紧急不适，请立即就医。”\n\n"
+        "第二段以“病历内容概述：”开头。将病历中已明确写明的诊断、症状、体征、检查结果、"
+        "治疗方案或复诊安排翻译成日常语言，解释医学术语对生活的实际含义。"
+        "只解释医生已经记录的内容，不得篡改、补全或否定病历，也不得把病历提到的疾病名称"
+        "解释为新的诊断。病历未提供诊断、检查、用药或复诊信息时，必须明确说明“病历未提供该信息”。\n\n"
+        "第三段以“您现在需要关注的事项：”开头。仅将病历中已有的用药方法、复诊时间、"
+        "观察事项和生活建议整理为清晰的行动提示；不得自行补充剂量、疗程、禁忌、相互作用、"
+        "生活方式建议或治疗调整。病历没有明确医嘱时，写“请以医生当面或书面医嘱为准”。\n\n"
+        "第四段以“健康档案提示：”开头。仅列出健康档案已记录的过敏史和既往史，并提示用户"
+        "在后续就医或用药时主动告知医生；不得推断其与本次病历必然相关。"
+        "过敏史或既往史为空时，必须明确写“健康档案未记录过敏史”或“健康档案未记录既往史”。\n\n"
+        "第五段以“需要及时就医的情况：”开头。仅说明病历中医生明确交代的危险信号；"
+        "若病历没有记录，写“病历未特别列出危险信号；出现突发或持续加重的不适时，请及时就医”。"
+        "不得补造药物副作用、危险信号或停药要求。\n\n"
+        "最后另起一段，以“如需进一步了解病历中某个术语或已有医嘱的含义，可以继续告诉我。”"
+        "收尾，并保留“本说明仅供健康信息理解，不替代医生诊断和治疗建议”。"
+    )
+
+
 def _format_paid_order_notification(state: AgentState) -> str | None:
     """基于订单详情生成确定性的支付成功配送通知。
 
@@ -163,6 +241,40 @@ def _format_paid_order_notification(state: AgentState) -> str | None:
         except ValueError:
             formatted_time = expected_delivery_at
         return f"您已购买成功，预计{formatted_time}送达。{address_message}"
+    return None
+
+
+def _paid_order_reminder_action_cards(state: AgentState) -> list[dict[str, Any]] | None:
+    """为未授权的已支付订单构造收货后自动提醒入口。
+
+    Args:
+        state: 含订单详情查询结果的 Agent 状态。
+
+    Returns:
+        待前端点击的受控交互卡；订单未支付、已授权或结果无效时返回 None。
+    """
+    drug_order_id = _positive_int(state.get("preset_drug_order_id"))
+    if drug_order_id is None:
+        return None
+    for result in state.get("tool_results") or []:
+        if result.get("tool_name") != "query_drug_orders" or not result.get("success"):
+            continue
+        payload = _response_payload(result)
+        if not isinstance(payload, dict) or payload.get("status") != "PAID":
+            return None
+        # Java 权威返回已有授权状态后不重复引导用户确认同一项设置。
+        activation_status = payload.get("reminderActivationStatus")
+        if isinstance(activation_status, str) and activation_status.strip():
+            return None
+        return [
+            {
+                "action_type": _PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT,
+                "title": "用药提醒",
+                "summary": "收货后是否需要为您自动开启用药提醒？",
+                "button_text": "开启提醒",
+                "arguments": {"drug_order_id": drug_order_id},
+            }
+        ]
     return None
 
 
@@ -471,7 +583,13 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
             notification = _format_paid_order_notification(state)
             if notification:
                 # 预计送达时间必须来自 Java 订单详情，不能交给模型生成。
-                return {"messages": [{"role": "assistant", "content": notification}]}
+                result: dict[str, Any] = {
+                    "messages": [{"role": "assistant", "content": notification}]
+                }
+                action_cards = _paid_order_reminder_action_cards(state)
+                if action_cards:
+                    result["action_cards"] = action_cards
+                return result
 
         if state.get("preset_action") == _PRESET_RECOMMEND_PRESCRIPTION_PHARMACY:
             pending_confirmations = state.get("pending_confirmations") or []
@@ -568,6 +686,15 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
                 # 即时说明只能使用已授权读取的处方详情，避免模型补造医疗事实。
                 llm_messages.append({"role": "system", "content": fallback_context})
 
+        medical_record_interpretation = _extract_medical_record_interpretation(tool_results)
+        if medical_record_interpretation:
+            medical_record_context = _build_medical_record_interpretation_context(
+                medical_record_interpretation
+            )
+            if medical_record_context:
+                # 病历解读只允许模型解释已授权读取的原文和健康档案，不能生成诊断或修改建议。
+                llm_messages.append({"role": "system", "content": medical_record_context})
+
         # 如果有待确认的 L2 操作，提醒 LLM 在回复中引导用户查看确认卡片
         pending_confirmations = state.get("pending_confirmations")
         if pending_confirmations:
@@ -612,6 +739,8 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         # BaseMessage.content 可为 str 或多段内容列表（OpenAI 格式），统一转 str
         raw_content = response.content
         reply_content = raw_content if isinstance(raw_content, str) else str(raw_content)
+        # 确定性去除 Markdown 强调标记（提示词约束的兜底，见 _strip_markdown_emphasis）
+        reply_content = _strip_markdown_emphasis(reply_content)
 
         action_cards: list[dict[str, Any]] | None = None
         if interpretation:
@@ -695,3 +824,47 @@ def _format_tool_results(tool_results: list[dict[str, Any]]) -> str:
             summaries.append(f"✗ {tool_name}: 执行失败 - {error_msg}")
 
     return "\n".join(summaries)
+
+
+def _strip_markdown_emphasis(text: str) -> str:
+    """去除回复文本中的 Markdown 强调标记（2026-08-07）。
+
+    LLM 输出可能残留 ``**加粗**``、``*斜体*``、``- 列表`` 等 Markdown 标记，
+    前端纯文本渲染会把星号/井号原样显示。本函数确定性清除这些标记，作为
+    提示词约束（REPLY_SYSTEM_PROMPT）的兜底——不依赖模型遵循。
+
+    处理规则（不破坏合法文本）：
+        - ``**...**`` / ``__...__``：成对加粗，保留内部文本
+        - ``*...*`` / ``_..._``：成对斜体，保留内部文本；**星号须紧贴非数字
+          文本**——数字间的 ``*``（如剂量 "2*2"、体温 "37*5"）是乘号，不删
+        - 行首 ``-`` / ``*`` 列表项标记：删除（保留后续内容）
+        - 行首 ``#`` / ``##`` 标题标记：删除（保留后续内容）
+        - 反引号对 ``...``：成对，保留内部文本
+        - 孤立的 ``*`` / ``#`` / ``_``（不成对、不在行首、紧贴数字）保留，
+          避免误删正常文本
+
+    Args:
+        text: LLM 生成的回复原文。
+
+    Returns:
+        去除 Markdown 强调标记后的纯文本。
+    """
+    import re
+
+    # 成对加粗 / 下划线加粗 / 反引号：内部任意，保留内部文本
+    for pattern in (r"\*\*(.+?)\*\*", r"__(.+?)__", r"`(.+?)`"):
+        text = re.sub(pattern, r"\1", text)
+    # 成对斜体：星号紧贴非数字文本（数字间乘号不删）。
+    #   *注意* / *孙医生*     -> 删除星号（主正则，星号后紧贴非数字）
+    #   2*2 / 37*5            -> 保留（星号两侧是数字，是乘号非斜体）
+    #   *3次* / *5片*         -> 删除星号（兜底正则，数字后紧跟汉字）
+    # 规则：内部必须含至少一个非数字字符才按斜体处理；纯数字（剂量/乘号）保留。
+    for pattern in (r"\*(?!\d)(.+?)(?<!\d)\*", r"_(?!\d)(.+?)(?<!\d)_"):
+        text = re.sub(pattern, r"\1", text)
+    # 兜底：数字开头的斜体（*3次*、*5片*——数字后紧跟汉字，中文语境为强调
+    # 标记）。星号后须为「数字+汉字」开头，杜绝误删乘号（"37*5（剂量 2*2"：
+    # "5" 后是括号非汉字，不匹配）。
+    text = re.sub(r"\*(\d[一-鿿][^*\n]*?)\*", r"\1", text)
+    # 行首列表/标题标记：- / * / #+ / > 后跟空白
+    text = re.sub(r"(?m)^[ \t]*(?:[-*>]|#+)[ \t]+", "", text)
+    return text

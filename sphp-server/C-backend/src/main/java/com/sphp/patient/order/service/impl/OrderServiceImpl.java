@@ -17,7 +17,9 @@ import com.sphp.patient.order.mapper.DrugOrderItemMapper;
 import com.sphp.patient.order.mapper.DrugOrderMapper;
 import com.sphp.patient.order.mapper.DrugOrderPaymentMapper;
 import com.sphp.patient.order.mapper.DrugOrderPaymentRecord;
+import com.sphp.patient.order.mapper.DrugOrderReminderOrderRecord;
 import com.sphp.patient.order.mapper.DrugOrderTimeoutRecord;
+import com.sphp.patient.order.mapper.MedicationReminderPlanRecord;
 import com.sphp.patient.order.mapper.OrderDataMapper;
 import com.sphp.patient.order.mapper.OrderDetailRecord;
 import com.sphp.patient.order.mapper.OrderItemRecord;
@@ -37,6 +39,7 @@ import com.sphp.patient.order.vo.DrugOrderCreateVO;
 import com.sphp.patient.order.vo.DrugOrderDetailVO;
 import com.sphp.patient.order.vo.DrugOrderPageVO;
 import com.sphp.patient.order.vo.DrugOrderReceiptVO;
+import com.sphp.patient.order.vo.DrugOrderReminderActivationVO;
 import com.sphp.patient.order.vo.PharmacyInventoryVO;
 import com.sphp.patient.registration.config.RegistrationProperties;
 import com.sphp.patient.registration.dto.RegisteringPaymentSimulateRequest;
@@ -51,6 +54,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.OffsetDateTime;
+import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -64,6 +68,9 @@ import static com.sphp.patient.common.enums.DrugOrderStatusEnum.PENDING_PAYMENT;
 import static com.sphp.patient.common.enums.NotificationTypeEnum.DRUG_ORDER;
 import static com.sphp.patient.common.enums.RegisteringPaymentStatusEnum.PENDING;
 import static com.sphp.patient.common.enums.RegisteringPaymentStatusEnum.SUCCESS;
+import static com.sphp.patient.health.support.ProposalMedicationReminderSupport.proposalCalculateNextReminderAt;
+import static com.sphp.patient.health.support.ProposalMedicationReminderSupport.proposalResolveReminderTimes;
+import static com.sphp.patient.health.support.ProposalMedicationReminderSupport.proposalSerializeReminderTimes;
 import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
 
 /** C端药房库存与购药订单服务实现。 */
@@ -214,13 +221,59 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(rollbackFor = Exception.class)
     public DrugOrderReceiptVO confirmDrugOrderReceipt(Long drugOrderId) {
         // 检查权限
-        requireOwnedOrder(drugOrderId);
+        requireOwnedReminderOrderForUpdate(drugOrderId);
         OffsetDateTime now = OffsetDateTime.now();
         if (orderDataMapper.confirmOrderReceipt(drugOrderId, now) != 1) throw statusConflict("当前物流状态不可确认收货");
+        // 订单实际收货后才消费用户预先授权，绝不在待收货状态提前启动提醒。
+        activateAuthorizedMedicationReminders(drugOrderId, now);
         return DrugOrderReceiptVO.builder()
                 .drugOrderId(drugOrderId)
                 .logisticsStatus(RECEIVED.name()) // 物流状态
                 .receivedAt(now) // 收货时间
+                .build();
+    }
+
+    /**
+     * 登记购药订单收货后自动开启用药提醒的授权。
+     *
+     * @param drugOrderId 购药订单 ID
+     * @return 授权状态；订单已收货时同步完成启用
+     * @throws CAuthException 订单无权、未支付或处方频次不支持提醒时抛出
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public DrugOrderReminderActivationVO authorizeDrugOrderReminderAfterReceipt(Long drugOrderId) {
+        // 对订单行加锁，避免授权和确认收货交错后遗漏自动启用。
+        DrugOrderReminderOrderRecord order = requireOwnedReminderOrderForUpdate(drugOrderId);
+        if (!"PAID".equals(order.orderStatus())) {
+            throw statusConflict("订单尚未支付成功，暂无法设置自动用药提醒");
+        }
+        List<MedicationReminderPlanRecord> plans = orderDataMapper.selectOrderMedicationReminderPlans(drugOrderId);
+        if (plans.isEmpty()) {
+            throw statusConflict("订单用药计划尚未生成，暂无法设置自动用药提醒");
+        }
+        // 授权前校验全部计划频次，避免确认收货时因提醒配置异常影响订单状态。
+        for (MedicationReminderPlanRecord plan : plans) {
+            proposalResolveReminderTimes(plan.frequency());
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        Long userId = CUserContext.getRequired().userId();
+        // 唯一订单约束与幂等键共同保证重复确认不会重复登记授权。
+        orderDataMapper.upsertDrugOrderReminderActivation(drugOrderId, userId, order.patientId(), now);
+        if (RECEIVED.name().equals(order.logisticsStatus())) {
+            // 用户在已收货后才授权时立即生效，仍只处理该订单绑定的计划。
+            activateAuthorizedMedicationReminders(drugOrderId, now);
+            return DrugOrderReminderActivationVO.builder()
+                    .drugOrderId(drugOrderId)
+                    .status("ACTIVATED")
+                    .authorizedAt(now)
+                    .activatedAt(now)
+                    .build();
+        }
+        return DrugOrderReminderActivationVO.builder()
+                .drugOrderId(drugOrderId)
+                .status("PENDING_RECEIPT")
+                .authorizedAt(now)
                 .build();
     }
 
@@ -454,6 +507,49 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
+     * 锁定并校验当前账号可访问的购药订单。
+     *
+     * @param drugOrderId 购药订单 ID
+     * @return 锁定后的订单投影
+     * @throws CAuthException 订单不存在或当前账号无权访问时抛出
+     */
+    private DrugOrderReminderOrderRecord requireOwnedReminderOrderForUpdate(Long drugOrderId) {
+        DrugOrderReminderOrderRecord order = orderDataMapper.selectDrugOrderReminderOrderForUpdate(drugOrderId);
+        if (order == null) {
+            throw notFound("购药订单不存在");
+        }
+        // 权限始终由订单反查就诊人，不能信任 Agent 传入的任何患者标识。
+        resolveAccessiblePatient(CUserContext.getRequired().userId(), order.patientId());
+        return order;
+    }
+
+    /**
+     * 启用订单已授权的用药提醒。
+     *
+     * @param drugOrderId 已确认收货的购药订单 ID
+     * @param now 启用时间
+     * @throws CAuthException 授权状态竞争或计划频次异常时抛出并回滚当前事务
+     */
+    private void activateAuthorizedMedicationReminders(Long drugOrderId, OffsetDateTime now) {
+        if (!"PENDING_RECEIPT".equals(orderDataMapper.selectDrugOrderReminderActivationStatus(drugOrderId))) {
+            return;
+        }
+        for (MedicationReminderPlanRecord plan : orderDataMapper.selectOrderMedicationReminderPlans(drugOrderId)) {
+            List<LocalTime> reminderTimes = proposalResolveReminderTimes(plan.frequency());
+            // 条件更新尊重用户收货前已暂停、完成或手动开启的计划状态。
+            orderDataMapper.enableOrderMedicationReminderPlan(
+                    plan.planId(),
+                    proposalCalculateNextReminderAt(reminderTimes, now),
+                    proposalSerializeReminderTimes(reminderTimes),
+                    now);
+        }
+        // 只有仍待收货的授权可以完成，避免重复收货重复开启。
+        if (orderDataMapper.markDrugOrderReminderActivationActivated(drugOrderId, now) != 1) {
+            throw statusConflict("自动用药提醒授权状态已变化");
+        }
+    }
+
+    /**
      * 获取可访问的就诊人。
      * @param userId  用户
      * @param requestedPatientId 就诊人
@@ -566,6 +662,7 @@ public class OrderServiceImpl implements OrderService {
                         .id(record.paymentId())
                         .status(record.paymentStatus())
                         .build())
+                .reminderActivationStatus(orderDataMapper.selectDrugOrderReminderActivationStatus(record.id()))
                 .build();
     }
 

@@ -25,6 +25,7 @@ import { AgentActionCardView } from './AgentActionCard';
 import { AgentSelectCardView } from './AgentSelectCard';
 import type { AgentActionCard, AgentChatContext, AgentConfirmCard, AgentPresetAction, AgentSession } from '../../typings/agent';
 import { resolveAppointmentPaymentResult, resolveDrugOrderPaymentResult } from '../../utils/agent-purchase';
+import { resolveAgentActionRequest } from '../../utils/agent-action';
 
 /**
  * 格式化会话时间：今天显示时分，昨天显示"昨天"，更早显示日期。
@@ -100,7 +101,9 @@ export function AgentChat({
     if (!context || !presetAction || !resumeReady) return;
     const businessId = presetAction.type === 'interpret_prescription'
       ? presetAction.prescriptionId
-      : presetAction.drugOrderId;
+      : presetAction.type === 'interpret_medical_record'
+        ? presetAction.consultId
+        : presetAction.drugOrderId;
     const presetKey = `${presetAction.type}:${businessId}:${resumeSessionId || 'new'}`;
     // 严格模式重挂载与上下文异步就绪时只允许自动发送一次。
     if (executedPresetRef.current === presetKey) return;
@@ -111,6 +114,15 @@ export function AgentChat({
         ...context,
         preset_action: presetAction.type,
         prescription_id: presetAction.prescriptionId,
+      }, { startNewSession: true });
+      return;
+    }
+    if (presetAction.type === 'interpret_medical_record') {
+      // 仅传病历编号，由 Agent 按 Java 权威返回的就诊人读取病历和健康档案。
+      send('请为我解读当前病历。', {
+        ...context,
+        preset_action: presetAction.type,
+        medical_record_id: presetAction.consultId,
       }, { startNewSession: true });
       return;
     }
@@ -244,16 +256,12 @@ export function AgentChat({
     });
   }
 
-  /** 药店推荐交互卡只允许发送固定预设，不接受模型或用户文本拼装的参数。 */
+  /** 业务交互卡只允许发送固定预设，不接受模型或用户文本拼装的参数。 */
   function handleAction(card: AgentActionCard) {
-    if (card.actionType !== 'recommend_prescription_pharmacy') return;
-    const prescriptionId = Number(card.arguments.prescription_id);
-    if (!Number.isInteger(prescriptionId) || prescriptionId <= 0) return;
-    send('请为我推荐相关药店。', {
-      ...context,
-      preset_action: 'recommend_prescription_pharmacy',
-      prescription_id: prescriptionId,
-    });
+    const request = resolveAgentActionRequest(card, context);
+    if (!request) return;
+    // 固定业务 ID 仅用于生成受控预设，不会在当前会话外创建新对话。
+    send(request.content, request.context);
   }
 
   const showWelcome = entries.length === 0;
