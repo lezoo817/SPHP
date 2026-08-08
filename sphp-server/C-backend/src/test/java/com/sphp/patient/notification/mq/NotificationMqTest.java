@@ -1,5 +1,6 @@
 package com.sphp.patient.notification.mq;
 
+import com.sphp.patient.common.config.RabbitMqConfig;
 import com.sphp.patient.common.enums.NotificationTypeEnum;
 import com.sphp.patient.notification.mapper.NotificationMapper;
 import com.sphp.patient.notification.mq.config.NotificationRabbitMqConfig;
@@ -14,8 +15,10 @@ import com.sphp.patient.notification.mapper.OnlineConsultationNotificationRecord
 import com.sphp.shared.event.OnlineConsultationRepliedEvent;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.support.converter.MessageConverter;
 
 import java.time.OffsetDateTime;
 
@@ -38,12 +41,12 @@ class NotificationMqTest {
     @Test
     void notificationConsumerWritesEventIdempotently() {
         NotificationMapper mapper = mock(NotificationMapper.class);
-        NotificationCreateConsumer consumer = new NotificationCreateConsumer(mapper);
+        NotificationCreateConsumer consumer = new NotificationCreateConsumer(mapper, messageConverter());
         NotificationCreateEvent event = NotificationCreateEvent.of("APPOINTMENT_LOCKED", 30001L, 10001L,
                 20001L, "张三", NotificationTypeEnum.APPOINTMENT, "挂号订单待支付", "请在规定时间内完成支付。", "{}");
 
-        consumer.consumeNotificationCreate(event);
-        consumer.consumeNotificationCreate(event);
+        consumer.dispatchNotificationEvent(event);
+        consumer.dispatchNotificationEvent(event);
 
         verify(mapper, times(2)).insertNotificationIfAbsent(org.mockito.ArgumentMatchers.argThat(notification ->
                 event.eventId().equals(notification.getEventId()) && event.userId().equals(notification.getUserId())
@@ -113,7 +116,8 @@ class NotificationMqTest {
     @Test
     void onlineConsultationReplyCreatesConsultationNotificationFromDatabase() {
         NotificationMapper mapper = mock(NotificationMapper.class);
-        NotificationCreateConsumer consumer = new NotificationCreateConsumer(mapper);
+        MessageConverter converter = messageConverter();
+        NotificationCreateConsumer consumer = new NotificationCreateConsumer(mapper, converter);
         OnlineConsultationNotificationRecord record = new OnlineConsultationNotificationRecord();
         record.setUserId(10001L);
         record.setPatientId(20001L);
@@ -123,7 +127,8 @@ class NotificationMqTest {
         OnlineConsultationRepliedEvent event = new OnlineConsultationRepliedEvent(
                 "ONLINE_CONSULTATION_REPLIED:11001", 11001L, 20001L, 30001L, OffsetDateTime.now());
 
-        consumer.consumeNotificationCreate(event);
+        // 监听器先接收原始 Message，再使用统一转换器恢复共享事件类型。
+        consumer.consumeNotificationCreate(converter.toMessage(event, new MessageProperties()));
 
         verify(mapper).insertNotificationIfAbsent(org.mockito.ArgumentMatchers.argThat(notification ->
                 "CONSULTATION".equals(notification.getType())
@@ -138,7 +143,7 @@ class NotificationMqTest {
     @Test
     void medicationReminderConsumerAdvancesNextReminderAfterPersistingNotification() {
         NotificationMapper mapper = mock(NotificationMapper.class);
-        NotificationCreateConsumer notificationConsumer = new NotificationCreateConsumer(mapper);
+        NotificationCreateConsumer notificationConsumer = new NotificationCreateConsumer(mapper, messageConverter());
         com.sphp.patient.notification.mq.consumer.MedicationReminderConsumer consumer =
                 new com.sphp.patient.notification.mq.consumer.MedicationReminderConsumer(notificationConsumer, mapper);
         OffsetDateTime dueAt = OffsetDateTime.parse("2026-08-05T08:00:00+08:00");
@@ -170,5 +175,14 @@ class NotificationMqTest {
         record.setDueAt(java.time.OffsetDateTime.now().minusMinutes(1));
         record.setReminderTimesJson("[\"08:00\",\"14:00\",\"20:00\"]");
         return record;
+    }
+
+    /**
+     * 创建与生产配置一致的 RabbitMQ 消息转换器。
+     *
+     * @return 支持项目业务事件白名单的转换器
+     */
+    private MessageConverter messageConverter() {
+        return new RabbitMqConfig().rabbitMessageConverter();
     }
 }

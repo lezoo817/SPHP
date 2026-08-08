@@ -9,7 +9,9 @@ import com.sphp.shared.event.OnlineConsultationRepliedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.stereotype.Component;
 
 import static com.sphp.patient.common.constant.NotificationConstant.NOTIFICATION_QUEUE;
@@ -24,28 +26,40 @@ import static com.sphp.patient.common.enums.NotificationTypeEnum.CONSULTATION;
 public class NotificationCreateConsumer {
 
     private final NotificationMapper notificationMapper;
+    private final MessageConverter messageConverter;
 
     /**
      * 消费通知创建事件并幂等写入 C端通知表。
      *
-     * @param event 通知创建事件或在线问诊回复事件
+     * @param message RabbitMQ 原始消息
      */
     @RabbitListener(queues = NOTIFICATION_QUEUE)
-    public void consumeNotificationCreate(Object event) {
+    public void consumeNotificationCreate(Message message) {
         try {
-            if (event instanceof NotificationCreateEvent notificationEvent) {
-                persistNotification(notificationEvent);
-                return;
-            }
-            if (event instanceof OnlineConsultationRepliedEvent repliedEvent) {
-                persistOnlineConsultationNotifications(repliedEvent);
-                return;
-            }
-            throw new IllegalArgumentException("不支持的通知事件类型");
+            // Object 形参会让监听器保留原始 Message，必须显式使用统一转换器恢复业务事件。
+            Object event = messageConverter.fromMessage(message);
+            dispatchNotificationEvent(event);
         } catch (RuntimeException exception) {
-            log.error("C端通知消费失败 eventType={}", event == null ? null : event.getClass().getName(), exception);
+            log.error("C端通知消费失败 contentType={}", message.getMessageProperties().getContentType(), exception);
             throw new AmqpRejectAndDontRequeueException("C端通知消费失败", exception);
         }
+    }
+
+    /**
+     * 按实际业务事件类型分发通知创建逻辑。
+     *
+     * @param event 反序列化后的业务事件
+     */
+    public void dispatchNotificationEvent(Object event) {
+        if (event instanceof NotificationCreateEvent notificationEvent) {
+            persistNotification(notificationEvent);
+            return;
+        }
+        if (event instanceof OnlineConsultationRepliedEvent repliedEvent) {
+            persistOnlineConsultationNotifications(repliedEvent);
+            return;
+        }
+        throw new IllegalArgumentException("不支持的通知事件类型");
     }
 
     /**
