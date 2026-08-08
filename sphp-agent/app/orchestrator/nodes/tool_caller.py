@@ -652,6 +652,21 @@ async def tool_caller(
     ) <= 1
     block_triage_assessment = is_triage_scene and is_first_round
 
+    # 导诊评估单次执行（2026-08-08）：同一子图循环内 create_triage_assessment
+    # 已成功执行过（无论参数）即不再放行第二次调用。
+    # ⚠️ 日志复现：Java 规则表无种子数据时评估返回空推荐科室，LLM 判定"评估
+    # 未完成"，改写 symptom 措辞反复重试同一工具（参数每次不同，绕过
+    # _dedupe_tool_calls 的参数级去重），同轮循环内 6 次重复调用直到
+    # max_tool_iterations=5 耗尽。导诊评估是"提交完整症状评估一次"的动作，
+    # 空科室是合法结果——LLM 应转 query_departments 查真实科室
+    # （TRIAGE_SCENE_PROMPT 引导），而非重复评估。
+    # 仅同一子图循环内生效：跨轮 tool_results 由 _build_initial_state 传 None
+    # 清空（last-write-wins），下一轮用户补充新症状后仍可重新评估。
+    triage_already_assessed = is_triage_scene and any(
+        r.get("tool_name") == "create_triage_assessment" and r.get("success")
+        for r in (state.get("tool_results") or [])
+    )
+
     # M8-6 问诊选医生：用户已从 options 卡回传选择（"我选择X医生"）时，**在
     # LLM 推理前**确定性匹配候选并注入 doctor_id 上下文，让 LLM 本轮就知道
     # "已选医生、直接调 save_pre_consultation"，避免 LLM 把点选误当成普通消息
@@ -814,6 +829,19 @@ async def tool_caller(
             state.get("tool_results") or [],
             state.get("pending_confirmations") or [],
         )
+        # 导诊评估单次执行硬兜底（2026-08-08）：同轮子图循环内评估已成功过
+        # （无论参数），本轮 LLM 再次选择 create_triage_assessment 一律剔除。
+        # LLM 提示词收敛不可靠（空科室反复重试，日志复现），此处确定性拦截，
+        # 确保同一子图循环内导诊评估至多执行一次。
+        if triage_already_assessed:
+            repeated = [tc for tc in tool_calls if tc["name"] == "create_triage_assessment"]
+            if repeated:
+                logger.info(
+                    "导诊评估已成功，拦截重复评估调用: %d 个（同轮单次执行）", len(repeated)
+                )
+                tool_calls = [
+                    tc for tc in tool_calls if tc["name"] != "create_triage_assessment"
+                ]
         # M8-6 问诊选医生收窗：用户已从 options 卡回传选择（选择上下文已在
         # ainvoke 前注入），此处清空 pending_doctor_choices（选完即收窗，防止
         # 下一轮重复匹配/重复发卡）。
