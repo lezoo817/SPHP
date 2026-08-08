@@ -8,7 +8,7 @@ import {
   validatePassword,
 } from './form';
 import { filterHospitals, formatAmount, getAppointmentStatusText, sortHospitals } from './medical';
-import { resolveSelfPatientId } from '../models/selection';
+import { resolveSelectedPatientId, resolveSelfPatientId } from '../models/selection';
 import { buildDrugOrderListPath } from '../services/pharmacy';
 import { buildPharmacyHomePath, buildPharmacyInventoryPath, buildPharmacyPrescriptionPath, getDrugOrderCardStatusText, isInvalidDrugOrder, matchesDrugOrderTab, resolvePharmacyPatientId } from './pharmacy';
 import { hasSearchKeyword, matchesDepartmentKeyword, resolveInitialDepartment } from './home-search';
@@ -75,6 +75,19 @@ describe('重复预约联调规则', () => {
 describe('就诊人默认选择', () => {
   it('优先选择本人而非全局家属选择', () => {
     expect(resolveSelfPatientId([{ patientId: 2, relation: 'CHILD' }, { patientId: 1, relation: 'SELF' }])).toBe(1);
+  });
+
+  it('保留当前账号仍有效的家属选择，非法选择回退本人', () => {
+    const members = [{ patientId: 1, relation: 'SELF' }, { patientId: 2, relation: 'CHILD' }];
+    expect(resolveSelectedPatientId(members, 2)).toBe(2);
+    expect(resolveSelectedPatientId(members, 99)).toBe(1);
+  });
+
+  it('本人优先于默认标记和列表顺序', () => {
+    expect(resolveSelectedPatientId([
+      { patientId: 9, relation: 'CHILD', isDefault: true },
+      { patientId: 3, relation: 'SELF', isDefault: false },
+    ])).toBe(3);
   });
 });
 
