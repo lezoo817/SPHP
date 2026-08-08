@@ -546,10 +546,9 @@ export function useAgentStream(): UseAgentStream {
     setEntries((prev) => [...prev, { kind: 'record_picker', data: recordPicker }]);
   }
 
-  /** 追加一张可选项卡片（医生列表 / 科室列表 / 号源等）。 */
-  function appendSelectCard(options: AgentOptionsEvent): void {
-    const selectCard: AgentSelectCard = {
-
+  /** 由 options 事件构造一张可选项卡片（医生列表 / 科室列表 / 号源等）。 */
+  function buildSelectCard(options: AgentOptionsEvent): AgentSelectCard {
+    return {
       id: genId('sel'),
       selectType: options.type,
       items: options.items,

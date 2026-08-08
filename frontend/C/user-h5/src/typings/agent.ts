@@ -27,6 +27,12 @@ export type AgentPresetAction =
       drugOrderId: number;
     }
   | {
+      /** 固定通知挂号支付完成并确认挂号结果。 */
+      type: 'notify_appointment_paid';
+      /** 服务端真实挂号 ID。 */
+      appointmentId: number;
+    }
+  | {
       /** 固定登记订单收货后自动开启用药提醒。 */
       type: 'authorize_drug_order_reminder_after_receipt';
       /** 服务端真实购药订单 ID。 */
