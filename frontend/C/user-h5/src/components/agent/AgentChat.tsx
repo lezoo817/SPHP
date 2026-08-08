@@ -248,8 +248,8 @@ export function AgentChat({
         return <FolderHeart size={22} />;
       case '在线问诊':
         return <HeartPulse size={22} />;
-      case '健康档案':
-        return <FolderHeart size={22} />;
+      case '预约挂号':
+        return <Calendar size={22} />;
       default:
         return <MessageSquare size={22} />;
     }
@@ -266,8 +266,8 @@ export function AgentChat({
         return <FileText size={22} />;
       case '在线问诊':
         return <HeartPulse size={22} />;
-      case '健康档案':
-        return <FolderHeart size={22} />;
+      case '预约挂号':
+        return <Calendar size={22} />;
       default:
         return <MessageSquare size={22} />;
     }
