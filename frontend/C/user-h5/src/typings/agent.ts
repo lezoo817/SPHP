@@ -266,6 +266,8 @@ export type AgentSseEvent =
 export interface AgentConfirmRequest {
   confirm_token: string;
   session_id: string;
+  /** 已支付订单取消所需的登录密码（仅 confirm_cancel_appointment 使用）。 */
+  login_password?: string;
 }
 
 /** L2 确认回调响应数据。 */

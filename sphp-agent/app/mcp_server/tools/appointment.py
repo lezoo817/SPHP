@@ -71,11 +71,21 @@ async def query_appointments(
     return await call_java_api(api_name="query_appointments:list", params=params, user_id=user_id)
 
 
-async def cancel_appointment(appointment_id: int, user_id: int | None = None) -> dict[str, Any]:
-    """取消挂号锁定订单。"""
+async def cancel_appointment(
+    appointment_id: int,
+    login_password: str | None = None,
+    user_id: int | None = None,
+) -> dict[str, Any]:
+    """取消挂号订单；已支付订单需 login_password，未支付订单忽略。
+
+    login_password 由用户在 L2 确认卡片输入、经 /confirm 透传而来（非 LLM 生成）；
+    call_java_api 自动将 snake_case 键转为 camelCase，匹配 Java DTO 的 loginPassword。
+    """
+    body = {"login_password": login_password} if login_password else None
     return await call_java_api(
         api_name="cancel_appointment",
         path_params={"appointment_id": appointment_id},
+        body=body,
         user_id=user_id,
     )
 

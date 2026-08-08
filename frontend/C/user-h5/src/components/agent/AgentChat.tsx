@@ -266,8 +266,8 @@ export function AgentChat({
   }
 
   /** 确认下单成功后使用 Agent 返回的订单与支付单 ID 进入支付页。 */
-  async function handleConfirm(card: AgentConfirmCard) {
-    const result = await confirm(card);
+  async function handleConfirm(card: AgentConfirmCard, password?: string) {
+    const result = await confirm(card, password);
     if (!result) return;
     if (card.cardType === 'confirm_appointment') {
       // 挂号确认后跳转挂号支付页（仿照购药下单跳转订单详情页逻辑）。
@@ -434,7 +434,7 @@ export function AgentChat({
                   <AgentConfirmCardView
                     key={entry.data.id}
                     card={entry.data}
-                    onConfirm={(card: AgentConfirmCard) => void handleConfirm(card)}
+                    onConfirm={(card: AgentConfirmCard, password?: string) => void handleConfirm(card, password)}
                   />
                 );
               if (entry.kind === 'action')

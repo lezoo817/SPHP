@@ -67,8 +67,8 @@ export interface UseAgentStream {
   isStreaming: boolean;
   /** 发送一条用户消息并开启流式对话 */
   send: (content: string, context?: AgentChatContext, options?: AgentSendOptions) => void;
-  /** 确认一张 L2 卡片 */
-  confirm: (card: AgentConfirmCard) => Promise<AgentConfirmData | undefined>;
+  /** 确认一张 L2 卡片（已支付取消挂号需传入登录密码） */
+  confirm: (card: AgentConfirmCard, password?: string) => Promise<AgentConfirmData | undefined>;
   /** 用户从可选项卡片中点选一项：标记已选并发送"我选择{label}"消息 */
   selectOption: (card: AgentSelectCard, item: AgentSelectItem) => void;
   /** 选中解读记录，等待用户点击确认。 */
@@ -138,7 +138,7 @@ export function useAgentStream(): UseAgentStream {
 
   /** 确认一张 L2 卡片：调用确认回调并按结果更新卡片状态。 */
   const confirm = useCallback(
-    async (card: AgentConfirmCard): Promise<AgentConfirmData | undefined> => {
+    async (card: AgentConfirmCard, password?: string): Promise<AgentConfirmData | undefined> => {
       // 令牌过期校验：到期后禁用卡片，不再调用确认接口
       if (card.expiresAt && Date.parse(card.expiresAt) <= Date.now()) {
         updateConfirmCard(card.id, {
@@ -153,6 +153,7 @@ export function useAgentStream(): UseAgentStream {
         const result = await confirmCard({
           confirm_token: card.confirmToken,
           session_id: card.sessionId,
+          ...(password ? { login_password: password } : {}),
         });
         updateConfirmCard(card.id, {
           status: 'done',
