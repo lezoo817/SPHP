@@ -59,14 +59,14 @@ export default function PaymentPage() {
     return () => window.clearInterval(timer);
   }, [payment?.status]);
 
-  /** 使用登录密码调用模拟支付，并重新读取服务端最终状态。 */
+  /** 使用登录密码调用模拟支付，成功后立即恢复 AI 会话或返回首页。 */
   async function pay() {
     try {
       // 网络重试沿用首次生成的幂等键，避免重复支付。
       await simulatePayment(Number(paymentId), password, key.current || (key.current = createIdempotencyKey()));
       key.current = undefined;
-      await loadPayment();
-      setNotice('支付成功');
+      // 支付成功后立即跳转，无需用户手动点击"返回首页"（与购药流程一致）。
+      returnHome();
     } catch (error) {
       if (isDuplicateDoctorAppointmentError(error)) {
         // 服务端已拒绝本笔重复支付，清除幂等键并保留取消订单入口释放号源。
