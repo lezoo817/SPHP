@@ -493,6 +493,7 @@ describe('健康待办、提醒与通知规则', () => {
   it('通知列表不传递未选择的筛选参数', () => {
     expect(buildNotificationsPath({ pageNo: 2, pageSize: 50 })).toBe('/c/v1/notifications?pageNo=2&pageSize=50');
     expect(buildNotificationsPath({ patientId: 2, read: false })).toContain('patientId=2&read=false');
+    expect(buildNotificationsPath({ type: 'APPOINTMENT', read: true })).toContain('read=true&type=APPOINTMENT');
     expect(buildNotificationsPath({ type: 'LOGISTICS' })).toContain('type=LOGISTICS');
   });
 
