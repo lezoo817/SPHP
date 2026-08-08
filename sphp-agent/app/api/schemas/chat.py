@@ -31,6 +31,11 @@ class ConfirmRequest(BaseModel):
 
     confirm_token: str = Field(..., description="Agent 在 card 事件中下发的确认令牌")
     session_id: str = Field(..., description="当前对话会话 ID")
+    login_password: str | None = Field(
+        None,
+        description="已支付订单取消所需的登录密码（仅 cancel_appointment 使用）；"
+        "不进 LLM 工具 schema 与 Redis tool_arguments，仅确认时由用户输入透传",
+    )
 
 
 class ConfirmResponse(BaseModel):

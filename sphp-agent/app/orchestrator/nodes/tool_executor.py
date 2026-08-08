@@ -179,6 +179,7 @@ async def execute_mcp_tool(
     confirm_method: str = "none",
     trigger: str = "agent",
     idempotency_key: str | None = None,
+    confirm_inputs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """执行 MCP 工具（M6-C1：经 MCP Client tools/call，回退直调）。
 
@@ -199,6 +200,10 @@ async def execute_mcp_tool(
             confirm_token 记录的幂等键，经 ``__idempotency_key__`` 内部键
             透传 MCP 链路，Java 侧按 X-Idempotency-Key 去重——确认操作
             失败重试不重复执行业务（挂号/购药等）。Agent 自主调用为 None。
+        confirm_inputs: 确认时由用户输入的补充参数（如已支付取消挂号的
+            ``login_password``）。合并进 exec_args 按参数名绑定到封装函数形参，
+            不进原 ``arguments``，故 LLM schema、Redis tool_arguments、审计
+            params_hash 均不含，避免敏感数据被 LLM 生成或持久化。
     """
     start = time.time()
     user_id = state.get("user_id")
@@ -232,8 +237,12 @@ async def execute_mcp_tool(
         # call_java_api 注入 Authorization: Bearer（C 端拦截器硬需求）。
         # 两者均注入到副本，不改动原 arguments（审计 params_hash 保持业务参数）
         exec_args = arguments
-        if idempotency_key or jwt_token:
+        if confirm_inputs or idempotency_key or jwt_token:
             exec_args = {**arguments}
+            if confirm_inputs:
+                # 确认时补充参数（如 login_password）按参数名绑定到封装函数形参；
+                # 不进原 arguments，故审计 params_hash 与 Redis tool_arguments 不含。
+                exec_args.update(confirm_inputs)
             if idempotency_key:
                 exec_args[_IDEMPOTENCY_ARG] = idempotency_key
             if jwt_token:

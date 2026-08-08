@@ -11,6 +11,10 @@ import com.sphp.admin.doctor.dto.NoteSaveRequest;
 import com.sphp.admin.doctor.dto.NoteSaveVO;
 import com.sphp.admin.doctor.dto.PatientDetailVO;
 import com.sphp.admin.doctor.dto.QueueItemVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationDetailVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationItemVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationReplyRequest;
+import com.sphp.admin.doctor.dto.OnlineConsultationReplyVO;
 import com.sphp.admin.doctor.service.DoctorConsultService;
 import com.sphp.shared.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
@@ -49,6 +53,62 @@ public class DoctorConsultController {
     }
 
     private final DoctorConsultService doctorConsultService;
+
+    /**
+     * 分页查询无挂号在线问诊。
+     *
+     * @param status 状态：PENDING / IN_PROGRESS / COMPLETED
+     * @param page 页码
+     * @param size 每页大小
+     * @return 在线问诊分页结果
+     */
+    @GetMapping("/online-consultations")
+    @Operation(summary = "在线问诊列表", description = "查询当前医生可见的无挂号在线问诊")
+    public Result<PageResult<OnlineConsultationItemVO>> pageOnlineConsultations(
+            @Parameter(description = "状态：PENDING / IN_PROGRESS / COMPLETED")
+            @RequestParam(defaultValue = "PENDING") String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return Result.success("查询成功", doctorConsultService.pageOnlineConsultations(status, page, clampSize(size)));
+    }
+
+    /**
+     * 查询在线问诊详情。
+     *
+     * @param id 问诊记录 ID
+     * @return 在线问诊详情
+     */
+    @GetMapping("/online-consultations/{id}")
+    @Operation(summary = "在线问诊详情", description = "查询 AI 预问诊摘要、消息和处方")
+    public Result<OnlineConsultationDetailVO> getOnlineConsultationDetail(@PathVariable Long id) {
+        return Result.success("查询成功", doctorConsultService.getOnlineConsultationDetail(id));
+    }
+
+    /**
+     * 开始编辑在线问诊回复。
+     *
+     * @param id 问诊记录 ID
+     * @return 状态变更结果
+     */
+    @PostMapping("/online-consultations/{id}/start")
+    @Operation(summary = "开始回复在线问诊", description = "将 PENDING 状态切换为 IN_PROGRESS")
+    public Result<ConsultStartVO> startOnlineConsult(@PathVariable Long id) {
+        return Result.success("开始回复", doctorConsultService.startOnlineConsult(id));
+    }
+
+    /**
+     * 提交医生一次性回复并完成在线问诊。
+     *
+     * @param id 问诊记录 ID
+     * @param request 回复内容
+     * @return 回复结果
+     */
+    @PostMapping("/online-consultations/{id}/reply")
+    @Operation(summary = "回复在线问诊", description = "写入一条医生消息并完成在线问诊")
+    public Result<OnlineConsultationReplyVO> replyOnlineConsult(
+            @PathVariable Long id, @Valid @RequestBody OnlineConsultationReplyRequest request) {
+        return Result.success("回复已发送", doctorConsultService.replyOnlineConsult(id, request));
+    }
 
     @GetMapping("/queue")
     @Operation(summary = "待接诊列表", description = "分页查询待接诊队列（按当前用户数据权限过滤）")

@@ -4,7 +4,7 @@ import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
 import { dismissExpiredHealthTodo, getDismissedExpiredHealthTodoIds, isExpiredHealthTodoDismissed } from '../../models/expired-health-todo';
-import { getSelection, saveSelection } from '../../models/selection';
+import { getSelection, resolveSelectedPatientId, saveSelection } from '../../models/selection';
 import { getFamilyMembers } from '../../services/family';
 import { getFollowUpPlans, getMedicationPlans } from '../../services/health';
 import { getNotifications } from '../../services/notification';
@@ -60,7 +60,7 @@ export default function HomePage() {
       const state = getSelection();
       const next = {
         hospitalId: state.hospitalId || nextHospitals[0]?.hospitalId,
-        patientId: state.patientId || nextMembers.find((item) => item.isDefault)?.patientId || nextMembers[0]?.patientId,
+        patientId: resolveSelectedPatientId(nextMembers, state.patientId),
       };
       saveSelection(next);
       setSelected(next);

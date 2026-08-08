@@ -10,6 +10,7 @@
         <result property="type" column="type"/>
         <result property="title" column="title"/>
         <result property="content" column="content"/>
+        <result property="consultationId" column="consultation_id"/>
         <result property="readAt" column="read_at"/>
         <result property="createdAt" column="created_at"/>
     </resultMap>
@@ -25,7 +26,9 @@
 
     <sql id="NotificationColumns">
         n.id, n.user_id, n.patient_id, n.patient_name_snapshot AS patient_name,
-        n.type, n.title, n.content, n.read_at, n.created_at
+        n.type, n.title, n.content,
+        CASE WHEN n.type = 'CONSULTATION' THEN NULLIF(n.payload ->> 'consultationId', '')::bigint END AS consultation_id,
+        n.read_at, n.created_at
     </sql>
 
     <select id="existsActivePatient" resultType="boolean">
@@ -41,6 +44,29 @@
 
     <select id="selectActivePatientName" resultType="string">
         SELECT name FROM patient WHERE id = #{patientId} AND deleted_at IS NULL
+    </select>
+
+    <select id="selectOnlineConsultationNotifications"
+            resultType="com.sphp.patient.notification.mapper.OnlineConsultationNotificationRecord">
+        SELECT pur.user_id, cr.patient_id, p.name AS patient_name, reply.content
+        FROM consult_record cr
+        INNER JOIN patient p ON p.id = cr.patient_id AND p.deleted_at IS NULL
+        INNER JOIN patient_user_relation pur ON pur.patient_id = cr.patient_id
+            AND pur.relationship = 'SELF' AND pur.deleted_at IS NULL
+        INNER JOIN LATERAL (
+            SELECT cm.content
+            FROM consultation_message cm
+            WHERE cm.consult_id = cr.id
+              AND cm.sender_type = 'DOCTOR'
+              AND cm.deleted_at IS NULL
+            ORDER BY cm.created_at DESC, cm.id DESC
+            LIMIT 1
+        ) reply ON TRUE
+        WHERE cr.id = #{consultationId}
+          AND cr.appointment_id IS NULL
+          AND cr.status = 'COMPLETED'
+          AND cr.doctor_replied_at IS NOT NULL
+          AND cr.deleted_at IS NULL
     </select>
 
     <select id="selectDueMedicationReminders" resultMap="NotificationReminderRecordMap">

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CheckCircle2, ShieldAlert, XCircle } from 'lucide-react';
 import type { AgentConfirmCard } from '@/typings/agent';
 import { AGENT_CONFIRM_ERROR_TEXT } from '@/constants/agent';
@@ -66,9 +66,20 @@ export function AgentConfirmCardView({
   onConfirm,
 }: {
   card: AgentConfirmCard;
-  onConfirm: (card: AgentConfirmCard) => void;
+  onConfirm: (card: AgentConfirmCard, password?: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  // 已支付挂号取消需登录密码：仅该卡片类型采集，确认时随回调透传给 Agent。
+  const requiresPassword = card.cardType === 'confirm_cancel_appointment';
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  // 卡片离开待确认态即清理密码，避免敏感内容在 done/error 后残留在组件状态。
+  useEffect(() => {
+    if (card.status !== 'pending') {
+      setPassword('');
+      setPasswordError('');
+    }
+  }, [card.status]);
   const detailRows = renderDetails(card.details);
   const disabled =
     card.status === 'done' ||
@@ -124,13 +135,38 @@ export function AgentConfirmCardView({
           {card.errorMessage || AGENT_CONFIRM_ERROR_TEXT[card.errorCode || ''] || '操作失败'}
         </p>
       )}
+      {card.status === 'pending' && requiresPassword && (
+        <div className="agent-card__password">
+          <label>
+            登录密码
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => {
+                setPassword(event.target.value);
+                if (passwordError) setPasswordError('');
+              }}
+            />
+          </label>
+          <p className="agent-card__password-hint">已支付订单需输入登录密码确认取消</p>
+          {passwordError && <p className="agent-card__error-text">{passwordError}</p>}
+        </div>
+      )}
       {card.status === 'pending' && (
         <div className="agent-card__actions">
           <button
             type="button"
             className="agent-card__confirm"
             disabled={expired}
-            onClick={() => onConfirm(card)}
+            onClick={() => {
+              // 已支付取消必须输入登录密码：空值本地拦截，避免无谓的失败回环。
+              if (requiresPassword && !password.trim()) {
+                setPasswordError('请输入登录密码');
+                return;
+              }
+              onConfirm(card, requiresPassword ? password : undefined);
+            }}
           >
             {expired ? '已过期' : '确认操作'}
           </button>

@@ -1202,6 +1202,12 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     )
     # P2 审计溯源：人工点击确认触发的 L2 工具执行，审计标记
     # confirm_method=click / trigger=manual，区别于 Agent 自主调用
+    # 已支付挂号取消需登录密码：仅确认时由用户输入透传，不进 Redis tool_arguments
+    # （record 里仅 appointment_id）、不进 LLM schema，经 confirm_inputs 合并到
+    # exec_args 按参数名绑定到 cancel_appointment 的 login_password 形参。
+    confirm_inputs = (
+        {"login_password": req.login_password} if req.login_password else None
+    )
     result = await execute_mcp_tool(
         tool_name,
         arguments,
@@ -1209,6 +1215,7 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
         confirm_method="click",
         trigger="manual",
         idempotency_key=idempotency_key,
+        confirm_inputs=confirm_inputs,
     )
 
     if not result.get("success"):

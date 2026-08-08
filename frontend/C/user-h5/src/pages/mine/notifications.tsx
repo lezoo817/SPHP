@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bell, CheckCheck, ChevronDown } from 'lucide-react';
+import { useNavigate } from 'umi';
 import { PageHeader } from '../../components/PageHeader';
 import { getNotifications, markNotificationRead } from '../../services/notification';
 import type { NotificationItem } from '../../typings/api';
@@ -11,6 +12,7 @@ const PAGE_SIZE = 20;
 const NOTIFICATION_CATEGORIES: { value: NotificationListCategory; label: string }[] = [
   { value: 'ALL', label: '全部' },
   { value: 'APPOINTMENT', label: '挂号' },
+  { value: 'CONSULTATION', label: '问诊' },
   { value: 'DRUG_ORDER', label: '购药' },
   { value: 'LOGISTICS', label: '物流' },
 ];
@@ -18,6 +20,7 @@ type NotificationReadFilter = 'READ' | 'UNREAD';
 
 /** 展示当前账号全部站内消息并支持单条标记已读。 */
 export default function NotificationsPage() {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [total, setTotal] = useState(0);
   const [pageNo, setPageNo] = useState(1);
@@ -66,15 +69,21 @@ export default function NotificationsPage() {
     void loadNotifications(1, false, category, targetReadFilter);
   }
 
-  /** 点击未读消息后标记已读，网络重试继续使用第一次生成的幂等键。 */
+  /** 点击消息后先完成已读处理，再进入关联的在线问诊详情。 */
   async function readNotification(notification: NotificationItem) {
-    if (notification.read || readingId || markingAll) return;
+    if (readingId || markingAll) return;
+    if (notification.read) {
+      if (notification.type === 'CONSULTATION' && notification.consultationId) navigate(`/assistant/consultation/${notification.consultationId}`);
+      return;
+    }
     setReadingId(notification.id);
     const key = readKeys.current[notification.id] = resolveNotificationReadKey(readKeys.current[notification.id]);
     try {
       await markNotificationRead(notification.id, key);
       delete readKeys.current[notification.id];
       setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, read: true } : item));
+      // 医生回复通知必须在已读成功后跳转，避免详情返回后仍显示未读。
+      if (notification.type === 'CONSULTATION' && notification.consultationId) navigate(`/assistant/consultation/${notification.consultationId}`);
     } catch (requestError) {
       setNotice(getApiErrorMessage(requestError));
     } finally {

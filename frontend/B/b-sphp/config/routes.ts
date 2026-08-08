@@ -39,8 +39,11 @@ const routes = [
       {
         path: '/consult',
         routes: [
-          { path: '/consult', redirect: '/consult/queue' },
-          { path: '/consult/queue', component: 'consult/ConsultQueue' },
+          { path: '/consult', redirect: '/consult/registration' },
+          { path: '/consult/registration', component: 'consult/ConsultQueue' },
+          { path: '/consult/online', component: 'consult/OnlineConsultation' },
+          // 兼容旧书签，挂号接诊旧路径继续可访问。
+          { path: '/consult/queue', redirect: '/consult/registration' },
           { path: '/consult/detail/:id', component: 'consult/ConsultDetail' },
         ],
       },
@@ -96,7 +99,7 @@ const routes = [
       },
       // AI 辅助助手（所有人）
       { path: '/agent', component: 'agent' },
-      { path: '/', redirect: '/consult/queue' },
+      { path: '/', redirect: '/consult/registration' },
     ],
   },
 ];
