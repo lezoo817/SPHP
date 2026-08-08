@@ -47,6 +47,23 @@ DEPARTMENT_LIST = [
     "中医科",
 ]
 
+# 挂号场景"查号源"兜底注入触发词（方案 B，2026-08-08）。
+# 命中这些词视为用户明确要求查询可预约数据（号源余量/排班/挂号费），
+# LLM 未调任何查询工具时确定性补 query_departments，让真实数据进入
+# tool_results，回复不再凭空编造医生名/号源数/挂号费。
+# ⚠️ 刻意不含"挂号/预约"本身："帮我挂王医生"是创建动作（LLM 应查号源后
+# 再建单），不是"查号源"请求，不得触发兜底注入。
+REGISTRATION_QUERY_KEYWORDS = (
+    "号源",
+    "排班",
+    "有号",
+    "余量",
+    "挂号费",
+    "剩余",
+    "哪些医生",
+    "哪个医生",
+)
+
 # 工具决策系统提示词
 TOOL_CALLER_SYSTEM_PROMPT = """你是医疗平台的工具调用助手。
 
@@ -578,6 +595,65 @@ def _build_doctor_choice_context(choice: dict[str, Any]) -> str:
     )
 
 
+def _inject_registration_query(
+    tool_calls: list[dict[str, Any]],
+    user_text: str,
+    state: AgentState,
+    allowed_tools: list[str] | None,
+) -> list[dict[str, Any]]:
+    """挂号场景查号源兜底注入（方案 B，2026-08-08）。
+
+    日志复现的故障：用户明确要求查号源（如"继续查询其他科室医生的号源"），
+    挂号子图 tool_caller 未选择任何查询工具（tool_calls=[]），reply_node 无
+    工具结果可依，LLM 凭知识凭空编造医生名、号源余量、挂号费（"王医生4个/
+    李医生2个/刘医生3个"）。
+
+    此函数在**挂号场景**下、用户消息命中查号源关键词、且 LLM 未选任何查询类
+    工具时，确定性补一个 query_departments 调用（挂号白名单独有的场景工具），
+    让真实科室/医生/号源数据经 tool_executor 进入 tool_results，reply 基于
+    真实数据生成，杜绝编造。
+
+    判定口径：
+    - 仅挂号场景触发（allowed_tools 含 query_schedule_slots；导诊/问诊白名单
+      无此工具，不误伤——问诊也查医生但那是选医生卡片流程，不走此兜底）
+    - 用户消息命中 REGISTRATION_QUERY_KEYWORDS 之一（查号源/排班/有号/挂号费等）
+    - 本轮 tool_calls 不含任何查询类工具（query_departments/query_doctors/
+      query_schedule_slots），说明 LLM 打算"仅凭知识回复"
+    - hospital_id 可用（query_departments 必填，不编造医院 ID）
+
+    Args:
+        tool_calls: LLM 本轮选择的工具调用列表。
+        user_text: 用户最新消息文本（关键词匹配用）。
+        state: 当前图状态，含 hospital_id。
+        allowed_tools: 子图工具白名单（用于判定挂号场景）。
+
+    Returns:
+        list[dict]: 注入后的工具调用列表（含 query_departments；不可变）。
+    """
+    # 仅挂号场景：白名单含 query_schedule_slots（导诊/问诊/购药白名单均不含）
+    if not allowed_tools or "query_schedule_slots" not in allowed_tools:
+        return tool_calls
+    # 已选查询类工具则无需兜底（LLM 已走真实查询链路）
+    query_tools = {"query_departments", "query_doctors", "query_schedule_slots"}
+    if any(tc.get("name") in query_tools for tc in tool_calls):
+        return tool_calls
+    # 用户消息未命中查号源关键词则不干预（避免给"帮我挂王医生"误补查询）
+    if not any(kw in user_text for kw in REGISTRATION_QUERY_KEYWORDS):
+        return tool_calls
+    hospital_id = state.get("hospital_id")
+    if hospital_id is None:
+        logger.warning("挂号查号源兜底注入跳过: hospital_id 为空，不编造医院 ID")
+        return tool_calls
+    logger.info(
+        "挂号查号源兜底注入 query_departments (用户消息: %s)",
+        user_text,
+    )
+    return [
+        *tool_calls,
+        {"name": "query_departments", "arguments": {"hospital_id": hospital_id}},
+    ]
+
+
 async def tool_caller(
     state: AgentState,
     allowed_tools: list[str] | None = None,
@@ -632,12 +708,12 @@ async def tool_caller(
     # query_doctors 返回后发"请选择您想咨询的医生"卡，用户点选后绑定工具被
     # M8-8 过滤成只剩 save_pre_consultation，挂号白名单无此工具 -> 无工具可用
     # -> LLM 转而索要症状主诉，挂号流程走成在线问诊）。
-    is_consultation_scene = bool(allowed_tools) and "save_pre_consultation" in allowed_tools
+    is_consultation_scene = allowed_tools is not None and "save_pre_consultation" in allowed_tools
 
     # 导诊场景识别（2026-08-07）：白名单含 create_triage_assessment 即为导诊子图。
     # 导诊需"最少两轮症状追问"（原始需求），首轮用户仅描述症状时不允许直接调
     # 评估工具下结论——确定性拦截，软约束（TRIAGE_SCENE_PROMPT）不可靠。
-    is_triage_scene = bool(allowed_tools) and "create_triage_assessment" in allowed_tools
+    is_triage_scene = allowed_tools is not None and "create_triage_assessment" in allowed_tools
 
     # 导诊首轮拦截（2026-08-07 硬兜底）：首轮用户消息（messages 中 user 消息
     # 不超过 1 条）时，强制拦截 create_triage_assessment，本轮只允许追问查询类
@@ -647,9 +723,7 @@ async def tool_caller(
     # 拦截后工具仍可能返回 query_health_record / search_medical_knowledge 等
     # 查询（L1），子图正常执行并在 reply 注入追问引导，下一轮 user 消息到达后
     # 放行 create_triage_assessment。
-    is_first_round = sum(
-        1 for m in state.get("messages", []) if _is_user_message(m)
-    ) <= 1
+    is_first_round = sum(1 for m in state.get("messages", []) if _is_user_message(m)) <= 1
     block_triage_assessment = is_triage_scene and is_first_round
 
     # 导诊评估单次执行（2026-08-08）：同一子图循环内 create_triage_assessment
@@ -839,9 +913,18 @@ async def tool_caller(
                 logger.info(
                     "导诊评估已成功，拦截重复评估调用: %d 个（同轮单次执行）", len(repeated)
                 )
-                tool_calls = [
-                    tc for tc in tool_calls if tc["name"] != "create_triage_assessment"
-                ]
+                tool_calls = [tc for tc in tool_calls if tc["name"] != "create_triage_assessment"]
+        # 挂号场景查号源兜底注入（方案 B，2026-08-08）：用户明确要求查号源但
+        # LLM 未选任何查询工具时，确定性补 query_departments，让真实数据进入
+        # tool_results，杜绝 reply 凭空编造医生名/号源数/挂号费。
+        # 放在去重后：去重后的 tool_calls 为空才注入，不覆盖 LLM 已走的真实查询。
+        tool_calls = _inject_registration_query(
+            tool_calls,
+            _latest_user_text(state.get("messages", [])),
+            state,
+            effective_allowed,
+        )
+
         # M8-6 问诊选医生收窗：用户已从 options 卡回传选择（选择上下文已在
         # ainvoke 前注入），此处清空 pending_doctor_choices（选完即收窗，防止
         # 下一轮重复匹配/重复发卡）。

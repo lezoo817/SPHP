@@ -8,7 +8,7 @@ import json
 import logging
 import traceback
 from collections.abc import AsyncIterator
-from typing import Any, cast
+from typing import Any, Literal, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Request
@@ -41,6 +41,19 @@ from app.orchestrator.session_store import get_session_store
 from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
+
+# preset_action 受控取值白名单（与 AgentState.preset_action 字段的 Literal 一致）。
+# 前端受控预设入口统一由 preset.py 常量解析，此处声明类型别名便于 mypy 收窄到
+# AgentState 允许的取值，避免 str 泛化导致 TypedDict 构造报错。
+_PresetAction = Literal[
+    "interpret_prescription",
+    "interpret_medical_record",
+    "select_prescription_interpretation",
+    "select_medical_record_interpretation",
+    "recommend_prescription_pharmacy",
+    "notify_drug_order_paid",
+    "authorize_drug_order_reminder_after_receipt",
+]
 
 router = APIRouter()
 
@@ -169,9 +182,7 @@ def _build_initial_state(
         resolve_preset_interpretation(req.context) if scope == "c_end" else None
     )
     preset_medical_record_id = (
-        resolve_preset_medical_record_interpretation(req.context)
-        if scope == "c_end"
-        else None
+        resolve_preset_medical_record_interpretation(req.context) if scope == "c_end" else None
     )
     preset_interpretation_picker = (
         resolve_preset_interpretation_picker(req.context) if scope == "c_end" else None
@@ -181,9 +192,7 @@ def _build_initial_state(
     )
     preset_paid_order_id = resolve_preset_paid_order(req.context) if scope == "c_end" else None
     preset_reminder_authorization_id = (
-        resolve_preset_drug_order_reminder_authorization(req.context)
-        if scope == "c_end"
-        else None
+        resolve_preset_drug_order_reminder_authorization(req.context) if scope == "c_end" else None
     )
     preset_action: str | None = None
     preset_prescription_id: int | None = None
@@ -226,7 +235,9 @@ def _build_initial_state(
         # 对齐原始需求 §3：用户收货地址 ID 只来自请求 context（前端页面选中的配送地址），
         # 供 recommend_pharmacies 工具确定性补全与 LLM 上下文注入。
         "address_id": (req.context or {}).get("address_id"),
-        "preset_action": preset_action,
+        # preset_action 受控取值已由上方 preset.py 白名单解析（仅限 _PresetAction 集合），
+        # 构造 AgentState 时收窄到 Literal 类型以匹配 TypedDict 字段。
+        "preset_action": cast(_PresetAction | None, preset_action),
         "preset_prescription_id": preset_prescription_id,
         "preset_medical_record_id": preset_medical_record_id,
         "preset_drug_order_id": preset_paid_order_id,
@@ -1219,9 +1230,7 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
         err_message = error.get("message", "操作执行失败")
         if str(err_code).startswith("A"):
             return _confirm_error("BUSINESS_CONFLICT", err_message, trace_id, status_code=200)
-        return _confirm_error(
-            "TOOL_FAILED", err_message, trace_id, status_code=500
-        )
+        return _confirm_error("TOOL_FAILED", err_message, trace_id, status_code=500)
 
     # P2 #17：执行成功后删除 confirm_token（一次性语义收敛到此处），
     # 用户无法再用已成功的卡片重复操作。

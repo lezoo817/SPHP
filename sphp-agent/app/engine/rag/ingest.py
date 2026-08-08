@@ -29,6 +29,9 @@ _LOADER_MAP: dict[str, str] = {
     ".csv": "langchain_community.document_loaders.CSVLoader",
 }
 
+# ingest_directory 支持按子目录名推断的分类（目录名 = 分类名）
+_CATEGORY_DIRS: frozenset[str] = frozenset({"patient_edu", "clinical_ref"})
+
 
 def _load_file(file_path: Path) -> list[Document]:
     """根据后缀选择 Loader，返回 Document 列表。"""
@@ -167,6 +170,10 @@ async def ingest_directory(dir_path: str | Path, recursive: bool = True) -> int:
 
     ⚠️ 内部批量工具，不作为对外 HTTP API 暴露（系分 §6.5.1 仅单文件入库），
     供管理员脚本 / 初始化任务使用。
+
+    category 推断：文件相对根目录的第一层子目录名若为已知分类
+    （patient_edu / clinical_ref），用作该文件 category；否则回退默认
+    patient_edu，兼容根目录直放文件的老用法。
     """
     dir_path = Path(dir_path)
     if not dir_path.is_dir():
@@ -176,8 +183,22 @@ async def ingest_directory(dir_path: str | Path, recursive: bool = True) -> int:
     pattern = "**/*" if recursive else "*"
     for fp in sorted(dir_path.glob(pattern)):
         if fp.is_file() and fp.suffix.lower() in _LOADER_MAP:
-            _, chunk_count = await ingest_file(fp)
+            category = _infer_category(dir_path, fp)
+            _, chunk_count = await ingest_file(fp, category=category)
             total += chunk_count
 
     logger.info("目录 %s 入库完成，共 %d 个 chunk", dir_path, total)
     return total
+
+
+def _infer_category(root: Path, file_path: Path) -> str:
+    """按文件相对根目录的第一层子目录名推断 category。
+
+    已知分类目录（patient_edu / clinical_ref）直接返回目录名；
+    文件直放根目录或位于未知目录时回退默认 patient_edu。
+    """
+    try:
+        first_dir = file_path.relative_to(root).parts[0]
+    except ValueError:
+        return "patient_edu"
+    return first_dir if first_dir in _CATEGORY_DIRS else "patient_edu"

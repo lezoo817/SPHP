@@ -3,6 +3,7 @@ import { Eye, EyeOff, LockKeyhole, RefreshCw, UserRound } from 'lucide-react';
 import { useNavigate } from 'umi';
 import { Dialog } from '../../components/Dialog';
 import { getRememberedAccount, saveRememberedAccount, saveSession } from '../../models/session';
+import { clearSelection } from '../../models/selection';
 import { getCaptcha, login, register } from '../../services/auth';
 import type { CaptchaData } from '../../typings/api';
 import { getApiErrorMessage, validateAccount, validatePassword } from '../../utils/form';
@@ -44,6 +45,8 @@ export default function LoginPage() {
       const data = await login({ account: account.trim(), password });
       // 仅保存 Token 对和用户摘要，密码始终停留在当前输入框。
       saveSession(data);
+      // 每次成功登录都从当前账号本人重新初始化全局就诊人，避免沿用旧账号选择。
+      clearSelection();
       saveRememberedAccount(account.trim(), rememberAccount);
       // 登录成功后进入首页，加载医院和就诊人上下文。
       navigate('/home');

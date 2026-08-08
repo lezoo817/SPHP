@@ -1,6 +1,7 @@
 import type { LoginData, LoginUser, TokenPair } from '../typings/api';
 import { clearRequestCache } from '../query/request-cache';
 import { clearDismissedExpiredHealthTodos } from './expired-health-todo';
+import { clearSelection } from './selection';
 
 const SESSION_KEY = 'sphp_c_session';
 const REMEMBERED_ACCOUNT_KEY = 'sphp_c_remembered_account';
@@ -47,6 +48,8 @@ export function replaceTokenPair(tokens: TokenPair): void {
 export function clearSession(): void {
   // 退出或账号切换时同步清除内存中的医疗和订单查询结果。
   clearRequestCache();
+  // 同步清除跨页面就诊人，避免残留前一账号的医疗上下文。
+  clearSelection();
   // 过期待办关闭状态仅绑定本次登录会话，避免换账号后继承旧记录。
   clearDismissedExpiredHealthTodos();
   if (typeof window !== 'undefined') window.sessionStorage.removeItem(SESSION_KEY);

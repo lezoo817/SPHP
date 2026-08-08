@@ -8,7 +8,7 @@ import {
   validatePassword,
 } from './form';
 import { filterHospitals, formatAmount, getAppointmentStatusText, sortHospitals } from './medical';
-import { resolveSelfPatientId } from '../models/selection';
+import { resolveSelectedPatientId, resolveSelfPatientId } from '../models/selection';
 import { buildDrugOrderListPath } from '../services/pharmacy';
 import { buildPharmacyHomePath, buildPharmacyInventoryPath, buildPharmacyPrescriptionPath, getDrugOrderCardStatusText, isInvalidDrugOrder, matchesDrugOrderTab, resolvePharmacyPatientId } from './pharmacy';
 import { hasSearchKeyword, matchesDepartmentKeyword, resolveInitialDepartment } from './home-search';
@@ -29,7 +29,7 @@ import { canCancelPaidAppointment, isDuplicateDoctorAppointmentError, resolveApp
 import { buildDoctorBookingStatusPath } from '../services/registration';
 import { buildPrescriptionsPath } from '../services/consultation';
 import { buildAssistantPrescriptionDetailPath, buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, createPrescriptionDisplayNumber, filterPrescriptionsByDate, getPrescriptionDisplayNumber, getRecentPrescriptionRange, mergePrescriptionPages, type PrescriptionDisplayNumberStorage } from './prescription';
-import { buildDrugOrderDetailPath, buildDrugOrderListPagePath, buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, formatDrugOrderLogisticsTime, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderDetailPagePath, resolveDrugOrderListPagePath, resolveDrugOrderPaymentId, shouldPollDrugOrderLogistics } from './pharmacy-order';
+import { buildDrugOrderDetailPath, buildDrugOrderListPagePath, buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, formatDrugOrderLogisticsTime, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderDetailPagePath, resolveDrugOrderListPagePath, resolveDrugOrderPaymentId, resolveDrugOrderReturnPath, shouldPollDrugOrderLogistics } from './pharmacy-order';
 import { filterAppointmentRecordsByDate, getRecentAppointmentRecordRange, matchesAppointmentRecordTab, mergeAppointmentRecordPages } from './appointment-record';
 import { clearDismissedExpiredHealthTodos, dismissExpiredHealthTodo, getDismissedExpiredHealthTodoIds, isExpiredHealthTodoDismissed, type ExpiredHealthTodoStorage } from '../models/expired-health-todo';
 import type { Appointment } from '../typings/api';
@@ -75,6 +75,19 @@ describe('重复预约联调规则', () => {
 describe('就诊人默认选择', () => {
   it('优先选择本人而非全局家属选择', () => {
     expect(resolveSelfPatientId([{ patientId: 2, relation: 'CHILD' }, { patientId: 1, relation: 'SELF' }])).toBe(1);
+  });
+
+  it('保留当前账号仍有效的家属选择，非法选择回退本人', () => {
+    const members = [{ patientId: 1, relation: 'SELF' }, { patientId: 2, relation: 'CHILD' }];
+    expect(resolveSelectedPatientId(members, 2)).toBe(2);
+    expect(resolveSelectedPatientId(members, 99)).toBe(1);
+  });
+
+  it('本人优先于默认标记和列表顺序', () => {
+    expect(resolveSelectedPatientId([
+      { patientId: 9, relation: 'CHILD', isDefault: true },
+      { patientId: 3, relation: 'SELF', isDefault: false },
+    ])).toBe(3);
   });
 });
 
@@ -282,6 +295,13 @@ describe('购药订单展示规则', () => {
     expect(logisticsPath).toContain('returnTo=');
     expect(resolveDrugOrderListPagePath('https://example.com')).toBeUndefined();
     expect(resolveDrugOrderDetailPagePath(1001, '/pharmacy/order/1002')).toBe('/pharmacy');
+  });
+
+  it('从附近有货药店创建订单后保留库存页的逐级返回路径', () => {
+    const inventoryPath = '/pharmacy/prescription/13001/inventory?patientId=20001&issuedAt=2026-08-08T08%3A00%3A00%2B08%3A00';
+    const orderPath = buildDrugOrderDetailPath(1001, inventoryPath);
+    expect(resolveDrugOrderReturnPath(inventoryPath)).toBe(inventoryPath);
+    expect(resolveDrugOrderDetailPagePath(1001, orderPath)).toBe(orderPath);
   });
 
   it('处方只关联已支付订单，并使用该订单进入物流详情', () => {

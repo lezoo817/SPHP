@@ -199,13 +199,15 @@ def _build_interpretation_record_picker(state: AgentState) -> dict[str, Any] | N
             "messages": [
                 {"role": "assistant", "content": f"请从最近 30 天记录中选择需要解读的{label}。"}
             ],
-            "record_pickers": [{
-                "picker_type": picker_type,
-                "title": f"请选择要解读的{label}",
-                "confirm_text": "确认",
-                "cancel_text": "取消",
-                "items": items,
-            }],
+            "record_pickers": [
+                {
+                    "picker_type": picker_type,
+                    "title": f"请选择要解读的{label}",
+                    "confirm_text": "确认",
+                    "cancel_text": "取消",
+                    "items": items,
+                }
+            ],
         }
     return None
 
@@ -465,93 +467,6 @@ def _build_triage_followup_guide(state: AgentState) -> str | None:
     )
 
 
-def _extract_degraded_health_record(
-    tool_results: list[dict[str, Any]] | None,
-) -> bool:
-    """识别健康档案是否发生了来源降级（2026-08-07）。
-
-    前端会话残留他账号就诊人 ID 时，``query_health_record`` 被 Java 数据隔离
-    拒绝（403 / A0301）后确定性降级为查当前账号本人档案，并在成功结果 data
-    中附 ``agent_degraded: True`` 来源标记（见 health.py 该函数）。本函数扫描
-    本轮工具结果，命中该标记即返回 True，供 reply_node 注入降级引导。
-
-    Args:
-        tool_results: 本轮工具执行结果列表。
-
-    Returns:
-        bool: 存在降级成功的健康档案来源标记时返回 True。
-    """
-    for result in tool_results or []:
-        if result.get("tool_name") != "query_health_record" or not result.get("success"):
-            continue
-        data = result.get("data")
-        if not isinstance(data, dict):
-            continue
-        payload = data.get("data")
-        if isinstance(payload, dict) and payload.get("agent_degraded"):
-            return True
-    return False
-
-
-def _build_triage_guide(state: AgentState) -> str | None:
-    """构造导诊推荐完成后的下一步引导（2026-08-07）。
-
-    对齐原始需求"智能导诊与挂号"：导诊子图推荐科室与医生后，必须询问用户
-    "是否需要预约挂号或在线问诊"，不能推荐完就结束。本函数在导诊评估
-    （create_triage_assessment）已成功时返回引导提示，供 reply_node 注入
-    LLM 输入；否则返回 None（不注入）。
-
-    Args:
-        state: 当前图状态，含 intent / tool_results。
-
-    Returns:
-        str | None: 导诊引导提示；非导诊意图或评估未成功时返回 None。
-    """
-    if state.get("intent") != "triage":
-        return None
-    assessed = any(
-        r.get("tool_name") == "create_triage_assessment" and r.get("success")
-        for r in state.get("tool_results") or []
-    )
-    if not assessed:
-        return None
-    return (
-        "导诊评估与科室/医生推荐已完成。请在本轮回复末尾**明确询问用户**："
-        "'需要我帮您预约挂号，还是发起在线问诊？'并根据用户下一步选择引导到"
-        "对应流程（挂号查号源/创建订单，问诊填主诉/选医生）。不要推荐完就结束。"
-    )
-
-
-def _build_triage_followup_guide(state: AgentState) -> str | None:
-    """构造导诊首轮症状追问引导（2026-08-07）。
-
-    对齐原始需求"多轮对话理解"：导诊子图首轮（用户仅描述症状，评估尚未成功）
-    时，引导 LLM 追问症状细节（部位/持续时间/体温/过敏史等），保证最少两轮
-    对话再评估。本函数在 intent=triage 且 create_triage_assessment 尚未成功时
-    返回提示，供 reply_node 注入；否则返回 None。
-
-    Args:
-        state: 当前图状态，含 intent / tool_results。
-
-    Returns:
-        str | None: 首轮追问引导；非导诊意图或评估已成功时返回 None。
-    """
-    if state.get("intent") != "triage":
-        return None
-    assessed = any(
-        r.get("tool_name") == "create_triage_assessment" and r.get("success")
-        for r in state.get("tool_results") or []
-    )
-    if assessed:
-        return None
-    return (
-        "当前处于导诊首轮：用户刚描述症状，**导诊评估尚未完成**。"
-        "请追问 1-2 个关键症状细节（如部位、持续时间、体温、有无伴随症状、过敏史），"
-        "**不要在本轮下科室/医生推荐结论**，也不要调用导诊评估工具——待用户补充"
-        "症状信息后再做评估与推荐。"
-    )
-
-
 def _extract_prescription_interpretation(
     tool_results: list[dict[str, Any]] | None,
 ) -> dict[str, Any] | None:
@@ -619,7 +534,7 @@ def _build_ai_fallback_context(payload: dict[str, Any]) -> str | None:
     return (
         "当前回复必须基于以下真实处方详情生成即时说明：\n"
         f"{detail}\n\n"
-        "这是“AI 即时解读（未经过医生审核）”，首行必须使用该标题。"
+        "这是“AI 即时解读”，首行必须使用该标题。"
         "输出必须是自然的纯文本段落，不得使用 Markdown 标题、列表、编号、星号、"
         "反引号或其他标记语法。"
         "必须使用换行分段：标题后空一行；每种药品独立成段，药品段之间空一行；"
@@ -667,17 +582,17 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
             notification = _format_paid_order_notification(state)
             if notification:
                 # 预计送达时间必须来自 Java 订单详情，不能交给模型生成。
-                result: dict[str, Any] = {
+                paid_result: dict[str, Any] = {
                     "messages": [{"role": "assistant", "content": notification}]
                 }
-                action_cards = _paid_order_reminder_action_cards(state)
-                if action_cards:
-                    result["action_cards"] = action_cards
-                return result
+                paid_action_cards = _paid_order_reminder_action_cards(state)
+                if paid_action_cards:
+                    paid_result["action_cards"] = paid_action_cards
+                return paid_result
 
         if state.get("preset_action") == _PRESET_RECOMMEND_PRESCRIPTION_PHARMACY:
-            pending_confirmations = state.get("pending_confirmations") or []
-            if pending_confirmations:
+            recommend_pending_confirmations = state.get("pending_confirmations") or []
+            if recommend_pending_confirmations:
                 # 推荐第一项已确定，用户只需对创建待支付订单做既有 L2 确认。
                 pharmacy_name = _recommended_pharmacy_name(state) or "推荐药店"
                 return {
@@ -696,14 +611,16 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
             official_content = _format_official_interpretation(interpretation)
             if official_content:
                 # 正式解读由医生或既有生产链路确认，必须原样展示，不能交给 LLM 改写。
-                action_cards, address_message = _interpretation_action_cards(state)
+                official_action_cards, address_message = _interpretation_action_cards(state)
                 content = official_content
                 if address_message:
                     content = f"{content}\n\n{address_message}"
-                result: dict[str, Any] = {"messages": [{"role": "assistant", "content": content}]}
-                if action_cards:
-                    result["action_cards"] = action_cards
-                return result
+                official_result: dict[str, Any] = {
+                    "messages": [{"role": "assistant", "content": content}]
+                }
+                if official_action_cards:
+                    official_result["action_cards"] = official_action_cards
+                return official_result
 
         llm = build_llm()
 
