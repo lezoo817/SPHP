@@ -59,6 +59,9 @@ function resolvePresetAction(action: AgentPresetAction | undefined): AgentPreset
   if (action?.type === 'notify_appointment_paid' && Number.isInteger(action.appointmentId) && action.appointmentId > 0) {
     return action;
   }
+  if (action?.type === 'quick_message' && typeof action.content === 'string' && action.content.trim()) {
+    return action;
+  }
   return undefined;
 }
 

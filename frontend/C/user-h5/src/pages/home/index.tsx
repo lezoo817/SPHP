@@ -3,6 +3,7 @@ import { BellRing, CalendarPlus, ChevronRight, ClipboardPlus, FileChartColumn, H
 import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
+import { HOME_CONSULTATION_MESSAGE, HOME_TRIAGE_MESSAGE } from '../../constants/agent';
 import { dismissExpiredHealthTodo, getDismissedExpiredHealthTodoIds, isExpiredHealthTodoDismissed } from '../../models/expired-health-todo';
 import { getSelection, resolveSelectedPatientId, saveSelection } from '../../models/selection';
 import { getFamilyMembers } from '../../services/family';
@@ -205,8 +206,8 @@ export default function HomePage() {
   const currentPatient = members.find((item) => item.patientId === selected.patientId);
   const services = [
     { label: '预约挂号', icon: CalendarPlus, action: () => navigate('/home/departments') },
-    { label: '智能导诊', icon: Stethoscope, action: () => navigate('/agent') },
-    { label: '在线问诊', icon: HeartPulse, action: () => navigate('/assistant') },
+    { label: '智能导诊', icon: Stethoscope, action: () => navigate('/agent', { state: { from: '/home', presetAction: { type: 'quick_message', content: HOME_TRIAGE_MESSAGE } } }) },
+    { label: '在线问诊', icon: HeartPulse, action: () => navigate('/agent', { state: { from: '/home', presetAction: { type: 'quick_message', content: HOME_CONSULTATION_MESSAGE } } }) },
     { label: '处方购药', icon: Pill, action: () => navigate('/pharmacy') },
     { label: '病历报告', icon: FileChartColumn, action: () => navigate('/medical-records?source=home') },
     { label: '用药提醒', icon: ClipboardPlus, action: () => navigate('/mine/medication-plans?source=home') },
