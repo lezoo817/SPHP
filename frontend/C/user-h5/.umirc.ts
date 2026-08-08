@@ -40,6 +40,15 @@ export default defineConfig({
     { path: '/mine/notifications', component: 'mine/notifications' },
   ],
   npmClient: 'pnpm',
+  // 生产由 Nginx 动态返回运行时 API 地址，开发环境同样加载本地占位配置。
+  headScripts: ['/runtime-config.js'],
+  proxy: {
+    // 开发环境代理 Java 统一后端，生产环境由 Nginx 同域代理 /api。
+    '/api': {
+      target: 'http://localhost:8080',
+      changeOrigin: true,
+    },
+  },
   // 多个异步页面共用压缩帮助函数时隔离 IIFE，避免生产构建产物命名冲突。
   esbuildMinifyIIFE: true,
   // 关闭 MFSU：与 @tanstack/react-query 存在 React 多实例冲突（hooks 为 null）。

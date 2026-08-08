@@ -24,7 +24,8 @@ export default function LoginPage() {
         localStorage.setItem('b_access_token', token);
       }
       message.success('登录成功');
-      window.location.href = '/';
+      // B 端生产环境部署在 /b/，避免跳转到 C 端根路径。
+      window.location.href = window.location.pathname.startsWith('/b/') ? '/b/' : '/';
     } catch (err: unknown) {
       message.error(getErrorMessage(err, '登录失败'));
     } finally {

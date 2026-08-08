@@ -17,7 +17,7 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "sphp.order.logistics")
 public class OrderLogisticsProperties {
 
-    /** 每次自动推进物流状态的延迟秒数，默认 30 秒 */
+    /** 每次自动推进物流状态的延迟秒数，默认 15 秒，便于演示物流状态流转 */
     @Min(value = 1, message = "物流推进间隔必须大于零")
-    private int advanceIntervalSeconds = 30;
+    private int advanceIntervalSeconds = 15;
 }
