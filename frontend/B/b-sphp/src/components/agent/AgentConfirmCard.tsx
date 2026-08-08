@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CheckCircleOutlined, CloseCircleOutlined, SafetyOutlined } from '@ant-design/icons';
 import type { AgentConfirmCard } from '@/typings/agent';
 import { AGENT_CONFIRM_ERROR_TEXT } from '@/constants/agent';
+import { AgentPatientHistoryResult } from './AgentPatientHistoryResult';
 
 /** 渲染 details 关键字段为可读键值对。 */
 function renderDetails(details: Record<string, unknown> | undefined): { label: string; value: string }[] {
@@ -105,6 +106,11 @@ export function AgentConfirmCardView({
       )}
       {card.status === 'done' && card.resultMessage && (
         <p className="agent-card__result">{card.resultMessage}</p>
+      )}
+      {/* query_patient_history 确认后渲染结构化患者档案（L2 结果不走 reply_node 总结，
+          后端 PHI 保护仅回注 ID 摘要，完整数据在此前端渲染） */}
+      {card.status === 'done' && card.cardType === 'confirm_patient_history' && card.result !== null && card.result !== undefined && (
+        <AgentPatientHistoryResult result={card.result} />
       )}
       {(card.status === 'error' || card.status === 'expired') && card.errorMessage && (
         <p className="agent-card__error-text">
