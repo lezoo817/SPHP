@@ -708,12 +708,12 @@ async def tool_caller(
     # query_doctors 返回后发"请选择您想咨询的医生"卡，用户点选后绑定工具被
     # M8-8 过滤成只剩 save_pre_consultation，挂号白名单无此工具 -> 无工具可用
     # -> LLM 转而索要症状主诉，挂号流程走成在线问诊）。
-    is_consultation_scene = bool(allowed_tools) and "save_pre_consultation" in allowed_tools
+    is_consultation_scene = allowed_tools is not None and "save_pre_consultation" in allowed_tools
 
     # 导诊场景识别（2026-08-07）：白名单含 create_triage_assessment 即为导诊子图。
     # 导诊需"最少两轮症状追问"（原始需求），首轮用户仅描述症状时不允许直接调
     # 评估工具下结论——确定性拦截，软约束（TRIAGE_SCENE_PROMPT）不可靠。
-    is_triage_scene = bool(allowed_tools) and "create_triage_assessment" in allowed_tools
+    is_triage_scene = allowed_tools is not None and "create_triage_assessment" in allowed_tools
 
     # 导诊首轮拦截（2026-08-07 硬兜底）：首轮用户消息（messages 中 user 消息
     # 不超过 1 条）时，强制拦截 create_triage_assessment，本轮只允许追问查询类

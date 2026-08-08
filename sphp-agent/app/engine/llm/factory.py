@@ -48,7 +48,8 @@ def build_llm(provider: str | None = None, temperature: float | None = None) -> 
         temperature=temperature,
         streaming=True,
         stream_chunk_timeout=300.0,
-        request_timeout=300.0,
+        # 请求超时：字段名为 request_timeout，pydantic 生成的 __init__ 签名按别名 timeout 接受
+        timeout=300.0,
     )
 
 
