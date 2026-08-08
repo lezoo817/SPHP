@@ -19,7 +19,7 @@ export const AGENT_SESSION_KEY = 'sphp_c_agent_session_id';
 
 /** 欢迎语。 */
 export const AGENT_WELCOME =
-  '您好，我是智愈先锋 AI 助手，可以帮您智能导诊、挂号、问诊、购药和查阅健康档案。请问有什么可以帮您？';
+  '您好，我是智愈先锋 AI 助手，可以帮您智能导诊、挂号、问诊、购药和预约挂号。请问有什么可以帮您？';
 
 /** 常用咨询快捷入口（常驻在对话列表上方，每个按钮含图标 + 标题 + 描述）。 */
 export interface AgentQuickPrompt {
@@ -36,7 +36,7 @@ export const AGENT_QUICK_PROMPTS: AgentQuickPrompt[] = [
   { label: '处方解读', content: '请选择最近的处方供我解读。', description: '选择处方后通俗解释', pickerAction: 'select_prescription_interpretation' },
   { label: '病历解读', content: '请选择最近的病历供我解读。', description: '选择病历后通俗解读', pickerAction: 'select_medical_record_interpretation' },
   { label: '在线问诊', content: '我想进行在线问诊', description: '找医生，提交预问诊' },
-  { label: '健康档案', content: '查看我的健康档案和过敏史。', description: '过敏史 / 既往史 / 用药' },
+  { label: '预约挂号', content: '我想预约挂号。', description: '选科室，预约医生' },
 ];
 
 /** 工具英文标识符到中文标签的映射（与 sphp-agent `_TOOL_LABELS` 对齐）。 */

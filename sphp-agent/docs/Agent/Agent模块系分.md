@@ -3,8 +3,8 @@
 | --- | --- |
 | 文档名称 | 智愈先锋 Agent 模块系统详细设计说明书 |
 | 项目名称 | 智愈先锋 —— AI驱动的全链路医疗健康平台 |
-| 编写日期 | 2026-07-31 |
-| 文档版本 | V2.1 |
+| 编写日期 | 2026-08-08 |
+| 文档版本 | V3.0 |
 | 文档状态 | 更新中 |
 | 编写人 | Agent 开发组 |
 | 参考文档 | Agent-PRD 2.0、C 端后端系分 V1.3、B 端后端系分 V1.1 |
@@ -19,6 +19,7 @@
 | V1.1 | 2026-07-29 | 重大更新：采用 BFF 统一架构；Agent 退居纯推理角色；工具执行、鉴权、上下文注入全部移交 BFF；新增 B 端 4 场景工具定义 | Agent 开发组 |
 | V2.0 | 2026-07-30 | **架构重构**：废除 BFF 模式，改用 MCP 协议；Agent 担任 MCP Client，内嵌 MCP Server 封装 Java REST API；前端直连 Agent（:8081）；Java 后端退化为纯数据 API + 内部鉴权辅助；删除全部 SSE 自定义事件、BFF 工具回调接口、BFF 安全模型 | Agent 开发组 |
 | V2.1 | 2026-07-31 | **前后端对齐**：SSE card 事件补 session_id；confirm 接口改为同步返回并统一 {code,message,data,traceId} 信封；B 端 token/parse 响应定稿（含 roles/deptId/doctorId/hospitalId）；C 端工具参数对齐后端 V1.3；B 端工具 API 路径统一 /admin/ 前缀（对齐后端 V1.1）；AgentState 补 B 端上下文字段；context 补 hospital_id；明确 B 端鉴权头策略（仅 X-User-Id）；confirm_token 统一 UUID4；支付超时定稿 15 分钟；ReAct 可视化（thought/action/observation 事件） | Agent 开发组 |
+| V3.0 | 2026-08-08 | **代码同步**：C 端工具30→32（新增 recommend_pharmacies/authorize_drug_order_reminder_after_receipt/query_medical_records/interpret_medical_record）；B 端工具参数简化（check_allergy_risk/check_duplicate_medication 仅需 patient_id）；save_pre_consultation 重构（doctor_id+submit）；update_medication_plan 扩展 ENABLE_REMINDER/DISABLE_REMINDER；项目结构补全 mcp_client/mcp_server dispatcher/medical_record/envelope 等；主图新增受控预设动作路由（preset_action_node）；AgentState 新增 11 个字段（patient_id/address_id/preset_action*/action_cards/record_pickers/pending_doctor_choices/rag_context/jwt_token/tool_iteration）；SSE 新增 action_card/options 事件；知识库新增 list/delete 端点；Settings 新增 checkpointer_backend/confirm_done_ttl/max_data_chars/max_tool_iterations 等；Embedding 供应商更新（siliconflow/dashscope） | Agent 开发组 |
 
 
 ---
@@ -31,7 +32,7 @@
 
 + 系统架构边界与 MCP 协议工具调用方式
 + 核心业务流程（对话模型、MCP 工具调用、L2 确认）
-+ Function Calling Schema 定义（C 端 30 工具 + B 端 4 场景 9 工具）
++ Function Calling Schema 定义（C 端 32 工具 + B 端 9 工具）
 + 接口契约（前端→Agent 对话接口、Agent→Java 鉴权接口、MCP 工具协议）
 + 安全设计（纵深防御、JWT 鉴权方案 A、数据隔离）
 + 非功能性设计（质量属性、可维护性）
@@ -169,10 +170,12 @@ C 端按业务场景聚合为 5 组工具，Agent 启动时预注册全部 C 端
 | 工具 | 说明 | 约束 |
 |------|------|------|
 | `query_pharmacy_stock` | 查询附近药店库存与价格 | L1 查询级 |
-| `create_drug_order` | 创建购药订单草稿（待付款） | L2 需用户确认 |
+| `recommend_pharmacies` | 推荐可配送院内药店（Java 服务端按价格/距离/配送时效加权排序），优先于 query_pharmacy_stock 使用 | L1 查询级；需 address_id |
+| `create_drug_order` | 创建购药订单草稿（待付款） | L2 需用户确认；需 prescription_id / pharmacy_id / address_id |
 | `query_drug_orders` | 查询购药订单列表或详情（不带 id 返回列表，带 id 返回详情） | L1 查询级 |
 | `cancel_drug_order` | 取消未支付购药订单 | L2 需用户确认 |
 | `confirm_drug_receipt` | 确认购药收货 | L2 需用户确认 |
+| `authorize_drug_order_reminder_after_receipt` | 登记购药订单确认收货后自动开启用药提醒 | L2 需用户确认 |
 
 **场景五：健康档案**
 
@@ -181,12 +184,14 @@ C 端按业务场景聚合为 5 组工具，Agent 启动时预注册全部 C 端
 | 工具 | 说明 | 约束 |
 |------|------|------|
 | `query_health_record` | 查询健康档案（含过敏史、既往史） | L1 查询级 |
+| `query_medical_records` | 查询医生病历列表，可按就诊人和最近天数筛选 | L1 查询级 |
+| `interpret_medical_record` | 读取医生病历正文并结合该病历所属就诊人的过敏史、既往史生成解读输入 | L1 查询级 |
 | `manage_allergy` | 管理过敏史记录（不带 allergy_id 新增，带 allergy_id 修改） | L2 需用户确认 |
 | `manage_medical_history` | 管理既往史记录（不带 history_id 新增，带 history_id 修改） | L2 需用户确认 |
 | `query_reports` | 查询检查报告列表或详情（不带 id 返回列表，带 id 返回详情及指标解读） | L1 查询级；不可下诊断结论；标注"AI 建议仅供参考" |
 | `create_report` | 录入检查报告 | L2 需用户确认 |
 | `query_medication_plans` | 查询用药计划列表 | L1 查询级 |
-| `update_medication_plan` | 暂停/恢复/完成用药计划 | L2 需用户确认 |
+| `update_medication_plan` | 暂停/恢复/完成用药计划，开启/关闭用药提醒 | L2 需用户确认 |
 | `query_follow_ups` | 查询随访计划列表 | L1 查询级 |
 | `confirm_follow_up` | 确认随访提醒时间 | L2 需用户确认 |
 | `manage_notifications` | 管理通知（action=list 查列表，action=read 标已读） | L1 查询级 |
@@ -323,32 +328,33 @@ Agent 内部仍为四层架构，分层原则不变：
 graph TB
     subgraph api["① API接入层 — 协议适配"]
         AR["routes/<br/>chat.py · knowledge.py"]
-        AM["middleware/<br/>jwt_auth.py · rate_limit.py"]
-        AS["schemas/<br/>chat.py"]
+        AM["middleware/<br/>jwt_auth.py · rate_limit.py · tracing.py · memory_rate_limit.py"]
+        AS["schemas/<br/>chat.py · envelope.py"]
     end
 
     subgraph orch["② 编排层 — 只做调度不做实现"]
-        OG["graphs/<br/>main_graph · triage_graph<br/>consult_graph · pharmacy_graph"]
-        ON["nodes/<br/>intent · rag · safety<br/>tool_caller · reply"]
-        OS["state.py — AgentState"]
+        OG["graphs/<br/>main_graph · triage_graph · registration_graph<br/>consult_graph · pharmacy_graph · health_graph<br/>_common.py"]
+        ON["nodes/<br/>auth · intent · rag · chitchat · preset<br/>safety · tool_caller · tool_executor · reply<br/>prescription_purchase"]
+        OS["state.py · checkpointer.py<br/>session_store.py · utils.py"]
     end
 
     subgraph eng["③ 引擎层 — 可独立测试"]
-        ELLM["llm/<br/>factory · prompts/"]
+        ELLM["llm/<br/>factory"]
         ETOOL["tools/<br/>schema_registry · c_schemas · b_schemas"]
         ERAG["rag/<br/>vectorstore · search · ingest · embedder"]
-        EMEM["memory/<br/>buffer · summary"]
+        EMEM["memory/<br/>buffer"]
     end
 
-    subgraph mcp["MCP Server（内嵌）"]
-        MSRV["server.py<br/>MCP Server 启动入口"]
-        MTOOLS["tools/<br/>drug_query · appointment<br/>prescription · pharmacy · health"]
+    subgraph mcp["MCP 层（内嵌）"]
+        MSRV["mcp_server/<br/>server.py"]
+        MTOOLS["mcp_server/tools/<br/>dispatcher · triage · appointment<br/>consultation · prescription · pharmacy<br/>health · medical_record · notification · b_doctor"]
+        MCLI["mcp_client/<br/>client.py<br/>（in-memory 传输 + 直调回退）"]
     end
 
     subgraph infra["④ 基础设施层 — 零业务依赖"]
         IAUDIT["audit/logger.py<br/>structlog 结构化日志"]
-        ICACHE["cache/redis_client.py<br/>限流 · confirm_token"]
-        IJAVA["java_client.py<br/>httpx Java REST 客户端"]
+        ICACHE["cache/redis_client.py<br/>限流 · confirm_token · confirm_done"]
+        IJAVA["java_client.py · java_api_map.py<br/>httpx Java REST 客户端 + 接口契约表"]
         ICFG["config/settings.py<br/>.env → Pydantic Settings"]
     end
 
@@ -359,6 +365,7 @@ graph TB
     orch --> infra
     eng --> infra
     mcp --> infra
+    MCLI --> MSRV
 ```
 
 ### 4.3 分层规则
@@ -366,9 +373,10 @@ graph TB
 | 层 | 路径 | 能 import | 不能做的事 |
 |---|------|-----------|------------|
 | API 接入层 | `app/api/` | orchestrator, infrastructure, engine | 不直接调 httpx/psycopg |
-| 编排层 | `app/orchestrator/` | engine, mcp_server, infrastructure | 不直接操作 I/O，只调 node/tool |
+| 编排层 | `app/orchestrator/` | engine, mcp_server, mcp_client, infrastructure | 不直接操作 I/O，只调 node/tool |
 | 引擎层 | `app/engine/` | infrastructure | 不依赖 orchestrator（可独立测试） |
 | MCP Server | `app/mcp_server/` | infrastructure | 不依赖 engine/orchestrator，可独立测试 |
+| MCP Client | `app/mcp_client/` | mcp_server（内存传输） | 直连 MCP Server，不依赖 orchestrator |
 | 基础设施层 | `app/infrastructure/` | 无 | 不依赖任何业务层 |
 
 核心原则：**改动一个 graph 不应触及 LLM 工厂，换一个数据库驱动不应改动任何 node。MCP Server 作为独立层，换 Java API 路径只需改 mcp_server/tools/ 下的封装文件。**
@@ -381,54 +389,87 @@ sphp-agent/                             # Agent 模块根目录
 │   ├── main.py                         # FastAPI + MCP Server 启动 + lifespan
 │   ├── api/                            # ① API 接入层
 │   │   ├── routes/
-│   │   │   ├── chat.py                 # 前端直连 Agent 对话端点（SSE 流式）
-│   │   │   └── knowledge.py            # 知识库管理（ingest + search）
+│   │   │   ├── chat.py                 # 前端直连 Agent 对话端点（SSE 流式）+ 历史会话管理 + L2 确认回调
+│   │   │   └── knowledge.py            # 知识库管理（ingest / search / list / delete）
 │   │   ├── middleware/
 │   │   │   ├── jwt_auth.py             # JWT 鉴权：调 Java token/parse 换取 userId
-│   │   │   ├── rate_limit.py           # 按用户限流
+│   │   │   ├── rate_limit.py           # 按用户限流（Redis 滑动窗口）
+│   │   │   ├── memory_rate_limit.py    # 记忆层对话限流（防子图循环）
 │   │   │   └── tracing.py              # traceId 注入
 │   │   └── schemas/
-│   │       └── chat.py                 # 对话请求/响应模型
+│   │       ├── chat.py                 # 对话请求/响应模型
+│   │       └── envelope.py             # 统一信封 {code, message, data, traceId}
 │   ├── orchestrator/                   # ② 编排层
-│   │   ├── graphs/                     # LangGraph 子图（main/triage/consult/pharmacy）
-│   │   ├── nodes/                      # 图节点函数（intent/rag/safety/tool_caller/reply）
-│   │   └── state.py                    # AgentState 状态定义
+│   │   ├── graphs/                     # LangGraph 子图
+│   │   │   ├── _common.py             # 子图共用构造（build_tool_subgraph）
+│   │   │   ├── main_graph.py          # 主图：auth → [B 端直达 | preset | intent] → reply
+│   │   │   ├── triage_graph.py        # 导诊子图
+│   │   │   ├── registration_graph.py  # 挂号子图
+│   │   │   ├── consult_graph.py       # 问诊子图
+│   │   │   ├── pharmacy_graph.py      # 购药子图
+│   │   │   └── health_graph.py        # 健康档案子图（M8-2）
+│   │   ├── nodes/                      # 图节点函数
+│   │   │   ├── auth.py                # JWT 鉴权节点
+│   │   │   ├── intent.py              # 意图识别节点
+│   │   │   ├── rag.py                 # RAG 检索节点（qa_node）
+│   │   │   ├── chitchat.py            # 闲聊节点
+│   │   │   ├── preset.py             # 受控预设动作节点（处方解读/药店推荐/购药通知）
+│   │   │   ├── prescription_purchase.py # 购药确认编排（prepare_recommended_drug_order）
+│   │   │   ├── safety.py             # 安全校验节点（L2 确认）
+│   │   │   ├── tool_caller.py         # 工具调用决策（LLM 选择工具+参数）
+│   │   │   ├── tool_executor.py       # 工具执行（MCP 调用 / 本地执行）
+│   │   │   └── reply.py              # 回复生成节点
+│   │   ├── state.py                    # AgentState 状态定义
+│   │   ├── checkpointer.py            # 会话 checkpointer（memory / postgres 后端切换）
+│   │   ├── session_store.py           # 会话元数据存储（历史会话列表，M6-B3）
+│   │   └── utils.py                   # 编排层工具函数
 │   ├── engine/                         # ③ 引擎层
-│   │   ├── llm/                        # LLM 工厂 + prompts 模板
+│   │   ├── llm/
+│   │   │   └── factory.py             # LLM 工厂（DeepSeek / 智谱 / 通义，OpenAI 兼容接口）
 │   │   ├── tools/                      # 工具引擎
-│   │   │   ├── schema_registry.py      # Function Calling Schema 注册中心
-│   │   │   ├── c_schemas.py            # C 端工具 Schema（启动时加载）
-│   │   │   └── b_schemas.py            # B 端工具 Schema（启动时加载）
+│   │   │   ├── schema_registry.py     # Function Calling Schema 注册中心（ToolSchema + ToolRegistry）
+│   │   │   ├── c_schemas.py           # C 端工具 Schema（32 个，启动时加载）
+│   │   │   └── b_schemas.py           # B 端工具 Schema（9 个，启动时加载）
 │   │   ├── rag/                        # 知识库向量检索（pgvector）
-│   │   └── memory/                     # 对话记忆（buffer + summary）
+│   │   │   ├── vectorstore.py         # PGVector 实例管理（async 引擎）
+│   │   │   ├── embedder.py            # Embedding 工厂（多供应商）
+│   │   │   ├── ingest.py              # 文档入库管道（加载→切分→向量化→写入 pgvector）
+│   │   │   └── search.py             # 向量检索（余弦相似度，阈值过滤）
+│   │   └── memory/
+│   │       └── buffer.py              # 对话记忆（ConversationBufferWindowMemory）
+│   ├── mcp_client/                     # MCP Client（in-memory 传输，直连调用兜底）
+│   │   └── client.py                  # MCP Client 连接管理 + tools/call + 直调回退
 │   ├── mcp_server/                     # MCP Server（内嵌，stdio transport）
-│   │   ├── server.py                   # MCP Server 启动入口（stdio transport）
-│   │   └── tools/                      # MCP 工具封装（一个工具一个文件）
-│   │       ├── triage.py               # 导诊工具（create_triage_assessment）
-│   │       ├── appointment.py          # 挂号工具（query_departments/doctors/slots + create_appointment 等）
-│   │       ├── consultation.py         # 问诊工具（save_pre_consultation/query_consultations 等）
-│   │       ├── prescription.py         # 处方工具（query_prescriptions/interpret_prescription）
-│   │       ├── pharmacy.py             # 购药工具（query_pharmacy_stock/create_drug_order 等）
-│   │       ├── health.py               # 健康管理工具（health_record/allergy/history/report 等）
-│   │       ├── notification.py         # 通知工具（query_notifications/mark_notification_read）
-│   │       └── b_doctor.py             # B 端医生工具（接诊辅助/处方审核/报告解读）
+│   │   ├── server.py                  # MCP Server 启动入口（stdio transport）
+│   │   └── tools/                     # MCP 工具封装（一个工具一个文件）
+│   │       ├── dispatcher.py          # 工具分发器（M6-C1：统一持有工具名→封装函数映射）
+│   │       ├── triage.py             # 导诊工具（create_triage_assessment）
+│   │       ├── appointment.py        # 挂号工具（query_departments/doctors/slots + create_appointment 等）
+│   │       ├── consultation.py       # 问诊工具（save_pre_consultation/query_consultations 等）
+│   │       ├── prescription.py       # 处方工具（query_prescriptions/interpret_prescription）
+│   │       ├── pharmacy.py           # 购药工具（query_pharmacy_stock/recommend_pharmacies/create_drug_order 等）
+│   │       ├── health.py             # 健康管理工具（health_record/allergy/history/report 等）
+│   │       ├── medical_record.py     # 病历解读工具（interpret_medical_record）
+│   │       ├── notification.py       # 通知工具（manage_notifications）
+│   │       └── b_doctor.py           # B 端医生工具（接诊辅助/处方审核/报告解读）
 │   └── infrastructure/                 # ④ 基础设施层
-│       ├── audit/logger.py             # structlog 结构化日志
-│       ├── cache/redis_client.py       # Redis 限流/confirm_token
-│       ├── java_client.py              # Java REST API 客户端（httpx）
-│       └── config/settings.py          # Pydantic Settings 配置
+│       ├── audit/logger.py            # structlog 结构化日志
+│       ├── cache/redis_client.py      # Redis 限流 / confirm_token / confirm_done 回执
+│       ├── java_client.py             # Java REST API 客户端（httpx，幂等键 + JWT 注入）
+│       ├── java_api_map.py            # Java 接口契约表（启动时 fail-fast 校验）
+│       └── config/settings.py         # Pydantic Settings 配置（.env 加载 + 安全校验）
 ├── tests/
-│   ├── unit/                           # 节点级单元测试
-│   ├── integration/                    # 图级集成测试
-│   └── eval/                           # 评测集
-├── docs/Agent/                         # Agent 模块文档
-│   ├── Agent模块系分.md                 # 本文档
-│   ├── C端前后端系分/                   # C 端后端系分（参考）
-│   └── B端系分/                         # B 端后端系分（参考）
-├── data/                               # 知识库文档源文件
+│   ├── unit/                          # 节点级单元测试
+│   ├── integration/                   # 图级集成测试
+│   └── eval/                          # 评测集
+├── docs/Agent/                        # Agent 模块文档
+│   ├── Agent模块系分.md                # 本文档
+│   ├── C端前后端系分/                  # C 端后端系分（参考）
+│   └── B端系分/                        # B 端后端系分（参考）
+├── data/                              # 知识库文档源文件
 ├── pyproject.toml
 ├── requirements.txt
-└── .env                                # 私有环境变量（不纳入版本控制）
+└── .env                               # 私有环境变量（不纳入版本控制）
 ```
 
 ### 4.5 启动与初始化流程
@@ -438,42 +479,54 @@ Agent 通过 FastAPI `lifespan` 机制管理启动和关闭。以下为启动时
 ```
 main.py: lifespan()
     │
-    ├── 1. 加载配置
-    │       Settings() 读取 .env → 校验必填项（LLM_API_KEY、JAVA_BASE_URL 等）
-    │       └── 失败 → fatal，进程退出，打印缺失变量名
+    ├── 1. 加载配置 + 日志初始化
+    │       Settings() 读取 .env → 校验必填项（JAVA_BASE_URL 等）
+    │       └── DEBUG + ALLOW_ANONYMOUS 安全校验（P1-10，双开强制降级）
     │
-    ├── 2. 初始化基础设施连接
-    │       ├── PostgreSQL: asyncpg 连接池，执行 `SELECT 1` 健康检查
-    │       │   └── 失败 → fatal（RAG 和知识库依赖 PG）
-    │       ├── pgvector: 验证扩展已安装（`SELECT extname FROM pg_extension WHERE extname='vector'`）
-    │       │   └── 失败 → fatal
-    │       └── Redis: 建立连接，执行 `PING`
+    ├── 2. 校验 Java 接口契约表（fail-fast）
+    │       validate_contract() + validate_tool_references()
+    │       └── 失败 → fatal，进程退出（防止运行期静默降级）
+    │
+    ├── 3. 初始化基础设施连接
+    │       ├── PostgreSQL: pgvector 连接池（SQLAlchemy async engine）
+    │       └── Redis: 建立连接，执行 PING
     │           └── 失败 → warn（L2 操作不可用，其他功能正常）
     │
-    ├── 3. 初始化引擎层
-    │       ├── LLM 工厂: 根据 LLM_PROVIDER 创建客户端，执行一次空调用验证 API Key 有效
-    │       │   └── 失败 → fatal
-    │       └── Embedding 工厂: 根据 EMBEDDING_PROVIDER 创建客户端
-    │           └── 失败 → fatal
+    ├── 4. 初始化会话 checkpointer（M6-B3）
+    │       setup_checkpointer() → memory（开发）/ postgres（生产，建 checkpoint_blobs 表）
+    │       └── 失败 → fatal
     │
-    ├── 4. 注册 Function Calling Schema
-    │       ├── 加载 engine/tools/c_schemas.py → 注册 30 个 C 端工具
-    │       └── 加载 engine/tools/b_schemas.py → 注册 9 个 B 端工具
-    │           └── 注册到全局 ToolRegistry（单例），供 LLM 推理时查询
+    ├── 5. 初始化会话元数据存储
+    │       get_session_store().setup() → memory（开发）/ postgres（生产，建 agent_sessions 表）
     │
-    ├── 5. 启动 MCP Server
+    ├── 6. 注册 Function Calling Schema
+    │       ├── register_c_tools() → 注册 C 端工具 Schema（32 个）
+    │       └── register_b_tools() → 注册 B 端工具 Schema（9 个）
+    │
+    ├── 7. 启动 MCP Server
     │       └── stdio transport: 在独立线程中启动，监听 MCP Client 的 tools/list 和 tools/call 请求
     │           └── 失败 → fatal
     │
-    ├── 6. 注册 FastAPI 路由
-    │       ├── POST /api/chat/stream   (chat.py)
-    │       ├── POST /api/chat/confirm  (chat.py)
-    │       ├── POST /api/knowledge/ingest (knowledge.py)
-    │       ├── GET  /api/knowledge/search (knowledge.py)
-    │       └── GET  /health → 健康检查端点
+    ├── 8. 预连接 MCP Client（M6-C1，in-memory 传输）
+    │       get_mcp_client().connect()
+    │       └── 失败 → warn（工具将回退直调封装函数）
     │
-    └── 7. 开始接受请求
-            └── uvicorn 日志: "Agent started on :8081"
+    ├── 9. 注册 FastAPI 路由 + 中间件
+    │       中间件（后添加先执行）: CORS → Tracing → JWT → RateLimit
+    │       路由:
+    │       ├── POST /api/chat/stream            (chat.py)
+    │       ├── POST /api/chat/confirm           (chat.py)
+    │       ├── GET  /api/chat/sessions           (chat.py)
+    │       ├── DELETE /api/chat/sessions/{id}    (chat.py)
+    │       ├── GET  /api/chat/sessions/{id}/messages (chat.py)
+    │       ├── POST /api/knowledge/ingest        (knowledge.py)
+    │       ├── GET  /api/knowledge/search        (knowledge.py)
+    │       ├── GET  /api/knowledge/list          (knowledge.py)
+    │       ├── DELETE /api/knowledge/{id}        (knowledge.py)
+    │       └── GET  /health                     → 健康检查端点
+    │
+    └── 10. 开始接受请求
+             └── uvicorn 日志: "Agent started on :8081"
 ```
 
 **健康检查端点：**
@@ -593,8 +646,9 @@ LangGraph 以有向图形式串联 8 个标准节点。主图负责鉴权、按 
 ```mermaid
 graph TD
     START["START"] --> AUTH["① auth_node<br/>JWT鉴权"]
+    AUTH -->|"scope=c_end + 有预设动作"| PRESET["② preset_action_node<br/>受控预设动作"]
     AUTH -->|"scope=b_end"| BTOOL["② b_end_tool_graph<br/>B端直达工具子图"]
-    AUTH -->|"scope=c_end"| INTENT["② intent_node<br/>意图识别"]
+    AUTH -->|"scope=c_end + 无预设"| INTENT["② intent_node<br/>意图识别"]
     INTENT -->|"triage"| TRIAGE["③ triage_graph<br/>导诊子图"]
     INTENT -->|"registration"| REG["④ registration_graph<br/>挂号子图"]
     INTENT -->|"consultation"| CONSULT["⑤ consultation_graph<br/>问诊子图"]
@@ -602,7 +656,13 @@ graph TD
     INTENT -->|"health"| HEALTH["⑦ health_graph<br/>健康档案子图"]
     INTENT -->|"qa"| QA["⑧ qa_node<br/>RAG检索→LLM回复"]
     INTENT -->|"chitchat"| CHAT["⑨ chitchat_node<br/>直接LLM回复"]
-    BTOOL --> REPLY["⑩ reply_node<br/>回复生成"]
+    PRESET -->|"L1查询"| PTE["preset_tool_executor"]
+    PRESET -->|"L2确认"| PSC["preset_safety_check"]
+    PTE -->|"药店推荐"| PDR["prepare_recommended_drug_order"]
+    PTE -->|"其他预设"| REPLY["⑩ reply_node<br/>回复生成"]
+    PDR --> PSC
+    PSC --> REPLY
+    BTOOL --> REPLY
     HEALTH --> REPLY
     TRIAGE --> REPLY
     REG --> REPLY
@@ -618,13 +678,14 @@ graph TD
 | 节点 | 类型 | 职责 |
 |------|------|------|
 | auth_node | 主图节点 | 从 Header 取 JWT + 从请求体取 scope，调 Java token/parse 换取 userId（B 端同时写入 roles/dept_id/doctor_id/hospital_id），写入 AgentState |
+| preset_action_node | 主图节点 | **受控预设动作（C 端专属）**：鉴权后优先路由，前端传入 preset_action + 对应 ID 时直接执行允许的 L1 查询（处方解读/病历解读/药店推荐/购药通知），跳过 LLM 意图分类，减少延迟 |
 | b_end_tool_graph | 子图 | **B 端直达工具子图（M8-3）**：tool_caller 绑定 B 端全量 L1/L2 工具（9 个，无白名单）→ safety → executor 循环，跳过 C 端意图分类 |
 | intent_node | 主图节点 | 基于用户消息 + 历史对话，LLM 判断意图类型。输出意图标签用于路由（仅 C 端执行） |
 | triage_graph | 子图 | 追问症状 → RAG 检索 → 推荐科室 → 调 `query_doctors` 查医生 |
 | registration_graph | 子图 | 调 `query_departments` → `query_schedule_slots` → `create_appointment`（含 L2 确认） |
-| consultation_graph | 子图 | 调 `query_consultations` / `query_prescriptions` → `interpret_prescription` |
-| pharmacy_graph | 子图 | 调 `query_pharmacy_stock` → `create_drug_order`（含 L2 确认） |
-| health_graph | 子图 | **健康档案子图（M8-2，场景五）**：10 工具白名单——L1 查询（档案/报告/用药计划/随访/通知）+ L2 变更（过敏史/既往史/报告录入/用药计划更新/随访确认，含 L2 确认） |
+| consultation_graph | 子图 | 调 `query_consultations` / `query_prescriptions` → `interpret_prescription`；选医生（options 选择卡） |
+| pharmacy_graph | 子图 | 调 `query_pharmacy_stock` / `recommend_pharmacies` → `create_drug_order`（含 L2 确认） |
+| health_graph | 子图 | **健康档案子图（M8-2，场景五）**：10 工具白名单——L1 查询（档案/病历/报告/用药计划/随访/通知）+ L2 变更（过敏史/既往史/报告录入/用药计划更新/随访确认，含 L2 确认） |
 | qa_node | 主图节点 | 调 RAG 检索 → 注入 LLM 上下文 → 生成回复 |
 | chitchat_node | 主图节点 | 不做工具调用，直接 LLM 自由回复 |
 | reply_node | 主图节点 | 生成最终回复（LLM 生成自然语言）。SSE 流式推送由路由级 handler 统一处理（见 §5.12） |
@@ -706,35 +767,65 @@ from app.orchestrator.state import AgentState
 # === 主图构造 ===
 builder = StateGraph(AgentState)
 
-# 注册节点
+# 注册主图节点
 builder.add_node("auth_node", auth_node)
 builder.add_node("intent_node", intent_node)
-builder.add_node("qa_node", qa_node)
+builder.add_node("qa_node", rag_node)
 builder.add_node("chitchat_node", chitchat_node)
+builder.add_node("preset_action_node", preset_action_node)  # 受控预设动作
+builder.add_node("preset_tool_executor", tool_executor)
+builder.add_node("preset_safety_check", safety_check)
+builder.add_node("prepare_recommended_drug_order", prepare_recommended_drug_order)
 builder.add_node("reply_node", reply_node)
 
-# 注册子图（编译后的 CompiledGraph）
-builder.add_node("triage_graph", triage_graph.compile())
-builder.add_node("registration_graph", registration_graph.compile())
-builder.add_node("consultation_graph", consultation_graph.compile())
-builder.add_node("pharmacy_graph", pharmacy_graph.compile())
-builder.add_node("health_graph", health_graph.compile())  # M8-2 健康档案子图（场景五）
+# 注册业务子图（编译后的 CompiledGraph）
+builder.add_node("triage_graph", build_triage_graph())
+builder.add_node("registration_graph", build_registration_graph())
+builder.add_node("consultation_graph", build_consultation_graph())
+builder.add_node("pharmacy_graph", build_pharmacy_graph())
+builder.add_node("health_graph", build_health_graph())
+builder.add_node("b_end_tool_graph", build_tool_subgraph(tool_names=None))  # B 端直达
 
 # 入口
 builder.set_entry_point("auth_node")
 
-# 条件边：意图路由
+# 条件边：鉴权后按 scope + 预设动作路由
+builder.add_conditional_edges(
+    "auth_node",
+    route_after_auth,  # 函数：检查 preset_action → 分流
+    {
+        "preset_action_node": "preset_action_node",
+        "b_end_tool_graph": "b_end_tool_graph",
+        "intent_node": "intent_node",
+    }
+)
+
+# 预设动作后路由
+builder.add_conditional_edges(
+    "preset_action_node",
+    route_after_preset_action,
+    {"preset_tool_executor": "preset_tool_executor", "preset_safety_check": "preset_safety_check"}
+)
+builder.add_conditional_edges(
+    "preset_tool_executor",
+    route_after_preset_execution,
+    {"prepare_recommended_drug_order": "prepare_recommended_drug_order", "reply_node": "reply_node"}
+)
+builder.add_edge("prepare_recommended_drug_order", "preset_safety_check")
+builder.add_edge("preset_safety_check", "reply_node")
+
+# 条件边：意图路由（仅 C 端执行）
 builder.add_conditional_edges(
     "intent_node",
     route_by_intent,  # 函数：读 state.intent → 返回目标节点名
     {
-        "triage": "triage_graph",
-        "registration": "registration_graph",
-        "consultation": "consultation_graph",
-        "pharmacy": "pharmacy_graph",
-        "health": "health_graph",
-        "qa": "qa_node",
-        "chitchat": "chitchat_node",
+        "triage_graph": "triage_graph",
+        "registration_graph": "registration_graph",
+        "consultation_graph": "consultation_graph",
+        "pharmacy_graph": "pharmacy_graph",
+        "health_graph": "health_graph",
+        "qa_node": "qa_node",
+        "chitchat_node": "chitchat_node",
     }
 )
 
@@ -746,11 +837,12 @@ builder.add_edge("pharmacy_graph", "reply_node")
 builder.add_edge("health_graph", "reply_node")
 builder.add_edge("qa_node", "reply_node")
 builder.add_edge("chitchat_node", "reply_node")
+builder.add_edge("b_end_tool_graph", "reply_node")
 
 builder.add_edge("reply_node", END)
 
-# 编译（开发环境用 MemorySaver，生产换 PostgresSaver）
-graph = builder.compile(checkpointer=MemorySaver())
+# 编译（按 settings.checkpointer_backend 选择 memory/postgres）
+graph = builder.compile(checkpointer=build_checkpointer())
 ```
 
 **节点函数签名（统一规范）：**
@@ -814,7 +906,7 @@ Agent 端通过 Function Calling Schema 向 LLM 注册工具。每个工具的 S
 | `scope` | 服务对象：`c_end` / `b_end` |
 | `security_level` | 安全等级：L1 / L2 / L3 / L4（L3/L4 不注册） |
 
-**C 端工具 Schema（按业务域分组，共 30 个）：**
+**C 端工具 Schema（按业务域分组，共 32 个）：**
 
 > 以下参数已与 C 端后端系分 V1.3（55 个 API）对齐。所有 API 路径均以 `/api/c/v1` 为前缀，下表省略前缀。
 
@@ -841,7 +933,7 @@ Agent 端通过 Function Calling Schema 向 LLM 注册工具。每个工具的 S
 
 | 工具 | 等级 | 参数 | 说明 | 对应 Java API |
 |------|------|------|------|--------------|
-| `save_pre_consultation` | L2 | `appointment_id` (int, 必填), `chief_complaint` (string, 必填), `history_of_present_illness` (string, 选填), `attachments` (array, 选填), `patient_id` (int, 选填) | 创建或保存预问诊（后端接口为创建/保存合一，无独立提交标识；问诊状态由后端按挂号支付状态流转） | `POST /consultations/pre-consultations` |
+| `save_pre_consultation` | L2 | `doctor_id` (int, 必填), `chief_complaint` (string, 必填), `submit` (boolean, 必填：true=提交, false=存草稿), `patient_id` (int, 选填) | 提交或保存预问诊摘要。doctor_id 必须来自 query_doctors 结果，禁止编造。过敏史由 Java 端按患者健康档案关联，无需传入 | `POST /consultations/pre-consultations` |
 | `query_consultations` | L1 | `consultation_id` (int, 选填), `status` (string, 选填), `patient_id` (int, 选填) | 不带 id 返回列表，带 id 返回详情及消息记录 | `GET /consultations` + `GET /consultations/{consultationId}` |
 | `send_consultation_message` | L2 | `consultation_id` (int, 必填), `content` (string, 必填) | 发送问诊文字消息 | `POST /consultations/{consultationId}/messages` |
 
@@ -857,22 +949,26 @@ Agent 端通过 Function Calling Schema 向 LLM 注册工具。每个工具的 S
 | 工具 | 等级 | 参数 | 说明 | 对应 Java API |
 |------|------|------|------|--------------|
 | `query_pharmacy_stock` | L1 | `prescription_id` (int, 必填), `patient_id` (int, 选填) | 按处方查询药店库存与价格 | `GET /pharmacies/inventory` |
-| `create_drug_order` | L2 | `prescription_id` (int, 必填), `pharmacy_id` (int, 必填), `delivery_address` (string, 必填), `patient_id` (int, 选填) | 创建购药订单 | `POST /drug-orders` |
+| `recommend_pharmacies` | L1 | `prescription_id` (int, 必填), `address_id` (int, 必填), `patient_id` (int, 选填), `sort` (string, 选填) | 推荐可配送院内药店（Java 服务端按价格/距离/配送时效加权排序），优先于 query_pharmacy_stock 使用 | `GET /pharmacies/recommendations` |
+| `create_drug_order` | L2 | `prescription_id` (int, 必填), `pharmacy_id` (int, 必填), `address_id` (int, 必填), `patient_id` (int, 选填) | 创建购药订单 | `POST /drug-orders` |
 | `query_drug_orders` | L1 | `drug_order_id` (int, 选填), `status` (string, 选填), `logistics_status` (string, 选填), `patient_id` (int, 选填) | 不带 id 返回列表（可按 status 筛选），带 id 返回详情 | `GET /drug-orders` + `GET /drug-orders/{drugOrderId}` |
 | `cancel_drug_order` | L2 | `drug_order_id` (int, 必填) | 取消未支付购药订单 | `POST /drug-orders/{drugOrderId}/cancel` |
 | `confirm_drug_receipt` | L2 | `drug_order_id` (int, 必填) | 确认购药收货 | `POST /drug-orders/{drugOrderId}/confirm-receipt` |
+| `authorize_drug_order_reminder_after_receipt` | L2 | `drug_order_id` (int, 必填) | 登记购药订单确认收货后自动开启用药提醒 | `POST /drug-orders/{drugOrderId}/authorize-reminder` |
 
 健康管理：
 
 | 工具 | 等级 | 参数 | 说明 | 对应 Java API |
 |------|------|------|------|--------------|
 | `query_health_record` | L1 | `patient_id` (int, 选填) | 查询健康档案（含过敏史、既往史） | `GET /health-record` |
+| `query_medical_records` | L1 | `patient_id` (int, 选填), `recent_days` (int, 选填，最大30) | 查询医生病历列表，可按就诊人和最近天数筛选 | `GET /medical-records` |
+| `interpret_medical_record` | L1 | `consult_id` (int, 必填) | 读取医生病历正文并结合该病历所属就诊人的过敏史、既往史生成解读输入 | `GET /medical-records/{consultId}` + `GET /health-record` |
 | `manage_allergy` | L2 | `allergy_id` (int, 选填), `allergen` (string, 必填), `reaction` (string, 选填) | 管理过敏史（不带 allergy_id 新增，带 allergy_id 修改） | `POST /health-record/allergies` / `PUT /health-record/allergies/{allergyId}` |
 | `manage_medical_history` | L2 | `history_id` (int, 选填), `content` (string, 必填), `occurred_at` (string, 选填) | 管理既往史（不带 history_id 新增，带 history_id 修改） | `POST /health-record/histories` / `PUT /health-record/histories/{historyId}` |
 | `query_reports` | L1 | `report_id` (int, 选填), `patient_id` (int, 选填) | 查询检查报告列表或详情（带 id 时包含指标解读） | `GET /reports` + `GET /reports/{reportId}` + `GET /reports/{reportId}/interpretation` |
 | `create_report` | L2 | `report_name` (string, 必填), `report_date` (string, 必填), `indicators` (array, 必填), `patient_id` (int, 选填) | 录入检查报告（indicators 含 name/value/unit/reference_range） | `POST /reports` |
 | `query_medication_plans` | L1 | `status` (string, 选填), `patient_id` (int, 选填) | 查询用药计划列表 | `GET /medication-plans` |
-| `update_medication_plan` | L2 | `plan_id` (int, 必填), `action` (string, 必填：`PAUSE` / `RESUME` / `COMPLETE`) | 暂停/恢复/完成用药计划 | `PATCH /medication-plans/{planId}` |
+| `update_medication_plan` | L2 | `plan_id` (int, 必填), `action` (string, 必填：`ENABLE_REMINDER` / `DISABLE_REMINDER` / `PAUSE` / `RESUME` / `COMPLETE`) | 更新用药计划：开启/关闭用药提醒、暂停/恢复/完成计划 | `PATCH /medication-plans/{planId}` |
 | `query_follow_ups` | L1 | `status` (string, 选填), `patient_id` (int, 选填) | 查询随访计划列表 | `GET /follow-ups` |
 | `confirm_follow_up` | L2 | `follow_up_id` (int, 必填), `remind_at` (string, 选填) | 确认随访提醒时间 | `POST /follow-ups/{followUpId}/confirm` |
 | `manage_notifications` | L1 | `action` (string, 必填：`list` / `read`), `notification_id` (int, action=read 时必填), `patient_id` (int, action=list 时选填) | 管理通知（action=list 查列表，action=read 标已读） | `GET /notifications` / `POST /notifications/{notificationId}/read` |
@@ -894,7 +990,7 @@ Agent 端通过 Function Calling Schema 向 LLM 注册工具。每个工具的 S
 | 工具 | 等级 | 参数 | 说明 | 对应 Java API |
 |------|------|------|------|--------------|
 | `query_patient_history` | L2 | `patient_id` (int, 必填) | 聚合查询患者基本信息、过敏史、既往史、就诊记录、历史处方、当前用药 | `GET /admin/patients/{id}` + `/admin/patients/{id}/visits` + `/admin/patients/{id}/prescriptions` + `/admin/patients/{id}/medications` |
-| `query_drug_guide` | L1 | `name` (string, 选填) | 查询药品说明书（适应症、禁忌、不良反应等），按药品名称模糊匹配 | `GET /admin/drugs` |
+| `query_drug_guide` | L1 | `drug_name` (string, 必填) | 查询药品说明书（适应症、禁忌、不良反应等），按药品名称匹配 | `GET /admin/drugs` |
 | `check_drug_interaction` | L1 | `drug_names` (array[string], 必填), `patient_id` (int, 必填) | 聚合返回药品说明书 + 患者当前用药清单，由编排层 LLM 判定相互作用 | `GET /admin/drugs` + `GET /admin/patients/{id}/medications` |
 | `generate_draft_note` | L2 | `consultation_id` (int, 必填), `note_content` (string, 必填) | 保存医生病历记录（编排层 LLM 生成草稿文本，工具负责持久化） | `PUT /doctor/consult/{id}/note` |
 
@@ -909,8 +1005,8 @@ Agent 端通过 Function Calling Schema 向 LLM 注册工具。每个工具的 S
 | 工具 | 等级 | 参数 | 说明 | 对应 Java API |
 |------|------|------|------|--------------|
 | `check_contraindication` | L1 | `drug_name` (string, 必填), `patient_id` (int, 必填) | 聚合返回药品禁忌信息 + 患者过敏史/既往史，由编排层 LLM 判定禁忌风险 | `GET /admin/drugs` + `GET /admin/patients/{id}` |
-| `check_allergy_risk` | L1 | `drug_name` (string, 必填), `patient_id` (int, 必填) | 返回患者过敏史记录，由编排层 LLM 判定与处方的过敏风险 | `GET /admin/patients/{id}` |
-| `check_duplicate_medication` | L1 | `drug_name` (string, 必填), `patient_id` (int, 必填) | 返回患者当前用药清单，由编排层 LLM 判定是否重复用药 | `GET /admin/patients/{id}/medications` |
+| `check_allergy_risk` | L1 | `patient_id` (int, 必填) | 返回患者完整过敏史记录（按患者过滤），药敏判断由编排层 LLM 基于返回记录生成 | `GET /admin/patients/{id}` |
+| `check_duplicate_medication` | L1 | `patient_id` (int, 必填) | 返回患者当前用药清单（按患者过滤），仅返回数据，重复用药判断由编排层 LLM 生成 | `GET /admin/patients/{id}/medications` |
 
 报告解读（本地工具，不经过 MCP Server）：
 
@@ -1125,6 +1221,7 @@ sequenceDiagram
 - Agent 识别 L2 工具后，不立即调用 MCP——先生成 confirm_token 存入 Redis（5min TTL，绑定 session_id + userId），通过 SSE 推确认卡片（含 `confirm_token` + `session_id`）给前端
 - 前端确认后回调 `/api/chat/confirm`（携带 `confirm_token` + `session_id`），Agent 校验 token（Lua 脚本一次性 get-and-delete + session_id/userId 绑定校验），通过后同步执行 MCP 工具
 - **confirm 端点同步返回业务执行结果**（`data.action_result` + `data.message`），前端无需依赖原 SSE 流续推（与前端系分 V1.1 §9.5 一致）
+- **confirm_done 回执机制（M5-T4 / T-M3-L1）**：confirm 成功后将操作结果写入 Redis（key=`confirm_done:{session_id}:{confirm_token_id}`，TTL=3600s），下一轮对话时 reply_node 一次性消费注入上下文，让 LLM 知道"上一轮用户确认了什么操作、执行结果是什么"
 - confirm_token 安全属性：一次性消费、5 分钟 TTL、绑定 userId + session_id
 - 超时未确认：confirm_token 过期，Agent 返回 `CONFIRM_EXPIRED`，终止工具执行流程
 
@@ -1293,7 +1390,7 @@ sequenceDiagram
 
 1. Embedding 用户问题 → 1024 维向量
 2. pgvector 余弦相似度检索，取 `top_k=5`
-3. 过滤相似度 `< 0.6` 的低质量结果（低于阈值说明知识库没有相关内容，LLM 回复中如实告知）
+3. 过滤相似度 `< 0.3` 的低质量结果（低于阈值说明知识库没有相关内容，LLM 回复中如实告知）
 4. 按相似度降序排列，附带 `source_doc` 和 `source_page` 引用
 5. 注入 LLM 上下文——格式为 `【参考知识】\n---\n1. [来源: {doc}, {page}] {content}\n---`
 
@@ -1335,7 +1432,7 @@ Agent 层审计字段：
 | 数据结构 | LangChain `ConversationBufferWindowMemory` | 同上，Redis 持久化 |
 | 窗口大小 | 最近 10 轮对话（约 20 条消息） | 可配置，通过 `.env` 的 `MEMORY_WINDOW_SIZE` |
 
-> MVP 阶段使用内存存储，会话量 < 200 并发、单进程部署时足够。后续切换到 Redis 后支持多进程共享和会话持久化。
+> MVP 阶段使用内存存储，会话量 < 200 并发、单进程部署时足够。后续切换到 Redis 后支持多进程共享和会话持久化。**LangGraph checkpointer 后端**通过 `CHECKPOINTER_BACKEND` 环境变量切换（`memory`=MemorySaver / `postgres`=PostgresSaver），生产环境使用 postgres 可实现会话持久化。
 
 **摘要压缩：**
 
@@ -1406,6 +1503,8 @@ Agent 自建会话元数据表 `agent_sessions`（`app/orchestrator/session_stor
 |------|-------------|----------|
 | `memory`（开发默认） | 进程内存（`MemorySessionStore`） | 与 MemorySaver 一致，进程重启即失——已知开发限制 |
 | `postgres`（生产） | PG `agent_sessions` 表（`PostgresSessionStore`，复用 checkpointer 连接池） | 长期持久化，历史会话可回溯 |
+
+**实现文件：** `app/orchestrator/checkpointer.py`（checkpointer 后端切换）、`app/orchestrator/session_store.py`（会话元数据 CRUD）。
 
 | 设计点 | 约定 |
 |--------|------|
@@ -1584,6 +1683,8 @@ Agent 使用 LangGraph 的 `astream_events` API 获取流式输出，在路由�
 | `on_tool_start` | `event: action` | 工具调用开始 | "调用工具"卡片，显示工具名 + 请求参数，loading 状态 |
 | `on_tool_end` | `event: observation` | 工具返回结果（L1 或已确认的 L2） | 更新同一张卡片，显示响应结果（可展开），绿色勾选 |
 | `safety_check` L2 | `event: card` | L2 操作需用户确认 | 确认卡片，含 `confirm_token` + `session_id`（前端确认时一并回传，见 §6.2.1） |
+| reply_node 受控交互 | `event: action_card` | 非 L2 的业务交互卡（如处方解读后推荐药店） | 可点击的交互卡片，点击触发受控预设动作 |
+| reply_node 多选项 | `event: options` | 多选项场景（医生/科室/号源列表） | 单选点选卡片，用户选择后发送 `reply_template` 消息 |
 | 异常 | `event: error` | 鉴权失败、工具执行异常、超时等 | 展示错误提示 |
 | `on_chain_end` | `event: done` | 本轮推理全部完成 | 停止 loading 动画，session_id 随首个 done 返回 |
 
@@ -1591,7 +1692,7 @@ Agent 使用 LangGraph 的 `astream_events` API 获取流式输出，在路由�
 
 **SSE 事件格式：**
 
-各事件（message / thought / action / observation / card / error / done）的**字段定义、示例与 card_type 枚举以 §6.2.1 为准**（字段均已统一：`action.label`、`observation.status/result/summary/duration_ms`、`card.details`、`error.trace_id`、`done.usage`）。本节仅约定事件时序与前端行为：`message` 逐 token 流式、`thought` 折叠展示、`action`→`observation` 配对合并为一张"调用工具"卡片（loading → 结果）、`card` 触发确认、`done` 收尾。
+各事件（message / thought / action / observation / card / action_card / options / error / done）的**字段定义、示例与 card_type 枚举以 §6.2.1 为准**（字段均已统一：`action.label`、`observation.status/result/summary/duration_ms`、`card.details`、`action_card.action_type`、`options.items`、`error.trace_id`、`done.usage`）。本节仅约定事件时序与前端行为：`message` 逐 token 流式、`thought` 折叠展示、`action`→`observation` 配对合并为一张"调用工具"卡片（loading → 结果）、`card` 触发确认、`action_card` 提供非 L2 交互入口、`options` 提供多选点选、`done` 收尾。
 
 **前端渲染示意：**
 
@@ -1612,11 +1713,17 @@ Agent 使用 LangGraph 的 `astream_events` API 获取流式输出，在路由�
 │ 根据您的症状，我为您推荐以下科室：        │  ← message 事件（最终回复）
 │ 1. 神经内科 - 适合头痛诊断               │
 │ 2. 急诊科 - 如有紧急症状                 │
+├──────────────────────────────────────────┤
+│ 📋 请选择医生                             │  ← options 事件（多选点选卡片）
+│ [王医生 · 主任医师] [李医生 · 副主任医师]  │
+├──────────────────────────────────────────┤
+│ 🛒 推荐购药                               │  ← action_card 事件（业务交互卡）
+│ [查看推荐药店]                            │
 │ AI 建议仅供参考，不能替代医生诊断         │
 └──────────────────────────────────────────┘
 ```
 
-前端处理逻辑：`action` 到来时创建工具卡片并显示 loading；`observation` 到来时更新同一张卡片的结果区并标记完成；`thought` 和 `observation` 默认折叠，用户可点击展开。
+前端处理逻辑：`action` 到来时创建工具卡片并显示 loading；`observation` 到来时更新同一张卡片的结果区并标记完成；`thought` 和 `observation` 默认折叠，用户可点击展开。`options` 渲染为可点选列表，用户选择后发送 `reply_template` 格式的消息。`action_card` 渲染为可点击的交互卡片，点击后前端发起含 `preset_action` 的对话请求。
 
 **SSE handler 实现伪代码：**
 
@@ -1646,9 +1753,11 @@ def summarize_result(tool_name: str, output: Any) -> str:
 
 async def stream_sse(graph, state: AgentState):
     """路由级 SSE 流，捕获整个图执行的事件并映射为 SSE。"""
-    # 1. 如果有待确认的 L2 操作，推送 card 事件
-    if state.get("pending_confirmation"):
-        yield format_sse("card", state["pending_confirmation"])
+    # 1. 如果有待确认的 L2 操作，推送 card 事件（pending_confirmations 为列表）
+    pending = state.get("pending_confirmations") or []
+    if pending:
+        for conf in pending:
+            yield format_sse("card", conf)
         yield format_sse("done", {"session_id": state.get("session_id")})
         return
 
@@ -1732,7 +1841,7 @@ Agent 独立部署于 8081 端口，直接对前端暴露。Java 后端部署于
 | 时间格式 | ISO-8601，东八区，如 `2026-07-30T10:00:00+08:00` |
 | 金额 | 整数分 `amountCent`，与后端一致 |
 | 跟踪 | 响应中返回 `traceId`，全链路贯通 |
-| 错误响应格式 | Agent 对外 HTTP 接口（`/api/chat/confirm`、`/api/knowledge/*`）统一采用 Java 风格信封 `{"code":"...","message":"...","data":null,"traceId":"..."}`，成功 `code="00000"`，失败 `code` 为字符串错误码；`/api/chat/stream` 为 SSE 流，错误通过 `event: error` 推送 `{"code":"...","message":"...","trace_id":"..."}` |
+| 错误响应格式 | Agent 对外 HTTP 接口（`/api/chat/confirm`、`/api/chat/sessions`、`/api/chat/sessions/{id}/messages`、`/api/knowledge/*`）统一采用 Java 风格信封 `{"code":"...","message":"...","data":null,"traceId":"..."}`，成功 `code="00000"`，失败 `code` 为字符串错误码；`/api/chat/stream` 为 SSE 流，错误通过 `event: error` 推送 `{"code":"...","message":"...","trace_id":"..."}` |
 
 **通用错误码：**
 
@@ -1762,6 +1871,7 @@ Agent 独立部署于 8081 端口，直接对前端暴露。Java 后端部署于
 POST /api/chat/stream
 Content-Type: application/json
 Authorization: Bearer <JWT Token>
+X-Scope: b_end
 Accept: text/event-stream
 ```
 
@@ -1928,7 +2038,54 @@ data: {
 
 > **注**：details 为**结构化详情，字段因 card_type 而异**；其中名称类字段（如 `department_name` / `doctor_name` / `plan_name`）依赖 L2 确认执行后回填，Agent 在生成卡片（执行前）仅透出工具参数中可得的 ID/动作类字段，缺失字段前端按 card_type 降级展示。
 
-**⑥ error——错误事件**
+**⑥ action_card——业务交互卡片（非 L2）**
+
+不产生 L2 写操作的受控业务交互卡，例如处方解读完成后的药店推荐入口。区别于 L2 确认卡片（card 事件），action_card 不需要用户确认，而是触发一个受控预设动作。
+
+```
+event: action_card
+data: {
+  "action_type": "recommend_prescription_pharmacy",
+  "title": "推荐购药",
+  "summary": "根据您的处方，为您推荐附近有货的药店",
+  "button_text": "查看推荐药店",
+  "arguments": {"prescription_id": 1001, "address_id": 5}
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| action_type | string | 受控动作类型，如 `recommend_prescription_pharmacy` |
+| title | string | 卡片标题 |
+| summary | string | 卡片说明 |
+| button_text | string | 点击按钮文本 |
+| arguments | object | 受控动作所需的最小业务参数 |
+
+**⑦ options——可选项列表卡片**
+
+后端在多选项场景（如医生列表、科室列表、号源列表）下确定性下发，让前端以"单选点选"形式承载选择动作，避免纯文本让 LLM 配对 ID。
+
+```
+event: options
+data: {
+  "type": "select_doctor",
+  "items": [
+    {"id": "42", "label": "王医生 · 主任医师", "description": "呼吸内科，擅长..."},
+    {"id": "43", "label": "李医生 · 副主任医师", "description": "呼吸内科，擅长..."}
+  ],
+  "prompt": "请选择一位医生",
+  "reply_template": "我选择{label}"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| type | string | 选项卡类型：`select_doctor` / `select_department` / `select_slot` / `select_pharmacy` |
+| items | array | 选项列表，每项含 `id`（选项 ID）、`label`（展示标题）、`description`（副标题）、`meta`（附加元数据） |
+| prompt | string | 引导用户选择的提示语 |
+| reply_template | string | 用户选择后会发送的文本模板，`{label}` 占位为选项展示名，默认"我选择{label}" |
+
+**⑧ error——错误事件**
 
 ```
 event: error
@@ -1941,7 +2098,7 @@ data: {"code": "TOOL_FAILED", "message": "号源已被抢完，请选择其他�
 | message | string | 面向用户的可读错误描述 |
 | trace_id | string | 全链路追踪 ID |
 
-**⑦ done——本轮结束**
+**⑨ done——本轮结束**
 
 ```
 event: done
@@ -1964,6 +2121,7 @@ data: {"session_id": "sess_abc123", "trace_id": "trc_xyz789", "usage": {"prompt_
 POST /api/chat/confirm
 Content-Type: application/json
 Authorization: Bearer <JWT Token>（选填，当前版本非必填；后续 Agent 权限策略另行定义）
+X-Scope: b_end
 ```
 
 **请求体：**
@@ -2082,11 +2240,77 @@ Authorization: Bearer <JWT Token>
 | AUTH_MISSING | 401 | 缺少有效鉴权 Token（未登录） | 跳转登录页 |
 | SERVER_ERROR | 500 | 会话列表查询失败 | 提示"服务异常，请稍后重试" |
 
+#### 6.2.4 删除历史会话
+
+```
+DELETE /api/chat/sessions/{session_id}
+Authorization: Bearer <JWT Token>
+```
+
+删除指定历史会话及其元数据（`agent_sessions` 表记录）。依赖 JWT 中间件注入的 `user_id` 做数据隔离——只能删除自己的会话。
+
+**成功响应（200）-- 统一信封：**
+
+```json
+{
+  "code": "00000",
+  "message": "操作成功",
+  "data": null,
+  "traceId": "trc_xyz789"
+}
+```
+
+**错误响应：**
+
+| code | HTTP 状态码 | 说明 |
+|------|--------|------|
+| AUTH_MISSING | 401 | 未登录 |
+| SESSION_NOT_FOUND | 404 | 会话不存在或不属于当前用户 |
+| SERVER_ERROR | 500 | 删除失败 |
+
+#### 6.2.5 获取历史消息
+
+```
+GET /api/chat/sessions/{session_id}/messages
+Authorization: Bearer <JWT Token>
+```
+
+获取指定会话的历史消息列表（role + content），用于前端展示会话详情。依赖 checkpointer 存储的历史消息。
+
+**成功响应（200）-- 统一信封：**
+
+```json
+{
+  "code": "00000",
+  "message": "操作成功",
+  "data": {
+    "messages": [
+      {"role": "user", "content": "我头疼三天了"},
+      {"role": "assistant", "content": "建议您先休息，必要时就医..."}
+    ]
+  },
+  "traceId": "trc_xyz789"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| messages[].role | string | 消息角色：`user` / `assistant` |
+| messages[].content | string | 消息内容 |
+
+**错误响应：**
+
+| code | HTTP 状态码 | 说明 |
+|------|--------|------|
+| AUTH_MISSING | 401 | 未登录 |
+| SESSION_NOT_FOUND | 404 | 会话不存在 |
+| SERVER_ERROR | 500 | 查询失败 |
+
 ### 6.3 Agent → Java：鉴权接口
 
 Agent 不自建鉴权接口，直接调用 Java 后端已有的 token 解析接口校验前端 JWT 并获取 userId。C 端和 B 端各自独立部署，JWT 签名密钥互不通用，Agent 根据 chat 请求中的 `scope` 字段决定调用哪一侧的接口。
 
-**scope 来源**：前端在 chat 请求体中传入 `scope`（`c_end` / `b_end`），标识当前用户归属。Agent 据此选择鉴权接口和工具集（C 端 30 个 / B 端 9 个），不依赖鉴权接口返回 scope。
+**scope 来源**：前端在 chat 请求体中传入 `scope`（`c_end` / `b_end`），标识当前用户归属。Agent 据此选择鉴权接口和工具集（C 端 32 个 / B 端 9 个），不依赖鉴权接口返回 scope。
 
 **C 端鉴权（已有接口）：**
 
@@ -2330,6 +2554,95 @@ Authorization: Bearer <JWT Token>
 | 400 | INVALID_REQUEST | q 为空 |
 | 401 | AUTH_INVALID | JWT 无效 |
 
+#### 6.5.3 已入库文档列表
+
+```
+GET /api/knowledge/list?category=patient_edu&page=1&page_size=20
+Authorization: Bearer <JWT Token>
+```
+
+**查询参数：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| category | string | 否 | 分类过滤：`patient_edu` / `clinical_ref`，不传则不过滤 |
+| page | int | 否 | 页码，默认 1 |
+| page_size | int | 否 | 每页条数，默认 20，最大 100 |
+
+**成功响应（200）-- 统一信封：**
+
+```json
+{
+  "code": "00000",
+  "message": "success",
+  "data": {
+    "items": [
+      {
+        "id": "doc_20260730_a1b2c3",
+        "title": "感冒用药指南",
+        "category": "patient_edu",
+        "source": "《中国药典》2025版",
+        "chunk_count": 12
+      }
+    ],
+    "total": 5,
+    "page": 1,
+    "page_size": 20
+  },
+  "traceId": "a1b2c3d4"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| items[].id | string | 文档唯一 ID（doc_YYYYMMDD_xxxxxx） |
+| items[].title | string | 文档标题 |
+| items[].category | string | 分类标签 |
+| items[].source | string | 来源说明，可能为 null |
+| items[].chunk_count | int | chunk 数量 |
+| total | int | 文档总数 |
+
+**权限：** 需 B 端 ADMIN 角色。
+
+#### 6.5.4 删除文档
+
+```
+DELETE /api/knowledge/{document_id}
+Authorization: Bearer <JWT Token>
+```
+
+**路径参数：**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| document_id | string | 文档 ID（格式 doc_YYYYMMDD_xxxxxx） |
+
+**成功响应（200）-- 统一信封：**
+
+```json
+{
+  "code": "00000",
+  "message": "success",
+  "data": {
+    "deleted": true,
+    "document_id": "doc_20260730_a1b2c3",
+    "chunk_count": 12
+  },
+  "traceId": "a1b2c3d4"
+}
+```
+
+**错误响应：**
+
+| 状态码 | 错误码 | 说明 |
+|--------|--------|------|
+| 400 | INVALID_REQUEST | 文档 ID 格式无效 |
+| 401 | AUTH_INVALID | JWT 无效 |
+| 403 | FORBIDDEN | 无权限（需 ADMIN） |
+| 404 | NOT_FOUND | 文档不存在 |
+
+**权限：** 需 B 端 ADMIN 角色。操作不可逆，直接从 langchain_pg_embedding 删除该文档的所有 chunk。
+
 
 ---
 
@@ -2341,41 +2654,67 @@ LangGraph 图中流转的核心状态对象：
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| messages | list[BaseMessage] | `[]` | 对话消息列表，LangGraph 内置 `add_messages` reducer 自动追加 |
+| messages | list[Any] | `[]` | 对话消息列表（dict 或 BaseMessage），LangGraph 内置 `add_messages` reducer 自动追加 |
 | session_id | str \| None | `None` | 会话唯一标识，首次对话时生成，随首个 `done` 事件返回前端 |
-| intent | str \| None | `None` | 当前识别的业务意图：`triage` / `registration` / `consultation` / `pharmacy` / `qa` / `chitchat` |
+| intent | NotRequired[str \| None] | — | 当前识别的业务意图（NotRequired：意图粘性依赖 checkpointer 跨轮保留，首轮由 intent_node 写入后跨轮保留） |
 | user_id | int \| None | `None` | 从 JWT 鉴权获得的用户 ID，MCP 调用时注入 Header `X-User-Id` |
 | scope | str | `"c_end"` | 当前服务端：`c_end` / `b_end` |
-| roles | list[str] \| None | `None` | B 端用户角色（`ADMIN` / `DEPT_HEAD` / `DOCTOR`），由 auth_node 从 B 端 token/parse 写入，供审计日志与工具路由 |
+| roles | list[str] \| None | `None` | B 端用户角色（`ADMIN` / `DEPT_HEAD` / `DOCTOR`），由 auth_node 写入 |
 | dept_id | int \| None | `None` | B 端用户所属科室 ID，由 auth_node 写入 |
 | doctor_id | int \| None | `None` | B 端用户关联的医生 ID（b_doctor.id），由 auth_node 写入 |
-| hospital_id | int \| None | `None` | B 端用户所属医院 ID，由 auth_node 写入；C 端场景由前端 context.hospital_id 传入 |
-| tool_calls | list[dict] \| None | `None` | LLM 决定调用的工具列表，由 `tool_caller` 节点写入，`safety_check` 和 `tool_executor` 消费 |
-| tool_results | list[dict] \| None | `None` | 工具执行结果列表（含成功和失败），由 `tool_executor` 写入，注入 `messages` 供 LLM 下一轮推理 |
-| pending_confirmation | dict \| None | `None` | 待用户确认的 L2 操作信息（含 `card_type`、`confirm_token`、`title`、`summary`、`ttl`），非空时 SSE handler 推送 card 事件（见 §5.12） |
-| risk_flags | list[str] | `[]` | 风险标记，由 `safety_check` 追加（如 `"drug_allergy"`、`"emergency_symptoms"`），`reply_node` 生成回复时注入警告 |
+| hospital_id | int \| None | `None` | B 端用户所属医院 ID / C 端 context.hospital_id |
+| patient_id | int \| None | `None` | 当前问诊患者 ID（§6.2 context.patient_id，M8-5）。B 端医生接诊时由前端 context 传入；C 端可选 |
+| address_id | int \| None | `None` | 用户收货地址 ID（context.address_id），C 端前端选中配送地址后注入；recommend_pharmacies 必填 |
+| preset_action | NotRequired[str \| None] | — | 前端受控预设动作，仅用于完成鉴权后直接执行允许的 L1 查询（处方解读/病历解读/药店推荐/购药通知） |
+| preset_prescription_id | NotRequired[int \| None] | — | 预设处方解读对应的处方 ID，由接入层写入 |
+| preset_medical_record_id | NotRequired[int \| None] | — | 病历解读对应的完成问诊记录 ID，由接入层写入 |
+| preset_drug_order_id | NotRequired[int \| None] | — | 购药支付成功通知关联的订单 ID |
+| preset_error | NotRequired[str \| None] | — | 受控预设校验或推荐阶段的可展示失败提示 |
+| action_cards | NotRequired[list[dict] \| None] | — | 非 L2 的业务交互卡（如处方解读后的药店推荐入口），由 reply_node 构造并经 SSE 下发 |
+| record_pickers | NotRequired[list[dict] \| None] | — | 病历或处方解读前的记录选择卡，仅由 reply_node 构造 |
+| tool_calls | list[dict] \| None | `None` | LLM 决定调用的工具列表，由 `tool_caller` 节点写入 |
+| tool_results | list[dict] \| None | `None` | 工具执行结果列表（含成功和失败），由 `tool_executor` 写入 |
+| pending_confirmations | list[dict] \| None | `None` | 待用户确认的 L2 操作列表（**注意：是列表而非单个 dict**），非空时 reply_node 推送 card 事件 |
+| pending_doctor_choices | NotRequired[list[dict] \| None] | — | 在线问诊选医生候选（M8-6）：query_doctors 返回后缓存至此，SSE 层推 options 选择卡 |
+| rag_context | str \| None | `None` | 本轮 RAG 检索到的医学知识上下文（不入 messages 历史，仅本次回复使用） |
+| risk_flags | list[str] | `[]` | 风险标记，由 `safety_check` 追加 |
+| jwt_token | str \| None | `None` | JWT Token（从请求 Header 提取），供 auth_node 调用 Java token/parse |
+| tool_iteration | int \| None | `None` | 工具调用迭代计数，子图循环用，防止无限循环 |
 
 Pydantic 定义：
 
 ```python
-from typing import TypedDict, Annotated
-from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage
+from typing import Annotated, Any, Literal, NotRequired
+from langgraph.graph import add_messages
+from typing_extensions import TypedDict
 
 class AgentState(TypedDict):
-    messages: Annotated[list[BaseMessage], add_messages]
+    messages: Annotated[list[Any], add_messages]
     session_id: str | None
-    intent: str | None
+    intent: NotRequired[str | None]           # 意图粘性，checkpointer 跨轮保留
     user_id: int | None
     scope: str
-    roles: list[str] | None       # B 端角色（ADMIN/DEPT_HEAD/DOCTOR）
-    dept_id: int | None           # B 端科室 ID
-    doctor_id: int | None         # B 端医生 ID（b_doctor.id）
-    hospital_id: int | None       # B 端医院 ID / C 端 context.hospital_id
-    tool_calls: list[dict] | None
-    tool_results: list[dict] | None
-    pending_confirmation: dict | None
+    roles: list[str] | None                   # B 端角色
+    dept_id: int | None                       # B 端科室 ID
+    doctor_id: int | None                     # B 端医生 ID
+    hospital_id: int | None                   # B/C 端医院 ID
+    patient_id: int | None                    # 当前问诊患者 ID（M8-5）
+    address_id: int | None                    # 用户收货地址 ID
+    preset_action: NotRequired[str | None]    # 受控预设动作
+    preset_prescription_id: NotRequired[int | None]
+    preset_medical_record_id: NotRequired[int | None]
+    preset_drug_order_id: NotRequired[int | None]
+    preset_error: NotRequired[str | None]
+    action_cards: NotRequired[list[dict[str, Any]] | None]  # 业务交互卡
+    record_pickers: NotRequired[list[dict[str, Any]] | None] # 记录选择卡
+    tool_calls: list[dict[str, Any]] | None
+    tool_results: list[dict[str, Any]] | None
+    pending_confirmations: list[dict[str, Any]] | None  # L2 确认列表（非单个）
+    pending_doctor_choices: NotRequired[list[dict[str, Any]] | None]  # 问诊选医生候选
+    rag_context: str | None                   # RAG 检索上下文（不入历史）
     risk_flags: list[str]
+    jwt_token: str | None                     # JWT Token
+    tool_iteration: int | None                # 工具调用迭代计数（防无限循环）
 ```
 
 ### 7.2 Function Calling 工具定义
@@ -2463,12 +2802,12 @@ Agent 在任何情况下均不可执行：开具处方/下诊断结论、直接�
 
 | 类别 | 库 |
 |------|-----|
-| AI 编排 | `langchain`, `langchain-openai`, `langgraph`, `langchain-community` |
+| AI 编排 | `langchain`, `langchain-openai`, `langgraph` |
 | MCP 协议 | `mcp` |
-| 知识库 RAG | `langchain-postgres`, `langchain-text-splitters`, `psycopg[binary]` |
+| 知识库 RAG | `langchain-postgres`, `langchain-community`, `langchain-text-splitters`, `psycopg[binary]` |
 | Web 服务 | `fastapi`, `uvicorn[standard]`, `sse-starlette`, `python-multipart` |
 | 配置与校验 | `pydantic`, `pydantic-settings` |
-| HTTP 客户端 | `httpx` |
+| HTTP 客户端 | `httpx`, `tenacity` |
 | 缓存与会话 | `redis[hiredis]` |
 | 可观测性 | `structlog` |
 | 测试与代码质量 | `pytest`, `pytest-asyncio`, `pytest-mock`, `ruff`, `mypy` |
@@ -2477,12 +2816,11 @@ Agent 在任何情况下均不可执行：开具处方/下诊断结论、直接�
 
 | 组件 | 用途 |
 |------|------|
-| PostgreSQL 16 | 向量存储（pgvector）+ 知识库数据 |
+| PostgreSQL 16 | 业务数据 + pgvector 向量存储 + 会话 checkpointer（postgres 后端）+ 会话元数据表（agent_sessions） |
 | pgvector 0.7+ | 向量索引，RAG 检索核心 |
-| Redis 7+ | 限流、对话缓存 |
-| RabbitMQ 3.12+ | 异步任务（用药提醒推送、候补通知） |
+| Redis 7+ | 限流、confirm_token、confirm_done 回执、对话缓存 |
 
-> 注意：L2 confirm_token 的 Redis 存储由 Agent 直接管理。
+> **注**：RabbitMQ 由 Java 后端使用（异步任务投递），Agent 当前不直连 RabbitMQ。
 
 ### 9.4 Docker Compose（开发环境基础设施）
 
@@ -2521,20 +2859,19 @@ volumes:
 | 变量 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `LLM_PROVIDER` | string | 是 | LLM 供应商：`deepseek` / `zhipu` / `qwen` |
-| `LLM_API_KEY` | string | 是 | API 密钥 |
-| `LLM_BASE_URL` | string | 否 | 自定义 API 地址（OpenAI 兼容接口），默认使用供应商官方地址 |
-| `LLM_MODEL` | string | 否 | 模型名，默认供应商推荐模型（如 `deepseek-chat`） |
-| `LLM_TEMPERATURE` | float | 否 | 生成温度，默认 0.3（医疗场景倾向确定性输出） |
-| `LLM_MAX_TOKENS` | int | 否 | 单次最大输出 token，默认 2048 |
+| `LLM_MODEL` | string | 否 | 统一模型名（优先覆盖供应商特定模型），切换模型只改此变量 |
+| `LLM_TEMPERATURE` | float | 否 | 生成温度，默认各供应商内部默认值（医疗场景倾向确定性输出） |
+
+> **注**：各供应商有独立的 API Key / Base URL / Model 配置（如 `DEEPSEEK_API_KEY`、`ZHIPU_API_KEY`、`DASHSCOPE_API_KEY` 等），详见 `.env.example`。`LLM_MODEL` 统一覆盖：配则用统一模型名，不配则回落到供应商特定模型。
 
 **Embedding 配置：**
 
 | 变量 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `EMBEDDING_PROVIDER` | string | 是 | Embedding 供应商：`zhipu` / `qwen` / `openai` |
+| `EMBEDDING_PROVIDER` | string | 是 | Embedding 供应商：`siliconflow` / `zhipu` / `dashscope` |
 | `EMBEDDING_API_KEY` | string | 是 | API 密钥（可与 LLM 共用） |
 | `EMBEDDING_BASE_URL` | string | 否 | 自定义 API 地址 |
-| `EMBEDDING_MODEL` | string | 否 | 模型名，默认 `embedding-3` |
+| `EMBEDDING_MODEL` | string | 否 | 模型名，默认按供应商选择（如 siliconflow=BAAI/bge-m3） |
 
 **数据库与缓存：**
 
@@ -2543,53 +2880,72 @@ volumes:
 | `PG_HOST` | string | 否 | `localhost` | PostgreSQL 主机 |
 | `PG_PORT` | int | 否 | `5432` | PostgreSQL 端口 |
 | `PG_USER` | string | 否 | `sphp` | 用户名 |
-| `PG_PASSWORD` | string | 是 | — | 密码 |
+| `PG_PASSWORD` | string | 是 | — | 密码（本地开发在 .env 配置，不硬编码） |
 | `PG_DATABASE` | string | 否 | `sphp` | 数据库名 |
 | `REDIS_HOST` | string | 否 | `localhost` | Redis 主机 |
 | `REDIS_PORT` | int | 否 | `6379` | Redis 端口 |
 | `REDIS_PASSWORD` | string | 否 | — | Redis 密码（开发环境可空） |
-| `RABBITMQ_URL` | string | 否 | `amqp://guest:guest@localhost:5672/` | RabbitMQ 连接串 |
 
 **Agent 自身：**
 
 | 变量 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| `AGENT_HOST` | string | 否 | `0.0.0.0` | Agent 监听地址 |
+| `AGENT_HOST` | string | 否 | `127.0.0.1` | Agent 监听地址（安全默认回环，生产需覆盖为 `0.0.0.0`） |
 | `AGENT_PORT` | int | 否 | `8081` | Agent 监听端口 |
-| `JAVA_BASE_URL` | string | 是 | — | Java 后端地址，如 `http://localhost:8080`（C 端 API 前缀 `/api/c/v1`，B 端 API 前缀 `/api/b`） |
+| `JAVA_BASE_URL` | string | 是 | `http://localhost:8080` | Java 后端地址 |
 | `C_AUTH_PARSE_PATH` | string | 否 | `/api/c/v1/auth/token/parse` | C 端 token 解析接口路径 |
 | `B_AUTH_PARSE_PATH` | string | 否 | `/api/b/auth/token/parse` | B 端 token 解析接口路径 |
+| `CHECKPOINTER_BACKEND` | string | 否 | `memory` | 会话 checkpointer 后端：`memory`（开发）/ `postgres`（生产持久化） |
 | `CONFIRM_TOKEN_TTL` | int | 否 | `300` | L2 confirm_token 有效期（秒） |
+| `CONFIRM_DONE_TTL` | int | 否 | `3600` | 已确认操作回执 TTL（秒，confirm 成功后写 Redis 供下一轮对话消费） |
 | `RATE_LIMIT_PER_MINUTE` | int | 否 | `20` | 单用户每分钟最大请求数 |
 | `MEMORY_WINDOW_SIZE` | int | 否 | `10` | 对话记忆窗口轮数 |
+| `MAX_DATA_CHARS` | int | 否 | `2000` | 工具结果注入 LLM 的最大字符数（截断防上下文膨胀） |
+| `MAX_TOOL_ITERATIONS` | int | 否 | `5` | 子图工具调用最大迭代次数（防 LLM 无限循环） |
 | `LOG_LEVEL` | string | 否 | `INFO` | 日志级别 |
-| `MCP_TRANSPORT` | string | 否 | `stdio` | MCP Server transport 模式（目前仅支持 stdio） |
+| `DEBUG` | bool | 否 | `false` | 调试模式（知识库写操作仍校验 ADMIN） |
+| `ALLOW_ANONYMOUS` | bool | 否 | `false` | 允许匿名访问（仅开发，与 DEBUG 不可同时 true） |
+| `CORS_ORIGINS` | list[str] | 否 | `["http://localhost:8000", "http://localhost:8001"]` | CORS 允许来源 |
 
 **Pydantic Settings 校验规则：**
 
 ```python
-from pydantic_settings import BaseSettings
+from pydantic import model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    # LLM
-    llm_provider: str
-    llm_api_key: str
-    llm_base_url: str | None = None
-    llm_model: str | None = None
-    llm_temperature: float = 0.3
-    llm_max_tokens: int = 2048
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Embedding
-    embedding_provider: str
-    embedding_api_key: str
+    # 应用
+    app_name: str = "智愈先锋 AI Agent 服务"
+    app_version: str = "2.0.0"
+    debug: bool = False
+    allow_anonymous: bool = False
+    agent_host: str = "127.0.0.1"
+    agent_port: int = 8081
+    cors_origins: list[str] = ["http://localhost:8000", "http://localhost:8001"]
+
+    # Java 后端
+    java_base_url: str = "http://localhost:8080"
+    c_auth_parse_path: str = "/api/c/v1/auth/token/parse"
+    b_auth_parse_path: str = "/api/b/auth/token/parse"
+
+    # LLM（多供应商，详见 .env.example）
+    llm_provider: str = ""
+    llm_model: str = ""               # 统一覆盖
+    llm_temperature: float | None = None
+
+    # Embedding（多供应商）
+    embedding_provider: str = "siliconflow"
+    embedding_api_key: str = ""
     embedding_base_url: str | None = None
     embedding_model: str | None = None
 
-    # Database
+    # PostgreSQL + pgvector
     pg_host: str = "localhost"
     pg_port: int = 5432
     pg_user: str = "sphp"
-    pg_password: str
+    pg_password: str = ""
     pg_database: str = "sphp"
 
     # Redis
@@ -2597,23 +2953,22 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     redis_password: str | None = None
 
-    # RabbitMQ
-    rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
+    # 知识库
+    kb_collection: str = "medical_knowledge"
+    kb_chunk_size: int = 500
+    kb_chunk_overlap: int = 50
+    kb_top_k: int = 5
+    kb_min_score: float = 0.3
 
-    # Agent
-    agent_host: str = "0.0.0.0"
-    agent_port: int = 8081
-    java_base_url: str
-    c_auth_parse_path: str = "/api/c/v1/auth/token/parse"
-    b_auth_parse_path: str = "/api/b/auth/token/parse"
+    # Agent 行为
+    checkpointer_backend: str = "memory"   # memory / postgres
     confirm_token_ttl: int = 300
+    confirm_done_ttl: int = 3600
     rate_limit_per_minute: int = 20
     memory_window_size: int = 10
+    max_data_chars: int = 2000
+    max_tool_iterations: int = 5
     log_level: str = "INFO"
-    mcp_transport: str = "stdio"
-
-    class Config:
-        env_file = ".env"
 ```
 
 **基础设施连接示意：**
@@ -2628,9 +2983,8 @@ Agent (:8081)
     │                        java_base_url + /api/b/auth/token/parse（B端）
     │                        java_base_url + /api/c/v1/* + /api/b/*（业务 API）
     │
-    ├── PostgreSQL (:5432) ── pgvector 向量检索 + 知识库数据
-    ├── Redis (:6379) ──────── confirm_token + 限流 + 对话缓存
-    └── RabbitMQ (:5672) ───── 异步任务（用���提醒、候补通知）
+    └── PostgreSQL (:5432) ── pgvector 向量检索 + 知识库数据 + 会话持久化
+    └── Redis (:6379) ──────── confirm_token + confirm_done + 限流 + 对话缓存
 ```
 
 
@@ -2667,12 +3021,10 @@ Agent (:8081)
 | 前端 C 端 | 8001 | HTTP | Umi 开发服务器，患者端 |
 | Java 后端 | 8080 | HTTP | Spring Boot REST API |
 | Python Agent | 8081 | HTTP + SSE | FastAPI 对话接口 + SSE 流式输出 |
-| PostgreSQL | 5432 | TCP | pgvector 向量存储 + 知识库 |
-| Redis | 6379 | TCP | 缓存、confirm_token、限流 |
-| RabbitMQ | 5672 | AMQP | 消息队列 |
-| RabbitMQ 管理 | 15672 | HTTP | 管理控制台 |
+| PostgreSQL | 5432 | TCP | pgvector 向量存储 + 知识库 + 会话持久化 |
+| Redis | 6379 | TCP | 缓存、confirm_token、confirm_done、限流 |
 
-> 注意：Redis 和 RabbitMQ 可复用本机已有的容器，SPHP 项目只需单独启动 PostgreSQL 容器。
+> 注意：Redis 可复用本机已有的容器，SPHP 项目只需单独启动 PostgreSQL 容器。RabbitMQ（5672/15672）由 Java 后端使用，Agent 不直连。
 
 #### 9.6.3 开发环境 vs 生产环境
 
@@ -2681,6 +3033,7 @@ Agent (:8081)
 | LOG_LEVEL | DEBUG | INFO |
 | LLM_TEMPERATURE | 0.7（更多样测试） | 0.3（确定性输出） |
 | CONFIRM_TOKEN_TTL | 300s | 300s（按需调整） |
+| CONFIRM_DONE_TTL | 3600s | 3600s（下轮对话消费回执的超时时间） |
 | RATE_LIMIT_PER_MINUTE | 无限制（设为极大值） | 20（按需调整） |
 | MCP_TRANSPORT | stdio | stdio（内嵌无额外端口） |
 | PG_HOST | localhost | 内网 IP 或服务名 |
@@ -2805,8 +3158,7 @@ Agent 需要承载 200 并发 SSE 连接和 500 工具调用/秒，以下是各�
 |------|--------|--------|------|
 | httpx（→ Java） | `httpx.AsyncClient` 连接池 | `limits=100, keepalive=30s` | 工具调用平均耗时 < 1s，按 Little's Law：100 连接足以支撑 100 req/s。配合 `semaphore=50` 限制并发未完成请求数 |
 | asyncpg（→ PostgreSQL） | 连接池 | `min=5, max=20` | RAG 检索单次耗时 < 100ms，20 连接支撑 200 并发检索。写操作（知识库入库）走批量，不占长连接 |
-| redis（→ Redis） | `redis.asyncio` 连接池 | `max_connections=50` | confirm_token 操作为 O(1) 的单 key 读写，50 连接充裕 |
-| RabbitMQ | `aio_pika` 连接 | 单连接 + `prefetch_count=10` | 异步任务（用药提醒推送）非实时，单连接即可，prefetch 限制消费者内存 |
+| redis（→ Redis） | `redis.asyncio` 连接池 | `max_connections=50` | confirm_token / confirm_done 操作为 O(1) 的单 key 读写，50 连接充裕 |
 
 **uvicorn 配置：**
 
@@ -2873,7 +3225,7 @@ async def check_rate_limit(user_id: str) -> bool:
 
 ### 11.1 架构层面
 
-1. **MCP Server transport 模式**：当前设计采用 stdio transport（Agent 内嵌，无额外端口）。如果后续需要 MCP Server 独立部署或对外暴露，需评估切换到 SSE transport。当前以 stdio 为准。
+1. **MCP Server transport 模式**：当前设计采用 stdio transport（Agent 内嵌，无额外端口）。如果后续需要 MCP Server 独立部署或对外暴露，需评估切换到 SSE transport。当前以 stdio 为准。**MCP Client 已采用 in-memory 传输（M6-C1）**，预连接后工具调用可直连 MCP Server，失败时自动回退到封装函数直调。
 
 ### 11.2 接口层面
 
@@ -2886,4 +3238,4 @@ async def check_rate_limit(user_id: str) -> bool:
 
 ### 11.3 产品层面
 
-8. **工具清单最终确认**：本文档 C 端 30 个工具参数已与 C 端后端系分 V1.3（55 个 API）对齐，B 端 9 个工具 API 路径已与 B 端后端系分 V1.1（42 个 API）对齐。最终能力集需三方确认。
+8. **工具清单最终确认**：本文档 C 端 32 个工具参数已与 C 端后端系分 V1.3（55 个 API）对齐，B 端 9 个工具 API 路径已与 B 端后端系分 V1.1（42 个 API）对齐。最终能力集需三方确认。
