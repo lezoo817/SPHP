@@ -51,7 +51,8 @@ function ensureAccessToken(): string | null {
  */
 function redirectToLogin(): void {
   localStorage.removeItem('b_access_token');
-  window.location.href = '/login';
+  // B 端生产环境部署在 /b/，认证失效时必须回到 B 端登录页。
+  window.location.href = window.location.pathname.startsWith('/b/') ? '/b/login' : '/login';
 }
 
 /**
