@@ -1,0 +1,128 @@
+/* ===== 在线问诊独立工作台 ===== */
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 34%) minmax(0, 1fr);
+  min-height: calc(100vh - 112px);
+  background: #f5f7fa;
+  border: 1px solid #e7eaf0;
+}
+
+.listPanel,
+.detailPanel {
+  background: #fff;
+  min-width: 0;
+}
+
+.listPanel {
+  border-right: 1px solid #e7eaf0;
+  padding: 16px;
+}
+
+.detailPanel {
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.panelHeader h4,
+.detailHeader h4,
+.section h5 {
+  margin: 0;
+}
+
+.consultList {
+  max-height: calc(100vh - 235px);
+  overflow-y: auto;
+}
+
+.consultItem {
+  display: block !important;
+  padding: 12px !important;
+  margin-bottom: 8px;
+  border: 1px solid #e8ebf0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.consultItem:hover,
+.selected {
+  border-color: #1677ff;
+  background: #f4f8ff;
+}
+
+.consultItemTop,
+.detailHeader,
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.complaint,
+.timeText {
+  display: block;
+  margin-top: 8px;
+}
+
+.detailContent {
+  width: 100%;
+  max-width: 1050px;
+}
+
+.section {
+  padding: 16px 0;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.section h5 {
+  margin-bottom: 12px;
+}
+
+.actionSection {
+  padding: 24px 0;
+}
+
+.summaryJson {
+  max-height: 240px;
+  overflow: auto;
+  padding: 12px;
+  margin: 12px 0 0;
+  background: #f7f8fa;
+  border: 1px solid #e8ebf0;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.prescriptionRow {
+  display: grid;
+  grid-template-columns: 95px repeat(3, minmax(120px, 1fr)) 80px 80px auto;
+  gap: 8px;
+  align-items: end;
+  padding: 10px 0;
+}
+
+.finishButton {
+  margin-top: 12px;
+}
+
+@media (max-width: 960px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .listPanel {
+    border-right: 0;
+    border-bottom: 1px solid #e7eaf0;
+  }
+
+  .consultList {
+    max-height: 320px;
+  }
+
+  .prescriptionRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

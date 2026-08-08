@@ -410,6 +410,45 @@ declare global {
       historyRecords: HistoryRecord[];
     }
 
+    /** 在线问诊列表项 */
+    interface OnlineConsultationItem {
+      consultId: number;
+      patientId: number;
+      patientName: string;
+      patientGender: string;
+      status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+      aiSummary?: Record<string, any>;
+      chiefComplaint?: string;
+      submittedAt?: string;
+      doctorRepliedAt?: string;
+      canStart: boolean;
+      canReply: boolean;
+    }
+
+    /** 在线问诊详情 */
+    interface OnlineConsultationDetail {
+      consultId: number;
+      appointmentId?: number;
+      status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+      chiefComplaint?: string;
+      historyOfPresentIllness?: string;
+      submittedAt?: string;
+      doctorRepliedAt?: string;
+      patientDetail: PatientDetail;
+      messages: MessageVO[];
+      prescriptions: Prescription[];
+      canStart: boolean;
+      canReply: boolean;
+    }
+
+    /** 在线问诊回复结果 */
+    interface OnlineConsultationReplyResult {
+      consultId: number;
+      messageId: number;
+      status: 'COMPLETED';
+      repliedAt: string;
+    }
+
     /** 过敏史 */
     interface AllergyInfo {
       id: number;

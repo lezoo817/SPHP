@@ -61,6 +61,10 @@ function buildMenuItems(roles: string[]): MenuProps['items'] {
             key: '/consult',
             label: '接诊台',
             icon: <TeamOutlined />,
+            children: [
+              { key: '/consult/registration', label: '挂号接诊' },
+              { key: '/consult/online', label: '在线问诊' },
+            ],
           },
         ]),
     {
@@ -153,7 +157,7 @@ export default function MainLayout() {
       // ADMIN 无接诊台权限，登录后默认跳转排班列表
       const isAdmin = roles.includes('ADMIN');
       const path = location.pathname;
-      if (isAdmin && (path === '/' || path === '/consult/queue')) {
+      if (isAdmin && (path === '/' || path.startsWith('/consult'))) {
         navigate('/schedule/list', { replace: true });
       }
     }

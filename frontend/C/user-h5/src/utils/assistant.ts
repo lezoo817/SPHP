@@ -1,7 +1,16 @@
 import type { Appointment } from '../typings/api';
 
 /** 就诊助手中允许展示的记录分类。 */
-export const getAssistantTabs = ['挂号记录', '处方'] as const;
+export const getAssistantTabs = ['挂号记录', '问诊记录', '处方'] as const;
+
+/**
+ * 将问诊状态转换为就诊助手展示文案。
+ * @param status 问诊状态
+ * @returns 患者可理解的问诊进度
+ */
+export function getConsultationStatusText(status: 'DRAFT' | 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'NO_SHOW'): string {
+  return ({ DRAFT: '草稿', PENDING: '待回复', IN_PROGRESS: '接诊中', COMPLETED: '已完成', NO_SHOW: '已结束' })[status];
+}
 
 /** 当前挂号流程底部操作的展示类型。 */
 export type CurrentFlowAction = 'PAY' | 'WAITING';

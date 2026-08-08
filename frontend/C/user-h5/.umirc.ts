@@ -12,7 +12,7 @@ export default defineConfig({
     { path: '/assistant/book', component: 'assistant/book' },
     { path: '/assistant/doctor/:doctorId', component: 'assistant/doctor' },
     { path: '/assistant/pay/:paymentId', component: 'assistant/pay' },
-    { path: '/assistant/pre-consultation/:appointmentId', component: 'assistant/pre-consultation' },
+    { path: '/assistant/pre-consultation/:doctorId', component: 'assistant/pre-consultation' },
     { path: '/assistant/consultation/:consultationId', component: 'assistant/consultation' },
     { path: '/assistant/prescription/:prescriptionId', component: 'assistant/prescription' },
     { path: '/pharmacy', component: 'pharmacy/index' },

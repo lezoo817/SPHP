@@ -9,6 +9,11 @@
 export const QUERY_KEYS = {
   /** 待接诊队列（15s，按状态 Tab 区分） */
   consultQueue: (status: string) => ['consult', 'queue', status] as const,
+  /** 无挂号在线问诊列表（15s，按状态区分） */
+  onlineConsultations: (status: string) => ['consult', 'online', status] as const,
+  /** 无挂号在线问诊详情 */
+  onlineConsultationDetail: (consultId: number) =>
+    ['consult', 'online-detail', consultId] as const,
   /** 患者详情（60s） */
   patientDetail: (consultId: number) =>
     ['consult', 'patient-detail', consultId] as const,

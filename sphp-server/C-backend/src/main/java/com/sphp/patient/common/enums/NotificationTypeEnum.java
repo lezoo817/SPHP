@@ -20,6 +20,9 @@ public enum NotificationTypeEnum {
     /** 随访计划提醒 */
     FOLLOW_UP_REMINDER,
 
+    /** 在线问诊医生回复通知 */
+    CONSULTATION,
+
     /** 通用系统通知 */
     SYSTEM
 }

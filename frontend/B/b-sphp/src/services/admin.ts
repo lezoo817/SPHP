@@ -233,6 +233,44 @@ export function getQueue(
   });
 }
 
+/** 查询无挂号在线问诊列表。 */
+export function getOnlineConsultations(
+  params: { status: string; page?: number; size?: number },
+): Promise<API.PageResult<API.OnlineConsultationItem>> {
+  return requestData<API.PageResult<API.OnlineConsultationItem>>(
+    '/api/b/doctor/online-consultations',
+    { params },
+  );
+}
+
+/** 查询无挂号在线问诊详情。 */
+export function getOnlineConsultationDetail(
+  consultId: number,
+): Promise<API.OnlineConsultationDetail> {
+  return requestData<API.OnlineConsultationDetail>(
+    `/api/b/doctor/online-consultations/${consultId}`,
+  );
+}
+
+/** 开始编辑在线问诊回复。 */
+export function startOnlineConsultation(consultId: number): Promise<API.ConsultStart> {
+  return requestData<API.ConsultStart>(
+    `/api/b/doctor/online-consultations/${consultId}/start`,
+    { method: 'POST' },
+  );
+}
+
+/** 提交一次性医生回复并完成在线问诊。 */
+export function replyOnlineConsultation(
+  consultId: number,
+  content: string,
+): Promise<API.OnlineConsultationReplyResult> {
+  return requestData<API.OnlineConsultationReplyResult>(
+    `/api/b/doctor/online-consultations/${consultId}/reply`,
+    { method: 'POST', data: { content } },
+  );
+}
+
 /** 患者详情 */
 export function getPatientDetail(
   consultId: number,

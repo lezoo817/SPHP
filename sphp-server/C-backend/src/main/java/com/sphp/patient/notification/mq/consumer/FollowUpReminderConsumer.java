@@ -22,6 +22,6 @@ public class FollowUpReminderConsumer {
     @RabbitListener(queues = FOLLOW_UP_QUEUE)
     public void consumeFollowUpReminder(NotificationCreateEvent event) {
         // 复用通知表幂等写入逻辑
-        notificationCreateConsumer.consumeNotificationCreate(event);
+        notificationCreateConsumer.persistNotification(event);
     }
 }

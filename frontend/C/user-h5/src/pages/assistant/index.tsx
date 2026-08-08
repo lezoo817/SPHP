@@ -4,11 +4,11 @@ import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
 import { resolveSelfPatientId } from '../../models/selection';
-import { getPrescriptions } from '../../services/consultation';
+import { getConsultations, getPrescriptions } from '../../services/consultation';
 import { getFamilyMembers } from '../../services/family';
 import { cancelAppointment, getAppointment, getAppointments } from '../../services/registration';
-import type { Appointment, FamilyMember, Prescription } from '../../typings/api';
-import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantAppointmentRecordStatusText, getAssistantTabs, getCurrentFlowAction, isCurrentAssistantFlow, shouldDisplayAssistantAppointmentRecord } from '../../utils/assistant';
+import type { Appointment, Consultation, FamilyMember, Prescription } from '../../typings/api';
+import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantAppointmentRecordStatusText, getAssistantTabs, getConsultationStatusText, getCurrentFlowAction, isCurrentAssistantFlow, shouldDisplayAssistantAppointmentRecord } from '../../utils/assistant';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatMedicalTime } from '../../utils/medical';
 import { buildAssistantPrescriptionDetailPath, getPrescriptionDisplayNumber } from '../../utils/prescription';
@@ -46,6 +46,7 @@ export default function AssistantPage() {
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [patientId, setPatientId] = useState<number>();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [open, setOpen] = useState(false);
   const [cancellingAppointment, setCancellingAppointment] = useState<Appointment>();
@@ -70,12 +71,15 @@ export default function AssistantPage() {
       const targetPatientId = patientId || resolveSelfPatientId(nextMembers);
       if (!targetPatientId) return;
       if (!patientId) setPatientId(targetPatientId);
-      // 两类列表均使用同一就诊人，切换家属后不会混合展示他人的数据。
-      const [appointmentPage, prescriptionPage] = await Promise.all([
+      // 三类列表均使用同一就诊人，切换家属后不会混合展示他人的数据。
+      const [appointmentPage, consultationPage, prescriptionPage] = await Promise.all([
         getAppointments(targetPatientId),
+        getConsultations(targetPatientId),
         getPrescriptions({ patientId: targetPatientId }),
       ]);
       setAppointments(appointmentPage.records);
+      // 问诊记录分类只展示不绑定挂号的在线问诊，避免与挂号记录重复。
+      setConsultations(consultationPage.records.filter((item) => item.appointmentId === undefined || item.appointmentId === null));
       setPrescriptions(prescriptionPage.records);
     } catch (error) {
       // 定时刷新失败时保留当前页面数据，首次加载和用户主动操作仍反馈错误原因。
@@ -188,6 +192,8 @@ export default function AssistantPage() {
         <span className="record-card__main"><b>{formatMedicalTime(item.startTime)}</b><span>{item.departmentName} · {item.doctorName}</span><small>科室位置：{item.departmentLocation || '科室位置待确认'}</small></span>
         <aside className="registration-record-actions"><em className={`record-card__status status-${item.status.toLowerCase()}`}>{getAssistantAppointmentRecordStatusText(item.status)}</em></aside>
       </article>)}
+      {tab === '问诊记录' && consultations.map((item) => <button className="record-card" key={item.id} type="button" onClick={() => navigate(`/assistant/consultation/${item.id}`)}><span className="record-card__main"><b>{item.doctorName || '在线问诊'}</b><span>AI 预问诊</span><small>更新于 {formatMedicalTime(item.updatedAt)}</small></span><aside className="registration-record-actions"><em className={`record-card__status status-${item.status.toLowerCase()}`}>{getConsultationStatusText(item.status)}</em><ChevronRight size={18} /></aside></button>)}
+      {tab === '问诊记录' && !consultations.length && <p className="empty-state">暂无在线问诊记录</p>}
       {tab === '处方' && prescriptions.map((item) => <button className="record-card" key={item.id} type="button" onClick={() => navigate(buildAssistantPrescriptionDetailPath(item.id, patientId, item.issuedAt))}><span className="record-card__main"><b>{item.doctorName}电子处方</b><span>开具于 {formatMedicalTime(item.issuedAt)}</span><small>处方编号：{getPrescriptionDisplayNumber(item.id, item.issuedAt)}</small></span><ChevronRight size={18} /></button>)}
     </section>
     {open && <Dialog title="切换就诊人" onClose={() => setOpen(false)}>
