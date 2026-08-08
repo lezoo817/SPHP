@@ -27,6 +27,12 @@ export type AgentPresetAction =
       drugOrderId: number;
     }
   | {
+      /** 固定通知挂号支付完成并确认挂号结果。 */
+      type: 'notify_appointment_paid';
+      /** 服务端真实挂号 ID。 */
+      appointmentId: number;
+    }
+  | {
       /** 固定登记订单收货后自动开启用药提醒。 */
       type: 'authorize_drug_order_reminder_after_receipt';
       /** 服务端真实购药订单 ID。 */
@@ -60,7 +66,7 @@ export interface AgentChatContext {
   /** 当前默认收货地址 ID（用于 Agent 推荐药店等需要收货地址的服务） */
   address_id?: number;
   /** 受控预设动作，仅业务页面一键入口发送。 */
-  preset_action?: AgentPresetAction['type'] | 'select_prescription_interpretation' | 'select_medical_record_interpretation';
+  preset_action?: AgentPresetAction['type'] | 'select_prescription_interpretation' | 'select_medical_record_interpretation' | 'recommend_prescription_pharmacy';
   /** 受控预设动作关联的真实处方 ID。 */
   prescription_id?: number;
   /** 受控病历解读关联的真实完成问诊记录 ID。 */

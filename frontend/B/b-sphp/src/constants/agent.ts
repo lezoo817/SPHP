@@ -80,6 +80,7 @@ export const AGENT_CARD_TYPE_TO_TOOL: Record<string, string> = {
   confirm_medication_plan: 'update_medication_plan',
   confirm_follow_up: 'confirm_follow_up',
   confirm_draft_note: 'generate_draft_note',
+  confirm_patient_history: 'query_patient_history',
 };
 
 /** L2 确认卡片错误码到面向医生的提示文案映射。 */

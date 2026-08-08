@@ -2,7 +2,15 @@ import { getSession, isSessionTokenExpired, redirectToLogin, replaceTokenPair } 
 import { buildRequestQueryKey, getRequestCacheStaleTime, invalidateByMutationPath, readWithStaleCache } from '../query/request-cache';
 import type { ApiResponse, TokenPair } from '../typings/api';
 
-export const API_BASE_URL = 'http://localhost:8080/api';
+/**
+ * C 端 Java API 基础地址。
+ *
+ * 生产环境由 Nginx 注入同域路径，开发环境通过 Umi 代理转发到本地 Java 服务。
+ */
+export const API_BASE_URL =
+  (typeof window !== 'undefined' &&
+    (window as Window & { __API_BASE_URL__?: string }).__API_BASE_URL__) ||
+  '/api';
 
 /** 可携带业务码和链路追踪号的请求异常。 */
 export class ApiError extends Error {

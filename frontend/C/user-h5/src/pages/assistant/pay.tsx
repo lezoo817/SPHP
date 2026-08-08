@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'umi';
+import { useLocation, useNavigate, useParams } from 'umi';
 import { PageHeader } from '../../components/PageHeader';
 import { cancelAppointment, getPayment, simulatePayment } from '../../services/registration';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatAmount, getRemainingSeconds } from '../../utils/medical';
 import { isDuplicateDoctorAppointmentError, resolveAppointmentPaymentCancelPath } from '../../utils/registration';
+import { resolveDrugOrderAgentReturnState } from '../../utils/agent-purchase';
 
 /** 挂号支付单在页面展示所需的最小字段。 */
 interface PaymentState {
@@ -22,9 +23,13 @@ interface PaymentState {
 export default function PaymentPage() {
   const { paymentId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const query = new URLSearchParams(location.search);
   const appointmentId = Number(query.get('appointmentId'));
   const cancelReturnPath = resolveAppointmentPaymentCancelPath(query.get('returnTo'));
+  const returnToAgent = resolveDrugOrderAgentReturnState(
+    (location.state as { returnToAgent?: unknown } | null)?.returnToAgent
+  );
   const [payment, setPayment] = useState<PaymentState>();
   const [password, setPassword] = useState('');
   const [seconds, setSeconds] = useState(0);
@@ -54,14 +59,14 @@ export default function PaymentPage() {
     return () => window.clearInterval(timer);
   }, [payment?.status]);
 
-  /** 使用登录密码调用模拟支付，并重新读取服务端最终状态。 */
+  /** 使用登录密码调用模拟支付，成功后立即恢复 AI 会话或返回首页。 */
   async function pay() {
     try {
       // 网络重试沿用首次生成的幂等键，避免重复支付。
       await simulatePayment(Number(paymentId), password, key.current || (key.current = createIdempotencyKey()));
       key.current = undefined;
-      await loadPayment();
-      setNotice('支付成功');
+      // 支付成功后立即跳转，无需用户手动点击"返回首页"（与购药流程一致）。
+      returnHome();
     } catch (error) {
       if (isDuplicateDoctorAppointmentError(error)) {
         // 服务端已拒绝本笔重复支付，清除幂等键并保留取消订单入口释放号源。
@@ -88,8 +93,19 @@ export default function PaymentPage() {
     }
   }
 
-  /** 支付成功后返回首页继续使用其他健康服务。 */
+  /** 支付成功后根据入口恢复 AI 会话或返回首页。 */
   function returnHome() {
+    if (returnToAgent) {
+      navigate('/agent', {
+        replace: true,
+        state: {
+          from: returnToAgent.from,
+          resumeSessionId: returnToAgent.sessionId,
+          presetAction: { type: 'notify_appointment_paid', appointmentId },
+        },
+      });
+      return;
+    }
     navigate('/home');
   }
 

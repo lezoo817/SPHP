@@ -1,0 +1,73 @@
+# C 端站点。将域名和静态文件目录替换为实际值后启用。
+server {
+    listen 80;
+    server_name c.example.com;
+    root /var/www/sphp-c;
+    index index.html;
+
+    location = /runtime-config.js {
+        default_type application/javascript;
+        add_header Cache-Control "no-store";
+        return 200 'window.__API_BASE_URL__="/api";window.__AGENT_BASE_URL__="/agent-api";';
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /agent-api/ {
+        proxy_pass http://127.0.0.1:8081/;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+
+# B 端站点。其 API 和 Agent 同样通过同域路径访问。
+server {
+    listen 80;
+    server_name b.example.com;
+    root /var/www/sphp-b;
+    index index.html;
+
+    location = /runtime-config.js {
+        default_type application/javascript;
+        add_header Cache-Control "no-store";
+        return 200 'window.__AGENT_BASE_URL__="/agent-api";';
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /agent-api/ {
+        proxy_pass http://127.0.0.1:8081/;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

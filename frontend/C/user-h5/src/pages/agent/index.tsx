@@ -56,6 +56,9 @@ function resolvePresetAction(action: AgentPresetAction | undefined): AgentPreset
   if (action?.type === 'notify_drug_order_paid' && Number.isInteger(action.drugOrderId) && action.drugOrderId > 0) {
     return action;
   }
+  if (action?.type === 'notify_appointment_paid' && Number.isInteger(action.appointmentId) && action.appointmentId > 0) {
+    return action;
+  }
   return undefined;
 }
 

@@ -38,9 +38,31 @@ export function validateFamilyMember(
   return idCardNo && !/^(\d{15}|\d{17}[0-9X])$/.test(idCardNo) ? '身份证号格式不正确' : undefined;
 }
 
-/** 生成满足后端防重要求的 UUID v4 幂等键。 */
+/**
+ * 生成满足后端防重要求的 UUID v4 幂等键。
+ *
+ * @returns UUID v4 格式的幂等键
+ */
 export function createIdempotencyKey(): string {
-  return crypto.randomUUID();
+  const cryptoApi = typeof window !== 'undefined' ? window.crypto : undefined;
+  if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
+  }
+
+  // 旧版移动浏览器可能没有 randomUUID，但通常仍支持 getRandomValues。
+  const bytes = new Uint8Array(16);
+  if (cryptoApi && typeof cryptoApi.getRandomValues === 'function') {
+    cryptoApi.getRandomValues(bytes);
+  } else {
+    // 极旧环境的最后回退，幂等键仍保持唯一性和 UUID v4 格式。
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 /** 获取后端返回中可直接展示的错误提示。 */

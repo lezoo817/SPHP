@@ -2,6 +2,9 @@ import { defineConfig } from '@umijs/max';
 import routes from './config/routes';
 
 export default defineConfig({
+  // 生产环境部署到同一站点的 /b/ 路径，开发环境仍从根路径访问。
+  base: process.env.NODE_ENV === 'production' ? '/b/' : '/',
+  publicPath: process.env.NODE_ENV === 'production' ? '/b/' : '/',
   antd: {},
   access: {},
   model: {},
@@ -9,6 +12,10 @@ export default defineConfig({
   request: {},
   routes,
   npmClient: 'pnpm',
+  // 生产由 Nginx 动态返回 Agent 地址，避免构建产物写死服务器地址。
+  headScripts: ['/runtime-config.js'],
+  // 多异步页面共享压缩帮助函数时隔离 IIFE，避免生产构建产物符号冲突。
+  esbuildMinifyIIFE: true,
   proxy: {
     '/api/b': {
       target: 'http://localhost:8080',

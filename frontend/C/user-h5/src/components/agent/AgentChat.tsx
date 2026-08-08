@@ -106,6 +106,8 @@ export function AgentChat({
       ? presetAction.prescriptionId
       : presetAction.type === 'interpret_medical_record'
         ? presetAction.consultId
+        : presetAction.type === 'notify_appointment_paid'
+        ? presetAction.appointmentId
         : presetAction.drugOrderId;
     const presetKey = `${presetAction.type}:${businessId}:${resumeSessionId || 'new'}`;
     // 严格模式重挂载与上下文异步就绪时只允许自动发送一次。
@@ -127,6 +129,14 @@ export function AgentChat({
         preset_action: presetAction.type,
         medical_record_id: presetAction.consultId,
       }, { startNewSession: true });
+      return;
+    }
+    if (presetAction.type === 'notify_appointment_paid') {
+      send('我已完成挂号支付，请确认挂号结果。', {
+        ...context,
+        preset_action: presetAction.type,
+        appointment_id: presetAction.appointmentId,
+      });
       return;
     }
     // 支付成功后仅查询订单真实状态，不让前端伪造预计送达时间。
@@ -246,24 +256,6 @@ export function AgentChat({
         return <FileText size={22} />;
       case '病历解读':
         return <FolderHeart size={22} />;
-      case '在线问诊':
-        return <HeartPulse size={22} />;
-      case '预约挂号':
-        return <Calendar size={22} />;
-      default:
-        return <MessageSquare size={22} />;
-    }
-  }
-
-  /** 快捷入口图标按 label 名称映射，便于美化常驻栏。 */
-  function getQuickIcon(label: string) {
-    switch (label) {
-      case '智能导诊':
-        return <Compass size={22} />;
-      case '查询挂号':
-        return <Calendar size={22} />;
-      case '处方解读':
-        return <FileText size={22} />;
       case '在线问诊':
         return <HeartPulse size={22} />;
       case '预约挂号':

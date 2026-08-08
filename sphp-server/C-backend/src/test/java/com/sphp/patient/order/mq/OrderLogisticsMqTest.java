@@ -24,12 +24,12 @@ import static org.mockito.Mockito.doThrow;
 class OrderLogisticsMqTest {
 
     /**
-     * 验证物流延迟队列、推进队列和路由键使用既定名称及 30 秒延迟。
+     * 验证物流延迟队列、推进队列和路由键使用既定名称及 15 秒延迟。
      */
     @Test
     void logisticsTopologyUsesExpectedQueuesAndDelay() {
         OrderLogisticsProperties properties = new OrderLogisticsProperties();
-        properties.setAdvanceIntervalSeconds(30);
+        properties.setAdvanceIntervalSeconds(15);
         OrderLogisticsRabbitMqConfig config = new OrderLogisticsRabbitMqConfig();
         Queue delayQueue = config.drugOrderLogisticsDelayQueue(properties);
         Queue advanceQueue = config.drugOrderLogisticsAdvanceQueue();
@@ -37,7 +37,7 @@ class OrderLogisticsMqTest {
         Binding advanceBinding = config.drugOrderLogisticsAdvanceBinding(advanceQueue);
 
         assertEquals("cend.drug-order.logistics.delay.queue", delayQueue.getName());
-        assertEquals(30000, delayQueue.getArguments().get("x-message-ttl"));
+        assertEquals(15000, delayQueue.getArguments().get("x-message-ttl"));
         assertEquals("cend.drug-order.logistics.advance.queue", advanceQueue.getName());
         assertEquals("cend.dlx.exchange", advanceQueue.getArguments().get("x-dead-letter-exchange"));
         assertEquals("notification.dead", advanceQueue.getArguments().get("x-dead-letter-routing-key"));
