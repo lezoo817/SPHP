@@ -25,10 +25,7 @@ export const AGENT_WELCOME =
 
 /** 接诊台常用快捷入口（B 端场景）。 */
 export const AGENT_QUICK_PROMPTS: { label: string; content: string }[] = [
-  { label: '生成病历草稿', content: '请根据当前接诊患者信息生成病历草稿' },
-  { label: '用药相互作用', content: '请检测当前处方药品的相互作用' },
   { label: '患者档案', content: '查询当前患者的历史就诊记录与用药清单' },
-  { label: '处方审核', content: '请审核当前处方的禁忌与过敏风险' },
   { label: '药品说明', content: '查询阿莫西林胶囊的用药指南' },
   { label: '报告解读', content: '请解读当前患者的检查报告指标' },
 ];
