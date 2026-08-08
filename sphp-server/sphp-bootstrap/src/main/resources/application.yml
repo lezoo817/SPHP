@@ -1,6 +1,6 @@
 server:
   # 监听地址由环境配置决定，生产环境仅绑定回环地址。
-  address: ${dev.server.address}
+  address: ${dev.server.address:0.0.0.0}
   port: ${dev.server.port}
   servlet:
     context-path: ${dev.server.servlet.context-path}
