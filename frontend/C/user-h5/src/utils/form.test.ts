@@ -96,8 +96,8 @@ describe('购药处方跳转规则', () => {
 });
 
 describe('就诊助手展示规则', () => {
-  it('仅展示挂号记录和处方两个分类', () => {
-    expect(getAssistantTabs).toEqual(['挂号记录', '处方']);
+  it('展示挂号、在线问诊和处方三个分类', () => {
+    expect(getAssistantTabs).toEqual(['挂号记录', '问诊记录', '处方']);
   });
 
   it('仅未支付订单可进入支付，已支付订单保持等待就诊', () => {

@@ -11,12 +11,42 @@ import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
  * 问诊记录表 Mapper。
  */
 public interface ConsultRecordMapper extends BaseMapper<ConsultRecord> {
+
+    /**
+     * 将在线问诊从待回复切换为接诊中。
+     *
+     * @param consultId 问诊记录 ID
+     * @param doctorId 当前医生 ID
+     * @param startedAt 开始编辑时间
+     * @return 实际更新行数
+     */
+    @Update("UPDATE consult_record SET status = 'IN_PROGRESS', started_at = #{startedAt}, updated_at = #{startedAt} "
+            + "WHERE id = #{consultId} AND doctor_id = #{doctorId} AND appointment_id IS NULL "
+            + "AND status = 'PENDING' AND deleted_at IS NULL")
+    int startOnlineConsult(@Param("consultId") Long consultId, @Param("doctorId") Long doctorId,
+                           @Param("startedAt") OffsetDateTime startedAt);
+
+    /**
+     * 将在线问诊原子切换为已完成并记录医生回复时间。
+     *
+     * @param consultId 问诊记录 ID
+     * @param doctorId 当前医生 ID
+     * @param repliedAt 回复时间
+     * @return 实际更新行数
+     */
+    @Update("UPDATE consult_record SET status = 'COMPLETED', ended_at = #{repliedAt}, "
+            + "doctor_replied_at = #{repliedAt}, updated_at = #{repliedAt} "
+            + "WHERE id = #{consultId} AND doctor_id = #{doctorId} AND appointment_id IS NULL "
+            + "AND status = 'IN_PROGRESS' AND doctor_replied_at IS NULL AND deleted_at IS NULL")
+    int completeOnlineConsult(@Param("consultId") Long consultId, @Param("doctorId") Long doctorId,
+                              @Param("repliedAt") OffsetDateTime repliedAt);
 
     /**
      * 分页查询待接诊列表（含排队号、患者信息、挂号时间）。
@@ -68,6 +98,7 @@ public interface ConsultRecordMapper extends BaseMapper<ConsultRecord> {
     @Select("SELECT COUNT(*) FROM consult_record " +
             "WHERE deleted_at IS NULL " +
             "  AND status = 'IN_PROGRESS' " +
+            "  AND appointment_id IS NOT NULL " +
             "  AND doctor_id = #{doctorId}")
     long countInProgressByDoctor(@Param("doctorId") Long doctorId);
 

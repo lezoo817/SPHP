@@ -9,6 +9,7 @@ import com.sphp.admin.auth.entity.Doctor;
 import com.sphp.admin.auth.mapper.DoctorMapper;
 import com.sphp.admin.common.CurrentUserService;
 import com.sphp.admin.common.DataScope;
+import com.sphp.admin.common.constant.OnlineConsultationConstant;
 import com.sphp.admin.common.enums.BRoleEnum;
 import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.doctor.dto.ConsultEndVO;
@@ -17,6 +18,10 @@ import com.sphp.admin.doctor.dto.ConsultHistoryVO;
 import com.sphp.admin.doctor.dto.ConsultStartVO;
 import com.sphp.admin.doctor.dto.MessageVO;
 import com.sphp.admin.doctor.dto.NoteSaveVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationDetailVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationItemVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationReplyRequest;
+import com.sphp.admin.doctor.dto.OnlineConsultationReplyVO;
 import com.sphp.admin.doctor.dto.PatientDetailVO;
 import com.sphp.admin.doctor.dto.QueueItemVO;
 import com.sphp.admin.doctor.entity.ConsultRecord;
@@ -37,11 +42,14 @@ import com.sphp.admin.prescription.entity.Prescription;
 import com.sphp.admin.prescription.entity.PrescriptionItem;
 import com.sphp.admin.prescription.mapper.PrescriptionItemMapper;
 import com.sphp.admin.prescription.mapper.PrescriptionMapper;
+import com.sphp.admin.prescription.service.PrescriptionService;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import com.sphp.shared.exception.BusinessException;
+import com.sphp.shared.event.OnlineConsultationRepliedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -52,6 +60,7 @@ import java.time.Period;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -126,6 +135,125 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     private final DoctorMapper doctorMapper;
     private final CurrentUserService currentUserService;
     private final ObjectMapper objectMapper;
+    private final PrescriptionService prescriptionService;
+    private final ApplicationEventPublisher eventPublisher;
+
+    /** 在线问诊允许查询的状态。 */
+    private static final Set<String> ONLINE_STATUSES = Set.of(
+            OnlineConsultationConstant.STATUS_PENDING,
+            OnlineConsultationConstant.STATUS_IN_PROGRESS,
+            OnlineConsultationConstant.STATUS_COMPLETED);
+
+    @Override
+    public PageResult<OnlineConsultationItemVO> pageOnlineConsultations(String status, int page, int size) {
+        String queryStatus = StringUtils.hasText(status)
+                ? status.trim().toUpperCase()
+                : OnlineConsultationConstant.STATUS_PENDING;
+        if (!ONLINE_STATUSES.contains(queryStatus)) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "在线问诊状态不合法");
+        }
+        DataScope scope = currentUserService.getCurrentDataScope();
+        List<Long> doctorIds = resolveDoctorIds(scope, null);
+        if (doctorIds.isEmpty()) {
+            return PageResult.of(0, List.of(), page, size);
+        }
+
+        // 在线问诊以 appointment_id 为空作为唯一边界，不与挂号接诊混查。
+        Page<ConsultRecord> result = consultRecordMapper.selectPage(
+                new Page<>(page, size),
+                Wrappers.<ConsultRecord>lambdaQuery()
+                        .in(ConsultRecord::getDoctorId, doctorIds)
+                        .isNull(ConsultRecord::getAppointmentId)
+                        .eq(ConsultRecord::getStatus, queryStatus)
+                        .isNull(ConsultRecord::getDeletedAt)
+                        .orderByDesc(ConsultRecord::getPreConsultationSubmittedAt, ConsultRecord::getId));
+        List<OnlineConsultationItemVO> list = result.getRecords().stream()
+                .map(this::toOnlineConsultationItem)
+                .toList();
+        return PageResult.of(result.getTotal(), list, page, size);
+    }
+
+    @Override
+    public OnlineConsultationDetailVO getOnlineConsultationDetail(Long consultId) {
+        ConsultRecord record = getOnlineConsultInScope(consultId);
+        PatientDetailVO patientDetail = getPatientDetail(consultId);
+        List<MessageVO> messages = pageMessages(consultId, 1, 100).getList();
+        return OnlineConsultationDetailVO.builder()
+                .consultId(record.getId())
+                .appointmentId(record.getAppointmentId())
+                .status(record.getStatus())
+                .chiefComplaint(record.getChiefComplaint())
+                .historyOfPresentIllness(record.getHistoryOfPresentIllness())
+                .submittedAt(record.getPreConsultationSubmittedAt())
+                .doctorRepliedAt(record.getDoctorRepliedAt())
+                .patientDetail(patientDetail)
+                .messages(messages)
+                .prescriptions(prescriptionService.page(consultId, null, null, 1, 100).getList())
+                .canStart(OnlineConsultationConstant.STATUS_PENDING.equals(record.getStatus()))
+                .canReply(OnlineConsultationConstant.STATUS_IN_PROGRESS.equals(record.getStatus())
+                        && record.getDoctorRepliedAt() == null)
+                .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ConsultStartVO startOnlineConsult(Long consultId) {
+        ConsultRecord record = getOnlineConsultInScope(consultId);
+        Long doctorId = requireAssignedDoctor(record);
+        OffsetDateTime startedAt = OffsetDateTime.now();
+        // 状态条件更新保证重复点击不会重复进入编辑流程。
+        if (consultRecordMapper.startOnlineConsult(consultId, doctorId, startedAt) != 1) {
+            throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "在线问诊状态不可开始回复");
+        }
+        return ConsultStartVO.builder()
+                .consultId(consultId)
+                .status(OnlineConsultationConstant.STATUS_IN_PROGRESS)
+                .startedAt(startedAt)
+                .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public OnlineConsultationReplyVO replyOnlineConsult(Long consultId, OnlineConsultationReplyRequest request) {
+        ConsultRecord record = getOnlineConsultInScope(consultId);
+        Long doctorId = requireAssignedDoctor(record);
+        String content = request.getContent().trim();
+        if (!StringUtils.hasText(content) || content.length() > OnlineConsultationConstant.MAX_REPLY_LENGTH) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "回复内容不能为空且不超过2000字符");
+        }
+        long existingReplies = consultationMessageMapper.selectCount(
+                Wrappers.<ConsultationMessage>lambdaQuery()
+                        .eq(ConsultationMessage::getConsultId, consultId)
+                        .eq(ConsultationMessage::getSenderType, OnlineConsultationConstant.SENDER_DOCTOR)
+                        .isNull(ConsultationMessage::getDeletedAt));
+        if (existingReplies > 0) {
+            throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "本次在线问诊已回复，不能重复发送");
+        }
+
+        OffsetDateTime repliedAt = OffsetDateTime.now();
+        // 先抢占唯一完成状态；并发请求只有一个能够更新成功，后续写入失败会随事务回滚。
+        if (consultRecordMapper.completeOnlineConsult(consultId, doctorId, repliedAt) != 1) {
+            throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "在线问诊状态不可回复或已完成");
+        }
+        ConsultationMessage message = new ConsultationMessage();
+        message.setConsultId(consultId);
+        message.setSenderType(OnlineConsultationConstant.SENDER_DOCTOR);
+        message.setContent(content);
+        message.setCreatedAt(repliedAt);
+        if (consultationMessageMapper.insert(message) != 1) {
+            throw new BusinessException(ErrorCodeEnum.SYSTEM_ERROR, "医生回复保存失败");
+        }
+
+        // 事务提交后再由事件转发器投递 C 端通知，事件不携带回复原文。
+        eventPublisher.publishEvent(OnlineConsultationRepliedEvent.of(
+                consultId, record.getPatientId(), doctorId, repliedAt));
+        return OnlineConsultationReplyVO.builder()
+                .consultId(consultId)
+                .messageId(message.getId())
+                .status(OnlineConsultationConstant.STATUS_COMPLETED)
+                .repliedAt(repliedAt)
+                .build();
+    }
 
     @Override
     public PageResult<QueueItemVO> pageQueue(Long deptId, String status, int page, int size) {
@@ -233,6 +361,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     @Transactional(rollbackFor = Exception.class)
     public ConsultStartVO startConsult(Long consultId) {
         ConsultRecord record = getConsultInScope(consultId);
+        requireAppointmentConsult(record);
         if (!STATUS_PENDING.equals(record.getStatus())) {
             throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "问诊记录状态不可接诊");
         }
@@ -270,6 +399,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     @Transactional(rollbackFor = Exception.class)
     public ConsultEndVO endConsult(Long consultId) {
         ConsultRecord record = getConsultInScope(consultId);
+        requireAppointmentConsult(record);
         if (!STATUS_IN_PROGRESS.equals(record.getStatus())) {
             throw new BusinessException(ERR_CONSULT_NOT_IN_PROGRESS, "问诊状态不是 IN_PROGRESS");
         }
@@ -305,6 +435,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
             throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "病历内容不能为空且不超过10000字符");
         }
         ConsultRecord record = getConsultInScope(consultId);
+        requireAppointmentConsult(record);
 
         record.setDoctorNote(doctorNote);
         record.setUpdatedAt(OffsetDateTime.now());
@@ -347,6 +478,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
             throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "消息内容不能为空且不超过2000字符");
         }
         ConsultRecord record = getConsultInScope(consultationId);
+        requireAppointmentConsult(record);
         if (!STATUS_IN_PROGRESS.equals(record.getStatus())) {
             throw new BusinessException(ERR_CONSULT_NOT_IN_PROGRESS, "问诊状态不是 IN_PROGRESS，禁止发送消息");
         }
@@ -385,6 +517,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 new Page<>(page, size),
                 Wrappers.<ConsultRecord>lambdaQuery()
                         .in(ConsultRecord::getDoctorId, doctorIds)
+                        .isNotNull(ConsultRecord::getAppointmentId)
                         .ne(ConsultRecord::getStatus, STATUS_PENDING)
                         .isNull(ConsultRecord::getDeletedAt)
                         .orderByDesc(ConsultRecord::getEndedAt, ConsultRecord::getCreatedAt));
@@ -467,6 +600,72 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
             }
         }
         return record;
+    }
+
+    /**
+     * 获取当前用户可访问的无挂号在线问诊。
+     *
+     * @param consultId 问诊记录 ID
+     * @return 在线问诊记录
+     * @throws BusinessException 记录属于挂号接诊时抛出
+     */
+    private ConsultRecord getOnlineConsultInScope(Long consultId) {
+        ConsultRecord record = getConsultInScope(consultId);
+        if (record.getAppointmentId() != null) {
+            throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "该记录不是在线问诊");
+        }
+        return record;
+    }
+
+    /**
+     * 校验写操作由问诊绑定医生本人执行。
+     *
+     * @param record 在线问诊记录
+     * @return 当前医生 ID
+     * @throws BusinessException 当前账号不是绑定医生时抛出
+     */
+    private Long requireAssignedDoctor(ConsultRecord record) {
+        DataScope scope = currentUserService.getCurrentDataScope();
+        if (scope.doctorId() == null || !scope.doctorId().equals(record.getDoctorId())) {
+            throw new BusinessException(ERR_NO_PERMISSION, "仅问诊绑定医生可以回复");
+        }
+        return scope.doctorId();
+    }
+
+    /**
+     * 阻止在线问诊绕过独立状态机调用挂号接诊写接口。
+     *
+     * @param record 问诊记录
+     * @throws BusinessException 无挂号订单时抛出
+     */
+    private void requireAppointmentConsult(ConsultRecord record) {
+        if (record.getAppointmentId() == null) {
+            throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "在线问诊请使用在线问诊操作接口");
+        }
+    }
+
+    /**
+     * 将在线问诊记录转换为列表项。
+     *
+     * @param record 在线问诊记录
+     * @return 在线问诊列表项
+     */
+    private OnlineConsultationItemVO toOnlineConsultationItem(ConsultRecord record) {
+        Patient patient = patientMapper.selectById(record.getPatientId());
+        return OnlineConsultationItemVO.builder()
+                .consultId(record.getId())
+                .patientId(record.getPatientId())
+                .patientName(patient == null ? null : patient.getName())
+                .patientGender(patient == null ? null : patient.getGender())
+                .status(record.getStatus())
+                .aiSummary(parseAiSummary(record.getAiSummary()))
+                .chiefComplaint(record.getChiefComplaint())
+                .submittedAt(record.getPreConsultationSubmittedAt())
+                .doctorRepliedAt(record.getDoctorRepliedAt())
+                .canStart(OnlineConsultationConstant.STATUS_PENDING.equals(record.getStatus()))
+                .canReply(OnlineConsultationConstant.STATUS_IN_PROGRESS.equals(record.getStatus())
+                        && record.getDoctorRepliedAt() == null)
+                .build();
     }
 
     /**

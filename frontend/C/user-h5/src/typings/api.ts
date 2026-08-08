@@ -189,7 +189,7 @@ export interface PageData<T> { pageNo: number; pageSize: number; total: number; 
   /** 医生开具的病历详情。 */
   export interface MedicalRecordDetail extends MedicalRecordItem { doctorId: number; doctorNote: string; startedAt: string; }
 /** 问诊记录列表项。 */
-export interface Consultation { id: number; appointmentId: number; doctorName: string; status: 'DRAFT' | 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'NO_SHOW'; updatedAt: string; }
+export interface Consultation { id: number; appointmentId?: number | null; doctorName: string; status: 'DRAFT' | 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'NO_SHOW'; updatedAt: string; }
 /** 问诊详情与文字消息。 */
 export interface ConsultationDetail extends Consultation { doctor: { id: number; name: string; title?: string }; preConsultation?: { chiefComplaint: string; historyOfPresentIllness?: string; attachments?: { name: string; url: string }[]; savedAt?: string; submittedAt?: string }; messages: { id: number; senderType: string; content: string; createdAt: string }[]; prescriptionIds: number[]; }
 /** 已批准处方列表项。 */
@@ -211,9 +211,9 @@ export type FollowUpStatus = 'PENDING_CONFIRM' | 'CONFIRMED' | 'COMPLETED' | 'CA
 /** 当前就诊人的随访计划。 */
 export interface FollowUpPlan { id: number; type: string; dueAt?: string; content: string; status: FollowUpStatus; remindAt?: string; }
 /** 站内通知类型。 */
-export type NotificationType = 'APPOINTMENT' | 'DRUG_ORDER' | 'LOGISTICS' | 'MEDICATION_REMINDER' | 'FOLLOW_UP_REMINDER' | 'SYSTEM';
+export type NotificationType = 'APPOINTMENT' | 'CONSULTATION' | 'DRUG_ORDER' | 'LOGISTICS' | 'MEDICATION_REMINDER' | 'FOLLOW_UP_REMINDER' | 'SYSTEM';
 /** 站内通知列表项。 */
-export interface NotificationItem { id: number; type: NotificationType; patientId?: number; patientName?: string; title: string; content: string; read: boolean; createdAt: string; }
+export interface NotificationItem { id: number; type: NotificationType; patientId?: number; patientName?: string; consultationId?: number; title: string; content: string; read: boolean; createdAt: string; }
 /** 标记站内通知已读后的结果。 */
 export interface NotificationReadResult { id: number; read: true; readAt?: string; }
 /** 当前账号的收货地址。 */

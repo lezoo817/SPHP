@@ -52,7 +52,8 @@ export function buildAgentContext(pathname: string): AgentChatContext {
   if (selection.patientId) context.patient_id = selection.patientId;
 
   // 路径参数补充：挂号详情 / 问诊详情携带对应 ID
-  const appointmentMatch = pathname.match(/\/assistant\/(?:book|pay|pre-consultation)\/(\d+)/);
+  // 无挂号预问诊路径携带 doctorId，不能误传为 appointment_id。
+  const appointmentMatch = pathname.match(/\/assistant\/(?:book|pay)\/(\d+)/);
   if (appointmentMatch) context.appointment_id = Number(appointmentMatch[1]);
   const consultationMatch = pathname.match(/\/assistant\/consultation\/(\d+)/);
   if (consultationMatch) context.consultation_id = Number(consultationMatch[1]);
