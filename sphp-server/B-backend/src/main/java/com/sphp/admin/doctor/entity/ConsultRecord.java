@@ -38,11 +38,20 @@ public class ConsultRecord {
     /** 患者主诉 */
     private String chiefComplaint;
 
+    /** 现病史补充 */
+    private String historyOfPresentIllness;
+
+    /** 预问诊提交时间 */
+    private OffsetDateTime preConsultationSubmittedAt;
+
     /** 开始接诊时间 */
     private OffsetDateTime startedAt;
 
     /** 结束问诊时间 */
     private OffsetDateTime endedAt;
+
+    /** 在线问诊医生最终回复时间 */
+    private OffsetDateTime doctorRepliedAt;
 
     private OffsetDateTime createdAt;
 

@@ -9,11 +9,50 @@ import com.sphp.admin.doctor.dto.PatientDetailVO;
 import com.sphp.admin.doctor.dto.ConsultHistoryDetailVO;
 import com.sphp.admin.doctor.dto.ConsultHistoryVO;
 import com.sphp.admin.doctor.dto.QueueItemVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationDetailVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationItemVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationReplyRequest;
+import com.sphp.admin.doctor.dto.OnlineConsultationReplyVO;
 
 /**
  * 接诊台服务接口。
  */
 public interface DoctorConsultService {
+
+    /**
+     * 分页查询无挂号在线问诊。
+     *
+     * @param status 状态筛选
+     * @param page 页码
+     * @param size 每页大小
+     * @return 在线问诊分页结果
+     */
+    PageResult<OnlineConsultationItemVO> pageOnlineConsultations(String status, int page, int size);
+
+    /**
+     * 查询无挂号在线问诊详情。
+     *
+     * @param consultId 问诊记录 ID
+     * @return 在线问诊详情
+     */
+    OnlineConsultationDetailVO getOnlineConsultationDetail(Long consultId);
+
+    /**
+     * 开始编辑在线问诊回复。
+     *
+     * @param consultId 问诊记录 ID
+     * @return 状态变更结果
+     */
+    ConsultStartVO startOnlineConsult(Long consultId);
+
+    /**
+     * 提交一次性医生回复并完成在线问诊。
+     *
+     * @param consultId 问诊记录 ID
+     * @param request 回复内容
+     * @return 回复结果
+     */
+    OnlineConsultationReplyVO replyOnlineConsult(Long consultId, OnlineConsultationReplyRequest request);
 
     /**
      * 分页查询待接诊列表。
