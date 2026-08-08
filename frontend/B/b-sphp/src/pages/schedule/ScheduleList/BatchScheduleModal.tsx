@@ -166,6 +166,11 @@ export default function BatchScheduleModal({ open, onCancel, onCreated }: Props)
   /** 提交 */
   const handleSubmit = async () => {
     const v = await form.validateFields();
+    // ProForm 校验规则在运行时保证必填，这里同步收窄可选类型并防止配置遗漏后提交空值。
+    if (!v.doctorId || !v.dateRange) {
+      message.warning('请选择医生和排班日期范围');
+      return;
+    }
     setSubmitting(true);
     try {
       const report = await createBatchSchedule({
