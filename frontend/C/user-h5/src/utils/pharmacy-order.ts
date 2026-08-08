@@ -189,6 +189,26 @@ export function resolveDrugOrderListPagePath(returnTo: string | null): string | 
 }
 
 /**
+ * 从订单详情页恢复安全的上一级购药页面。
+ * @param returnTo 地址栏传入的候选回跳地址
+ * @returns 已校验的订单列表或附近有货药店页；非法值返回 undefined
+ */
+export function resolveDrugOrderReturnPath(returnTo: string | null): string | undefined {
+  const orderListPath = resolveDrugOrderListPagePath(returnTo);
+  if (orderListPath) return orderListPath;
+  const url = parseInternalPharmacyPath(returnTo);
+  const matched = url?.pathname.match(/^\/pharmacy\/prescription\/(\d+)\/inventory$/);
+  const prescriptionId = Number(matched?.[1]);
+  const patientId = Number(url?.searchParams.get('patientId'));
+  if (!url || !Number.isInteger(prescriptionId) || prescriptionId <= 0 || !Number.isInteger(patientId) || patientId <= 0) return undefined;
+  // 仅恢复库存页允许的就诊人与开具时间参数，避免地址栏携带任意查询数据。
+  const query = new URLSearchParams({ patientId: String(patientId) });
+  const issuedAt = url.searchParams.get('issuedAt');
+  if (issuedAt) query.set('issuedAt', issuedAt);
+  return `/pharmacy/prescription/${prescriptionId}/inventory?${query.toString()}`;
+}
+
+/**
  * 从物流详情页恢复安全的订单详情回跳地址。
  * @param drugOrderId 当前购药订单编号
  * @param returnTo 物流页接收的候选订单详情地址
@@ -197,8 +217,8 @@ export function resolveDrugOrderListPagePath(returnTo: string | null): string | 
 export function resolveDrugOrderDetailPagePath(drugOrderId: number, returnTo: string | null): string {
   const url = parseInternalPharmacyPath(returnTo);
   if (!url || url.pathname !== `/pharmacy/order/${drugOrderId}`) return '/pharmacy';
-  // 订单详情仅恢复已校验的订单列表来源，避免物流页地址栏夹带任意跳转地址。
-  return buildDrugOrderDetailPath(drugOrderId, resolveDrugOrderListPagePath(url.searchParams.get('returnTo')));
+  // 订单详情仅恢复已校验的列表或库存页来源，避免物流页地址栏夹带任意跳转地址。
+  return buildDrugOrderDetailPath(drugOrderId, resolveDrugOrderReturnPath(url.searchParams.get('returnTo')));
 }
 
 /**

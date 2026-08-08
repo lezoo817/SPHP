@@ -29,7 +29,7 @@ import { canCancelPaidAppointment, isDuplicateDoctorAppointmentError, resolveApp
 import { buildDoctorBookingStatusPath } from '../services/registration';
 import { buildPrescriptionsPath } from '../services/consultation';
 import { buildAssistantPrescriptionDetailPath, buildMinePrescriptionDetailPath, buildMinePrescriptionListPath, createPrescriptionDisplayNumber, filterPrescriptionsByDate, getPrescriptionDisplayNumber, getRecentPrescriptionRange, mergePrescriptionPages, type PrescriptionDisplayNumberStorage } from './prescription';
-import { buildDrugOrderDetailPath, buildDrugOrderListPagePath, buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, formatDrugOrderLogisticsTime, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderDetailPagePath, resolveDrugOrderListPagePath, resolveDrugOrderPaymentId, shouldPollDrugOrderLogistics } from './pharmacy-order';
+import { buildDrugOrderDetailPath, buildDrugOrderListPagePath, buildDrugOrderLogisticsPath, canConfirmDrugOrderReceipt, findPurchasedDrugOrder, formatDrugOrderItemPrice, formatDrugOrderLogisticsTime, getDrugOrderExpectedDeliveryTime, getDrugOrderLogisticsSteps, getDrugOrderLogisticsText, isPendingDrugOrder, resolveDrugOrderDetailPagePath, resolveDrugOrderListPagePath, resolveDrugOrderPaymentId, resolveDrugOrderReturnPath, shouldPollDrugOrderLogistics } from './pharmacy-order';
 import { filterAppointmentRecordsByDate, getRecentAppointmentRecordRange, matchesAppointmentRecordTab, mergeAppointmentRecordPages } from './appointment-record';
 import { clearDismissedExpiredHealthTodos, dismissExpiredHealthTodo, getDismissedExpiredHealthTodoIds, isExpiredHealthTodoDismissed, type ExpiredHealthTodoStorage } from '../models/expired-health-todo';
 import type { Appointment } from '../typings/api';
@@ -295,6 +295,13 @@ describe('购药订单展示规则', () => {
     expect(logisticsPath).toContain('returnTo=');
     expect(resolveDrugOrderListPagePath('https://example.com')).toBeUndefined();
     expect(resolveDrugOrderDetailPagePath(1001, '/pharmacy/order/1002')).toBe('/pharmacy');
+  });
+
+  it('从附近有货药店创建订单后保留库存页的逐级返回路径', () => {
+    const inventoryPath = '/pharmacy/prescription/13001/inventory?patientId=20001&issuedAt=2026-08-08T08%3A00%3A00%2B08%3A00';
+    const orderPath = buildDrugOrderDetailPath(1001, inventoryPath);
+    expect(resolveDrugOrderReturnPath(inventoryPath)).toBe(inventoryPath);
+    expect(resolveDrugOrderDetailPagePath(1001, orderPath)).toBe(orderPath);
   });
 
   it('处方只关联已支付订单，并使用该订单进入物流详情', () => {
