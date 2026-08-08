@@ -66,7 +66,7 @@ export interface AgentChatContext {
   /** 当前默认收货地址 ID（用于 Agent 推荐药店等需要收货地址的服务） */
   address_id?: number;
   /** 受控预设动作，仅业务页面一键入口发送。 */
-  preset_action?: AgentPresetAction['type'] | 'select_prescription_interpretation' | 'select_medical_record_interpretation';
+  preset_action?: AgentPresetAction['type'] | 'select_prescription_interpretation' | 'select_medical_record_interpretation' | 'recommend_prescription_pharmacy';
   /** 受控预设动作关联的真实处方 ID。 */
   prescription_id?: number;
   /** 受控病历解读关联的真实完成问诊记录 ID。 */
