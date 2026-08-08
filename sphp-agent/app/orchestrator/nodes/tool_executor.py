@@ -296,7 +296,10 @@ async def _execute_local(
         from app.engine.rag.search import search_knowledge
 
         query = arguments.get("query") or arguments.get("report_content", "")
-        results = await search_knowledge(query=query)
+        # B 端报告解读只检索临床参考（clinical_ref），避免混入患者科普噪声；
+        # C 端全库检索 search_medical_knowledge 保持不过滤
+        category = "clinical_ref" if tool_name == "interpret_report" else None
+        results = await search_knowledge(query=query, category=category)
         duration_ms = (time.time() - start) * 1000
         _log_audit(state, tool_name, arguments, "success", duration_ms)
         return {
