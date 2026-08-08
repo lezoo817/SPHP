@@ -246,7 +246,11 @@ async def list_docs(
 
     # 分类过滤条件
     category_filter = ""
-    params: dict = {"collection": collection_name, "limit": page_size, "offset": offset}
+    params: dict[str, Any] = {
+        "collection": collection_name,
+        "limit": page_size,
+        "offset": offset,
+    }
     if category:
         category_filter = "AND e.cmetadata->>'category' = :category"
         params["category"] = category
@@ -285,12 +289,15 @@ async def list_docs(
         """)
         rows = (await conn.execute(list_sql, params)).mappings().all()
 
-    return _envelope(trace_id, {
-        "items": [dict(r) for r in rows],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    })
+    return _envelope(
+        trace_id,
+        {
+            "items": [dict(r) for r in rows],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        },
+    )
 
 
 # ── 删除指定文档（直删 langchain_pg_embedding） ──
@@ -320,24 +327,30 @@ async def delete_doc(request: Request, document_id: str) -> JSONResponse:
     settings = get_settings()
 
     async with _engine.begin() as conn:
-        result = await conn.execute(text("""
+        result = await conn.execute(
+            text("""
             DELETE FROM langchain_pg_embedding
             WHERE cmetadata->>'document_id' = :doc_id
               AND collection_id = (
                   SELECT uuid FROM langchain_pg_collection WHERE name = :collection
               )
-        """), {"doc_id": document_id, "collection": settings.kb_collection})
+        """),
+            {"doc_id": document_id, "collection": settings.kb_collection},
+        )
 
     deleted_count = result.rowcount
     if deleted_count == 0:
         return _error(request, 404, "NOT_FOUND", "文档不存在")
 
     logger.info("已删除知识库文档: document_id=%s, chunks=%d", document_id, deleted_count)
-    return _envelope(trace_id, {
-        "deleted": True,
-        "document_id": document_id,
-        "chunk_count": deleted_count,
-    })
+    return _envelope(
+        trace_id,
+        {
+            "deleted": True,
+            "document_id": document_id,
+            "chunk_count": deleted_count,
+        },
+    )
 
 
 def _envelope(trace_id: str, data: dict[str, Any]) -> JSONResponse:
