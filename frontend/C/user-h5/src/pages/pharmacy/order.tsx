@@ -10,7 +10,7 @@ import type { DrugOrderDetail } from '../../typings/api';
 import { resolveDrugOrderAgentReturnState } from '../../utils/agent-purchase';
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatAmount } from '../../utils/medical';
-import { buildDrugOrderDetailPath, buildDrugOrderLogisticsPath, formatDrugOrderItemPrice, isPendingDrugOrder, resolveDrugOrderListPagePath, resolveDrugOrderPaymentId } from '../../utils/pharmacy-order';
+import { buildDrugOrderDetailPath, buildDrugOrderLogisticsPath, formatDrugOrderItemPrice, isPendingDrugOrder, resolveDrugOrderPaymentId, resolveDrugOrderReturnPath } from '../../utils/pharmacy-order';
 
 /** 展示待支付购药订单，并通过确认购买弹窗完成支付或取消。 */
 export default function DrugOrderPage() {
@@ -20,9 +20,9 @@ export default function DrugOrderPage() {
   const drugOrderId = Number(drugOrderIdText);
   const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const paymentIdFromUrl = Number(query.get('paymentId')) || undefined;
-  const orderListPath = resolveDrugOrderListPagePath(query.get('returnTo'));
-  const backPath = orderListPath || '/pharmacy';
-  const currentOrderPath = buildDrugOrderDetailPath(drugOrderId, orderListPath);
+  const orderReturnPath = resolveDrugOrderReturnPath(query.get('returnTo'));
+  const backPath = orderReturnPath || '/pharmacy';
+  const currentOrderPath = buildDrugOrderDetailPath(drugOrderId, orderReturnPath);
   const returnToAgent = resolveDrugOrderAgentReturnState((location.state as { returnToAgent?: unknown } | null)?.returnToAgent);
   const [detail, setDetail] = useState<DrugOrderDetail>();
   const [password, setPassword] = useState('');
