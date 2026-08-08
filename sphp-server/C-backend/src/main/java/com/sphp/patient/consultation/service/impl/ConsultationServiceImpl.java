@@ -162,6 +162,7 @@ public class ConsultationServiceImpl implements ConsultationService {
         return ConsultationDetailVO.builder()
                 .id(record.id())
                 .status(record.status())
+                .appointmentId(record.appointmentId())
                 // 医生详情
                 .doctor(ConsultationDetailVO.Doctor.builder()
                         .id(record.doctorId())
@@ -203,6 +204,9 @@ public class ConsultationServiceImpl implements ConsultationService {
         }
         // 检查问诊状态
         resolveAccessiblePatient(userId, consultation.patientId());
+        if (consultation.appointmentId() == null) {
+            throw statusConflict("在线问诊仅支持医生单向回复，患者不能发送消息");
+        }
         //若状态不是进行中，则不能发送问诊消息
         if (!IN_PROGRESS.name().equals(consultation.status())) {
             throw messageStatusConflict(consultation.status());

@@ -163,6 +163,7 @@ public class NotificationServiceImpl implements NotificationService {
                 .patientName(record.getPatientName())
                 .title(record.getTitle())
                 .content(record.getContent())
+                .consultationId(record.getConsultationId())
                 .read(record.getReadAt() != null)
                 .createdAt(record.getCreatedAt())
                 .build();

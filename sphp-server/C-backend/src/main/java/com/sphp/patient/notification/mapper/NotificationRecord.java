@@ -33,6 +33,9 @@ public class NotificationRecord {
     /** 通知正文 */
     private String content;
 
+    /** 在线问诊 ID，非问诊通知为空 */
+    private Long consultationId;
+
     /** 首次已读时间 */
     private OffsetDateTime readAt;
 

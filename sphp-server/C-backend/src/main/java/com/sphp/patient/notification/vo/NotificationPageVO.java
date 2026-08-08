@@ -47,6 +47,9 @@ public class NotificationPageVO {
         /** 通知正文 */
         private final String content;
 
+        /** 在线问诊 ID，非问诊通知为空 */
+        private final Long consultationId;
+
         /** 是否已读 */
         private final boolean read;
 

@@ -19,6 +19,9 @@ public class ConsultationDetailVO {
     /** 问诊状态 */
     private final String status;
 
+    /** 关联挂号订单 ID，在线问诊为空 */
+    private final Long appointmentId;
+
     /** 接诊医生信息 */
     private final Doctor doctor;
 

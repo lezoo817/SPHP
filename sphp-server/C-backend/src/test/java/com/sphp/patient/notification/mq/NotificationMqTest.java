@@ -10,6 +10,8 @@ import com.sphp.patient.notification.mq.producer.NotificationEventRelay;
 import com.sphp.patient.notification.mq.producer.NotificationReminderProducer;
 import com.sphp.patient.notification.mq.scheduler.NotificationReminderScheduler;
 import com.sphp.patient.notification.mapper.NotificationReminderRecord;
+import com.sphp.patient.notification.mapper.OnlineConsultationNotificationRecord;
+import com.sphp.shared.event.OnlineConsultationRepliedEvent;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.Queue;
@@ -103,6 +105,31 @@ class NotificationMqTest {
                         && event.nextRemindAt().isAfter(event.dueAt())));
         verify(producer).publishFollowUpReminder(org.mockito.ArgumentMatchers.argThat(event ->
                 event.eventId().startsWith("FOLLOW_UP:8001:") && "FOLLOW_UP_REMINDER".equals(event.type())));
+    }
+
+    /**
+     * 验证在线问诊回复正文从数据库读取，并使用共享事件 ID 幂等写入。
+     */
+    @Test
+    void onlineConsultationReplyCreatesConsultationNotificationFromDatabase() {
+        NotificationMapper mapper = mock(NotificationMapper.class);
+        NotificationCreateConsumer consumer = new NotificationCreateConsumer(mapper);
+        OnlineConsultationNotificationRecord record = new OnlineConsultationNotificationRecord();
+        record.setUserId(10001L);
+        record.setPatientId(20001L);
+        record.setPatientName("张三");
+        record.setContent("请按处方用药并注意休息");
+        when(mapper.selectOnlineConsultationNotifications(11001L)).thenReturn(java.util.List.of(record));
+        OnlineConsultationRepliedEvent event = new OnlineConsultationRepliedEvent(
+                "ONLINE_CONSULTATION_REPLIED:11001", 11001L, 20001L, 30001L, OffsetDateTime.now());
+
+        consumer.consumeNotificationCreate(event);
+
+        verify(mapper).insertNotificationIfAbsent(org.mockito.ArgumentMatchers.argThat(notification ->
+                "CONSULTATION".equals(notification.getType())
+                        && event.eventId().equals(notification.getEventId())
+                        && notification.getPayload().contains("\"consultationId\":11001")
+                        && "请按处方用药并注意休息".equals(notification.getContent())));
     }
 
     /**

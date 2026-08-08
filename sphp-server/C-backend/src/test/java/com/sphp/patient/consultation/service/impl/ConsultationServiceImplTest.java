@@ -146,7 +146,7 @@ class ConsultationServiceImplTest {
         ConsultationServiceImpl service = newService(dataMapper);
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
         when(dataMapper.selectConsultationDetail(11001L)).thenReturn(new ConsultationDetailRecord(
-                11001L, 20001L, "IN_PROGRESS", 30001L, "王医生", "主治医师", "咳嗽",
+                11001L, null, 20001L, "IN_PROGRESS", 30001L, "王医生", "主治医师", "咳嗽",
                 "两日前开始", "[]", OffsetDateTime.now(), OffsetDateTime.now()));
         when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
         when(dataMapper.hasConsultationActivePatientRelation(10001L, 20001L)).thenReturn(true);
@@ -173,7 +173,7 @@ class ConsultationServiceImplTest {
         ConsultationServiceImpl service = new ConsultationServiceImpl(dataMapper, messageMapper, new ObjectMapper(), eventPublisher);
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
         when(dataMapper.lockConsultationDetail(11001L)).thenReturn(new ConsultationDetailRecord(
-                11001L, 20001L, "IN_PROGRESS", 30001L, "王医生", "主治医师", "咳嗽",
+                11001L, 7001L, 20001L, "IN_PROGRESS", 30001L, "王医生", "主治医师", "咳嗽",
                 null, "[]", OffsetDateTime.now(), OffsetDateTime.now()));
         when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
         when(dataMapper.hasConsultationActivePatientRelation(10001L, 20001L)).thenReturn(true);
@@ -197,6 +197,31 @@ class ConsultationServiceImplTest {
                     && sentEvent.patientId().equals(20001L)
                     && sentEvent.userId().equals(10001L);
         }));
+    }
+
+    /**
+     * 验证无挂号在线问诊拒绝患者发送消息，保持医生单向回复。
+     */
+    @Test
+    void sendConsultationMessageRejectsOnlineConsultation() {
+        ConsultationDataMapper dataMapper = mock(ConsultationDataMapper.class);
+        ConsultationMessageMapper messageMapper = mock(ConsultationMessageMapper.class);
+        ConsultationServiceImpl service = new ConsultationServiceImpl(dataMapper, messageMapper, new ObjectMapper(),
+                mock(org.springframework.context.ApplicationEventPublisher.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        when(dataMapper.lockConsultationDetail(11001L)).thenReturn(new ConsultationDetailRecord(
+                11001L, null, 20001L, "IN_PROGRESS", 30001L, "王医生", "主治医师", "咳嗽",
+                null, "[]", OffsetDateTime.now(), OffsetDateTime.now()));
+        when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasConsultationActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        ConsultationMessageSendRequest request = new ConsultationMessageSendRequest();
+        request.setContent("患者尝试回复");
+
+        CAuthException exception = assertThrows(CAuthException.class,
+                () -> service.sendConsultationMessage(11001L, request));
+
+        assertEquals("A0443", exception.getCode());
+        verify(messageMapper, never()).insert(any(ConsultationMessage.class));
     }
 
     /**

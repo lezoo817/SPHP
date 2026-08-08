@@ -40,6 +40,15 @@ public interface NotificationMapper extends BaseMapper<Notification> {
     String selectActivePatientName(@Param("patientId") Long patientId);
 
     /**
+     * 查询在线问诊医生回复及其本人账号关系。
+     *
+     * @param consultationId 问诊记录 ID
+     * @return 可创建通知的本人账号投影
+     */
+    List<OnlineConsultationNotificationRecord> selectOnlineConsultationNotifications(
+            @Param("consultationId") Long consultationId);
+
+    /**
      * 查询尚未生成通知的到期用药计划及有效接收账号。
      *
      * @param now 当前时间
