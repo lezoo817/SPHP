@@ -134,6 +134,10 @@ export default function MainLayout() {
   const [authChecked, setAuthChecked] = useState(false);
   const [showAgentDrawer, setShowAgentDrawer] = useState(false);
 
+  // 全局接诊上下文：ConsultQueue 选中患者时写入，携带 patient_id 供悬浮 AI 抽屉
+  // 直接查询当前接诊患者档案 / 用药 / 过敏等，避免 LLM 反问"患者是谁"
+  const { patientId, consultationId } = useModel('consultContext');
+
   const currentUser = initialState?.currentUser;
   // 固定引用：避免 ?? [] 每次渲染生成新数组，导致下方 useEffect 依赖变化
   const roles = useMemo(() => currentUser?.roles ?? [], [currentUser]);
@@ -186,6 +190,8 @@ export default function MainLayout() {
   const agentContext = buildAgentContext(location.pathname, {
     hospitalId: currentUser?.hospitalId,
     doctorId: currentUser?.id,
+    patientId,
+    consultationId,
   });
 
   /** 需要隐藏悬浮球的页面 */
@@ -284,7 +290,12 @@ export default function MainLayout() {
         onClose={() => setShowAgentDrawer(false)}
         styles={{ body: { padding: 0, overflow: 'hidden' } }}
       >
-        <AiPanel context={agentContext} embedded={true} onNavigate={() => setShowAgentDrawer(false)} />
+        <AiPanel
+          context={agentContext}
+          embedded={true}
+          consultationId={consultationId}
+          onNavigate={() => setShowAgentDrawer(false)}
+        />
       </Drawer>
     </Layout>
   );

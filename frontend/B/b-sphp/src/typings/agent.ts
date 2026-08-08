@@ -84,6 +84,7 @@ export type AgentCardType =
   | 'confirm_medication_plan'
   | 'confirm_follow_up'
   | 'confirm_draft_note'
+  | 'confirm_patient_history'
   | 'confirm_generic';
 
 /** card 事件：L2 操作确认卡片。 */
@@ -254,6 +255,8 @@ export interface AgentConfirmCard {
   status: ConfirmCardStatus;
   /** 确认成功后的业务结果提示 */
   resultMessage?: string;
+  /** L2 工具确认后的业务结果数据（如 query_patient_history 的患者档案），供结构化展示 */
+  result?: unknown;
   /** 确认失败时的错误码 */
   errorCode?: string;
   /** 确认失败时的错误说明 */

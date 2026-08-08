@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Modal, message } from 'antd';
+import { useModel } from '@umijs/max';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getQueue,
@@ -31,6 +32,9 @@ export function useConsultQueue() {
   const currentUser = useCurrentUser();
   const isAdmin = useHasRole('ADMIN');
   const queryClient = useQueryClient();
+  // 全局接诊上下文：选中患者时写入 patient_id，供 MainLayout 悬浮 AI 抽屉
+  // 构建对话上下文携带，避免 AI 反问"患者是谁"（后端 5 个 B 端工具必填 patient_id）
+  const { setCurrentConsult, clear: clearConsultContext } = useModel('consultContext');
 
   // ==================== 队列（15s 轮询，按 Tab 区分） ====================
 
@@ -173,6 +177,9 @@ export function useConsultQueue() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // 离开接诊页时清除全局接诊上下文：避免医生跳转他处后悬浮 AI 仍持有旧患者 ID
+  useEffect(() => () => clearConsultContext(), [clearConsultContext]);
+
   // ==================== 接诊操作 ====================
 
   const [startingConsult, setStartingConsult] = useState(false);
@@ -185,18 +192,24 @@ export function useConsultQueue() {
     setQueueTab(key as QueueTab);
     setSelectedConsultId(null);
     setSelectedStatus(null);
+    // 切换 Tab 清除选中患者，AI 助手不再持有已离开的患者上下文
+    clearConsultContext();
   };
 
   /** 选择待接诊/接诊中患者 */
   const handleSelectItem = (item: API.QueueItem) => {
     setSelectedConsultId(item.consultId);
     setSelectedStatus(item.status);
+    // 桥接当前接诊患者给全局 AI 助手上下文（MainLayout 悬浮抽屉消费）
+    setCurrentConsult(item.patientId, item.consultId);
   };
 
   /** 选择历史接诊记录 */
   const handleSelectHistoryItem = (item: API.ConsultHistoryItem) => {
     setSelectedConsultId(item.consultId);
     setSelectedStatus(item.status as SelectedStatus);
+    // 桥接当前接诊患者给全局 AI 助手上下文（MainLayout 悬浮抽屉消费）
+    setCurrentConsult(item.patientId, item.consultId);
   };
 
   // ==================== 开始/结束接诊 ====================
@@ -227,6 +240,8 @@ export function useConsultQueue() {
       // 切到接诊中 Tab 并重置选中（对齐原行为：队列 Tab 切换时重置选中患者）
       setQueueTab('IN_PROGRESS');
       setSelectedConsultId(null);
+      // 开始接诊后重置选中，AI 上下文随之清除；医生从接诊中队列重新选中时再写入
+      clearConsultContext();
     } catch (err: unknown) {
       message.error(getErrorMessage(err, '开始接诊失败'));
     } finally {
@@ -248,6 +263,8 @@ export function useConsultQueue() {
           message.success('问诊已结束');
           setSelectedStatus('COMPLETED');
           setSelectedConsultId(null);
+          // 结束问诊清除当前接诊上下文，AI 助手不再关联已结束的患者
+          clearConsultContext();
         } catch (err: unknown) {
           message.error(getErrorMessage(err, '结束问诊失败'));
         } finally {

@@ -534,6 +534,10 @@ export function useAgentStream(): UseAgentStream {
         updateConfirmCard(card.id, {
           status: 'done',
           resultMessage: successMessage,
+          // 保存业务结果数据（如 query_patient_history 的患者档案），供卡片结构化展示。
+          // L2 结果不走 reply_node 的 LLM 总结（后端 PHI 保护仅回注 ID 摘要），
+          // 故由前端在此取出 action_result 渲染给医生。
+          result: result.action_result,
         });
         // 确认成功后，把对应 L2 工具卡从"待确认"收尾为成功（后端已在 confirm 时真正执行该工具）。
         // 否则该工具卡会永久停在"待确认"/"调用中"，用户点完提交仍看到上面在转圈。
