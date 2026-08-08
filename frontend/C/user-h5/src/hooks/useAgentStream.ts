@@ -487,7 +487,11 @@ export function useAgentStream(): UseAgentStream {
       let matchedIndex = -1;
       for (let i = prev.length - 1; i >= 0; i -= 1) {
         const entry = prev[i];
-        if (entry.kind === 'tool' && entry.data.tool === tool && entry.data.status === 'loading') {
+        if (
+          entry.kind === 'tool' &&
+          entry.data.tool === tool &&
+          (entry.data.status === 'loading' || entry.data.status === 'pending')
+        ) {
           matchedIndex = i;
           break;
         }
