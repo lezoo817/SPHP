@@ -34,7 +34,7 @@ export const AGENT_QUICK_PROMPTS: AgentQuickPrompt[] = [
   { label: '智能导诊', content: '开启智能导诊服务', description: '描述症状，推荐科室' },
   { label: '查询挂号', content: '帮我查一下当前的挂号订单。', description: '查看预约与就诊流程' },
   { label: '处方解读', content: '请选择最近的处方供我解读。', description: '选择处方后通俗解释', pickerAction: 'select_prescription_interpretation' },
-  { label: '病历解读', content: '请选择最近的病历供我解读。', description: '选择病历后通俗解读', pickerAction: 'select_medical_record_interpretation' },
+  { label: '健康档案', content: '请选择最近的病历供我解读。', description: '选择病历后通俗解读', pickerAction: 'select_medical_record_interpretation' },
   { label: '在线问诊', content: '我想进行在线问诊', description: '找医生，提交预问诊' },
   { label: '预约挂号', content: '我想预约挂号。', description: '选科室，预约医生' },
 ];
