@@ -11,8 +11,13 @@ export interface PrescriptionListParams {
   pageSize?: number;
 }
 
-/** 保存或提交预问诊信息。 */
-export function savePreConsultation(payload: { patientId?: number; appointmentId: number; chiefComplaint: string; historyOfPresentIllness?: string; submit: boolean }, key: string): Promise<{ consultationId: number; status: string }> { return request('/c/v1/consultations/pre-consultations', { method: 'POST', body: payload, headers: { 'X-Idempotency-Key': key } }); }
+/**
+ * 向指定医生提交无挂号在线预问诊。
+ * @param payload 医生和预问诊内容
+ * @param key 幂等键
+ * @returns 新建问诊记录
+ */
+export function savePreConsultation(payload: { doctorId: number; chiefComplaint: string; historyOfPresentIllness?: string }, key: string): Promise<{ consultationId: number; status: string }> { return request('/c/v1/consultations/pre-consultations', { method: 'POST', body: payload, headers: { 'X-Idempotency-Key': key } }); }
 /** 查询当前就诊人的问诊记录。 */
 export function getConsultations(patientId?: number): Promise<PageData<Consultation>> { return request(`/c/v1/consultations?patientId=${patientId || ''}&pageNo=1&pageSize=20`, { method: 'GET' }); }
 /** 查询问诊详情和文字消息。 */

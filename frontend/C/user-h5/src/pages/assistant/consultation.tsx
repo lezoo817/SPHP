@@ -1,10 +1,37 @@
-import { useEffect, useRef, useState } from 'react';
-import { Send } from 'lucide-react';
-import { useParams } from 'umi';
+import { useEffect, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
+import { useNavigate, useParams } from 'umi';
 import { PageHeader } from '../../components/PageHeader';
-import { getConsultation, sendConsultationMessage } from '../../services/consultation';
+import { getConsultation } from '../../services/consultation';
 import type { ConsultationDetail } from '../../typings/api';
-import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
+import { getApiErrorMessage } from '../../utils/form';
+import { buildAssistantPrescriptionDetailPath } from '../../utils/prescription';
 
-/** 渲染问诊文字消息，并仅在接诊中允许患者发送。 */
-export default function ConsultationPage() { const { consultationId } = useParams(); const [detail, setDetail] = useState<ConsultationDetail>(); const [content, setContent] = useState(''); const [notice, setNotice] = useState(''); const key = useRef<string>(); const load = async () => { try { setDetail(await getConsultation(Number(consultationId))); } catch (error) { setNotice(getApiErrorMessage(error)); } }; useEffect(() => { void load(); }, [consultationId]); async function send() { if (!content.trim() || detail?.status !== 'IN_PROGRESS') return; try { await sendConsultationMessage(Number(consultationId), content.trim(), key.current || (key.current = createIdempotencyKey())); key.current = undefined; setContent(''); await load(); } catch (error) { setNotice(getApiErrorMessage(error)); await load(); } } const editable = detail?.status === 'IN_PROGRESS'; return <main className="subpage"><PageHeader title="在线问诊" /><section className="subpage-content chat-page"><h2>{detail?.doctor.name || '医生问诊'}</h2><p>{detail?.status === 'PENDING' ? '等待医生接诊' : detail?.status === 'COMPLETED' || detail?.status === 'NO_SHOW' ? '本次问诊已结束' : '医生正在接诊'}</p><div className="chat-list">{detail?.messages.map((item) => <p className={item.senderType === 'PATIENT' ? 'mine-message' : 'doctor-message'} key={item.id}>{item.content}</p>)}</div><div className="chat-input"><textarea disabled={!editable} value={content} maxLength={2000} placeholder={editable ? '输入要咨询的问题' : '当前状态不可发送消息'} onChange={(event) => setContent(event.target.value)} /><button type="button" disabled={!editable} aria-label="发送消息" onClick={() => void send()}><Send size={20} /></button></div></section>{notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}</main>; }
+/** 展示在线问诊的 AI 预问诊、医生单向回复和已批准处方。 */
+export default function ConsultationPage() {
+  const { consultationId } = useParams();
+  const navigate = useNavigate();
+  const [detail, setDetail] = useState<ConsultationDetail>();
+  const [notice, setNotice] = useState('');
+
+  /** 读取问诊详情，通知跳转后可直接看到医生最新回复。 */
+  async function load() {
+    try {
+      setDetail(await getConsultation(Number(consultationId)));
+    } catch (error) {
+      setNotice(getApiErrorMessage(error));
+    }
+  }
+
+  useEffect(() => { void load(); }, [consultationId]);
+
+  const statusText = detail?.status === 'PENDING' ? '等待医生回复' : detail?.status === 'IN_PROGRESS' ? '医生接诊中' : detail?.status === 'COMPLETED' ? '问诊已完成' : '问诊已结束';
+  return <main className="subpage"><PageHeader title="在线问诊" backPath="/assistant" /><section className="subpage-content chat-page">
+    <h2>{detail?.doctor.name || '在线问诊'}</h2>
+    <p>{statusText}</p>
+    {detail?.preConsultation && <section className="record-card"><h3>AI 预问诊摘要</h3><p><b>主诉：</b>{detail.preConsultation.chiefComplaint}</p>{detail.preConsultation.historyOfPresentIllness && <p><b>现病史：</b>{detail.preConsultation.historyOfPresentIllness}</p>}</section>}
+    <section className="chat-list">{detail?.messages.map((item) => <article className={item.senderType === 'PATIENT' ? 'mine-message' : 'doctor-message'} key={item.id}><small>{item.senderType === 'DOCTOR' ? '医生回复' : '患者消息'} · {item.createdAt}</small><p>{item.content}</p></article>)}</section>
+    {detail?.status === 'PENDING' && <p className="empty-state">医生接诊后会在这里发送回复，患者无需再次输入消息。</p>}
+    {detail?.prescriptionIds.length ? <section><h3>已批准处方</h3>{detail.prescriptionIds.map((id) => <button className="record-card" type="button" key={id} onClick={() => navigate(buildAssistantPrescriptionDetailPath(id, undefined, detail.preConsultation?.submittedAt))}><span>处方 #{id}</span><ChevronRight size={18} /></button>)}</section> : null}
+  </section>{notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}</main>;
+}
