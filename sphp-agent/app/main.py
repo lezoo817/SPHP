@@ -152,21 +152,24 @@ async def health() -> dict[str, Any]:
 
 
 async def _check_pg() -> str:
-    """检查 PostgreSQL（pgvector）连通性。
+    """检查 PostgreSQL 连通性。
 
-    P2 修复：此前只校验 PGVector 实例创建（构造不建连，DB 宕机仍报 ok），
-    现实际执行 ``SELECT 1`` 验证连接池可用。
+    直接执行 ``SELECT 1``，避免 Embedding API Key 未配置时 PGVector 初始化失败，
+    从而将健康的 PostgreSQL 错误标记为不可用。
     """
     try:
-        from sqlalchemy import text
+        from psycopg import AsyncConnection
 
-        from app.engine.rag.vectorstore import get_vectorstore
-
-        engine = get_vectorstore()._async_engine
-        if engine is None:
-            return "error"
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
+        settings = get_settings()
+        async with await AsyncConnection.connect(
+            host=settings.pg_host,
+            port=settings.pg_port,
+            user=settings.pg_user,
+            password=settings.pg_password,
+            dbname=settings.pg_database,
+            autocommit=True,
+        ) as conn:
+            await conn.execute("SELECT 1")
         return "ok"
     except Exception:
         return "error"

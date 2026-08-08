@@ -1,0 +1,142 @@
+﻿# 生产环境配置：所有凭据从服务器环境变量读取，禁止将真实密钥提交到仓库。
+# 启动命令必须指定 --spring.profiles.active=prod。
+dev:
+  server:
+    # Java 后端仅供本机 Nginx 反向代理访问。
+    address: 127.0.0.1
+    port: ${SPHP_SERVER_PORT:8080}
+    servlet:
+      context-path: /api
+
+  spring:
+    application:
+      name: sphp-bootstrap
+    datasource:
+      driver-class-name: org.postgresql.Driver
+      type: com.zaxxer.hikari.HikariDataSource
+      # PostgreSQL 业务库连接信息。
+      username: ${SPHP_DB_USERNAME}
+      password: ${SPHP_DB_PASSWORD}
+      url: jdbc:postgresql://${SPHP_DB_HOST:127.0.0.1}:${SPHP_DB_PORT:5432}/${SPHP_DB_NAME:sphp}?client_encoding=UTF8
+      hikari:
+        connection-timeout: 5000
+        idle-timeout: 600000
+        max-lifetime: 1800000
+        maximum-pool-size: ${SPHP_DB_POOL_MAX_SIZE:10}
+        minimum-idle: ${SPHP_DB_POOL_MIN_IDLE:2}
+        pool-name: SphpHikariPool
+    data:
+      redis:
+        # Redis 用于认证、幂等和库存协调。
+        host: ${SPHP_REDIS_HOST:127.0.0.1}
+        port: ${SPHP_REDIS_PORT:6379}
+        password: ${SPHP_REDIS_PASSWORD}
+        database: ${SPHP_REDIS_DATABASE:0}
+        timeout: 3000ms
+        lettuce:
+          pool:
+            max-active: 20
+            max-idle: 10
+            min-idle: 2
+    rabbitmq:
+      # RabbitMQ 用于订单超时和通知等异步业务。
+      host: ${SPHP_RABBITMQ_HOST:127.0.0.1}
+      port: ${SPHP_RABBITMQ_PORT:5672}
+      username: ${SPHP_RABBITMQ_USERNAME}
+      password: ${SPHP_RABBITMQ_PASSWORD}
+      virtual-host: ${SPHP_RABBITMQ_VHOST:/}
+      connection-timeout: 3000ms
+      dynamic: true
+      listener:
+        simple:
+          auto-startup: true
+          acknowledge-mode: auto
+          concurrency: 2
+          max-concurrency: 8
+        direct:
+          auto-startup: true
+
+  mybatis-plus:
+    configuration:
+      map-underscore-to-camel-case: true
+      log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    global-config:
+      db-config:
+        logic-delete-field: deleted
+        logic-delete-value: 1
+        logic-not-delete-value: "null"
+
+  sa-token:
+    token-name: Authorization
+    token-prefix: "Bearer"
+    timeout: ${SPHP_ADMIN_TOKEN_TIMEOUT:7200}
+    is-concurrent: true
+    is-share: false
+    is-read-cookie: false
+    is-read-header: true
+    is-write-header: true
+    # B 端 JWT 签名密钥，生产环境必须使用高熵随机值。
+    jwt-secret-key: ${SPHP_ADMIN_SATOKEN_SECRET}
+    is-log: false
+
+  sphp:
+    cors:
+      # 仅允许实际部署的 C/B 端前端来源。
+      allowed-origins:
+        - ${SPHP_CORS_ORIGIN_C}
+        - ${SPHP_CORS_ORIGIN_B}
+    jwt:
+      patient:
+        # C 端患者 Token 签名密钥。
+        secret: ${SPHP_PATIENT_JWT_SECRET}
+        expiration: ${SPHP_PATIENT_JWT_EXPIRATION:7200}
+      admin:
+        # B 端人员 Token 签名密钥。
+        secret: ${SPHP_ADMIN_JWT_SECRET}
+        expiration: ${SPHP_ADMIN_JWT_EXPIRATION:7200}
+    registration:
+      payment-timeout: ${SPHP_REGISTRATION_PAYMENT_TIMEOUT:900}
+      slot-release-days: ${SPHP_SLOT_RELEASE_DAYS:7}
+      waitlist-notify-timeout: ${SPHP_WAITLIST_NOTIFY_TIMEOUT:900}
+      waitlist-scan-interval-millis: ${SPHP_WAITLIST_SCAN_INTERVAL_MILLIS:60000}
+    schedule:
+      no-show-scan-interval-millis: ${SPHP_NO_SHOW_SCAN_INTERVAL_MILLIS:30000}
+      no-show-initial-delay-millis: ${SPHP_NO_SHOW_INITIAL_DELAY_MILLIS:30000}
+    auth:
+      captcha-expiration: ${SPHP_CAPTCHA_EXPIRATION:120}
+      login-max-failures: ${SPHP_LOGIN_MAX_FAILURES:5}
+      login-lock-seconds: ${SPHP_LOGIN_LOCK_SECONDS:900}
+      refresh-token-expiration: ${SPHP_REFRESH_TOKEN_EXPIRATION:2592000}
+    idempotency:
+      success-ttl-seconds: ${SPHP_IDEMPOTENCY_SUCCESS_TTL:86400}
+      processing-ttl-seconds: ${SPHP_IDEMPOTENCY_PROCESSING_TTL:30}
+    notification:
+      scan-interval-millis: ${SPHP_NOTIFICATION_SCAN_INTERVAL_MILLIS:60000}
+    order:
+      logistics:
+        advance-interval-seconds: ${SPHP_LOGISTICS_ADVANCE_INTERVAL_SECONDS:30}
+    delivery:
+      province-coefficients:
+        beijing-guangdong: 3.5
+        beijing-henan: 1.0
+        beijing-jiangsu: 1.8
+        beijing-shanghai: 2.1
+        beijing-zhejiang: 2.3
+        guangdong-henan: 2.8
+        guangdong-jiangsu: 2.4
+        guangdong-shanghai: 2.0
+        guangdong-zhejiang: 1.7
+        henan-jiangsu: 1.2
+        henan-shanghai: 1.6
+        henan-zhejiang: 1.8
+        jiangsu-shanghai: 0.7
+        jiangsu-zhejiang: 0.9
+        shanghai-zhejiang: 0.6
+
+logging:
+  level:
+    com.sphp: INFO
+    com.sphp.admin.mapper: WARN
+    com.sphp.user.mapper: WARN
+    org.apache.ibatis: WARN
+    org.mybatis: WARN
