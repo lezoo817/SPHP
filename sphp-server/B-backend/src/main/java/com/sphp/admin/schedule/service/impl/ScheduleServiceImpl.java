@@ -105,9 +105,9 @@ public class ScheduleServiceImpl implements ScheduleService {
     /** 就诊人姓名脱敏后缀（保留首字符后的掩码） */
     private static final String NAME_MASK_SUFFIX = "**";
 
-    /** 号源池默认查询窗口（天），含今天 */
-    private static final int SOURCE_POOL_DEFAULT_DAYS = 7;
-    private static final int SOURCE_POOL_OFFSET_DAYS = 6;
+    /** 号源池默认查询窗口：以今天为中心前后各 N 天（含今天，总窗口 2N+1 天） */
+    private static final int SOURCE_POOL_LOOKBACK_DAYS = 3;
+    private static final int SOURCE_POOL_LOOKAHEAD_DAYS = 3;
 
     /** 批量排班：班次时间窗（小时），与前端 SHIFT_WINDOWS 保持一致 */
     private static final Map<String, int[]> SHIFT_WINDOWS = Map.of(
@@ -214,9 +214,9 @@ public class ScheduleServiceImpl implements ScheduleService {
      */
     @Override
     public PageResult<SourcePoolVO> sourcePool(LocalDate startDate, LocalDate endDate, Long deptId, Long doctorId, int page, int size) {
-        // 默认区间：近 SOURCE_POOL_DEFAULT_DAYS 天（含今天）；显式区间需满足 start <= end
-        LocalDate start = startDate != null ? startDate : LocalDate.now().minusDays(SOURCE_POOL_OFFSET_DAYS);
-        LocalDate end = endDate != null ? endDate : LocalDate.now();
+        // 默认区间：以今天为中心前后各 SOURCE_POOL_LOOKBACK_DAYS / SOURCE_POOL_LOOKAHEAD_DAYS 天；显式区间需满足 start <= end
+        LocalDate start = startDate != null ? startDate : LocalDate.now().minusDays(SOURCE_POOL_LOOKBACK_DAYS);
+        LocalDate end = endDate != null ? endDate : LocalDate.now().plusDays(SOURCE_POOL_LOOKAHEAD_DAYS);
         if (start.isAfter(end)) {
             throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "日期范围无效，开始日期不能晚于结束日期");
         }
