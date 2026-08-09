@@ -1,8 +1,8 @@
 """B 端医生工具封装（系分 §5.3）。
 
-MCP 工具：query_patient_history, query_drug_guide, check_drug_interaction,
-          generate_draft_note, recommend_care, check_contraindication,
-          check_allergy_risk, check_duplicate_medication
+MCP 工具：search_patient, query_patient_history, query_drug_guide,
+          check_drug_interaction, generate_draft_note, recommend_care,
+          check_contraindication, check_allergy_risk, check_duplicate_medication
 对应 Java API: /api/b/* （B端后端系分 V1.0）
 接口路径统一由 java_api_map 契约表解析。
 """
@@ -20,6 +20,24 @@ def _as_error_dict(e: BaseException) -> dict[str, Any]:
     非预期异常（如实现回归）导致 gather 传播中断整个聚合。
     """
     return {"success": False, "error": {"code": "AGGREGATE_FAILED", "message": str(e)}}
+
+
+async def search_patient(name: str, user_id: int | None = None) -> dict[str, Any]:
+    """按姓名模糊检索患者列表（2026-08-09）。
+
+    医生未提供 patient_id 时，先按姓名定位患者（Java 患者列表接口 name 模糊匹配），
+    返回候选列表（含 id / name / gender / age / lastVisitDate），再由编排层
+    LLM 基于候选 id 调 query_patient_history 查完整档案。
+
+    Args:
+        name: 患者姓名（支持模糊匹配）。
+        user_id: 注入封装函数的用户身份（Java X-User-Id）。
+
+    Returns:
+        dict: Java 统一信封或聚合结构；失败时含 error 字段。
+    """
+    params = {"name": name}
+    return await call_java_api(api_name="search_patient:list", params=params, user_id=user_id)
 
 
 async def query_patient_history(patient_id: int, user_id: int | None = None) -> dict[str, Any]:

@@ -243,6 +243,13 @@ JAVA_API_MAP: dict[str, dict[str, str]] = {
         "scope": "c_end",
     },
     # ---- B 端：患者聚合（/api/b/admin/*，系分 V1.1）----
+    # 患者姓名模糊检索（2026-08-09）：医生未提供 patient_id 时先按姓名定位患者，
+    # 返回 id 后再调 query_patient_history 查档案（search_patient 工具）。
+    "search_patient:list": {
+        "method": "GET",
+        "path": "/api/b/admin/patients",
+        "scope": "b_end",
+    },
     "query_patient_history:base": {
         "method": "GET",
         "path": "/api/b/admin/patients/{patient_id}",
