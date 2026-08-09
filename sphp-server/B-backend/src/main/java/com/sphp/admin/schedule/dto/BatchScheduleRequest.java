@@ -18,7 +18,7 @@ import java.util.List;
  * 对每个候选 (date, shift) 单独处理冲突：跳过 DRAFT/PUBLISHED 冲突，复用 CANCELLED，新建其他。
  *
  * @author lezoo17
- * @date 2026-08-07
+ * @since 2026-08-07
  */
 @Data
 @Schema(description = "批量创建排班请求")

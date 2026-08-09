@@ -99,7 +99,11 @@ export default function OnlineConsultationPage() {
   });
 
   const detail = detailQuery.data;
-  const templates = templatesQuery.data?.list ?? [];
+  // 空数组兜底用 useMemo 固定引用，否则每次渲染生成新数组会让下方 useMemo 依赖失效
+  const templates = useMemo(
+    () => templatesQuery.data?.list ?? [],
+    [templatesQuery.data],
+  );
   const patient = detail?.patientDetail.patient;
   const selectedTemplateOptions = useMemo(
     () => templates.map((item) => ({ value: item.id, label: item.name })),

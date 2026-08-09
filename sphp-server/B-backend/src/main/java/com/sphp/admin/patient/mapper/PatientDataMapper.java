@@ -9,6 +9,9 @@ import org.apache.ibatis.annotations.Select;
 
 /**
  * 患者管理数据查询 Mapper（复杂多表联查）。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 public interface PatientDataMapper {
 

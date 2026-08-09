@@ -12,6 +12,9 @@ import com.sphp.admin.patient.vo.PatientVisitVO;
  *
  * <p>仅返回本院就诊过的患者（通过 consult_record → doctor.hospital_id 关联过滤）；
  * 所有操作基于当前登录管理员所属医院（{@code hospital_id}）做数据隔离。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 public interface PatientService {
 

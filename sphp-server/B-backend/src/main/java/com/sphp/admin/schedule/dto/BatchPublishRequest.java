@@ -11,7 +11,7 @@ import java.util.List;
  * 批量发布排班请求。
  *
  * @author lezoo17
- * @date 2026-08-07
+ * @since 2026-08-07
  */
 @Data
 @Schema(description = "批量发布排班请求")

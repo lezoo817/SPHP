@@ -1,3 +1,11 @@
+/**
+ * B端路由注册表。
+ *
+ * 组织原则：按业务模块分组，每组注释标注访问角色（仅 ADMIN / 所有人）；
+ * 权限标识（access）统一声明在组级节点上，子路由仅声明 component，
+ * 避免同一组内权限分散导致后续新增路由时漏配 access。
+ * login 页 layout: false 表示不套 MainLayout 主布局。
+ */
 const routes = [
   { path: '/login', component: 'login', layout: false },
   {
