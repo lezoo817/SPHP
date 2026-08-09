@@ -210,6 +210,11 @@ export default function HomePage() {
       swipeMoved.current = false;
       return;
     }
+    // 咨询轮播卡与首页“在线问诊”入口保持一致，进入 Agent 后自动发送在线问诊指令。
+    if (path === '/assistant') {
+      navigate('/agent', { state: { from: '/home', presetAction: { type: 'quick_message', content: HOME_CONSULTATION_MESSAGE } } });
+      return;
+    }
     navigate(path);
   }
 
