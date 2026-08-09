@@ -450,6 +450,15 @@ export function getDrugs(
   });
 }
 
+/** 查询医生开方可用药品（按当前医院隔离）。 */
+export function getDoctorDrugs(
+  params: API.DrugListParams,
+): Promise<API.PageResult<API.Drug>> {
+  return requestData<API.PageResult<API.Drug>>('/api/b/doctor/drugs', {
+    params,
+  });
+}
+
 /** 查询单个药品（新建处方模板自动带出药品名称/规格） */
 export function getDrugById(id: number): Promise<API.Drug> {
   return requestData<API.Drug>(`/api/b/prescription-templates/drugs/${id}`);

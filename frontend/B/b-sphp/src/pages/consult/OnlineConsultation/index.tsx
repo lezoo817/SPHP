@@ -36,7 +36,7 @@ import dayjs from 'dayjs';
 import {
   getOnlineConsultationDetail,
   getOnlineConsultations,
-  getDrugs,
+  getDoctorDrugs,
   getTemplates,
   replyOnlineConsultation,
   startOnlineConsultation,
@@ -135,7 +135,7 @@ export default function OnlineConsultationPage() {
   });
   const drugsQuery = useQuery({
     queryKey: ['drug', 'online-consultation-options', drugKeyword],
-    queryFn: () => getDrugs({
+    queryFn: () => getDoctorDrugs({
       name: drugKeyword.trim() || undefined,
       status: 'ENABLED',
       page: 1,

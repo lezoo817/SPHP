@@ -16,6 +16,8 @@ import com.sphp.admin.doctor.dto.OnlineConsultationItemVO;
 import com.sphp.admin.doctor.dto.OnlineConsultationReplyRequest;
 import com.sphp.admin.doctor.dto.OnlineConsultationReplyVO;
 import com.sphp.admin.doctor.service.DoctorConsultService;
+import com.sphp.admin.pharmacy.dto.DrugListVO;
+import com.sphp.admin.pharmacy.service.DrugService;
 import com.sphp.shared.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -53,6 +55,26 @@ public class DoctorConsultController {
     }
 
     private final DoctorConsultService doctorConsultService;
+    private final DrugService drugService;
+
+    /**
+     * 查询当前医院可用于开方的药品。
+     *
+     * @param name 药品名称模糊检索条件
+     * @param status 药品状态，通常传 ENABLED
+     * @param page 页码
+     * @param size 每页大小
+     * @return 当前医院药品分页结果
+     */
+    @GetMapping("/drugs")
+    @Operation(summary = "查询医生可用药品", description = "按当前用户所属医院查询药品，供接诊开方选择")
+    public Result<PageResult<DrugListVO>> pageDoctorDrugs(
+            @Parameter(description = "药品名称模糊检索") @RequestParam(required = false) String name,
+            @Parameter(description = "药品状态：ENABLED / DISABLED") @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return Result.success("查询成功", drugService.page(name, status, page, clampSize(size)));
+    }
 
     /**
      * 分页查询无挂号在线问诊。
