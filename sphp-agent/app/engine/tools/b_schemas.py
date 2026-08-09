@@ -1,4 +1,4 @@
-"""B 端工具 Schema 定义（系分 §5.3，共 9 个）。
+"""B 端工具 Schema 定义（系分 §5.3，共 10 个）。
 
 启动时通过 register_b_tools() 注册到 ToolRegistry。
 所有 API 路径以 /api/b 为前缀，MCP Server 内部拼接。
@@ -15,6 +15,26 @@ from app.engine.tools.schema_registry import (
 
 def _register_patient_query_tools() -> None:
     """注册患者与药品查询类工具（2 个）：患者聚合信息与用药指南。"""
+
+    ToolRegistry.register(
+        ToolSchema(
+            name="search_patient",
+            description=(
+                "按姓名模糊检索患者列表（返回 id/name/gender/age）。"
+                "医生未提供患者ID时，先调用本工具按姓名定位患者，"
+                "再基于返回的患者ID查询完整档案。"
+            ),
+            parameters={
+                "properties": {
+                    "name": {"type": "string", "description": "患者姓名（模糊匹配）"},
+                },
+                "required": ["name"],
+            },
+            scope=ToolScope.B_END,
+            security_level=SecurityLevel.L1,
+            executor="mcp",
+        )
+    )
 
     ToolRegistry.register(
         ToolSchema(

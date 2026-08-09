@@ -137,6 +137,7 @@ _MCP_TOOL_FUNCS: dict[str, tuple[str, str]] = {
     "confirm_follow_up": ("health", "confirm_follow_up"),
     "manage_notifications": ("notification", "manage_notifications"),
     # B 端
+    "search_patient": ("b_doctor", "search_patient"),
     "query_patient_history": ("b_doctor", "query_patient_history"),
     "query_drug_guide": ("b_doctor", "query_drug_guide"),
     "check_drug_interaction": ("b_doctor", "check_drug_interaction"),

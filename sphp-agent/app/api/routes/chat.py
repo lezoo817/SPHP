@@ -1035,7 +1035,8 @@ _TOOL_LABELS = {
     "confirm_follow_up": "确认随访提醒",
     "generate_draft_note": "确认保存病历草稿",
     "query_patient_history": "确认查询患者档案",
-    # ---- B 端（9）----
+    # ---- B 端（10）----
+    "search_patient": "检索患者",
     "query_drug_guide": "查询药品说明书",
     "check_drug_interaction": "查询药品相互作用",
     "check_contraindication": "查询药品禁忌",
