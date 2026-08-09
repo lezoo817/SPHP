@@ -16,6 +16,8 @@ langgraph>=1.0
 # 知识库 RAG
 langchain-postgres>=0.0.14
 langchain-community>=0.3
+# PDF 知识库文件解析依赖（PyPDFLoader）
+pypdf>=5.0
 
 # MCP 协议
 mcp>=1.0

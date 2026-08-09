@@ -16,6 +16,8 @@ dependencies = [
     # 知识库 RAG
     "langchain-postgres>=0.0.14",
     "langchain-text-splitters>=0.3",
+    # PDF 知识库文件解析依赖（PyPDFLoader）
+    "pypdf>=5.0",
     "psycopg[binary]>=3.2",
     "cryptography>=42.0",
 
