@@ -22,6 +22,10 @@ from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
 
+# 健康档案缓存判定哨兵：区分"字段缺失（会话内从未加载）"与"字段存在但值恰为
+# None（C 端默认本人加载档案）"，见 :func:`_health_record_cached`。
+_HEALTH_CACHE_SENTINEL = object()
+
 # C 端项目固定的科室清单（2026-08-06 修订）：15 个常见科室（3-科室医生种子数据.sql，
 # id 100-114，其中妇产科改为妇科）+ 男科/中医科（id 115/116），不含内科/外科。
 # 分诊/问诊/挂号推荐科室时，query_departments 的 keyword 只能从这些名称中选择，
@@ -340,6 +344,32 @@ def _fill_missing_address_id(
     return _fill_missing_required_param(tool_calls, "address_id", address_id)
 
 
+def _health_record_cached(state: AgentState) -> bool:
+    """健康档案是否已加载且就诊人未切换（会话内复用判定，2026-08-09）。
+
+    query_health_record 在导诊/问诊等场景被 LLM 每轮重复调用（日志复现：同一
+    会话第二、三轮各查一次档案）。健康档案会话内变化频率低，加载后跨轮复用：
+    tool_caller 判定已加载且就诊人未变即从工具绑定过滤 query_health_record，
+    减少无谓的 Java 往返与 LLM 决策噪声。
+
+    判定口径：
+    - ``health_record_patient_id`` 字段存在即视为"会话内加载过档案"（缺失表示
+      从未加载，用 sentinel 与"加载时 patient_id 恰为 None"区分）；
+    - 当前 ``state.patient_id`` 与加载时一致才复用；C 端切换就诊人 / B 端换
+      患者（patient_id 变化）后判定失效，仍放行重查新患者档案。
+
+    Args:
+        state: 当前图状态，含 health_record_patient_id / patient_id 字段。
+
+    Returns:
+        bool: 档案已加载且就诊人未切换返回 True（应过滤重复调用）。
+    """
+    cached_patient = state.get("health_record_patient_id", _HEALTH_CACHE_SENTINEL)
+    if cached_patient is _HEALTH_CACHE_SENTINEL:
+        return False
+    return cached_patient == state.get("patient_id")
+
+
 def _build_preconsult_progress_prompt(
     state: AgentState, allowed_tools: list[str] | None
 ) -> str | None:
@@ -368,11 +398,11 @@ def _build_preconsult_progress_prompt(
     if not allowed_tools or "save_pre_consultation" not in allowed_tools:
         return None
     tool_results = state.get("tool_results") or []
-    if not tool_results:
-        return None
+    # 档案已加载分两种情况：本轮 tool_results 新执行成功，或会话内缓存已加载
+    # （health_record_loaded，2026-08-09 复用后后续轮不再重查，视同已查档案）。
     has_health = any(
         r.get("tool_name") == "query_health_record" and r.get("success") for r in tool_results
-    )
+    ) or _health_record_cached(state)
     if not has_health:
         return None
     # 科室/医生已查过则不再推进（避免循环内重复注入干扰后续决策）
@@ -782,6 +812,13 @@ async def tool_caller(
     if effective_allowed is not None:
         allowed_set = set(effective_allowed)
         subgraph_tools = [t for t in subgraph_tools if t.name in allowed_set]
+    # 健康档案会话内复用（2026-08-09）：档案已加载且就诊人未切换时，从工具
+    # 绑定过滤 query_health_record——导诊/问诊日志复现每轮重复 Java 往返查同一
+    # 档案，健康档案会话内变化频率低，加载后跨轮复用。就诊人切换（patient_id
+    # 变化）后 _health_record_cached 返回 False，放行重查新患者档案。
+    # M8-8 已选医生的场景本就被滤成仅 save_pre_consultation，此处不重复生效。
+    if _health_record_cached(state):
+        subgraph_tools = [t for t in subgraph_tools if t.name != "query_health_record"]
     # M8-8 硬约束：用户已选医生时，本轮只暴露 save_pre_consultation，
     # 让 LLM 无法重跑查询（query_health_record / query_departments / query_doctors
     # 均不绑定），只能直接提交预问诊。仅问诊场景（selected_choice 来自问诊
@@ -866,6 +903,17 @@ async def tool_caller(
     if preconsult_ctx:
         messages.append({"role": "system", "content": preconsult_ctx})
 
+    # 健康档案会话内已加载（2026-08-09 复用）：告知 LLM 档案已在本会话加载并附
+    # 缓存摘要，禁止重复调用 query_health_record——工具绑定已确定性过滤，此处提示
+    # 让 LLM 直接基于摘要决策（如禁忌核对、病情参考），不因看不到 query_health_record
+    # 而困惑或改调其他查询工具。摘要为 None（档案为空）时仍注入"已加载"约束。
+    if _health_record_cached(state):
+        cached_summary = state.get("health_record_summary")
+        notice = "健康档案已在本会话中加载，请勿重复调用 query_health_record。"
+        if cached_summary:
+            notice += f"\n档案摘要：\n{cached_summary}"
+        messages.append({"role": "system", "content": notice})
+
     # M8-1：注入待确认 L2 摘要，让 LLM 知已有卡片，避免重复调用同一 L2
     # （软约束，硬兜底由 _dedupe_tool_calls 对比 pending + safety_check 复用 token）
     pending_confirmations = state.get("pending_confirmations")
@@ -881,6 +929,12 @@ async def tool_caller(
     try:
         response = await llm_with_tools.ainvoke(messages)
         tool_calls = _extract_tool_calls(response, tool_scope, effective_allowed)
+        # 健康档案会话内复用硬兜底（2026-08-09）：绑定层已过滤 query_health_record
+        # （LLM 不应看到该工具），但 LLM 可能从 tool_results 摘要/场景提示词记忆
+        # 工具名仍尝试调用——此处确定性剔除，杜绝每轮重复 Java 往返（绑定过滤是
+        # 主约束，这里是防幻觉兜底，与 _health_record_cached 口径一致）。
+        if _health_record_cached(state):
+            tool_calls = [tc for tc in tool_calls if tc["name"] != "query_health_record"]
         # 导诊首轮拦截评估（2026-08-07）：首轮强制剔除 create_triage_assessment，
         # 保证"最少两轮症状追问"（原始需求）。LLM 首轮仍可调 query_health_record
         # / search_medical_knowledge（L1 查询），下一轮 user 消息到达后放行评估。
@@ -935,6 +989,22 @@ async def tool_caller(
         result_extra: dict[str, Any] = {}
         if selected_choice is not None:
             result_extra["pending_doctor_choices"] = None
+        # 健康档案缓存写入（2026-08-09 复用）：tool_results 累积到 query_health_record
+        # 成功结果时，记录加载档案的就诊人 ID（health_record_patient_id，C 端本人为
+        # None）与过敏史/既往史摘要（health_record_summary）。下一轮 tool_caller 据此
+        # 过滤重复调用、reply 侧回退缓存摘要注入禁忌核对。就诊人切换后新档案成功重查
+        # 会覆盖旧缓存（patient_id 变化即 _health_record_cached 失效，见其 docstring）。
+        # 档案为空时摘要记 None——health_record_patient_id 已标"加载过"，仍免重复查询。
+        if any(
+            r.get("tool_name") == "query_health_record" and r.get("success")
+            for r in state.get("tool_results") or []
+        ):
+            from app.orchestrator.nodes.reply import _extract_patient_allergy_history
+
+            result_extra["health_record_patient_id"] = state.get("patient_id")
+            result_extra["health_record_summary"] = _extract_patient_allergy_history(
+                state.get("tool_results") or []
+            )
         # 问诊场景拦截：同轮 query_doctors + save_pre_consultation -> 剔除
         # save_pre_consultation（改由 SSE 发 options 卡让用户点选，防 LLM 替用户选）。
         # 仅问诊场景执行；挂号等场景不拦截（tool_calls 原样放行，LLM 继续
