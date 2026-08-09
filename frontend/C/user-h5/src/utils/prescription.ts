@@ -144,12 +144,14 @@ export function buildMinePrescriptionDetailPath(prescriptionId: number, patientI
  * @param prescriptionId 处方编号
  * @param patientId 就诊助手页面本地就诊人编号
  * @param issuedAt 处方列表返回的开具时间
+ * @param consultationId 可选的来源问诊 ID，用于详情页逐级返回
  * @returns 可恢复助手返回路径且允许购药的详情路径
  */
-export function buildAssistantPrescriptionDetailPath(prescriptionId: number, patientId: number | undefined, issuedAt?: string): string {
-  const search = new URLSearchParams({ source: 'assistant' });
+export function buildAssistantPrescriptionDetailPath(prescriptionId: number, patientId: number | undefined, issuedAt?: string, consultationId?: number): string {
+  const search = new URLSearchParams({ source: consultationId && consultationId > 0 ? 'consultation' : 'assistant' });
   if (patientId && patientId > 0) search.set('patientId', String(patientId));
   if (issuedAt) search.set('issuedAt', issuedAt);
+  if (consultationId && consultationId > 0) search.set('consultationId', String(consultationId));
   return `/assistant/prescription/${prescriptionId}?${search.toString()}`;
 }
 

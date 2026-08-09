@@ -6,6 +6,7 @@ import { PrescriptionPaper } from '../../components/PrescriptionPaper';
 import { getPrescription } from '../../services/consultation';
 import type { PrescriptionDetail } from '../../typings/api';
 import { getApiErrorMessage } from '../../utils/form';
+import { buildConsultationDetailPath } from '../../utils/consultation';
 import { buildPharmacyInventoryPath, resolvePharmacyPatientId } from '../../utils/pharmacy';
 import { buildMinePrescriptionListPath, buildPrescriptionInterpretationAgentState, getPrescriptionDisplayNumber } from '../../utils/prescription';
 
@@ -20,7 +21,8 @@ export default function PrescriptionPage() {
   const patientId = resolvePharmacyPatientId(query.get('patientId'));
   const issuedAtFromList = query.get('issuedAt') || undefined;
   // 仅“我的处方”入口恢复其筛选条件，避免影响就诊助手既有详情返回行为。
-  const backPath = query.get('source') === 'mine-prescriptions' ? buildMinePrescriptionListPath(query) : query.get('source') === 'assistant' ? '/assistant' : '/mine';
+  const consultationId = Number(query.get('consultationId')) || undefined;
+  const backPath = query.get('source') === 'mine-prescriptions' ? buildMinePrescriptionListPath(query) : query.get('source') === 'consultation' && consultationId ? buildConsultationDetailPath(consultationId, patientId) : query.get('source') === 'assistant' ? '/assistant' : '/mine';
 
   /** 按路由处方编号读取已批准处方详情。 */
   async function loadPrescription() {
