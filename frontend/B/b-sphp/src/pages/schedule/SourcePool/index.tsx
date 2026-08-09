@@ -65,9 +65,9 @@ export default function SourcePool() {
       dataIndex: 'scheduleDate',
       width: 150,
       hideInSearch: true,
-      render: (v: string, record: API.SourcePoolVO) => (
+      render: (_, record) => (
         <Space size={4}>
-          <span>{dayjs(v).format('YYYY-MM-DD')}</span>
+          <span>{dayjs(record.scheduleDate).format('YYYY-MM-DD')}</span>
           {record.isExpired && <Tag color="default">过期</Tag>}
         </Space>
       ),

@@ -68,38 +68,6 @@ export default function BatchScheduleModal({ open, onCancel, onCreated }: Props)
   const [submitting, setSubmitting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /** 打开弹窗时重置表单与预览状态 */
-  useEffect(() => {
-    if (open) {
-      form.resetFields();
-      setPreview(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  /** 科室变化时清空已选医生，避免医生与所选科室不一致的脏数据 */
-  useEffect(() => {
-    form.setFieldsValue({ doctorId: undefined });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deptId]);
-
-  /** 表单值变化时 debounce 触发预览 */
-  useEffect(() => {
-    if (!open) return;
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-    debounceRef.current = setTimeout(() => {
-      void runPreview();
-    }, DEBOUNCE_MS);
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(watched), open]);
-
   /** 校验必填后调 preview 接口；缺字段时静默清空预览 */
   const runPreview = async () => {
     const v = form.getFieldsValue();
@@ -133,6 +101,38 @@ export default function BatchScheduleModal({ open, onCancel, onCreated }: Props)
       setPreviewing(false);
     }
   };
+
+  /** 打开弹窗时重置表单与预览状态 */
+  useEffect(() => {
+    if (open) {
+      form.resetFields();
+      setPreview(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  /** 科室变化时清空已选医生，避免医生与所选科室不一致的脏数据 */
+  useEffect(() => {
+    form.setFieldsValue({ doctorId: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deptId]);
+
+  /** 表单值变化时 debounce 触发预览 */
+  useEffect(() => {
+    if (!open) return;
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = setTimeout(() => {
+      void runPreview();
+    }, DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(watched), open]);
 
   /** 科室选项 */
   const fetchDepartments = async () => {
