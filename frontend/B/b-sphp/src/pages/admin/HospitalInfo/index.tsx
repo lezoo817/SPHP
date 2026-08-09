@@ -153,7 +153,7 @@ export default function HospitalInfo() {
         title="编辑医院信息"
         open={editModalOpen}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
         onCancel={() => setEditModalOpen(false)}
         width={560}
       >

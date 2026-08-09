@@ -1,4 +1,4 @@
-import type { Allergy, AllergyPayload, FollowUpPlan, HealthRecord, MedicationPlan, MedicationPlanAction, MedicalHistory, MedicalHistoryPayload } from '../typings/api';
+import type { Allergy, AllergyPayload, FollowUpPlan, HealthRecord, HealthRecordDeleteResult, MedicationPlan, MedicationPlanAction, MedicalHistory, MedicalHistoryPayload } from '../typings/api';
 import { request } from './request';
 
 /** 查询指定就诊人的健康档案。 */
@@ -17,6 +17,11 @@ export function updateAllergy(allergyId: number, payload: AllergyPayload, idempo
   return request(`/c/v1/health-record/allergies/${allergyId}`, { method: 'PUT', body: payload, headers: { 'X-Idempotency-Key': idempotencyKey } });
 }
 
+/** 删除已有过敏史，服务端执行软删除。 */
+export function deleteAllergy(allergyId: number, idempotencyKey: string): Promise<HealthRecordDeleteResult> {
+  return request(`/c/v1/health-record/allergies/${allergyId}`, { method: 'DELETE', headers: { 'X-Idempotency-Key': idempotencyKey } });
+}
+
 /** 新增既往史。 */
 export function createMedicalHistory(payload: MedicalHistoryPayload, idempotencyKey: string): Promise<MedicalHistory> {
   return request('/c/v1/health-record/histories', { method: 'POST', body: payload, headers: { 'X-Idempotency-Key': idempotencyKey } });
@@ -25,6 +30,11 @@ export function createMedicalHistory(payload: MedicalHistoryPayload, idempotency
 /** 更新已有既往史。 */
 export function updateMedicalHistory(historyId: number, payload: MedicalHistoryPayload, idempotencyKey: string): Promise<MedicalHistory> {
   return request(`/c/v1/health-record/histories/${historyId}`, { method: 'PUT', body: payload, headers: { 'X-Idempotency-Key': idempotencyKey } });
+}
+
+/** 删除已有既往史，服务端执行软删除。 */
+export function deleteMedicalHistory(historyId: number, idempotencyKey: string): Promise<HealthRecordDeleteResult> {
+  return request(`/c/v1/health-record/histories/${historyId}`, { method: 'DELETE', headers: { 'X-Idempotency-Key': idempotencyKey } });
 }
 
 /** 查询指定就诊人的用药计划。 */

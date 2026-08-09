@@ -24,7 +24,7 @@ export default function EditAccountModal({
       title="修改登录账号"
       open={open}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       onCancel={onCancel}
       width={480}
     >

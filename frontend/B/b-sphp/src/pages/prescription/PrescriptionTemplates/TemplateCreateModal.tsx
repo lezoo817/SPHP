@@ -47,7 +47,7 @@ export default function TemplateCreateModal({
       okText="保存"
       okButtonProps={{ loading: submitting }}
       width={700}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form<TemplateFormValues> form={form} layout="vertical" initialValues={{ items: [{}] }}>
         <Space style={{ width: '100%' }} size={16}>

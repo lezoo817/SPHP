@@ -1,10 +1,12 @@
 /**
  * 号源池页面
- * - 按已发布排班明细展示：日期/班次/科室（诊室）/医生/总号源数/剩余/已约/锁定，日期倒序
+ * - 按已发布排班明细展示：日期/班次/科室（诊室）/医生/总号源数/剩余/已约/锁定
+ * - 默认以今天为中心前后各 3 天（总窗口 7 天）；排序：今天优先 → 日期倒序 → 班次（MORNING→AFTERNOON）→ id
+ * - 过期排班（PUBLISHED 且 schedule_date < today）在日期列后挂灰色"过期"Tag
  * - 三角色可访问，数据范围由后端 DataScope 过滤（ADMIN 全院 / DEPT_HEAD 本科室 / DOCTOR 本人）
  * - 科室/医生筛选仅 ADMIN 生效；本页只读，无操作列
  */
-import { Tag, message } from 'antd';
+import { Space, Tag, message } from 'antd';
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns } from '@ant-design/pro-components';
 import { getSourcePool, getDepartments, getDoctors } from '@/services/admin';
@@ -56,13 +58,19 @@ export default function SourcePool() {
       dataIndex: 'dateRange',
       valueType: 'dateRange',
       hideInTable: true,
-      initialValue: [dayjs().subtract(6, 'day'), dayjs()],
+      initialValue: [dayjs().subtract(3, 'day'), dayjs().add(3, 'day')],
     },
     {
       title: '日期',
       dataIndex: 'scheduleDate',
-      width: 110,
+      width: 150,
       hideInSearch: true,
+      render: (_, record) => (
+        <Space size={4}>
+          <span>{dayjs(record.scheduleDate).format('YYYY-MM-DD')}</span>
+          {record.isExpired && <Tag color="default">过期</Tag>}
+        </Space>
+      ),
     },
     {
       title: '班次',

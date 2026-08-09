@@ -137,6 +137,12 @@ export interface MedicalHistoryPayload {
   occurredAt?: string;
 }
 
+/** 健康档案记录软删除结果。 */
+export interface HealthRecordDeleteResult {
+  id: number;
+  deletedAt: string;
+}
+
 /** 可供选择的医院。 */
 export interface Hospital { hospitalId: number; name: string; level?: string; address?: string; contact?: string; }
 /** 医院下的可预约科室。 */
@@ -189,7 +195,7 @@ export interface PageData<T> { pageNo: number; pageSize: number; total: number; 
   /** 医生开具的病历详情。 */
   export interface MedicalRecordDetail extends MedicalRecordItem { doctorId: number; doctorNote: string; startedAt: string; }
 /** 问诊记录列表项。 */
-export interface Consultation { id: number; appointmentId?: number | null; doctorName: string; status: 'DRAFT' | 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'NO_SHOW'; updatedAt: string; }
+export interface Consultation { id: number; patientId?: number; appointmentId?: number | null; doctorName: string; status: 'DRAFT' | 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'NO_SHOW'; updatedAt: string; }
 /** 问诊详情与文字消息。 */
 export interface ConsultationDetail extends Consultation { doctor: { id: number; name: string; title?: string }; preConsultation?: { chiefComplaint: string; historyOfPresentIllness?: string; attachments?: { name: string; url: string }[]; savedAt?: string; submittedAt?: string }; messages: { id: number; senderType: string; content: string; createdAt: string }[]; prescriptionIds: number[]; }
 /** 已批准处方列表项。 */

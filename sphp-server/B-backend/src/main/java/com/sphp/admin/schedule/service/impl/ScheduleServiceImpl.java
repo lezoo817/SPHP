@@ -83,6 +83,15 @@ public class ScheduleServiceImpl implements ScheduleService {
     private static final String STATUS_PUBLISHED = "PUBLISHED";
     private static final String STATUS_CANCELLED = "CANCELLED";
 
+    /**
+     * 排班列表一级排序的状态优先级（数值越小越靠前）：已发布（未过期）> 草稿 > 已过期 > 已作废。
+     * "已过期"为虚拟状态，由 status=PUBLISHED AND schedule_date<today 派生。
+     */
+    private static final int SORT_PRIO_PUBLISHED_ACTIVE = 0;
+    private static final int SORT_PRIO_DRAFT = 1;
+    private static final int SORT_PRIO_EXPIRED = 2;
+    private static final int SORT_PRIO_CANCELLED = 3;
+
     /** 号源快照状态 */
     private static final String SNAP_LOCKED = "LOCKED";
     private static final String SNAP_AVAILABLE = "AVAILABLE";
@@ -99,9 +108,9 @@ public class ScheduleServiceImpl implements ScheduleService {
     /** 就诊人姓名脱敏后缀（保留首字符后的掩码） */
     private static final String NAME_MASK_SUFFIX = "**";
 
-    /** 号源池默认查询窗口（天），含今天 */
-    private static final int SOURCE_POOL_DEFAULT_DAYS = 7;
-    private static final int SOURCE_POOL_OFFSET_DAYS = 6;
+    /** 号源池默认查询窗口：以今天为中心前后各 N 天（含今天，总窗口 2N+1 天） */
+    private static final int SOURCE_POOL_LOOKBACK_DAYS = 3;
+    private static final int SOURCE_POOL_LOOKAHEAD_DAYS = 3;
 
     /** 批量排班：班次时间窗（小时），与前端 SHIFT_WINDOWS 保持一致 */
     private static final Map<String, int[]> SHIFT_WINDOWS = Map.of(
@@ -115,6 +124,9 @@ public class ScheduleServiceImpl implements ScheduleService {
             "HALF_HOUR", 30,
             "FULL", -1
     );
+
+    /** 创建排班"立即发布"的默认时段拆分方式（1小时/段），与批量排班默认一致 */
+    private static final String SLOT_SPLIT_DEFAULT = "HOURLY";
 
     /** 批量预览：候选去向 */
     private static final String ACTION_CREATE = "CREATE";
@@ -148,6 +160,8 @@ public class ScheduleServiceImpl implements ScheduleService {
      * @param page        页码（1 起）
      * @param size        每页大小（调用方已钳制到 [1, MAX_PAGE_SIZE]）
      * @return 排班分页结果（含号源聚合计数）
+     *
+     * <p>排序见 {@link #buildScheduleListOrderBy()}：状态 4 档优先级（已发布未过期 > 草稿 > 已过期 > 已作废）→ 日期倒序 → id 升序。
      */
     @Override
     public PageResult<ScheduleListVO> page(LocalDate date, Long deptId, Long doctorId, String status, Boolean hideInvalid, int page, int size) {
@@ -182,9 +196,9 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .apply(hideInvalid != null && hideInvalid,
                         "NOT (status = {0} OR (status = {1} AND schedule_date < {2}))",
                         STATUS_CANCELLED, STATUS_PUBLISHED, LocalDate.now())
-                // 按排班日期倒序展示，最近的排班在最前
-                .orderByDesc(Schedule::getScheduleDate)
-                .orderByAsc(Schedule::getId);
+                // 排序：日期倒序 + 状态优先级 + id 升序。MyBatis-Plus 的 apply() 只能拼到 WHERE 段，
+                // 写不进 ORDER BY，所以这里用 last() 整体追加；状态值与优先级均为常量，安全拼接。
+                .last(buildScheduleListOrderBy());
 
         Page<Schedule> result = scheduleMapper.selectPage(new Page<>(page, size), wrapper);
         return PageResult.of(result.getTotal(), buildListVO(result.getRecords()), page, size);
@@ -206,9 +220,9 @@ public class ScheduleServiceImpl implements ScheduleService {
      */
     @Override
     public PageResult<SourcePoolVO> sourcePool(LocalDate startDate, LocalDate endDate, Long deptId, Long doctorId, int page, int size) {
-        // 默认区间：近 SOURCE_POOL_DEFAULT_DAYS 天（含今天）；显式区间需满足 start <= end
-        LocalDate start = startDate != null ? startDate : LocalDate.now().minusDays(SOURCE_POOL_OFFSET_DAYS);
-        LocalDate end = endDate != null ? endDate : LocalDate.now();
+        // 默认区间：以今天为中心前后各 SOURCE_POOL_LOOKBACK_DAYS / SOURCE_POOL_LOOKAHEAD_DAYS 天；显式区间需满足 start <= end
+        LocalDate start = startDate != null ? startDate : LocalDate.now().minusDays(SOURCE_POOL_LOOKBACK_DAYS);
+        LocalDate end = endDate != null ? endDate : LocalDate.now().plusDays(SOURCE_POOL_LOOKAHEAD_DAYS);
         if (start.isAfter(end)) {
             throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "日期范围无效，开始日期不能晚于结束日期");
         }
@@ -234,10 +248,11 @@ public class ScheduleServiceImpl implements ScheduleService {
      *
      * <p>同医生同日期同班次仅允许一条有效排班；存在 CANCELLED 时原地复用并重置为 DRAFT；
      * DRAFT/PUBLISHED 重复时拒绝。自动填充 dept_id（取自医生所属科室）。
+     * {@code publishImmediately=true} 时按默认拆分（1小时/段）自动配置号源时段并发布，返回状态为 PUBLISHED。
      *
-     * @param request 创建请求（医生 / 日期 / 班次 / 总号源）
-     * @return 创建结果（排班 ID、状态、创建时间）
-     * @throws BusinessException 医生不存在 / 跨院 / 停用 / 日期过早 / 重复排班时抛出
+     * @param request 创建请求（医生 / 日期 / 班次 / 总号源 / 是否立即发布）
+     * @return 创建结果（排班 ID、状态 DRAFT 或 PUBLISHED、创建时间）
+     * @throws BusinessException 医生不存在 / 跨院 / 停用 / 日期过早 / 重复排班 / 号源过少无法按默认拆分时抛出
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -254,6 +269,10 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (scheduleDate.isBefore(LocalDate.now())) {
             throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "排班日期不能早于今天");
         }
+        // 立即发布需按默认拆分（1小时/段）切分时段，号源过少无法切分时提前拦截，避免创建后回滚
+        if (Boolean.TRUE.equals(request.getPublishImmediately())) {
+            validateImmediatePublishSlots(request.getTotalSlots());
+        }
         // 唯一校验：同医生同日期同班次。已作废（CANCELLED）的排班允许重新建立——
         // 原地复用该行并重置为草稿；存在 DRAFT/PUBLISHED 有效排班时禁止重复创建
         List<Schedule> exists = scheduleMapper.selectList(Wrappers.<Schedule>lambdaQuery()
@@ -269,6 +288,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                 throw new BusinessException(ErrorCodeEnum.ORDER_CLOSED_OR_STATUS_INVALID, "该医生当天该班次已存在排班");
             }
         }
+        Long scheduleId;
+        OffsetDateTime createdAt;
         if (cancelled != null) {
             // 复用已作废排班：重置为草稿并清理旧时段，等价于重新建立该排班
             scheduleMapper.update(null, Wrappers.<Schedule>lambdaUpdate()
@@ -284,30 +305,41 @@ public class ScheduleServiceImpl implements ScheduleService {
                     .isNull(Slot::getDeletedAt));
             log.info("重新建立已作废排班 scheduleId={}, doctorId={}, date={}, shift={}, totalSlots={}",
                     cancelled.getId(), doctor.getId(), scheduleDate, request.getShift(), request.getTotalSlots());
-            return ScheduleCreateVO.builder()
-                    .id(cancelled.getId())
-                    .status(STATUS_DRAFT)
-                    .createdAt(cancelled.getCreatedAt())
-                    .build();
+            scheduleId = cancelled.getId();
+            createdAt = cancelled.getCreatedAt();
+        } else {
+            Schedule schedule = new Schedule();
+            schedule.setDoctorId(doctor.getId());
+            schedule.setDeptId(doctor.getDeptId());
+            schedule.setScheduleDate(scheduleDate);
+            schedule.setShift(request.getShift());
+            schedule.setTotalSlots(request.getTotalSlots());
+            schedule.setStatus(STATUS_DRAFT);
+            scheduleMapper.insert(schedule);
+            log.info("创建排班 scheduleId={}, doctorId={}, date={}, shift={}, totalSlots={}",
+                    schedule.getId(), doctor.getId(), scheduleDate, request.getShift(), request.getTotalSlots());
+            scheduleId = schedule.getId();
+            // DB 默认值不会回填实体，回查一次获取 created_at
+            Schedule created = scheduleMapper.selectById(scheduleId);
+            createdAt = created != null ? created.getCreatedAt() : OffsetDateTime.now();
         }
 
-        Schedule schedule = new Schedule();
-        schedule.setDoctorId(doctor.getId());
-        schedule.setDeptId(doctor.getDeptId());
-        schedule.setScheduleDate(scheduleDate);
-        schedule.setShift(request.getShift());
-        schedule.setTotalSlots(request.getTotalSlots());
-        schedule.setStatus(STATUS_DRAFT);
-        scheduleMapper.insert(schedule);
-        log.info("创建排班 scheduleId={}, doctorId={}, date={}, shift={}, totalSlots={}",
-                schedule.getId(), doctor.getId(), scheduleDate, request.getShift(), request.getTotalSlots());
-
-        // DB 默认值不会回填实体，回查一次获取 created_at
-        Schedule created = scheduleMapper.selectById(schedule.getId());
+        // 创建成功后立即发布：复用 configureSlots + publish 按默认拆分配号源时段并发布（与批量排班口径一致）；
+        // 三者同处 create() 事务内，任一失败整体回滚，不会留下半成品
+        if (Boolean.TRUE.equals(request.getPublishImmediately())) {
+            configureSlots(scheduleId,
+                    slotItemsOf(buildSlotConfigItems(request.getShift(), SLOT_SPLIT_DEFAULT, request.getTotalSlots())));
+            publish(scheduleId);
+            return ScheduleCreateVO.builder()
+                    .id(scheduleId)
+                    .status(STATUS_PUBLISHED)
+                    .createdAt(createdAt)
+                    .build();
+        }
         return ScheduleCreateVO.builder()
-                .id(schedule.getId())
+                .id(scheduleId)
                 .status(STATUS_DRAFT)
-                .createdAt(created != null ? created.getCreatedAt() : OffsetDateTime.now())
+                .createdAt(createdAt)
                 .build();
     }
 
@@ -716,7 +748,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                 continue;
             }
             Doctor doctor = doctorMapper.selectById(s.getDoctorId());
-            if (doctor == null || doctor.getDeletedAt() == null
+            // 跨院/不存在/已逻辑删除统一视为不可发布（对外统一为"排班不存在"，不暴露医院隔离细节）
+            if (doctor == null || doctor.getDeletedAt() != null
                     || !hospitalId.equals(doctor.getHospitalId())) {
                 failedItems.add(BatchPublishReportVO.FailedItem.builder()
                         .scheduleId(id).reason("排班不存在").build());
@@ -827,19 +860,51 @@ public class ScheduleServiceImpl implements ScheduleService {
      * 校验时段拆分与号源总数兼容性：FULL 模式无要求；其余模式需每段至少 1 个号源。
      */
     private void validateSplitCompatibility(String splitMode, int totalSlots) {
-        int minutes = SPLIT_MINUTES.get(splitMode);
-        if (minutes < 0) {
+        int maxSegments = maxSegmentsOf(splitMode);
+        if (maxSegments <= 0) {
             return; // FULL 模式
         }
-        // 任一班次的时间窗最大 4 小时，HALF_HOUR 最多 8 段
+        if (totalSlots < maxSegments) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER,
+                    "号源总数(" + totalSlots + ")小于所选拆分方式最少需要的段数(" + maxSegments + ")，请减少拆分粒度或增加号源");
+        }
+    }
+
+    /**
+     * 计算某拆分方式下任一班次的最大时段段数。
+     *
+     * <p>以最大 4 小时班次时间窗为基准（MORNING / AFTERNOON 均为 4 小时）。
+     *
+     * @param splitMode 拆分方式（HOURLY / HALF_HOUR / FULL）
+     * @return 最大时段段数；FULL 整段无分段概念返回 0
+     */
+    private int maxSegmentsOf(String splitMode) {
+        int minutes = SPLIT_MINUTES.get(splitMode);
+        if (minutes < 0) {
+            return 0; // FULL 模式
+        }
         int maxSegments = 0;
         for (int[] win : SHIFT_WINDOWS.values()) {
             int segs = (win[1] - win[0]) * 60 / minutes;
             if (segs > maxSegments) maxSegments = segs;
         }
+        return maxSegments;
+    }
+
+    /**
+     * 校验"创建后立即发布"的号源总数足以按默认拆分切分时段。
+     *
+     * <p>默认拆分（1小时/段）下任一班次最多 4 段，号源总数小于段数会产生 0 号源时段，
+     * 影响号源池可约性展示，故创建时即拦截（与批量排班的拆分兼容校验同源）。
+     *
+     * @param totalSlots 号源总数
+     * @throws BusinessException 号源总数小于默认拆分最少段数时抛出
+     */
+    private void validateImmediatePublishSlots(int totalSlots) {
+        int maxSegments = maxSegmentsOf(SLOT_SPLIT_DEFAULT);
         if (totalSlots < maxSegments) {
             throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER,
-                    "号源总数(" + totalSlots + ")小于所选拆分方式最少需要的段数(" + maxSegments + ")，请减少拆分粒度或增加号源");
+                    "号源总数(" + totalSlots + ")小于按 1小时/段 拆分所需的最少段数(" + maxSegments + ")，请增加号源或取消立即发布");
         }
     }
 
@@ -856,6 +921,34 @@ public class ScheduleServiceImpl implements ScheduleService {
                         .count(it.getCount())
                         .build())
                 .toList();
+    }
+
+    /**
+     * 构造排班列表分页查询的 ORDER BY 子句。
+     *
+     * <p>排序规则：状态 4 档优先级（已发布未过期 > 草稿 > 已过期 > 已作废）→ 日期倒序（最近的排班在最前）→
+     * id 升序（保证分页结果稳定）。"已过期"是虚拟状态，对应 {@code status=PUBLISHED AND schedule_date<today}。
+     *
+     * <p>必须用 {@code last()} 追加（{@code apply()} 只能拼到 WHERE 段）。
+     * 拼接的常量均为 {@code private static final}，无 SQL 注入风险。
+     */
+    private String buildScheduleListOrderBy() {
+        // 此处是 MP last() 运行时拼接的原始 SQL，不走 MyBatis XML <script> 解析，
+        // 与 SlotMapper/StatisticsMapper 中 @Select 注解（须转义 &lt;）不同，< 与 >= 直接写原始符号
+        return String.format(
+                "ORDER BY "
+                        + "CASE "
+                        + "  WHEN status = '%s' AND schedule_date >= CURRENT_DATE THEN %d "
+                        + "  WHEN status = '%s' THEN %d "
+                        + "  WHEN status = '%s' AND schedule_date < CURRENT_DATE THEN %d "
+                        + "  ELSE %d "
+                        + "END ASC, "
+                        + "schedule_date DESC, "
+                        + "id ASC",
+                STATUS_PUBLISHED, SORT_PRIO_PUBLISHED_ACTIVE,
+                STATUS_DRAFT, SORT_PRIO_DRAFT,
+                STATUS_PUBLISHED, SORT_PRIO_EXPIRED,
+                SORT_PRIO_CANCELLED);
     }
 
     /**

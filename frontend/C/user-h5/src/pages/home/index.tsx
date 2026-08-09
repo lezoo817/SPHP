@@ -5,6 +5,7 @@ import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
 import { HOME_CONSULTATION_MESSAGE, HOME_TRIAGE_MESSAGE } from '../../constants/agent';
 import { dismissExpiredHealthTodo, getDismissedExpiredHealthTodoIds, isExpiredHealthTodoDismissed } from '../../models/expired-health-todo';
+import { dismissMedicationHealthTodo, getMedicationHealthTodoState, getMedicationHealthTodoStates, isMedicationHealthTodoDismissed, markMedicationHealthTodoTaken, type MedicationHealthTodoState } from '../../models/medication-health-todo';
 import { getSelection, resolveSelectedPatientId, saveSelection } from '../../models/selection';
 import { getFamilyMembers } from '../../services/family';
 import { getFollowUpPlans, getMedicationPlans } from '../../services/health';
@@ -31,6 +32,7 @@ export default function HomePage() {
   const [patientOpen, setPatientOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const [todos, setTodos] = useState<HealthTodo[]>([]);
+  const [medicationTodoStates, setMedicationTodoStates] = useState<Record<string, MedicationHealthTodoState>>({});
   const [waitlistNotification, setWaitlistNotification] = useState<NotificationItem>();
   const [bannerSlideIndex, setBannerSlideIndex] = useState(1);
   const [bannerTransitionEnabled, setBannerTransitionEnabled] = useState(true);
@@ -76,7 +78,11 @@ export default function HomePage() {
       const nextTodos = buildHealthTodos(sources);
       // 已被患者关闭的过期订单在同一登录会话内不再因页面重新加载而重复出现。
       const dismissedTodoIds = getDismissedExpiredHealthTodoIds();
-      setTodos(nextTodos.filter((todo) => !todo.isExpired || !isExpiredHealthTodoDismissed(todo, dismissedTodoIds)));
+      const nextMedicationTodoStates = getMedicationHealthTodoStates();
+      setMedicationTodoStates(nextMedicationTodoStates);
+      setTodos(nextTodos.filter((todo) => (!todo.isExpired || !isExpiredHealthTodoDismissed(todo, dismissedTodoIds))
+        // 仅已开启提醒的用药待办支持本地关闭，其他用药卡片保持原跳转行为。
+        && !(todo.type === 'MEDICATION' && todo.reminderEnabled && isMedicationHealthTodoDismissed(todo, nextMedicationTodoStates))));
       if (healthResults.some((item) => item.status === 'rejected')) setNotice('部分健康待办加载失败，请稍后重试');
     } catch (error: unknown) {
       setNotice(error instanceof Error ? error.message : '首页数据加载失败');
@@ -121,6 +127,19 @@ export default function HomePage() {
       // 过期挂号不再进入流程，关闭状态写入会话以覆盖切页后重新聚合待办的场景。
       dismissExpiredHealthTodo(todo);
       setTodos((current) => current.filter((item) => !(item.type === todo.type && item.id === todo.id && item.patientId === todo.patientId)));
+      return;
+    }
+    if (todo.type === 'MEDICATION' && todo.reminderEnabled) {
+      const medicationTodoState = getMedicationHealthTodoState(todo, medicationTodoStates);
+      if (medicationTodoState === 'TAKEN') {
+        // 第二次点击确认关闭，当前提醒时段不再在本次会话中重复出现。
+        const nextStates = dismissMedicationHealthTodo(todo);
+        setMedicationTodoStates(nextStates);
+        setTodos((current) => current.filter((item) => item.type !== 'MEDICATION' || !item.reminderEnabled || !isMedicationHealthTodoDismissed(item, nextStates)));
+      } else {
+        // 首次点击只做本地服药确认，不跳转设置页，也不修改后端用药计划。
+        setMedicationTodoStates(markMedicationHealthTodoTaken(todo));
+      }
       return;
     }
     if (todo.type === 'APPOINTMENT') navigate('/assistant');
@@ -191,6 +210,11 @@ export default function HomePage() {
       swipeMoved.current = false;
       return;
     }
+    // 咨询轮播卡与首页“在线问诊”入口保持一致，进入 Agent 后自动发送在线问诊指令。
+    if (path === '/assistant') {
+      navigate('/agent', { state: { from: '/home', presetAction: { type: 'quick_message', content: HOME_CONSULTATION_MESSAGE } } });
+      return;
+    }
     navigate(path);
   }
 
@@ -238,7 +262,10 @@ export default function HomePage() {
       <h2>快捷服务</h2>
       <section className="quick-grid">{services.map(({ label, icon: Icon, action }) => <button key={label} type="button" onClick={action || (() => setNotice(`${label}暂未开放`))}><Icon size={29} /><span>{label}</span></button>)}</section>
       <section className="todo-section"><div className="section-title"><h2>健康待办</h2>{todos.length > 0 && <span className="todo-count">{todos.length} 项待处理</span>}</div>
-        {todos.map((todo) => <button className={`${todo.type === 'APPOINTMENT' ? 'health-todo-card has-location' : 'health-todo-card'}${todo.isExpired ? ' is-expired' : ''}`} type="button" key={`${todo.type}-${todo.id}-${todo.patientId}`} onClick={() => openTodo(todo)}><div className={`health-todo-card__icon ${todo.type.toLowerCase()}`}>{todo.type === 'APPOINTMENT' ? '挂' : todo.type === 'MEDICATION' ? '药' : '访'}</div><div><b>{todo.occurredAt ? formatMedicalTime(todo.occurredAt) : '时间待确认'} · {todo.title}</b><span>{todo.patientName} · {todo.detail}</span>{todo.type === 'APPOINTMENT' && <small>科室位置：{todo.departmentLocation || '科室位置待确认'}</small>}</div><ChevronRight size={18} /></button>)}
+        {todos.map((todo) => {
+          const medicationTaken = todo.type === 'MEDICATION' && todo.reminderEnabled && getMedicationHealthTodoState(todo, medicationTodoStates) === 'TAKEN';
+          return <button className={`${todo.type === 'APPOINTMENT' ? 'health-todo-card has-location' : 'health-todo-card'}${todo.isExpired ? ' is-expired' : ''}${medicationTaken ? ' is-medication-taken' : ''}`} type="button" key={`${todo.type}-${todo.id}-${todo.patientId}-${todo.occurredAt || ''}`} onClick={() => openTodo(todo)}><div className={`health-todo-card__icon ${todo.type.toLowerCase()}`}>{todo.type === 'APPOINTMENT' ? '挂' : todo.type === 'MEDICATION' ? '药' : '访'}</div><div><b>{todo.occurredAt ? formatMedicalTime(todo.occurredAt) : '时间待确认'} · {todo.title}</b><span>{todo.patientName} · {todo.detail}</span>{todo.type === 'APPOINTMENT' && <small>科室位置：{todo.departmentLocation || '科室位置待确认'}</small>}</div>{medicationTaken ? <em className="health-todo-card__taken">已服用</em> : <ChevronRight size={18} />}</button>;
+        })}
         {!todos.length && <p className="empty-state">暂无健康待办</p>}
       </section>
     </section>

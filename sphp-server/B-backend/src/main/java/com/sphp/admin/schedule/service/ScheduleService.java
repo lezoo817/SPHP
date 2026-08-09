@@ -42,9 +42,10 @@ public interface ScheduleService {
 
     /**
      * 创建排班（ADMIN，自动填充 dept_id 与 DRAFT 状态；同医生同日期同班次唯一）。
+     * {@code publishImmediately=true} 时自动配置默认时段（1小时/段）并发布，返回状态为 PUBLISHED。
      *
      * @param request 创建请求
-     * @return 创建结果（排班 ID、状态 DRAFT、创建时间）
+     * @return 创建结果（排班 ID、状态 DRAFT 或 PUBLISHED、创建时间）
      */
     ScheduleCreateVO create(ScheduleCreateRequest request);
 

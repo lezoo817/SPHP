@@ -110,7 +110,7 @@ export default function ScheduleList() {
     setSubmitting(true);
     try {
       await createSchedule(payload);
-      message.success('排班创建成功');
+      message.success(payload.publishImmediately ? '排班创建成功并已发布' : '排班创建成功');
       setCreateOpen(false);
       actionRef.current?.reload();
     } catch (err: unknown) {

@@ -38,7 +38,7 @@ export default function RejectModal({ open, submitting, onCancel, onSubmit }: Pr
       okText="确认驳回"
       okButtonProps={{ danger: true, loading: submitting }}
       cancelText="取消"
-      destroyOnClose
+      destroyOnHidden
     >
       <div style={{ marginBottom: 8 }}>
         <Text>驳回原因：</Text>

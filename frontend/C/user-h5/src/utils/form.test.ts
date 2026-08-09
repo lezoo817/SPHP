@@ -16,6 +16,7 @@ import { buildProfileUpdatePayload, normalizeProfileIdCardNo, resolveProfileIdem
 import { resolveMinePatientId } from '../models/mine-patient';
 import { isSessionTokenExpired, type SessionState } from '../models/session';
 import { buildDoctorPagePath, buildDoctorPaymentPath, findDoctorById, getDoctorScheduleDates } from './doctor';
+import { buildConsultationDetailPath, formatConsultationMessageTime } from './consultation';
 import { groupSlotsByHalfDay, summarizeHalfDaySlots } from './doctor';
 import { buildAppointmentsPath } from '../services/registration';
 import { buildNotificationsPath } from '../services/notification';
@@ -88,6 +89,17 @@ describe('就诊人默认选择', () => {
       { patientId: 9, relation: 'CHILD', isDefault: true },
       { patientId: 3, relation: 'SELF', isDefault: false },
     ])).toBe(3);
+  });
+});
+
+describe('在线问诊患者上下文', () => {
+  it('问诊详情路径透传当前就诊人，缺失时不拼接空参数', () => {
+    expect(buildConsultationDetailPath(801, 2001)).toBe('/assistant/consultation/801?patientId=2001');
+    expect(buildConsultationDetailPath(801)).toBe('/assistant/consultation/801');
+  });
+
+  it('医生回复时间按 YYYY/MM/DD hh:mm 展示并去掉秒', () => {
+    expect(formatConsultationMessageTime('2026-08-08T08:44:55.92589Z')).toMatch(/^2026\/08\/08 \d{2}:44$/);
   });
 });
 
@@ -473,6 +485,7 @@ describe('我的处方查询规则', () => {
     expect(path).toBe('/assistant/prescription/1001?source=mine-prescriptions&startDate=2026-07-01&endDate=2026-08-05&patientId=2001&issuedAt=2026-08-05T10%3A00%3A00%2B08%3A00');
     expect(buildMinePrescriptionListPath(new URLSearchParams(path.split('?')[1]))).toBe('/mine/prescriptions?patientId=2001&startDate=2026-07-01&endDate=2026-08-05');
     expect(buildAssistantPrescriptionDetailPath(1001, 2001, '2026-08-05T10:00:00+08:00')).toBe('/assistant/prescription/1001?source=assistant&patientId=2001&issuedAt=2026-08-05T10%3A00%3A00%2B08%3A00');
+    expect(buildAssistantPrescriptionDetailPath(1001, 2001, '2026-08-05T10:00:00+08:00', 801)).toBe('/assistant/prescription/1001?source=consultation&patientId=2001&issuedAt=2026-08-05T10%3A00%3A00%2B08%3A00&consultationId=801');
   });
 
   it('处方展示编号使用开具时间戳和四位随机尾号', () => {

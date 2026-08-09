@@ -4,11 +4,13 @@
  * 通过 getColumns(deps) 工厂生成：操作列依赖查看详情/提交回调；
  * 搜索项（问诊ID/患者ID）置于列表首部且隐藏于表格（hideInTable）。
  */
-import { Tag, Button, Space, Select } from 'antd';
-import { EyeOutlined, SendOutlined } from '@ant-design/icons';
+import { Tag, Button, Space, Select, Tooltip, Typography } from 'antd';
+import { ExclamationCircleOutlined, EyeOutlined, SendOutlined } from '@ant-design/icons';
 import type { ProColumns } from '@ant-design/pro-components';
 import dayjs from 'dayjs';
 import { STATUS_MAP, STATUS_OPTIONS } from '../constants';
+
+const { Text } = Typography;
 
 interface ColumnsDeps {
   onViewDetail: (id: number) => void;
@@ -83,6 +85,35 @@ export function getColumns(deps: ColumnsDeps): ProColumns<API.Prescription>[] {
       render: (_: unknown, record: API.Prescription) => {
         const s = STATUS_MAP[record.status];
         return <Tag color={s?.color}>{s?.text ?? record.status}</Tag>;
+      },
+    },
+    {
+      title: '风险',
+      dataIndex: 'riskWarnings',
+      width: 120,
+      hideInSearch: true,
+      render: (_: unknown, record: API.Prescription) => {
+        const warnings = record.riskWarnings ?? [];
+        if (warnings.length === 0) return <Text type="secondary">-</Text>;
+        // 命中审核级（AUDIT，高危）优先标红，仅提示（WARNING，重复用药）标黄
+        const hasAudit = warnings.some((w) => w.level === 'AUDIT');
+        return (
+          <Tooltip
+            title={
+              <Space direction="vertical" size={2}>
+                {warnings.map((w, i) => (
+                  <span key={i}>
+                    {w.level === 'AUDIT' ? '⚠️' : 'ℹ️'} {w.message}
+                  </span>
+                ))}
+              </Space>
+            }
+          >
+            <Tag color={hasAudit ? 'red' : 'orange'} style={{ cursor: 'pointer' }}>
+              <ExclamationCircleOutlined /> {warnings.length} 条风险
+            </Tag>
+          </Tooltip>
+        );
       },
     },
     {

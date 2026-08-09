@@ -23,7 +23,7 @@ export default function AddDoctorModal({
       title="新增医生"
       open={open}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       onCancel={onCancel}
       width={600}
     >

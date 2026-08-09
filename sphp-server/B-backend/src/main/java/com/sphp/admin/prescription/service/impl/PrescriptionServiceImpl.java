@@ -250,9 +250,11 @@ public class PrescriptionServiceImpl implements PrescriptionService {
                 .auditRequired(STATUS_SUBMITTED.equals(prescription.getStatus()))
                 .riskWarnings(prescription.getRiskWarnings() != null
                         ? prescription.getRiskWarnings() : List.of())
+                .rejectReason(prescription.getRejectReason())
                 .items(itemVOs)
                 .issuedAt(prescription.getIssuedAt())
                 .auditedAt(prescription.getAuditedAt())
+                .createdAt(prescription.getCreatedAt())
                 .build();
     }
 

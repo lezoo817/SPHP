@@ -9,6 +9,7 @@ import com.sphp.patient.health.vo.AllergyCreateVO;
 import com.sphp.patient.health.vo.AllergyUpdateVO;
 import com.sphp.patient.health.vo.MedicalHistoryCreateVO;
 import com.sphp.patient.health.vo.MedicalHistoryUpdateVO;
+import com.sphp.patient.health.vo.HealthRecordDeleteVO;
 
 /**
  * C端健康档案服务。
@@ -41,6 +42,14 @@ public interface HealthService {
     AllergyUpdateVO updateAllergy(Long allergyId, AllergyUpdateRequest request);
 
     /**
+     * 软删除当前账号可访问就诊人的过敏史。
+     *
+     * @param allergyId 过敏史 ID，所属就诊人由服务端反查
+     * @return 删除记录 ID 和删除时间
+     */
+    HealthRecordDeleteVO deleteAllergy(Long allergyId);
+
+    /**
      * 为当前账号可访问就诊人新增既往史。
      *
      * @param request 新增既往史请求
@@ -56,4 +65,12 @@ public interface HealthService {
      * @return 更新后的既往史信息
      */
     MedicalHistoryUpdateVO updateMedicalHistory(Long historyId, MedicalHistoryUpdateRequest request);
+
+    /**
+     * 软删除当前账号可访问就诊人的既往史。
+     *
+     * @param historyId 既往史 ID，所属就诊人由服务端反查
+     * @return 删除记录 ID 和删除时间
+     */
+    HealthRecordDeleteVO deleteMedicalHistory(Long historyId);
 }

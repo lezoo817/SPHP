@@ -1,14 +1,16 @@
 /**
  * 接诊台右栏 - 接诊操作区。
  *
- * 按选中状态分支渲染：待接诊（开始接诊）/ 接诊中（病历编辑 + 留言板）/ 历史（详情）。
+ * 顶部患者信息条（姓名/性别/年龄/过敏预警，点详情展开 Drawer）；
+ * 按选中状态分支渲染：待接诊（开始接诊）/ 接诊中（病历编辑+开处方+留言板）/ 历史（详情）。
  */
 import type { KeyboardEvent } from 'react';
 import { Button, Divider, Empty, Typography } from 'antd';
 import { MedicineBoxOutlined, StopOutlined } from '@ant-design/icons';
 import styles from './index.module.less';
-import type { QueueTab, SelectedStatus } from './constants';
+import type { SelectedStatus } from './constants';
 import type { NoteField } from './NoteForm';
+import PatientInfoBar from './PatientInfoBar';
 import StartConsultArea from './StartConsultArea';
 import NoteForm from './NoteForm';
 import MessageBoard from './MessageBoard';
@@ -17,16 +19,20 @@ import HistoryDetailPanel from './HistoryDetailPanel';
 const { Title } = Typography;
 
 interface ConsultPanelProps {
-  queueTab: QueueTab;
   selectedConsultId: number | null;
   selectedStatus: SelectedStatus | null;
+  // 患者信息条
+  patientDetail: API.PatientDetail | undefined;
+  detailLoading: boolean;
+  // 历史详情
   historyDetail: API.ConsultHistoryDetail | undefined;
   historyDetailLoading: boolean;
+  // 待接诊选中项（用于开始接诊的时段展示与校验）
+  pendingSelectedItem: API.QueueItem | undefined;
   startingConsult: boolean;
   endingConsult: boolean;
   handleStartConsult: () => void;
   handleEndConsult: () => void;
-  queueItems: API.QueueItem[];
   noteChanged: boolean;
   savingNote: boolean;
   reportChiefComplaint: string;
@@ -38,6 +44,11 @@ interface ConsultPanelProps {
   handleFieldChange: (field: NoteField, value: string) => void;
   handleSaveNote: () => void;
   consultPrescriptions: API.Prescription[];
+  // 开处方
+  onOpenPrescription: () => void;
+  onViewPrescription: (id: number) => void;
+  onReopenPrescription: (id: number) => void;
+  // 留言板
   messages: API.MessageVO[];
   messagesLoading: boolean;
   messageInput: string;
@@ -49,16 +60,17 @@ interface ConsultPanelProps {
 }
 
 export default function ConsultPanel({
-  queueTab,
   selectedConsultId,
   selectedStatus,
+  patientDetail,
+  detailLoading,
   historyDetail,
   historyDetailLoading,
+  pendingSelectedItem,
   startingConsult,
   endingConsult,
   handleStartConsult,
   handleEndConsult,
-  queueItems,
   noteChanged,
   savingNote,
   reportChiefComplaint,
@@ -70,6 +82,9 @@ export default function ConsultPanel({
   handleFieldChange,
   handleSaveNote,
   consultPrescriptions,
+  onOpenPrescription,
+  onViewPrescription,
+  onReopenPrescription,
   messages,
   messagesLoading,
   messageInput,
@@ -79,25 +94,33 @@ export default function ConsultPanel({
   handleSendMessage,
   handleMessageKeyDown,
 }: ConsultPanelProps) {
-  const selectedItem = queueItems.find((i) => i.consultId === selectedConsultId);
-
   return (
     <div className={styles.panel}>
       <div className={styles.panelHeader}>
         <Title level={5} style={{ margin: 0 }}>
-          <MedicineBoxOutlined /> {queueTab === 'HISTORY' ? '接诊详情' : '接诊操作'}
+          <MedicineBoxOutlined /> 接诊操作
         </Title>
       </div>
+
+      {/* 患者信息条：一行展示核心信息 + 详情 Drawer，不占用操作区版面 */}
+      <div className={styles.patientInfoBarWrap}>
+        <PatientInfoBar
+          selectedConsultId={selectedConsultId}
+          detailLoading={detailLoading}
+          patientDetail={patientDetail}
+        />
+      </div>
+
       <div className={styles.consultContent}>
         {!selectedConsultId ? (
           <Empty description="请选择患者" />
-        ) : queueTab === 'HISTORY' ? (
+        ) : selectedStatus === 'COMPLETED' ? (
           // 历史接诊详情
           <HistoryDetailPanel loading={historyDetailLoading} detail={historyDetail} />
         ) : selectedStatus === 'PENDING' ? (
           <StartConsultArea
-            slotStartTime={selectedItem?.slotStartTime}
-            slotEndTime={selectedItem?.slotEndTime}
+            slotStartTime={pendingSelectedItem?.slotStartTime}
+            slotEndTime={pendingSelectedItem?.slotEndTime}
             starting={startingConsult}
             onStart={handleStartConsult}
           />
@@ -115,7 +138,7 @@ export default function ConsultPanel({
               结束问诊
             </Button>
 
-            {/* 病历记录 + 已开处方 */}
+            {/* 病历记录 + 开处方 + 已开处方 */}
             <NoteForm
               values={{
                 chiefComplaint: reportChiefComplaint,
@@ -130,6 +153,9 @@ export default function ConsultPanel({
               consultPrescriptions={consultPrescriptions}
               onFieldChange={handleFieldChange}
               onSave={handleSaveNote}
+              onOpenPrescription={onOpenPrescription}
+              onViewPrescription={onViewPrescription}
+              onReopenPrescription={onReopenPrescription}
             />
 
             <Divider style={{ margin: '12px 0' }} />

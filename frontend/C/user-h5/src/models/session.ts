@@ -1,6 +1,7 @@
 import type { LoginData, LoginUser, TokenPair } from '../typings/api';
 import { clearRequestCache } from '../query/request-cache';
 import { clearDismissedExpiredHealthTodos } from './expired-health-todo';
+import { clearMedicationHealthTodoStates } from './medication-health-todo';
 import { clearSelection } from './selection';
 
 const SESSION_KEY = 'sphp_c_session';
@@ -52,6 +53,8 @@ export function clearSession(): void {
   clearSelection();
   // 过期待办关闭状态仅绑定本次登录会话，避免换账号后继承旧记录。
   clearDismissedExpiredHealthTodos();
+  // 本地服药确认只属于当前账号会话，退出后不可由下一账号继承。
+  clearMedicationHealthTodoStates();
   if (typeof window !== 'undefined') window.sessionStorage.removeItem(SESSION_KEY);
 }
 

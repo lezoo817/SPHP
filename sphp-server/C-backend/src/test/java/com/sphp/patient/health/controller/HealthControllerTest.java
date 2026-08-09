@@ -12,6 +12,7 @@ import com.sphp.patient.health.vo.MedicalHistoryCreateVO;
 import com.sphp.patient.health.vo.MedicalHistoryUpdateVO;
 import com.sphp.patient.health.vo.HealthProfileVO;
 import com.sphp.patient.health.vo.HealthRecordVO;
+import com.sphp.patient.health.vo.HealthRecordDeleteVO;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.auth.support.context.CUserPrincipal;
 import com.sphp.patient.auth.exception.CAuthException;
@@ -37,6 +38,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -196,6 +198,42 @@ class HealthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("既往史已更新"))
                 .andExpect(jsonPath("$.data.content").value("高血压病史6年"));
+    }
+
+    /**
+     * 验证删除过敏史接口通过幂等服务返回软删除结果。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void deleteAllergyReturnsDeletedResult() throws Exception {
+        HealthService healthService = mock(HealthService.class);
+        CIdempotencyService idempotencyService = mock(CIdempotencyService.class);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        when(idempotencyService.execute(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new IdempotencyPayload<>("过敏史已删除", HealthRecordDeleteVO.builder()
+                        .id(16001L).deletedAt(OffsetDateTime.parse("2026-08-09T12:00:00+08:00")).build()));
+
+        newMockMvc(healthService, idempotencyService).perform(delete("/c/v1/health-record/allergies/16001")
+                        .header("X-Idempotency-Key", "allergy-delete-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("过敏史已删除"))
+                .andExpect(jsonPath("$.data.id").value(16001L))
+                .andExpect(jsonPath("$.data.deletedAt").value("2026-08-09T12:00:00+08:00"));
+    }
+
+    /**
+     * 验证删除既往史缺少幂等键时返回参数错误。
+     *
+     * @throws Exception MockMvc 调用失败时抛出
+     */
+    @Test
+    void deleteMedicalHistoryRejectsMissingIdempotencyKey() throws Exception {
+        newMockMvc(mock(HealthService.class), mock(CIdempotencyService.class))
+                .perform(delete("/c/v1/health-record/histories/17001"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("A0400"));
     }
 
     /**

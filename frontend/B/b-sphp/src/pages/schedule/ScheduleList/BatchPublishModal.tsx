@@ -223,7 +223,7 @@ export default function BatchPublishModal({ open, onCancel, onPublished }: Props
       open={open}
       onCancel={onCancel}
       width={840}
-      destroyOnClose
+      destroyOnHidden
       footer={[
         <Button key="cancel" onClick={onCancel}>取消</Button>,
         <Button

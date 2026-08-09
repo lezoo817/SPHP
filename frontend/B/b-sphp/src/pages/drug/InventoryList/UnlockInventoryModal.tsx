@@ -24,7 +24,7 @@ export default function UnlockInventoryModal({
       title="释放锁定库存"
       open={open}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       onCancel={onCancel}
       width={480}
     >

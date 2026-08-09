@@ -25,7 +25,7 @@ export default function TemplateDetailModal({ open, data, onCancel }: Props) {
       footer={null}
       onCancel={onCancel}
       width={640}
-      destroyOnClose
+      destroyOnHidden
     >
       {data && (
         <>
