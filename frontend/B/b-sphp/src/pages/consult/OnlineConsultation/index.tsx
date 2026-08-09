@@ -17,6 +17,7 @@ import {
   Select,
   Space,
   Spin,
+  Table,
   Tabs,
   Tag,
   Typography,
@@ -60,6 +61,38 @@ interface PrescriptionFormValues {
   }>;
 }
 
+interface AllergySummaryItem {
+  allergen?: string;
+  reaction?: string;
+}
+
+interface MedicalHistorySummaryItem {
+  content?: string;
+  name?: string;
+  occurredAt?: string;
+  date?: string;
+}
+
+/** 将后端性别枚举转换为 B 端展示文案。 */
+function formatGender(gender?: string): string {
+  if (gender === 'MALE' || gender === '男') return '男';
+  if (gender === 'FEMALE' || gender === '女') return '女';
+  return '未知';
+}
+
+/** 将预问诊中的日期统一格式化为 YYYY/MM/DD。 */
+function formatHistoryDate(value?: string): string {
+  if (!value) return '-';
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed.format('YYYY/MM/DD') : value;
+}
+
+/** 读取 AI 摘要中的数组字段，兼容接口返回空值或旧格式。 */
+function readSummaryArray<T>(summary: Record<string, any> | undefined, key: string): T[] {
+  const value = summary?.[key];
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
 const STATUS_TEXT: Record<OnlineStatus, string> = {
   PENDING: '待回复',
   IN_PROGRESS: '回复中',
@@ -101,6 +134,9 @@ export default function OnlineConsultationPage() {
   const detail = detailQuery.data;
   const templates = templatesQuery.data?.list ?? [];
   const patient = detail?.patientDetail.patient;
+  const aiSummary = detail?.patientDetail.aiSummary;
+  const allergyRows = readSummaryArray<AllergySummaryItem>(aiSummary, 'allergies');
+  const medicalHistoryRows = readSummaryArray<MedicalHistorySummaryItem>(aiSummary, 'medicalHistories');
   const selectedTemplateOptions = useMemo(
     () => templates.map((item) => ({ value: item.id, label: item.name })),
     [templates],
@@ -268,7 +304,7 @@ export default function OnlineConsultationPage() {
             <section className={styles.section}>
               <Title level={5}>患者信息</Title>
               <Descriptions size="small" column={3}>
-                <Descriptions.Item label="性别">{patient?.gender || '-'}</Descriptions.Item>
+                <Descriptions.Item label="性别">{formatGender(patient?.gender)}</Descriptions.Item>
                 <Descriptions.Item label="出生日期">{patient?.dateOfBirth || '-'}</Descriptions.Item>
                 <Descriptions.Item label="电话">{patient?.phone || '-'}</Descriptions.Item>
               </Descriptions>
@@ -277,16 +313,46 @@ export default function OnlineConsultationPage() {
             <section className={styles.section}>
               <Title level={5}>AI 预问诊摘要</Title>
               <Descriptions size="small" column={1}>
-                <Descriptions.Item label="主诉">{detail.chiefComplaint || '-'}</Descriptions.Item>
                 <Descriptions.Item label="现病史">
                   {detail.historyOfPresentIllness || '-'}
                 </Descriptions.Item>
               </Descriptions>
-              {detail.patientDetail.aiSummary && (
-                <pre className={styles.summaryJson}>
-                  {JSON.stringify(detail.patientDetail.aiSummary, null, 2)}
-                </pre>
-              )}
+              <div className={styles.summaryTables}>
+                <Title level={5}>过敏史</Title>
+                <Table<AllergySummaryItem>
+                  size="small"
+                  bordered
+                  pagination={false}
+                  rowKey={(row, index) => `${row.allergen ?? 'allergy'}-${index}`}
+                  locale={{ emptyText: '暂无过敏史' }}
+                  dataSource={allergyRows}
+                  columns={[
+                    { title: '名称', dataIndex: 'allergen', key: 'allergen', render: (value) => value || '-' },
+                    { title: '过敏反应', dataIndex: 'reaction', key: 'reaction', render: (value) => value || '-' },
+                  ]}
+                />
+                <Title level={5} className={styles.historyTitle}>既往史</Title>
+                <Table<MedicalHistorySummaryItem>
+                  size="small"
+                  bordered
+                  pagination={false}
+                  rowKey={(row, index) => `${row.name ?? row.content ?? 'history'}-${index}`}
+                  locale={{ emptyText: '暂无既往史' }}
+                  dataSource={medicalHistoryRows}
+                  columns={[
+                    {
+                      title: '名称',
+                      key: 'name',
+                      render: (_, row) => row.name || row.content || '-',
+                    },
+                    {
+                      title: '时间',
+                      key: 'occurredAt',
+                      render: (_, row) => formatHistoryDate(row.occurredAt || row.date),
+                    },
+                  ]}
+                />
+              </div>
             </section>
 
             {detail.status === 'PENDING' && (
