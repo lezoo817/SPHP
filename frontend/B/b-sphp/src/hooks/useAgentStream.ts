@@ -174,7 +174,11 @@ export function useAgentStream(): UseAgentStream {
   /**
    * 收尾一张 L2 工具卡：L2 工具（如 save_pre_consultation）在后端只下发 action，
    * 不会下发 observation（被挂起 pending_confirmations 等待确认），其 loading 卡片
-   * 若不加处理会永久显示"调用中"。据此把它从 loading 收尾为 pending / success。
+   * 若不加处理会永久显示"调用中"。据此把它从 loading / pending 收尾为 success。
+   *
+   * 状态机：L2 工具卡经历 `loading`（action 下发）→ `pending`（对应 card 下发时收尾）→ `success`（确认成功后收尾）。
+   * 因此本查找需同时匹配 `loading` 与 `pending`：第二次调用时卡片已不再是 `loading`，
+   * 只匹配 `loading` 会导致确认成功后工具卡永远停在 "待确认"。
    * @param cardType 确认卡类型，反查对应的 L2 工具名
    * @param patch 要写入工具卡的状态（pending 待确认 / success 成功）
    */
@@ -182,16 +186,33 @@ export function useAgentStream(): UseAgentStream {
     const tool = AGENT_CARD_TYPE_TO_TOOL[cardType];
     if (!tool) return;
     setEntries((prev) => {
-      // 从后往前找最近一张同 tool 且仍 loading 的卡片（L2 工具卡不下发 observation，需在此收尾）
+      // 从后往前找最近一张同 tool 且仍 loading / pending 的卡片
+      // （L2 工具卡不下发 observation，先收到 confirm_card 时已变 pending，确认后变 success）
       let matchedIndex = -1;
       for (let i = prev.length - 1; i >= 0; i -= 1) {
         const entry = prev[i];
-        if (entry.kind === 'tool' && entry.data.tool === tool && entry.data.status === 'loading') {
+        if (
+          entry.kind === 'tool' &&
+          entry.data.tool === tool &&
+          (entry.data.status === 'loading' || entry.data.status === 'pending')
+        ) {
           matchedIndex = i;
           break;
         }
       }
-      if (matchedIndex === -1) return prev;
+      if (matchedIndex === -1) {
+        // 找不到对应工具卡：通常发生在 SSE 重连/丢包导致 action 事件缺失，但确认仍成功。
+        // 与 updateToolCard 策略一致：直接新建一张已完成卡片，避免结果丢失让用户困惑。
+        const fallback: AgentToolCard = {
+          id: genId('tool'),
+          tool,
+          label: labelOf(tool),
+          status: 'success',
+          summary: typeof patch.summary === 'string' ? patch.summary : undefined,
+          createdAt: Date.now(),
+        };
+        return [...prev, { kind: 'tool', data: fallback }];
+      }
       const matched = prev[matchedIndex] as { kind: 'tool'; data: AgentToolCard };
       const updated: AgentToolCard = { ...matched.data, ...patch };
       const next = prev.slice();
