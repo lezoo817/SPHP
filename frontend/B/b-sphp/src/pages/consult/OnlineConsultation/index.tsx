@@ -318,6 +318,10 @@ export default function OnlineConsultationPage() {
                 </Descriptions.Item>
               </Descriptions>
               <div className={styles.summaryTables}>
+                <Title level={5}>主诉</Title>
+                <div className={styles.complaintBox}>
+                  {detail.chiefComplaint || '-'}
+                </div>
                 <Title level={5}>过敏史</Title>
                 <Table<AllergySummaryItem>
                   size="small"
