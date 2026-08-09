@@ -83,6 +83,12 @@ public class ScheduleServiceImpl implements ScheduleService {
     private static final String STATUS_PUBLISHED = "PUBLISHED";
     private static final String STATUS_CANCELLED = "CANCELLED";
 
+    /**
+     * 排班列表一级排序的状态优先级（数值越小越靠前）：PUBLISHED 优先，其他状态（DRAFT / 过期 / 作废等）次之。
+     */
+    private static final int SORT_PRIO_PUBLISHED = 0;
+    private static final int SORT_PRIO_OTHER = 1;
+
     /** 号源快照状态 */
     private static final String SNAP_LOCKED = "LOCKED";
     private static final String SNAP_AVAILABLE = "AVAILABLE";
@@ -148,6 +154,8 @@ public class ScheduleServiceImpl implements ScheduleService {
      * @param page        页码（1 起）
      * @param size        每页大小（调用方已钳制到 [1, MAX_PAGE_SIZE]）
      * @return 排班分页结果（含号源聚合计数）
+     *
+     * <p>排序见 {@link #buildScheduleListOrderBy()}：PUBLISHED 优先 → 其他状态 → 日期倒序 → id 升序。
      */
     @Override
     public PageResult<ScheduleListVO> page(LocalDate date, Long deptId, Long doctorId, String status, Boolean hideInvalid, int page, int size) {
@@ -182,9 +190,9 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .apply(hideInvalid != null && hideInvalid,
                         "NOT (status = {0} OR (status = {1} AND schedule_date < {2}))",
                         STATUS_CANCELLED, STATUS_PUBLISHED, LocalDate.now())
-                // 按排班日期倒序展示，最近的排班在最前
-                .orderByDesc(Schedule::getScheduleDate)
-                .orderByAsc(Schedule::getId);
+                // 排序：日期倒序 + 状态优先级 + id 升序。MyBatis-Plus 的 apply() 只能拼到 WHERE 段，
+                // 写不进 ORDER BY，所以这里用 last() 整体追加；状态值与优先级均为常量，安全拼接。
+                .last(buildScheduleListOrderBy());
 
         Page<Schedule> result = scheduleMapper.selectPage(new Page<>(page, size), wrapper);
         return PageResult.of(result.getTotal(), buildListVO(result.getRecords()), page, size);
@@ -857,6 +865,24 @@ public class ScheduleServiceImpl implements ScheduleService {
                         .count(it.getCount())
                         .build())
                 .toList();
+    }
+
+    /**
+     * 构造排班列表分页查询的 ORDER BY 子句。
+     *
+     * <p>排序规则：状态优先级（PUBLISHED 优先，其他状态次之）→ 日期倒序（最近的排班在最前）→
+     * id 升序（保证分页结果稳定）。
+     *
+     * <p>必须用 {@code last()} 追加（{@code apply()} 只能拼到 WHERE 段）。
+     * 拼接的常量均为 {@code private static final}，无 SQL 注入风险。
+     */
+    private String buildScheduleListOrderBy() {
+        return String.format(
+                "ORDER BY "
+                        + "CASE WHEN status = '%s' THEN %d ELSE %d END ASC, "
+                        + "schedule_date DESC, "
+                        + "id ASC",
+                STATUS_PUBLISHED, SORT_PRIO_PUBLISHED, SORT_PRIO_OTHER);
     }
 
     /**
