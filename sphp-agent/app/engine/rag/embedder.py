@@ -40,6 +40,8 @@ def build_embedding() -> OpenAIEmbeddings:
             api_key=SecretStr(settings.dashscope_embedding_api_key),
             base_url=settings.dashscope_embedding_base_url,
             check_embedding_ctx_length=False,
+            # 当前百炼兼容端点限制每个 embeddings 请求最多 10 条输入，避免大文档切分后入库失败。
+            chunk_size=10,
         )
 
     if provider == "siliconflow":
