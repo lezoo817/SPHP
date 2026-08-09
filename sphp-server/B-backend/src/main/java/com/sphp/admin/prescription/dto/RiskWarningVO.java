@@ -8,6 +8,9 @@ import lombok.NoArgsConstructor;
 
 /**
  * 处方风险警告 VO。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @Builder

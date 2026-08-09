@@ -12,6 +12,9 @@ import java.util.List;
 
 /**
  * 处方提交请求体。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @Schema(description = "处方提交请求")

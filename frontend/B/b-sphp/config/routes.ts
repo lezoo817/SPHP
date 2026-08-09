@@ -1,3 +1,11 @@
+/**
+ * B端路由注册表。
+ *
+ * 组织原则：按业务模块分组，每组注释标注访问角色（仅 ADMIN / 所有人）；
+ * 权限标识（access）统一声明在组级节点上，子路由仅声明 component，
+ * 避免同一组内权限分散导致后续新增路由时漏配 access。
+ * login 页 layout: false 表示不套 MainLayout 主布局。
+ */
 const routes = [
   { path: '/login', component: 'login', layout: false },
   {
@@ -74,9 +82,12 @@ const routes = [
         ],
       },
       // 患者管理（所有人，数据权限由后端控制）
+      // redirect 放在子路由而非父路由：父路由带 redirect + children 会导致子路由不渲染（白屏、不发请求）。
+      // 与 /consult 的写法保持一致（子路由 { path: '/patient', redirect: '/patient/list' } 兜底菜单点击）。
       {
         path: '/patient',
         routes: [
+          { path: '/patient', redirect: '/patient/list' },
           { path: '/patient/list', component: 'patient/PatientList' },
           { path: '/patient/detail/:id', component: 'patient/PatientDetail' },
         ],

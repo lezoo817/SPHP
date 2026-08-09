@@ -145,7 +145,11 @@ export default function OnlineConsultationPage() {
     staleTime: 30_000,
   });
 
-  const templates = templatesQuery.data?.list ?? [];
+  // 空数组兜底用 useMemo 固定引用，否则每次渲染生成新数组会让下方 useMemo 依赖失效
+  const templates = useMemo(
+    () => templatesQuery.data?.list ?? [],
+    [templatesQuery.data],
+  );
   const drugOptions = (drugsQuery.data?.list ?? []).map((drug) => ({
     value: drug.id,
     label: `${drug.name}${drug.specification ? `（${drug.specification}）` : ''}`,

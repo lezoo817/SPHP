@@ -19,6 +19,9 @@ public class DrugUpdateRequest {
     @Schema(description = "适应症")
     private String indication;
 
+    @Schema(description = "禁忌症（供处方风险拦截器做禁忌匹配，如：活动性消化道溃疡患者禁用）")
+    private String contraindication;
+
     @Schema(description = "生产厂家")
     private String manufacturer;
 

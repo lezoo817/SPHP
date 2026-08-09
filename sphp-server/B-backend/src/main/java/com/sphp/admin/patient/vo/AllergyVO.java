@@ -8,6 +8,9 @@ import lombok.NoArgsConstructor;
 
 /**
  * 过敏史 VO。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @Builder

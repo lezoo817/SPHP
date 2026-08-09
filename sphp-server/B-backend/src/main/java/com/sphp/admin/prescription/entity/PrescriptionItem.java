@@ -9,6 +9,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 处方明细表实体（对应表 prescription_item）。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @TableName("prescription_item")

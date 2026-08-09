@@ -8,6 +8,8 @@ import com.sphp.admin.doctor.entity.PatientAllergy;
 import com.sphp.admin.doctor.entity.PatientMedicalHistory;
 import com.sphp.admin.doctor.mapper.BPatientAllergyMapper;
 import com.sphp.admin.doctor.mapper.BPatientMedicalHistoryMapper;
+import com.sphp.admin.patient.entity.MedicationPlan;
+import com.sphp.admin.patient.mapper.MedicationPlanMapper;
 import com.sphp.admin.prescription.dto.PrescriptionSubmitRequest;
 import com.sphp.admin.prescription.dto.RiskWarningVO;
 import com.sphp.admin.prescription.entity.Drug;
@@ -37,6 +39,9 @@ import java.util.regex.Pattern;
  * </ul>
  *
  * <p>过敏原数据源：patient_allergy 表 + consult_record.ai_summary.allergies。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Slf4j
 @Service
@@ -54,6 +59,11 @@ public class PrescriptionRiskChecker {
     private static final String RULE_DUPLICATE = "重复用药检测";
     /** 高危药品规则名 */
     private static final String RULE_HIGH_RISK = "高危药物联用";
+
+    /** 用药计划状态：进行中（计入当前用药比对） */
+    private static final String MEDICATION_STATUS_ACTIVE = "ACTIVE";
+    /** 用药计划状态：暂停中（仍计入当前用药比对，等待医生恢复） */
+    private static final String MEDICATION_STATUS_PAUSED = "PAUSED";
 
     /** ai_summary.allergies 解析尾缀：命中即去除，取核心过敏原词 */
     private static final Pattern ALLERGY_SUFFIX = Pattern.compile("(过敏|史|药物|类)$");
@@ -79,6 +89,7 @@ public class PrescriptionRiskChecker {
 
     private final BPatientAllergyMapper patientAllergyMapper;
     private final BPatientMedicalHistoryMapper patientMedicalHistoryMapper;
+    private final MedicationPlanMapper medicationPlanMapper;
     private final ObjectMapper objectMapper;
 
     /**
@@ -127,8 +138,10 @@ public class PrescriptionRiskChecker {
             }
         }
 
-        // 3. 重复用药（WARNING）：成分键相同或互相包含；命中即进审核队列
+        // 3. 重复用药（WARNING）：本张处方内 + 与患者当前用药两路比对；命中即进审核队列
         boolean duplicateFound = false;
+
+        // 3.1 本张处方内两两比对：成分键相同或互相包含
         for (int i = 0; i < items.size(); i++) {
             Drug drugA = drugMap.get(items.get(i).getDrugId());
             if (drugA == null) continue;
@@ -142,6 +155,31 @@ public class PrescriptionRiskChecker {
                             .rule(RULE_DUPLICATE)
                             .message("处方中存在可能重复用药：「" + drugA.getName() + "」与「" + drugB.getName()
                                     + "」可能属同一成分，请确认是否需联合使用")
+                            .build());
+                }
+            }
+        }
+
+        // 3.2 与患者当前用药（medication_plan，ACTIVE/PAUSED）比对：
+        //     拦截器此前不读当前用药，长期服药患者再开同成分药会漏检
+        List<MedicationPlan> currentPlans = medicationPlanMapper.selectList(
+                Wrappers.<MedicationPlan>lambdaQuery()
+                        .eq(MedicationPlan::getPatientId, patientId)
+                        .in(MedicationPlan::getStatus,
+                                MEDICATION_STATUS_ACTIVE, MEDICATION_STATUS_PAUSED)
+                        .isNull(MedicationPlan::getDeletedAt));
+        for (PrescriptionSubmitRequest.ItemDTO item : items) {
+            Drug drug = drugMap.get(item.getDrugId());
+            if (drug == null) continue;
+            for (MedicationPlan plan : currentPlans) {
+                if (!StringUtils.hasText(plan.getDrugNameSnapshot())) continue;
+                if (sameIngredient(drug.getName(), plan.getDrugNameSnapshot())) {
+                    duplicateFound = true;
+                    warnings.add(RiskWarningVO.builder()
+                            .level(RISK_LEVEL_WARNING)
+                            .rule(RULE_DUPLICATE)
+                            .message("处方药品「" + drug.getName() + "」与患者当前用药「"
+                                    + plan.getDrugNameSnapshot() + "」可能属同一成分，请确认是否需联合使用")
                             .build());
                 }
             }
@@ -191,7 +229,14 @@ public class PrescriptionRiskChecker {
         return allergens;
     }
 
-    /** 解析 ai_summary.allergies（jsonb 字符串数组）；解析失败返回空列表 */
+    /**
+     * 解析 ai_summary.allergies（jsonb 字符串数组）；解析失败返回空列表。
+     *
+     * @param aiSummaryJson 问诊摘要 JSON 字符串
+     * @return 过敏原列表；摘要为空或解析失败返回空列表
+     * @implNote TODO(lezoo17) 2026-08-09: AI 模块尚未向 ai_summary.allergies 写入数据，
+     *           此来源当前恒为空，过敏拦截仅依赖 patient_allergy；待 AI 侧接通后移除本说明。
+     */
     private List<String> parseAiAllergies(String aiSummaryJson) {
         if (!StringUtils.hasText(aiSummaryJson)) {
             return List.of();

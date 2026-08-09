@@ -9,11 +9,19 @@ import org.apache.ibatis.annotations.Select;
 
 /**
  * 患者管理数据查询 Mapper（复杂多表联查）。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 public interface PatientDataMapper {
 
     /**
      * 分页查询本院患者列表（通过 consult_record → doctor 关联医院）。
+     *
+     * @param page       MyBatis-Plus 分页对象
+     * @param hospitalId 医院 ID，用于按本院数据隔离过滤
+     * @param name       姓名模糊检索（可空）
+     * @return 患者列表分页结果
      */
     @Select("<script>" +
             "SELECT p.id, p.name, p.gender, p.date_of_birth, MAX(cr.created_at)::date AS last_visit_date " +
@@ -34,6 +42,10 @@ public interface PatientDataMapper {
 
     /**
      * 分页查询患者就诊记录。
+     *
+     * @param page      分页对象
+     * @param patientId 患者 ID
+     * @return 就诊记录分页结果
      */
     @Select("<script>" +
             "SELECT cr.id AS consultId, cr.created_at::date AS visitDate, " +
@@ -52,6 +64,10 @@ public interface PatientDataMapper {
 
     /**
      * 分页查询患者历史处方。
+     *
+     * @param page      分页对象
+     * @param patientId 患者 ID
+     * @return 历史处方分页结果
      */
     @Select("<script>" +
             "SELECT p.id, p.consult_id AS consultId, d.name AS doctorName, " +

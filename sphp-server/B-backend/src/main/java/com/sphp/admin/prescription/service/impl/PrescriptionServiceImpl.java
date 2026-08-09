@@ -56,6 +56,9 @@ import java.util.stream.Collectors;
  *   <li>AUDIT（审核）：高危药品 → 处方进入待审核队列</li>
  *   <li>无风险：直接 APPROVED</li>
  * </ul>
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Slf4j
 @Service

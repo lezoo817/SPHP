@@ -7,6 +7,9 @@ import lombok.Data;
 
 /**
  * 审核处方请求。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @Schema(description = "审核处方请求")

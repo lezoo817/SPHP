@@ -11,6 +11,9 @@ import java.util.List;
 
 /**
  * 处方管理服务接口。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 public interface PrescriptionService {
 

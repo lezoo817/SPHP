@@ -15,7 +15,7 @@ import java.util.List;
  * <p>提交前对 (date, shift) 候选集进行只读预演，给出每个候选的最终去向与默认时段拆分预览。
  *
  * @author lezoo17
- * @date 2026-08-07
+ * @since 2026-08-07
  */
 @Data
 @Builder

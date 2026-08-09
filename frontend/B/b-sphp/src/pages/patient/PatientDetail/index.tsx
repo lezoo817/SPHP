@@ -59,7 +59,7 @@ export default function PatientDetail() {
               const res = await getPatientVisits(patientId, { page: current, size: pageSize });
               return { data: res.list, total: res.total, success: true };
             } catch (err: unknown) {
-              message.error(getErrorMessage(err, '查询就诊记录失败'));
+              await message.error(getErrorMessage(err, '查询就诊记录失败'));
               return { data: [], total: 0, success: true };
             }
           }}
@@ -86,7 +86,7 @@ export default function PatientDetail() {
               });
               return { data: res.list, total: res.total, success: true };
             } catch (err: unknown) {
-              message.error(getErrorMessage(err, '查询历史处方失败'));
+              await message.error(getErrorMessage(err, '查询历史处方失败'));
               return { data: [], total: 0, success: true };
             }
           }}

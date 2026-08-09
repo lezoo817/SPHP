@@ -29,17 +29,20 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>外部完整 URL 前缀为 {@code /api/b/...}。
  * 按当前登录用户所属医院做数据隔离过滤；
  * 创建/更新需医生身份，查询/删除不限角色。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @RestController
 @RequestMapping("/b")
-@Tag(name = "5-处方模板", description = "处方模板列表/创建/删除")
+@Tag(name = "处方模板", description = "处方模板列表/创建/删除")
 @RequiredArgsConstructor
 public class PrescriptionTemplateController {
 
     private static final int MAX_PAGE_SIZE = 100;
 
     private static int clampSize(int size) {
-        return Math.max(1, Math.min(size, MAX_PAGE_SIZE));
+        return Math.clamp(size, 1, MAX_PAGE_SIZE);
     }
 
     private final PrescriptionTemplateService templateService;

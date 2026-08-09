@@ -9,6 +9,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 药品目录表实体（对应表 drug）。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @TableName("drug")

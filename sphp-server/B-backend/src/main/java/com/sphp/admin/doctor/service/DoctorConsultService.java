@@ -1,6 +1,7 @@
 package com.sphp.admin.doctor.service;
 
 import com.sphp.admin.common.vo.PageResult;
+import com.sphp.admin.doctor.dto.AllergyCreateRequest;
 import com.sphp.admin.doctor.dto.ConsultEndVO;
 import com.sphp.admin.doctor.dto.ConsultStartVO;
 import com.sphp.admin.doctor.dto.MessageVO;
@@ -72,6 +73,20 @@ public interface DoctorConsultService {
      * @return 患者详情聚合 VO
      */
     PatientDetailVO getPatientDetail(Long consultId);
+
+    /**
+     * 接诊台补录患者过敏史。
+     *
+     * <p>共享患者档案，任一医生在接诊范围内即可补录；先校验问诊归属
+     * （复用 {@code getConsultInScope} 的医院/医生/科室隔离），再写入
+     * patient_allergy。保存后该过敏原立即参与处方风险拦截。
+     *
+     * @param consultId 问诊记录 ID
+     * @param request   过敏原/反应/严重程度
+     * @return 新增过敏史记录 ID
+     * @throws com.sphp.shared.exception.BusinessException 问诊不存在/越权/参数非法
+     */
+    Long addPatientAllergy(Long consultId, AllergyCreateRequest request);
 
     /**
      * 开始接诊。

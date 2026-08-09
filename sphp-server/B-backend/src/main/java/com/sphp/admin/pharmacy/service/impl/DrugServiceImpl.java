@@ -87,6 +87,7 @@ public class DrugServiceImpl implements DrugService {
         drug.setSpecification(request.getSpecification().trim());
         drug.setUnit(unit);
         drug.setIndication(request.getIndication());
+        drug.setContraindication(request.getContraindication());
         drug.setManufacturer(request.getManufacturer());
         drug.setApprovalNumber(request.getApprovalNumber().trim());
         drug.setStatus(status);
@@ -103,6 +104,7 @@ public class DrugServiceImpl implements DrugService {
         if (StringUtils.hasText(request.getSpecification())) drug.setSpecification(request.getSpecification().trim());
         if (StringUtils.hasText(request.getUnit())) drug.setUnit(request.getUnit().trim());
         if (request.getIndication() != null) drug.setIndication(request.getIndication());
+        if (request.getContraindication() != null) drug.setContraindication(request.getContraindication());
         if (request.getManufacturer() != null) drug.setManufacturer(request.getManufacturer());
         if (StringUtils.hasText(request.getApprovalNumber())) {
             assertApprovalUnique(hospitalId, request.getApprovalNumber().trim(), id);
@@ -146,6 +148,7 @@ public class DrugServiceImpl implements DrugService {
                 .specification(d.getSpecification())
                 .unit(d.getUnit())
                 .indication(d.getIndication())
+                .contraindication(d.getContraindication())
                 .manufacturer(d.getManufacturer())
                 .approvalNumber(d.getApprovalNumber())
                 .status(d.getStatus())

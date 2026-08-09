@@ -11,6 +11,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 患者就诊记录 VO。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @Builder

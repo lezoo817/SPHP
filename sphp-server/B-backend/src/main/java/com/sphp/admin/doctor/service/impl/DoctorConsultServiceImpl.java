@@ -12,6 +12,7 @@ import com.sphp.admin.common.DataScope;
 import com.sphp.admin.common.constant.OnlineConsultationConstant;
 import com.sphp.admin.common.enums.BRoleEnum;
 import com.sphp.admin.common.vo.PageResult;
+import com.sphp.admin.doctor.dto.AllergyCreateRequest;
 import com.sphp.admin.doctor.dto.ConsultEndVO;
 import com.sphp.admin.doctor.dto.ConsultHistoryDetailVO;
 import com.sphp.admin.doctor.dto.ConsultHistoryVO;
@@ -355,6 +356,28 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 .recentPrescriptions(recentPrescriptions)
                 .historyRecords(historyRecords)
                 .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long addPatientAllergy(Long consultId, AllergyCreateRequest request) {
+        // 复用问诊归属校验：存在 + 未软删 + 医生属本院 + 角色边界（医生本人/科室主任本室/管理员全院）
+        ConsultRecord record = getConsultInScope(consultId);
+        Patient patient = patientMapper.selectById(record.getPatientId());
+        if (patient == null || patient.getDeletedAt() != null) {
+            throw new BusinessException(ERR_PATIENT_NOT_FOUND, "患者不存在");
+        }
+
+        PatientAllergy allergy = new PatientAllergy();
+        allergy.setPatientId(patient.getId());
+        allergy.setAllergen(request.getAllergen().trim());
+        allergy.setReaction(request.getReaction());
+        allergy.setSeverity(request.getSeverity().trim());
+        patientAllergyMapper.insert(allergy);
+
+        log.info("接诊台补录过敏史 allergyId={}, patientId={}, allergen={}, consultId={}",
+                allergy.getId(), patient.getId(), allergy.getAllergen(), consultId);
+        return allergy.getId();
     }
 
     @Override

@@ -14,7 +14,7 @@ import java.util.List;
  * <p>逐条调现有 {@code publish()}；非 DRAFT / 越权 / 未配置时段等失败原因以明细形式返回，不抛错中断整批。
  *
  * @author lezoo17
- * @date 2026-08-07
+ * @since 2026-08-07
  */
 @Data
 @Builder

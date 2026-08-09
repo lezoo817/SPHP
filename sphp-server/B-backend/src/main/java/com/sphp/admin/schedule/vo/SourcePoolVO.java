@@ -16,7 +16,7 @@ import java.time.LocalDate;
  * 剩余号源口径与排班列表一致：已发布时段取 AVAILABLE + RELEASED 快照数（C 端可预约）。
  *
  * @author lezoo17
- * @date 2026-08-09
+ * @since 2026-08-09
  */
 @Data
 @Builder
