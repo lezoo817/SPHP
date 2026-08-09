@@ -185,4 +185,27 @@ public class HealthController {
         );
         return Result.success(payload.message(), payload.data());
     }
+
+    /**
+     * 删除当前账号可访问就诊人的既往史。
+     *
+     * @param historyId 既往史 ID
+     * @param idempotencyKey 客户端幂等键
+     * @return 软删除结果
+     */
+    @DeleteMapping("/histories/{historyId}")
+    @Operation(summary = "删除既往史")
+    public Result<HealthRecordDeleteVO> deleteMedicalHistory(
+            @PathVariable @Positive(message = "既往史ID必须为正整数") Long historyId,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
+        Long userId = CUserContext.getRequired().userId();
+        IdempotencyPayload<HealthRecordDeleteVO> payload = idempotencyService.execute(
+                userId,
+                "/c/v1/health-record/histories/" + historyId,
+                idempotencyKey,
+                historyId,
+                HealthRecordDeleteVO.class,
+                () -> new IdempotencyPayload<>("既往史已删除", healthService.deleteMedicalHistory(historyId)));
+        return Result.success(payload.message(), payload.data());
+    }
 }

@@ -65,4 +65,12 @@ public interface HealthService {
      * @return 更新后的既往史信息
      */
     MedicalHistoryUpdateVO updateMedicalHistory(Long historyId, MedicalHistoryUpdateRequest request);
+
+    /**
+     * 软删除当前账号可访问就诊人的既往史。
+     *
+     * @param historyId 既往史 ID，所属就诊人由服务端反查
+     * @return 删除记录 ID 和删除时间
+     */
+    HealthRecordDeleteVO deleteMedicalHistory(Long historyId);
 }

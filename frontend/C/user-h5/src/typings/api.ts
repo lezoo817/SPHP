@@ -137,6 +137,12 @@ export interface MedicalHistoryPayload {
   occurredAt?: string;
 }
 
+/** 健康档案记录软删除结果。 */
+export interface HealthRecordDeleteResult {
+  id: number;
+  deletedAt: string;
+}
+
 /** 可供选择的医院。 */
 export interface Hospital { hospitalId: number; name: string; level?: string; address?: string; contact?: string; }
 /** 医院下的可预约科室。 */

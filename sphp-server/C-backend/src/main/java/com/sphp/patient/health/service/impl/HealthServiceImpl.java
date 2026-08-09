@@ -258,6 +258,32 @@ public class HealthServiceImpl implements HealthService {
     }
 
     /**
+     * 软删除当前账号可访问就诊人的既往史。
+     *
+     * @param historyId 既往史 ID
+     * @return 删除记录 ID 和删除时间
+     * @throws CAuthException 记录不存在、已删除、无权访问或条件更新失败时抛出
+     */
+    @Override
+    public HealthRecordDeleteVO deleteMedicalHistory(Long historyId) {
+        PatientMedicalHistory existing = historyMapper.selectOne(Wrappers.<PatientMedicalHistory>lambdaQuery()
+                .eq(PatientMedicalHistory::getId, historyId)
+                .isNull(PatientMedicalHistory::getDeletedAt));
+        if (existing == null) {
+            throw notFound("既往史不存在或已删除");
+        }
+        // 先反查患者归属，避免仅凭记录 ID 删除其他账号的健康档案。
+        Long targetPatientId = requireAccessiblePatientId(existing.getPatientId());
+        OffsetDateTime now = OffsetDateTime.now();
+        // 使用未删除条件更新，保证并发重复删除只会成功一次。
+        int affected = historyMapper.softDeleteActive(historyId, targetPatientId, now);
+        if (affected != 1) {
+            throw notFound("既往史不存在或已删除");
+        }
+        return HealthRecordDeleteVO.builder().id(historyId).deletedAt(now).build();
+    }
+
+    /**
      * 解析并校验当前账号可访问的目标就诊人。
      *
      * @param patientId 请求指定的就诊人 ID，可为 null
