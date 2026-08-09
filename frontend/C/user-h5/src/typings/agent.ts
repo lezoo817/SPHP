@@ -37,6 +37,12 @@ export type AgentPresetAction =
       type: 'authorize_drug_order_reminder_after_receipt';
       /** 服务端真实购药订单 ID。 */
       drugOrderId: number;
+    }
+  | {
+      /** 自动发送一条预设文本消息（首页一键入口触发，走正常 intent 识别，不绑定固定工具）。 */
+      type: 'quick_message';
+      /** 预设消息正文，进入 AI 页面后自动发送一次。 */
+      content: string;
     };
 
 /** 跳转 AI 页面时携带的路由状态。 */

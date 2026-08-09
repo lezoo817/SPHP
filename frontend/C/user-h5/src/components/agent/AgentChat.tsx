@@ -108,6 +108,8 @@ export function AgentChat({
         ? presetAction.consultId
         : presetAction.type === 'notify_appointment_paid'
         ? presetAction.appointmentId
+        : presetAction.type === 'quick_message'
+        ? presetAction.content
         : presetAction.drugOrderId;
     const presetKey = `${presetAction.type}:${businessId}:${resumeSessionId || 'new'}`;
     // 严格模式重挂载与上下文异步就绪时只允许自动发送一次。
@@ -137,6 +139,11 @@ export function AgentChat({
         preset_action: presetAction.type,
         appointment_id: presetAction.appointmentId,
       });
+      return;
+    }
+    if (presetAction.type === 'quick_message') {
+      // 首页一键入口：自动发送预设文本，开新会话走正常 intent 识别，不绑定固定工具。
+      send(presetAction.content, context, { startNewSession: true });
       return;
     }
     // 支付成功后仅查询订单真实状态，不让前端伪造预计送达时间。
