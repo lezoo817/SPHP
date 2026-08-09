@@ -57,7 +57,8 @@ public class DrugServiceImpl implements DrugService {
 
     @Override
     public PageResult<DrugListVO> page(String name, String status, int page, int size) {
-        Long hospitalId = currentUserService.getCurrentHospitalId();
+        // 药品只读查询允许医生用于开方，统一按当前用户数据权限隔离医院。
+        Long hospitalId = currentUserService.getCurrentDataScope().hospitalId();
         Page<Drug> result = drugMapper.selectPage(new Page<>(page, size),
                 Wrappers.<Drug>lambdaQuery()
                         .eq(Drug::getHospitalId, hospitalId)

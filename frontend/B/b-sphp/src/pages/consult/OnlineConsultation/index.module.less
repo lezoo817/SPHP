@@ -84,21 +84,31 @@
   padding: 24px 0;
 }
 
-.summaryJson {
-  max-height: 240px;
-  overflow: auto;
+.summaryTables {
+  margin-top: 16px;
+}
+
+.complaintBox {
+  max-height: 160px;
+  min-height: 72px;
+  overflow-y: auto;
   padding: 12px;
-  margin: 12px 0 0;
+  margin-bottom: 20px;
   background: #f7f8fa;
-  border: 1px solid #e8ebf0;
+  border: 1px solid #d9dfe8;
   border-radius: 4px;
   white-space: pre-wrap;
   word-break: break-word;
+  line-height: 1.7;
+}
+
+.historyTitle {
+  margin-top: 20px !important;
 }
 
 .prescriptionRow {
   display: grid;
-  grid-template-columns: 95px repeat(3, minmax(120px, 1fr)) 80px 80px auto;
+  grid-template-columns: minmax(210px, 1.35fr) repeat(3, minmax(120px, 1fr)) 80px 80px auto;
   gap: 8px;
   align-items: end;
   padding: 10px 0;
