@@ -24,6 +24,8 @@ interface ConsultPanelProps {
   // 患者信息条
   patientDetail: API.PatientDetail | undefined;
   detailLoading: boolean;
+  /** 补录过敏史（成功后刷新患者详情） */
+  handleAddAllergy: (data: API.AllergyCreateReq) => Promise<void>;
   // 历史详情
   historyDetail: API.ConsultHistoryDetail | undefined;
   historyDetailLoading: boolean;
@@ -64,6 +66,7 @@ export default function ConsultPanel({
   selectedStatus,
   patientDetail,
   detailLoading,
+  handleAddAllergy,
   historyDetail,
   historyDetailLoading,
   pendingSelectedItem,
@@ -108,6 +111,7 @@ export default function ConsultPanel({
           selectedConsultId={selectedConsultId}
           detailLoading={detailLoading}
           patientDetail={patientDetail}
+          onAddAllergy={handleAddAllergy}
         />
       </div>
 

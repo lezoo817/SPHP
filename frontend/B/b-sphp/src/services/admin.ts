@@ -278,6 +278,17 @@ export function getPatientDetail(
   return requestData<API.PatientDetail>(`/api/b/doctor/queue/${consultId}`);
 }
 
+/** 接诊台补录患者过敏史 */
+export function addPatientAllergy(
+  consultId: number,
+  data: API.AllergyCreateReq,
+): Promise<number> {
+  return requestData<number>(`/api/b/doctor/consult/${consultId}/allergy`, {
+    method: 'POST',
+    data,
+  });
+}
+
 /** 开始接诊 */
 export function startConsult(
   consultId: number,

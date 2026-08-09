@@ -28,6 +28,9 @@ public class DrugListVO {
     @Schema(description = "适应症")
     private String indication;
 
+    @Schema(description = "禁忌症（供处方风险拦截器做禁忌匹配）")
+    private String contraindication;
+
     @Schema(description = "生产厂家")
     private String manufacturer;
 

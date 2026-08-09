@@ -37,6 +37,7 @@ export default function DrugFormModal({
                 specification: editingDrug.specification,
                 unit: editingDrug.unit,
                 indication: editingDrug.indication,
+                contraindication: editingDrug.contraindication,
                 manufacturer: editingDrug.manufacturer,
                 approvalNumber: editingDrug.approvalNumber,
                 status: editingDrug.status,
@@ -92,6 +93,12 @@ export default function DrugFormModal({
           name="indication"
           label="适应症"
           rules={[{ max: 500, message: '最多 500 个字符' }]}
+        />
+        <ProFormText
+          name="contraindication"
+          label="禁忌症"
+          rules={[{ max: 500, message: '最多 500 个字符' }]}
+          placeholder="如：活动性消化道溃疡患者禁用（用于处方风险拦截）"
         />
         <ProFormSelect
           name="status"

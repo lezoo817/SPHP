@@ -414,6 +414,13 @@ declare global {
       historyRecords: HistoryRecord[];
     }
 
+    /** 接诊台补录过敏史请求 */
+    interface AllergyCreateReq {
+      allergen: string;
+      reaction?: string;
+      severity: 'MILD' | 'MODERATE' | 'SEVERE';
+    }
+
     /** 在线问诊列表项 */
     interface OnlineConsultationItem {
       consultId: number;
@@ -684,6 +691,8 @@ declare global {
       specification: string;
       unit: string;
       indication?: string;
+      /** 禁忌症（供处方风险拦截器做禁忌匹配） */
+      contraindication?: string;
       manufacturer?: string;
       approvalNumber?: string;
       status: 'ENABLED' | 'DISABLED';
@@ -703,6 +712,8 @@ declare global {
       specification: string;
       unit: string;
       indication?: string;
+      /** 禁忌症（供处方风险拦截器做禁忌匹配） */
+      contraindication?: string;
       manufacturer?: string;
       approvalNumber?: string;
       status: 'ENABLED' | 'DISABLED';

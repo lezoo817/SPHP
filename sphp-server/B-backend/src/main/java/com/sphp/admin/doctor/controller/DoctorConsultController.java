@@ -1,6 +1,7 @@
 package com.sphp.admin.doctor.controller;
 
 import com.sphp.admin.common.vo.PageResult;
+import com.sphp.admin.doctor.dto.AllergyCreateRequest;
 import com.sphp.admin.doctor.dto.ConsultEndVO;
 import com.sphp.admin.doctor.dto.ConsultHistoryDetailVO;
 import com.sphp.admin.doctor.dto.ConsultHistoryVO;
@@ -125,6 +126,13 @@ public class DoctorConsultController {
     @Operation(summary = "患者详情", description = "查询患者基本信息、过敏史、既往史、AI摘要、近期处方、历史就诊记录")
     public Result<PatientDetailVO> getPatientDetail(@PathVariable Long id) {
         return Result.success("查询成功", doctorConsultService.getPatientDetail(id));
+    }
+
+    @PostMapping("/consult/{id}/allergy")
+    @Operation(summary = "补录患者过敏史", description = "接诊台补充患者过敏原；保存后立即参与处方风险拦截（需问诊归属校验）")
+    public Result<Long> addPatientAllergy(@PathVariable Long id,
+                                          @Valid @RequestBody AllergyCreateRequest request) {
+        return Result.success("过敏史已保存", doctorConsultService.addPatientAllergy(id, request));
     }
 
     @PostMapping("/consult/{id}/start")

@@ -15,6 +15,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getQueue,
   getPatientDetail,
+  addPatientAllergy,
   startConsult,
   endConsult,
   saveNote,
@@ -168,6 +169,17 @@ export function useConsultQueue() {
       if (parsed.treatmentPlan) setReportTreatmentPlan(parsed.treatmentPlan);
     }
   }, [patientDetail]);
+
+  // ==================== 补录过敏史 ====================
+
+  /** 接诊台补录患者过敏史：成功后失效患者详情缓存，过敏标签与拦截数据即时生效 */
+  const handleAddAllergy = async (data: API.AllergyCreateReq) => {
+    if (!selectedConsultId) return;
+    await addPatientAllergy(selectedConsultId, data);
+    queryClient.invalidateQueries({
+      queryKey: QUERY_KEYS.patientDetail(selectedConsultId),
+    });
+  };
 
   /** 病历字段变更：标记未保存 + 写入对应字段 */
   const handleFieldChange = (field: NoteField, value: string) => {
@@ -467,6 +479,7 @@ export function useConsultQueue() {
     detailLoading,
     historyDetail,
     historyDetailLoading,
+    handleAddAllergy,
     // 接诊操作
     startingConsult,
     endingConsult,
