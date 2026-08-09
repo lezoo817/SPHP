@@ -12,6 +12,7 @@ import { ASSISTANT_APPOINTMENT_REFRESH_INTERVAL_MILLIS, getAssistantAppointmentR
 import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatMedicalTime } from '../../utils/medical';
 import { buildAssistantPrescriptionDetailPath, getPrescriptionDisplayNumber } from '../../utils/prescription';
+import { buildConsultationDetailPath } from '../../utils/consultation';
 import { canCancelPaidAppointment } from '../../utils/registration';
 
 type AssistantTab = (typeof getAssistantTabs)[number];
@@ -192,7 +193,7 @@ export default function AssistantPage() {
         <span className="record-card__main"><b>{formatMedicalTime(item.startTime)}</b><span>{item.departmentName} · {item.doctorName}</span><small>科室位置：{item.departmentLocation || '科室位置待确认'}</small></span>
         <aside className="registration-record-actions"><em className={`record-card__status status-${item.status.toLowerCase()}`}>{getAssistantAppointmentRecordStatusText(item.status)}</em></aside>
       </article>)}
-      {tab === '问诊记录' && consultations.map((item) => <button className="record-card" key={item.id} type="button" onClick={() => navigate(`/assistant/consultation/${item.id}`)}><span className="record-card__main"><b>{item.doctorName || '在线问诊'}</b><span>AI 预问诊</span><small>更新于 {formatMedicalTime(item.updatedAt)}</small></span><aside className="registration-record-actions"><em className={`record-card__status status-${item.status.toLowerCase()}`}>{getConsultationStatusText(item.status)}</em><ChevronRight size={18} /></aside></button>)}
+      {tab === '问诊记录' && consultations.map((item) => <button className="record-card" key={item.id} type="button" onClick={() => navigate(buildConsultationDetailPath(item.id, patientId))}><span className="record-card__main"><b>{item.doctorName || '在线问诊'}</b><span>AI 预问诊</span><small>更新于 {formatMedicalTime(item.updatedAt)}</small></span><aside className="registration-record-actions"><em className={`record-card__status status-${item.status.toLowerCase()}`}>{getConsultationStatusText(item.status)}</em><ChevronRight size={18} /></aside></button>)}
       {tab === '问诊记录' && !consultations.length && <p className="empty-state">暂无在线问诊记录</p>}
       {tab === '处方' && prescriptions.map((item) => <button className="record-card" key={item.id} type="button" onClick={() => navigate(buildAssistantPrescriptionDetailPath(item.id, patientId, item.issuedAt))}><span className="record-card__main"><b>{item.doctorName}电子处方</b><span>开具于 {formatMedicalTime(item.issuedAt)}</span><small>处方编号：{getPrescriptionDisplayNumber(item.id, item.issuedAt)}</small></span><ChevronRight size={18} /></button>)}
     </section>

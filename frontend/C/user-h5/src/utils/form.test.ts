@@ -16,6 +16,7 @@ import { buildProfileUpdatePayload, normalizeProfileIdCardNo, resolveProfileIdem
 import { resolveMinePatientId } from '../models/mine-patient';
 import { isSessionTokenExpired, type SessionState } from '../models/session';
 import { buildDoctorPagePath, buildDoctorPaymentPath, findDoctorById, getDoctorScheduleDates } from './doctor';
+import { buildConsultationDetailPath } from './consultation';
 import { groupSlotsByHalfDay, summarizeHalfDaySlots } from './doctor';
 import { buildAppointmentsPath } from '../services/registration';
 import { buildNotificationsPath } from '../services/notification';
@@ -88,6 +89,13 @@ describe('就诊人默认选择', () => {
       { patientId: 9, relation: 'CHILD', isDefault: true },
       { patientId: 3, relation: 'SELF', isDefault: false },
     ])).toBe(3);
+  });
+});
+
+describe('在线问诊患者上下文', () => {
+  it('问诊详情路径透传当前就诊人，缺失时不拼接空参数', () => {
+    expect(buildConsultationDetailPath(801, 2001)).toBe('/assistant/consultation/801?patientId=2001');
+    expect(buildConsultationDetailPath(801)).toBe('/assistant/consultation/801');
   });
 });
 
