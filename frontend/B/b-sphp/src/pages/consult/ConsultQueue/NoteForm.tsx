@@ -36,6 +36,8 @@ interface NoteFormProps {
   consultPrescriptions: API.Prescription[];
   onFieldChange: (field: NoteField, value: string) => void;
   onSave: () => void;
+  /** 打开开处方弹窗 */
+  onOpenPrescription: () => void;
 }
 
 export default function NoteForm({
@@ -46,6 +48,7 @@ export default function NoteForm({
   consultPrescriptions,
   onFieldChange,
   onSave,
+  onOpenPrescription,
 }: NoteFormProps) {
   return (
     <div className={styles.noteSection}>
@@ -78,6 +81,13 @@ export default function NoteForm({
           size="small"
         >
           保存病历
+        </Button>
+        <Button
+          icon={<MedicineBoxOutlined />}
+          onClick={onOpenPrescription}
+          size="small"
+        >
+          开处方
         </Button>
         {generatedAt && (
           <Text type="secondary" style={{ fontSize: 12 }}>

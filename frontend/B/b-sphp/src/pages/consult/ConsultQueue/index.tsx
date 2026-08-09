@@ -1,17 +1,16 @@
 /**
- * 接诊台 - 三栏布局主页面
+ * 接诊台 - 两栏布局主页面
  *
- * 左栏（35%）：待接诊队列（PENDING / IN_PROGRESS / HISTORY 切换）
- * 中栏（35%）：患者详情（基本信息、过敏史、既往史、AI 摘要、历史就诊、近期处方）
- * 右栏（30%）：接诊操作区（开始/结束接诊、病历编辑、留言板）
+ * 左栏：接诊队列（待接诊 / 接诊中 / 接诊历史 三块，各带分页）
+ * 右栏：接诊操作区（患者信息条 + 开始/结束接诊 + 病历编辑 + 开处方 + 留言板）
  *
- * 数据与操作逻辑集中在 useConsultQueue；本组件仅组合三栏并处理管理员占位。
+ * 数据与操作逻辑集中在 useConsultQueue；本组件仅组合两栏并处理管理员占位。
  */
 import { Empty, Typography } from 'antd';
 import { useConsultQueue } from './useConsultQueue';
 import QueuePanel from './QueuePanel';
-import PatientPanel from './PatientPanel';
 import ConsultPanel from './ConsultPanel';
+import PrescriptionFormModal from './PrescriptionFormModal';
 import styles from './index.module.less';
 
 const { Text } = Typography;
@@ -37,17 +36,49 @@ export default function ConsultQueuePage() {
     );
   }
 
+  // 待接诊选中的队列项：供开始接诊区域的号源时段展示与校验
+  const pendingSelectedItem = consult.pendingItems.find(
+    (i) => i.consultId === consult.selectedConsultId,
+  );
+
   return (
     <div className={styles.container}>
       <div className={styles.leftPanel}>
-        <QueuePanel {...consult} />
-      </div>
-      <div className={styles.middlePanel}>
-        <PatientPanel {...consult} />
+        <QueuePanel
+          pendingItems={consult.pendingItems}
+          pendingLoading={consult.pendingLoading}
+          pendingTotal={consult.pendingTotal}
+          pendingPage={consult.pendingPage}
+          setPendingPage={consult.setPendingPage}
+          inProgressItems={consult.inProgressItems}
+          inProgressLoading={consult.inProgressLoading}
+          inProgressTotal={consult.inProgressTotal}
+          inProgressPage={consult.inProgressPage}
+          setInProgressPage={consult.setInProgressPage}
+          historyItems={consult.historyItems}
+          historyLoading={consult.historyLoading}
+          historyTotal={consult.historyTotal}
+          historyPage={consult.historyPage}
+          setHistoryPage={consult.setHistoryPage}
+          selectedConsultId={consult.selectedConsultId}
+          handleSelectItem={consult.handleSelectItem}
+          handleSelectHistoryItem={consult.handleSelectHistoryItem}
+        />
       </div>
       <div className={styles.rightPanel}>
-        <ConsultPanel {...consult} />
+        <ConsultPanel
+          {...consult}
+          pendingSelectedItem={pendingSelectedItem}
+          onOpenPrescription={() => consult.setPrescriptionModalOpen(true)}
+        />
       </div>
+
+      <PrescriptionFormModal
+        open={consult.prescriptionModalOpen}
+        submitting={consult.submittingPrescription}
+        onCancel={() => consult.setPrescriptionModalOpen(false)}
+        onSubmit={consult.handleSubmitPrescription}
+      />
     </div>
   );
 }
