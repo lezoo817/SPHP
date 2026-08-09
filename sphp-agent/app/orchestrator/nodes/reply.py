@@ -452,13 +452,18 @@ def _extract_patient_allergy_history(
     （元素为 dict 或字符串）。此处防御性格式化为可读摘要，供 AI 即时处方解读
     注入患者真实过敏史做禁忌核对（方向 B 禁忌检测）。
 
+    取**最新一次**成功查询结果（逆序迭代）：就诊人切换后子图循环内 tool_results
+    可能累积旧/新两份档案，逆序保证以最近查询（当前就诊人）为准，避免跨患者
+    误用旧档案摘要（2026-08-09 健康档案会话内复用引入的边界）。最新结果档案
+    为空时直接返回 None（不降级到更早的旧档案）。
+
     Args:
         tool_results: 本轮工具执行结果列表。
 
     Returns:
         str | None: 过敏史/既往史摘要；本轮无有效结果或档案为空时返回 None。
     """
-    for result in tool_results or []:
+    for result in reversed(tool_results or []):
         if result.get("tool_name") != "query_health_record" or not result.get("success"):
             continue
         data = result.get("data")
@@ -477,6 +482,32 @@ def _extract_patient_allergy_history(
         if not parts:
             return None
         return "；".join(parts)
+    return None
+
+
+def _get_patient_allergy_history(state: AgentState) -> str | None:
+    """取患者过敏史/既往史摘要（新查优先，缓存绑定回退，2026-08-09）。
+
+    导诊/问诊的 query_health_record 已优化为会话内复用（tool_caller 按
+    health_record_patient_id 判定过滤），复用后的后续轮 tool_results 不再含新的
+    query_health_record 结果。此处先取本轮最新一次新查结果（AI 即时解读等场景
+    仍可能同轮新查档案，且逆序取最新保证就诊人切换后不误用旧档案）；取不到时
+    仅当缓存与**当前就诊人绑定**（health_record_patient_id == patient_id）才回退
+    到 tool_caller 缓存的 health_record_summary，未绑定（切换/从未加载）不回退，
+    避免跨患者注入旧过敏史。
+
+    Args:
+        state: 当前图状态，含 tool_results / health_record_patient_id /
+            health_record_summary。
+
+    Returns:
+        str | None: 过敏史/既往史摘要；无新查结果且无绑定缓存时返回 None。
+    """
+    fresh = _extract_patient_allergy_history(state.get("tool_results"))
+    if fresh is not None:
+        return fresh
+    if state.get("health_record_patient_id") == state.get("patient_id"):
+        return state.get("health_record_summary")
     return None
 
 
@@ -541,6 +572,114 @@ def _build_doctor_recommendation_guide(state: AgentState) -> str | None:
         '例如"这位医生擅长X方向、职称Y"。**不得编造**好评率、评分、患者数等工具结果'
         "中不存在的字段；若某位医生的擅长方向等字段缺失，如实只列可用的信息即可，"
         "不要补造。"
+    )
+
+
+def _parse_schedule_slots(payload: Any) -> list[dict[str, Any]]:
+    """宽容解析 query_schedule_slots 的时段列表。
+
+    Java 返回经信封解包后的 payload 可能是时段列表（``[{id, time, remain, ...}]``）
+    或包一层对象（``{slots: [...]}``）。此处统一解析为 list[dict]。
+
+    Args:
+        payload: 信封内层业务数据（query_schedule_slots 结果）。
+
+    Returns:
+        list[dict]: 时段列表（非 dict 项忽略）；无有效列表时返回空列表。
+    """
+    if isinstance(payload, list):
+        return [p for p in payload if isinstance(p, dict)]
+    if isinstance(payload, dict):
+        for key in ("slots", "items", "list", "data"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [p for p in value if isinstance(p, dict)]
+    return []
+
+
+def _slots_have_availability(slots: list[dict[str, Any]]) -> bool:
+    """判断时段列表是否存在可预约号源。
+
+    兼容 Java 侧不同字段命名（余量键 remain / availableCount / remaining / quota
+    / available，或 status 键 available / full 等）。时段结构完全未知（无余量键
+    也无 status）时**保守视为可约**（不误触发防编造引导）。
+
+    Args:
+        slots: 时段列表（来自 _parse_schedule_slots）。
+
+    Returns:
+        bool: 存在可约时段返回 True；空列表或全部不可约返回 False。
+    """
+    if not slots:
+        return False
+    for slot in slots:
+        if not isinstance(slot, dict):
+            continue
+        # 余量键：键存在即据其判定——>0 可约、≤0 明确无号（继续看 status/下一项，
+        # 不落到下方"结构未知"保守分支，否则 remain=0 会被误判为可约）。
+        has_quota_key = False
+        for key in ("remain", "availableCount", "remaining", "quota", "available"):
+            if key not in slot:
+                continue
+            has_quota_key = True
+            value = slot.get(key)
+            if isinstance(value, bool):
+                if value:
+                    return True
+            elif isinstance(value, (int, float)):
+                if value > 0:
+                    return True
+        status = str(slot.get("status") or "").strip().lower()
+        if status in ("available", "open", "enabled", "可约"):
+            return True
+        if status in ("unavailable", "closed", "full", "booked", "约满", "不可约"):
+            continue
+        # 无余量键也无 status：结构未知，保守视为可约，不误触发防编造；
+        # 有余量键但均为 0 且无 status：明确无号，继续下一项。
+        if not has_quota_key:
+            return True
+    return False
+
+
+def _build_registration_no_slot_guide(state: AgentState) -> str | None:
+    """构造挂号无号源防编造引导（2026-08-09）。
+
+    日志复现的故障：挂号流程查号源（先查今天、再查明天）均无可用时段后，
+    LLM 无更多真实数据，开始凭知识编造号源余量、出诊时间或挂号费。
+
+    本函数在**挂号场景**下、本轮 query_schedule_slots 成功执行但所有时段均
+    无可用号源（空列表或全部约满）时，确定性注入防编造引导：如实告知无号、
+    不编造余量/时间/挂号费，并引导改查其他日期/医生或登记候补。有任一可约
+    时段 / 非挂号场景 / 未成功查号源时返回 None（不注入）。
+
+    Args:
+        state: 当前图状态，含 intent 与 tool_results。
+
+    Returns:
+        str | None: 无号源防编造引导；不满足触发条件时返回 None。
+    """
+    if state.get("intent") != "registration":
+        return None
+    queried_slots = False
+    all_no_availability = True
+    for result in state.get("tool_results") or []:
+        if result.get("tool_name") != "query_schedule_slots" or not result.get("success"):
+            continue
+        queried_slots = True
+        data = result.get("data")
+        payload = data.get("data") if isinstance(data, dict) else None
+        slots = _parse_schedule_slots(payload)
+        if _slots_have_availability(slots):
+            all_no_availability = False
+            break
+    if not queried_slots or not all_no_availability:
+        return None
+    return (
+        "您查询的号源暂无可用时段。请**如实告知用户当前无号源**，"
+        "不得编造号源余量、出诊时间或挂号费，也不要声称某日期一定有号。"
+        "若用户希望继续挂号，引导下一步：改查其他日期 / 其他医生，或登记候补"
+        "（join_waitlist，号源释放后自动通知）。换日期/换医生时必须先实际调用"
+        "query_doctors / query_schedule_slots 查询真实数据再回复，不得凭空给出号源信息。"
     )
 
 
@@ -836,10 +975,18 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         if doctor_guide:
             llm_messages.append({"role": "system", "content": doctor_guide})
 
+        # 挂号无号源防编造引导（2026-08-09）：挂号场景查号源（今天/明天）均无
+        # 可用时段后，LLM 易凭知识编造余量/时间/挂号费。确定性注入"如实告知无号、
+        # 不得编造、引导改查/候补"引导，杜绝编造号源。
+        no_slot_guide = _build_registration_no_slot_guide(state)
+        if no_slot_guide:
+            llm_messages.append({"role": "system", "content": no_slot_guide})
+
         if interpretation and interpretation.get("source") == _AI_FALLBACK_SOURCE:
             # 注入患者真实过敏史/既往史（方向 B 禁忌检测）：即时解读可据此
-            # 核对处方药品是否与过敏史冲突；本轮无档案数据时传 None。
-            allergy_history = _extract_patient_allergy_history(tool_results)
+            # 核对处方药品是否与过敏史冲突。优先本轮新查的 query_health_record，
+            # 会话内复用后后续轮无新查结果时回退缓存摘要，不因复用而退化。
+            allergy_history = _get_patient_allergy_history(state)
             fallback_context = _build_ai_fallback_context(interpretation, allergy_history)
             if fallback_context:
                 # 即时说明只能使用已授权读取的处方详情，避免模型补造医疗事实。
