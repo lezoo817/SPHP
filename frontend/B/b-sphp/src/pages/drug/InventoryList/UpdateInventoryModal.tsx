@@ -24,7 +24,7 @@ export default function UpdateInventoryModal({
       title="更新库存"
       open={open}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       onCancel={onCancel}
       width={480}
     >

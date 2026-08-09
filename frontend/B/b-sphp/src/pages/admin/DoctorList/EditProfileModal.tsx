@@ -25,7 +25,7 @@ export default function EditProfileModal({
       title="编辑医生资料"
       open={open}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       onCancel={onCancel}
       width={520}
     >

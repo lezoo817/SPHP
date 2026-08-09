@@ -76,7 +76,7 @@ export default function ScheduleFormModal({
     },
   ];
 
-  /** 打开弹窗时重置表单，避免上一次残留值（destroyOnClose 下仍保险） */
+  /** 打开弹窗时重置表单，避免上一次残留值（destroyOnHidden 下仍保险） */
   useEffect(() => {
     if (open) {
       createForm.resetFields();
@@ -152,7 +152,7 @@ export default function ScheduleFormModal({
       title="新增排班"
       open={open}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       onCancel={onCancel}
       width={520}
     >

@@ -25,7 +25,7 @@ export default function DrugFormModal({
       title={editingDrug ? '编辑药品' : '新增药品'}
       open={open}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       onCancel={onCancel}
       width={560}
     >

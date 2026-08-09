@@ -257,7 +257,7 @@ export default function BatchScheduleModal({ open, onCancel, onCreated }: Props)
       open={open}
       onCancel={onCancel}
       width={760}
-      destroyOnClose
+      destroyOnHidden
       footer={[
         <button key="cancel" type="button" className="ant-btn" onClick={onCancel}>
           取消
