@@ -120,3 +120,13 @@ class AgentState(TypedDict):
 
     # 工具调用迭代计数，子图循环用，防止无限循环
     tool_iteration: int | None
+
+    # 健康档案会话内复用（2026-08-09 优化）：query_health_record 成功加载后，
+    # 记录加载档案时的就诊人 ID（health_record_patient_id，C 端默认本人为 None）
+    # 并缓存过敏史/既往史摘要（health_record_summary）。后续轮 tool_caller 判定
+    # 就诊人未切换即从工具绑定过滤 query_health_record（不再每轮重复 Java 往返，
+    # 日志复现导诊每轮重查档案），reply 侧从缓存摘要继续注入过敏史/既往史做禁忌
+    # 核对，不因复用而退化。就诊人切换（patient_id 变化）后判定失效，可重查新档案。
+    # NotRequired：字段缺失表示会话内从未加载；_build_initial_state 不传（不覆盖）。
+    health_record_patient_id: NotRequired[int | None]
+    health_record_summary: NotRequired[str | None]
