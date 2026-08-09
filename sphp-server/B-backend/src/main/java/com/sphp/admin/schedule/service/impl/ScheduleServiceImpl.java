@@ -716,7 +716,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                 continue;
             }
             Doctor doctor = doctorMapper.selectById(s.getDoctorId());
-            if (doctor == null || doctor.getDeletedAt() == null
+            // 跨院/不存在/已逻辑删除统一视为不可发布（对外统一为"排班不存在"，不暴露医院隔离细节）
+            if (doctor == null || doctor.getDeletedAt() != null
                     || !hospitalId.equals(doctor.getHospitalId())) {
                 failedItems.add(BatchPublishReportVO.FailedItem.builder()
                         .scheduleId(id).reason("排班不存在").build());
