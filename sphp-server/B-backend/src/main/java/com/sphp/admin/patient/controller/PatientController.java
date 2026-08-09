@@ -19,10 +19,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 患者管理接口（管理员视角）。
+ * 患者管理接口（医生/管理员通用）。
  *
  * <p>仅返回本院就诊过的患者（通过 consult_record → doctor.hospital_id 关联过滤）；
- * 所有接口按当前登录管理员所属医院（{@code hospital_id}）做数据隔离。
+ * 所有接口按当前登录用户所属医院（{@code hospital_id}）做数据隔离。
  * 外部完整 URL 前缀为 {@code /api/b/admin/patients}。
  *
  * @author lezoo17
@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/b/admin/patients")
-@Tag(name = "患者管理", description = "患者列表/详情/就诊记录/历史处方/当前用药与随访（管理员）")
+@Tag(name = "患者管理", description = "患者列表/详情/就诊记录/历史处方/当前用药与随访（医生/管理员）")
 @RequiredArgsConstructor
 public class PatientController {
 
@@ -45,7 +45,7 @@ public class PatientController {
     private final PatientService patientService;
 
     @GetMapping
-    @Operation(summary = "患者列表", description = "分页查询本院就诊过的患者列表（按当前管理员所属医院过滤）")
+    @Operation(summary = "患者列表", description = "分页查询本院就诊过的患者列表（按当前用户所属医院过滤）")
     public Result<PageResult<PatientListVO>> page(
             @Parameter(description = "姓名模糊检索") @RequestParam(required = false) String name,
             @Parameter(description = "页码，默认1") @RequestParam(defaultValue = "1") int page,

@@ -82,9 +82,12 @@ const routes = [
         ],
       },
       // 患者管理（所有人，数据权限由后端控制）
+      // redirect 放在子路由而非父路由：父路由带 redirect + children 会导致子路由不渲染（白屏、不发请求）。
+      // 与 /consult 的写法保持一致（子路由 { path: '/patient', redirect: '/patient/list' } 兜底菜单点击）。
       {
         path: '/patient',
         routes: [
+          { path: '/patient', redirect: '/patient/list' },
           { path: '/patient/list', component: 'patient/PatientList' },
           { path: '/patient/detail/:id', component: 'patient/PatientDetail' },
         ],

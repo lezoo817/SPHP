@@ -36,10 +36,10 @@ import java.time.Period;
 import java.util.List;
 
 /**
- * 患者管理服务实现（管理员视角）。
+ * 患者管理服务实现（医生/管理员通用）。
  *
  * <p>患者列表范围：通过 consult_record → doctor.hospital_id 关联，
- * 仅返回在本院就诊过的患者；所有操作基于当前登录管理员所属医院（{@code hospital_id}）
+ * 仅返回在本院就诊过的患者；所有操作基于当前登录用户所属医院（{@code hospital_id}）
  * 做数据隔离。详情页附加过敏史（{@code patient_allergy}）与既往史（{@code patient_medical_history}），
  * 当前用药页附加 ACTIVE/PAUSED 状态的用药计划与未完成的随访计划。
  *
@@ -80,7 +80,9 @@ public class PatientServiceImpl implements PatientService {
 
     @Override
     public PageResult<PatientListVO> page(String name, int page, int size) {
-        Long hospitalId = currentUserService.getCurrentHospitalId();
+        // 用 DataScope 而非 getCurrentHospitalId：患者列表对医生/管理员通用，
+        // 均按各自所属医院过滤，不再强制 ADMIN
+        Long hospitalId = currentUserService.getCurrentDataScope().hospitalId();
         size = Math.clamp(size, 1, MAX_PAGE_SIZE);
 
         Page<PatientListVO> result = patientDataMapper.selectPatientPage(
