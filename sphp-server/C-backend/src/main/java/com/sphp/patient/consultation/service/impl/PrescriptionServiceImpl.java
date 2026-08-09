@@ -84,6 +84,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
     public ConsultationPrescriptionDetailVO prescriptionGetDetail(Long prescriptionId) {
         // 读取处方资源并校验当前用户对所属患者的访问权限和处方展示状态
         PrescriptionResourceRecord resource = prescriptionRequireApprovedResource(prescriptionId);
+        // 读取处方详情
         PrescriptionDetailRecord detail = prescriptionDataMapper.prescriptionSelectApprovedDetail(prescriptionId);
         if (detail == null) {
             throw prescriptionNotFound("处方不存在");
@@ -116,6 +117,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
     public PrescriptionInterpretationVO prescriptionGetInterpretation(Long prescriptionId) {
         // 读取处方资源并校验当前用户对所属患者的访问权限和处方展示状态
         prescriptionRequireApprovedResource(prescriptionId);
+        // 读取处方解读
         PrescriptionInterpretationRecord interpretation = prescriptionDataMapper
                 .prescriptionSelectInterpretation(prescriptionId);
         // 未就绪
@@ -144,6 +146,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
         if (resource == null) {
             throw prescriptionNotFound("处方不存在");
         }
+        // 解析并校验患者归属
         prescriptionResolveAccessiblePatient(CUserContext.getRequired().userId(), resource.patientId());
         if (!APPROVED.name().equals(resource.status())) {
             // 未批准处方对患者端不可见，统一按不存在处理，避免泄漏审核状态。
@@ -165,9 +168,11 @@ public class PrescriptionServiceImpl implements PrescriptionService {
         Long patientId = requestedPatientId == null
                 ? prescriptionDataMapper.prescriptionSelectSelfPatientId(userId)
                 : requestedPatientId;
+        //判断就诊人是否未被软删除
         if (patientId == null || !prescriptionDataMapper.prescriptionExistsActivePatient(patientId)) {
             throw prescriptionNotFound("就诊人不存在或已停用");
         }
+        //判断当前用户是否拥有有效的就诊人关系
         if (!prescriptionDataMapper.prescriptionHasActivePatientRelation(userId, patientId)) {
             throw prescriptionForbidden("无权访问该就诊人");
         }

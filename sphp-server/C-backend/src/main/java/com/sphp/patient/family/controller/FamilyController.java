@@ -97,6 +97,7 @@ public class FamilyController {
             @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody FamilyMemberUpdateRequest request) {
         Long userId = CUserContext.getRequired().userId();
+        // 执行幂等操作
         IdempotencyPayload<FamilyMemberUpdateVO> payload = idempotencyService.execute(
                 userId,
                 "/c/v1/family-members/" + patientId,
@@ -121,6 +122,7 @@ public class FamilyController {
             @PathVariable @Positive(message = "就诊人ID必须为正整数") Long patientId,
             @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
         Long userId = CUserContext.getRequired().userId();
+        // 执行幂等操作
         IdempotencyPayload<FamilyMemberUnbindVO> payload = idempotencyService.execute(
                 userId,
                 "/c/v1/family-members/" + patientId,
