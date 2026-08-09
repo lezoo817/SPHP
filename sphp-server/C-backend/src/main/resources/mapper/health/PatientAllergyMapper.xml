@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sphp.patient.health.mapper.PatientAllergyMapper">
+
+    <!-- 仅按患者归属和未删除条件更新，防止并发重复删除或越权删除。 -->
+    <update id="softDeleteActive">
+        UPDATE patient_allergy
+        SET deleted_at = #{deletedAt}, updated_at = #{deletedAt}
+        WHERE id = #{allergyId}
+          AND patient_id = #{patientId}
+          AND deleted_at IS NULL
+    </update>
+</mapper>

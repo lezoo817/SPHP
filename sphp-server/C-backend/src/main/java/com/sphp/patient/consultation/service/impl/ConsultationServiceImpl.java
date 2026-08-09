@@ -273,6 +273,7 @@ public class ConsultationServiceImpl implements ConsultationService {
      * @throws CAuthException 处方不存在、未批准或当前账号无权访问时抛出
      */
     public ConsultationPrescriptionDetailVO getPrescriptionDetail(Long prescriptionId) {
+        // 处方本身
         ConsultationPrescriptionResourceRecord resource = consultationDataMapper
                 .selectConsultationPrescriptionResource(prescriptionId);
         if (resource == null) {
@@ -284,6 +285,7 @@ public class ConsultationServiceImpl implements ConsultationService {
             // 未批准处方对患者端不可见，统一作为不存在处理，避免泄漏审核状态。
             throw notFound("处方不存在");
         }
+        // 处方详情
         ConsultationPrescriptionDetailRecord detail = consultationDataMapper.selectApprovedPrescriptionDetail(prescriptionId);
         if (detail == null) {
             throw notFound("处方不存在");
@@ -292,11 +294,11 @@ public class ConsultationServiceImpl implements ConsultationService {
         List<ConsultationPrescriptionDetailVO.Item> items = consultationDataMapper
                 .selectConsultationPrescriptionItems(prescriptionId)
                 .stream()
-                .map(this::toPrescriptionDetailItem)
+                .map(this::toPrescriptionDetailItem) // 转换为明细项
                 .toList();
         return ConsultationPrescriptionDetailVO.builder()
                 .id(detail.id())
-                .status(APPROVED.name())
+                .status(APPROVED.name()) // 已批准
                 .doctorName(detail.doctorName())
                 // 医生信息
                 .doctor(ConsultationPrescriptionDetailVO.Doctor.builder()

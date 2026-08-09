@@ -18,6 +18,7 @@ import com.sphp.patient.health.vo.AllergyCreateVO;
 import com.sphp.patient.health.vo.AllergyUpdateVO;
 import com.sphp.patient.health.vo.MedicalHistoryCreateVO;
 import com.sphp.patient.health.vo.MedicalHistoryUpdateVO;
+import com.sphp.patient.health.vo.HealthRecordDeleteVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -30,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
@@ -243,6 +245,55 @@ class HealthServiceImplTest {
 
         CAuthException exception = assertThrows(CAuthException.class,
                 () -> healthService.updateMedicalHistory(17001L, request));
+
+        assertEquals("A0402", exception.getCode());
+    }
+
+    /**
+     * 验证删除过敏史只更新当前账号所属患者的未删除记录。
+     */
+    @Test
+    void deleteAllergySoftDeletesOwnedRecord() {
+        HealthPatientMapper healthPatientMapper = mock(HealthPatientMapper.class);
+        PatientAllergyMapper allergyMapper = mock(PatientAllergyMapper.class);
+        PatientMedicalHistoryMapper historyMapper = mock(PatientMedicalHistoryMapper.class);
+        HealthServiceImpl healthService = new HealthServiceImpl(healthPatientMapper, allergyMapper, historyMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        PatientAllergy existing = allergy(16001L, "青霉素", "皮疹");
+        existing.setPatientId(20001L);
+        when(allergyMapper.selectOne(any())).thenReturn(existing);
+        when(healthPatientMapper.existsActivePatient(20001L)).thenReturn(true);
+        when(healthPatientMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(allergyMapper.softDeleteActive(eq(16001L), eq(20001L), any())).thenReturn(1);
+
+        HealthRecordDeleteVO result = healthService.deleteAllergy(16001L);
+
+        assertEquals(16001L, result.getId());
+        assertTrue(result.getDeletedAt() != null);
+        verify(allergyMapper).softDeleteActive(eq(16001L), eq(20001L), any());
+    }
+
+    /**
+     * 验证既往史条件更新未命中时返回资源不存在。
+     */
+    @Test
+    void deleteMedicalHistoryRejectsConditionalMiss() {
+        HealthPatientMapper healthPatientMapper = mock(HealthPatientMapper.class);
+        PatientAllergyMapper allergyMapper = mock(PatientAllergyMapper.class);
+        PatientMedicalHistoryMapper historyMapper = mock(PatientMedicalHistoryMapper.class);
+        HealthServiceImpl healthService = new HealthServiceImpl(healthPatientMapper, allergyMapper, historyMapper);
+        CUserContext.set(new CUserPrincipal(10001L, "patient_zhangsan",
+                OffsetDateTime.now().plusHours(1), "session-hash"));
+        PatientMedicalHistory existing = history(17001L, "高血压病史5年", LocalDate.of(2021, 1, 1));
+        existing.setPatientId(20001L);
+        when(historyMapper.selectOne(any())).thenReturn(existing);
+        when(healthPatientMapper.existsActivePatient(20001L)).thenReturn(true);
+        when(healthPatientMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(historyMapper.softDeleteActive(eq(17001L), eq(20001L), any())).thenReturn(0);
+
+        CAuthException exception = assertThrows(CAuthException.class,
+                () -> healthService.deleteMedicalHistory(17001L));
 
         assertEquals("A0402", exception.getCode());
     }

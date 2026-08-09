@@ -4,7 +4,7 @@ import { createIdempotencyKey } from './form';
 /** 首页跨就诊人查询到的原始待办数据。 */
 export interface PatientHealthSource { patientId: number; patientName: string; appointments: Appointment[]; medicationPlans: MedicationPlan[]; followUps: FollowUpPlan[]; }
 /** 首页统一展示的健康待办卡片数据。 */
-export interface HealthTodo { id: number; type: 'APPOINTMENT' | 'MEDICATION' | 'FOLLOW_UP'; patientId: number; patientName: string; title: string; detail: string; departmentLocation?: string; occurredAt?: string; isExpired?: boolean; }
+export interface HealthTodo { id: number; type: 'APPOINTMENT' | 'MEDICATION' | 'FOLLOW_UP'; patientId: number; patientName: string; title: string; detail: string; departmentLocation?: string; occurredAt?: string; isExpired?: boolean; /** 后端已开启提醒时允许首页执行本地服药确认。 */ reminderEnabled?: boolean; }
 /** 用药提醒页可切换的计划分类。 */
 export type MedicationPlanTab = 'IN_PROGRESS' | 'COMPLETED';
 
@@ -117,7 +117,7 @@ export function buildHealthTodos(sources: PatientHealthSource[], nowMillis = Dat
       const isExpired = !Number.isNaN(appointmentEndAt) && appointmentEndAt <= nowMillis;
       return { id: item.id, type: 'APPOINTMENT' as const, patientId: source.patientId, patientName: source.patientName, title: `${item.departmentName} · ${item.doctorName}`, detail: isExpired ? '已过期' : item.status === 'UNPAID' ? '挂号待支付' : '挂号待就诊', departmentLocation: item.departmentLocation, occurredAt: item.startTime, isExpired };
     }),
-    ...source.medicationPlans.filter((item) => item.status === 'ACTIVE').map((item) => ({ id: item.id, type: 'MEDICATION' as const, patientId: source.patientId, patientName: source.patientName, title: item.drugName, detail: `${item.dosage} · ${item.frequency}`, occurredAt: item.nextReminderAt })),
+    ...source.medicationPlans.filter((item) => item.status === 'ACTIVE').map((item) => ({ id: item.id, type: 'MEDICATION' as const, patientId: source.patientId, patientName: source.patientName, title: item.drugName, detail: `${item.dosage} · ${item.frequency}`, occurredAt: item.nextReminderAt, reminderEnabled: item.reminderEnabled })),
     ...source.followUps.filter((item) => item.status === 'PENDING_CONFIRM' || item.status === 'CONFIRMED').map((item) => ({ id: item.id, type: 'FOLLOW_UP' as const, patientId: source.patientId, patientName: source.patientName, title: item.type || '随访计划', detail: item.content, occurredAt: item.remindAt || item.dueAt })),
   ]);
   // 无时间的数据置后，避免遮挡已确定处理时间的真实待办。

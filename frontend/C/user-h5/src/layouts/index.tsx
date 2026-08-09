@@ -8,6 +8,7 @@ import '../styles/app.less';
 import '../styles/health-notification.less';
 import '../styles/delivery-address.less';
 import '../styles/doctor-schedule.less';
+import '../styles/consultation.less';
 
 /** 提供全局样式、路由内容容器与 AI 助手悬浮入口。 */
 export default function Layout() {

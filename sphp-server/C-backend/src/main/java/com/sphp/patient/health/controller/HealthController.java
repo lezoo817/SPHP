@@ -11,6 +11,7 @@ import com.sphp.patient.health.vo.AllergyUpdateVO;
 import com.sphp.patient.health.vo.MedicalHistoryCreateVO;
 import com.sphp.patient.health.vo.MedicalHistoryUpdateVO;
 import com.sphp.patient.health.vo.HealthRecordVO;
+import com.sphp.patient.health.vo.HealthRecordDeleteVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
 import com.sphp.patient.support.idempotency.IdempotencyPayload;
 import com.sphp.shared.common.constant.HeaderConstant;
@@ -23,6 +24,7 @@ import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -112,6 +114,29 @@ public class HealthController {
     }
 
     /**
+     * 删除当前账号可访问就诊人的过敏史。
+     *
+     * @param allergyId 过敏史 ID
+     * @param idempotencyKey 客户端幂等键
+     * @return 软删除结果
+     */
+    @DeleteMapping("/allergies/{allergyId}")
+    @Operation(summary = "删除过敏史")
+    public Result<HealthRecordDeleteVO> deleteAllergy(
+            @PathVariable @Positive(message = "过敏史ID必须为正整数") Long allergyId,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
+        Long userId = CUserContext.getRequired().userId();
+        IdempotencyPayload<HealthRecordDeleteVO> payload = idempotencyService.execute(
+                userId,
+                "/c/v1/health-record/allergies/" + allergyId,
+                idempotencyKey,
+                allergyId,
+                HealthRecordDeleteVO.class,
+                () -> new IdempotencyPayload<>("过敏史已删除", healthService.deleteAllergy(allergyId)));
+        return Result.success(payload.message(), payload.data());
+    }
+
+    /**
      * 为当前账号可访问就诊人新增既往史。
      *
      * @param idempotencyKey 客户端幂等键
@@ -158,6 +183,29 @@ public class HealthController {
                 MedicalHistoryUpdateVO.class,
                 () -> new IdempotencyPayload<>("既往史已更新", healthService.updateMedicalHistory(historyId, request))
         );
+        return Result.success(payload.message(), payload.data());
+    }
+
+    /**
+     * 删除当前账号可访问就诊人的既往史。
+     *
+     * @param historyId 既往史 ID
+     * @param idempotencyKey 客户端幂等键
+     * @return 软删除结果
+     */
+    @DeleteMapping("/histories/{historyId}")
+    @Operation(summary = "删除既往史")
+    public Result<HealthRecordDeleteVO> deleteMedicalHistory(
+            @PathVariable @Positive(message = "既往史ID必须为正整数") Long historyId,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
+        Long userId = CUserContext.getRequired().userId();
+        IdempotencyPayload<HealthRecordDeleteVO> payload = idempotencyService.execute(
+                userId,
+                "/c/v1/health-record/histories/" + historyId,
+                idempotencyKey,
+                historyId,
+                HealthRecordDeleteVO.class,
+                () -> new IdempotencyPayload<>("既往史已删除", healthService.deleteMedicalHistory(historyId)));
         return Result.success(payload.message(), payload.data());
     }
 }
