@@ -42,6 +42,9 @@ import java.util.List;
  * 仅返回在本院就诊过的患者；所有操作基于当前登录管理员所属医院（{@code hospital_id}）
  * 做数据隔离。详情页附加过敏史（{@code patient_allergy}）与既往史（{@code patient_medical_history}），
  * 当前用药页附加 ACTIVE/PAUSED 状态的用药计划与未完成的随访计划。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Slf4j
 @Service
@@ -78,7 +81,7 @@ public class PatientServiceImpl implements PatientService {
     @Override
     public PageResult<PatientListVO> page(String name, int page, int size) {
         Long hospitalId = currentUserService.getCurrentHospitalId();
-        size = Math.max(1, Math.min(size, MAX_PAGE_SIZE));
+        size = Math.clamp(size, 1, MAX_PAGE_SIZE);
 
         Page<PatientListVO> result = patientDataMapper.selectPatientPage(
                 new Page<>(page, size), hospitalId,
@@ -96,6 +99,7 @@ public class PatientServiceImpl implements PatientService {
     public PatientDetailVO detail(Long id) {
         Patient patient = getPatient(id);
 
+        // 手动过滤软删记录：本模块未启用 @TableLogic 自动过滤，遗漏此条件会泄漏已删数据
         List<PatientAllergy> allergies = allergyMapper.selectList(
                 Wrappers.<PatientAllergy>lambdaQuery()
                         .eq(PatientAllergy::getPatientId, id)
@@ -133,7 +137,7 @@ public class PatientServiceImpl implements PatientService {
 
     @Override
     public PageResult<PatientVisitVO> visits(Long patientId, int page, int size) {
-        size = Math.max(1, Math.min(size, MAX_PAGE_SIZE));
+        size = Math.clamp(size, 1, MAX_PAGE_SIZE);
         getPatient(patientId);
 
         Page<PatientVisitVO> result = patientDataMapper.selectVisitPage(
@@ -143,7 +147,7 @@ public class PatientServiceImpl implements PatientService {
 
     @Override
     public PageResult<PatientPrescriptionVO> prescriptions(Long patientId, int page, int size) {
-        size = Math.max(1, Math.min(size, MAX_PAGE_SIZE));
+        size = Math.clamp(size, 1, MAX_PAGE_SIZE);
         getPatient(patientId);
 
         Page<PatientPrescriptionVO> result = patientDataMapper.selectPrescriptionPage(
@@ -228,7 +232,7 @@ public class PatientServiceImpl implements PatientService {
     }
 
     /**
-     * 手机号脱敏。手机号以密文存储，无法在服务端做精准脱敏，
+     * 手机号脱敏。手机号以密文存储（隐私合规要求），服务端无法还原原文做精准脱敏，
      * 统一返回 {@link #PHONE_MASK_PLACEHOLDER} 占位避免泄露明文长度。
      *
      * @param phoneCiphertext 手机号密文（可空）
