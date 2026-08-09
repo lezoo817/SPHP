@@ -1,2 +1,5 @@
 /* 在线问诊摘要按就诊人和主诉表格展示，保证标题与内容分栏对齐。 */
 .consultation-summary{margin:14px 0;padding:18px;border-radius:12px;background:#fff}.consultation-summary h3{margin:0 0 14px;font-size:19px}.consultation-summary__table{display:grid;grid-template-columns:76px minmax(0,1fr);overflow:hidden;border:1px solid #e5dfde;border-radius:8px}.consultation-summary__table>b,.consultation-summary__table>p{min-width:0;margin:0;padding:12px;border-bottom:1px solid #eee8e6;line-height:1.5}.consultation-summary__table>b{border-right:1px solid #eee8e6;color:#5e5961;font-weight:700}.consultation-summary__table>p{color:#243246;word-break:break-word}.consultation-summary__table>b:nth-last-child(-n+2),.consultation-summary__table>p:nth-last-child(-n+2){border-bottom:0}
+
+/* 处方签名区同时展示就诊人与开方医生，窄屏允许自然换行。 */
+.pharmacy-prescription-paper__signature{flex-wrap:wrap;align-items:center}.pharmacy-prescription-paper__signature span:first-child{margin-right:auto}.pharmacy-prescription-paper__signature span{white-space:nowrap}
