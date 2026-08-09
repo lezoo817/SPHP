@@ -2,8 +2,9 @@
  * 病历记录表单（结构化病历：主诉/现病史/查体/诊断/治疗方案）+ 已开处方列表。
  *
  * 受控组件：字段值与变更回调由父级传入；保存按钮由 noteChanged 控制可用性。
+ * 已开处方区：SUBMITTED 展示风险快照 Tag，REJECTED 提供「重新开方」（带明细预填重提）。
  */
-import { Button, Divider, Input, List, Space, Tag, Typography } from 'antd';
+import { Button, Divider, Input, List, Space, Tag, Tooltip, Typography } from 'antd';
 import { FileTextOutlined, SaveOutlined, MedicineBoxOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import styles from './index.module.less';
@@ -38,6 +39,10 @@ interface NoteFormProps {
   onSave: () => void;
   /** 打开开处方弹窗 */
   onOpenPrescription: () => void;
+  /** 查看处方详情（含风险快照 / 驳回原因） */
+  onViewPrescription: (id: number) => void;
+  /** 驳回重开：取被驳回处方明细预填进开方弹窗 */
+  onReopenPrescription: (id: number) => void;
 }
 
 export default function NoteForm({
@@ -49,6 +54,8 @@ export default function NoteForm({
   onFieldChange,
   onSave,
   onOpenPrescription,
+  onViewPrescription,
+  onReopenPrescription,
 }: NoteFormProps) {
   return (
     <div className={styles.noteSection}>
@@ -105,28 +112,79 @@ export default function NoteForm({
           <List
             size="small"
             dataSource={consultPrescriptions}
-            renderItem={(p) => (
-              <List.Item>
-                <Space>
-                  <Text style={{ fontSize: 12 }}>处方 #{p.id}</Text>
-                  <Tag>
-                    {p.status === 'APPROVED'
-                      ? '已通过'
-                      : p.status === 'SUBMITTED'
-                        ? '待审核'
-                        : p.status}
-                  </Tag>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {p.itemCount} 项
-                  </Text>
-                  {p.issuedAt && (
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {dayjs(p.issuedAt).format('MM-DD HH:mm')}
-                    </Text>
-                  )}
-                </Space>
-              </List.Item>
-            )}
+            renderItem={(p) => {
+              const riskCount = p.riskWarnings?.length ?? 0;
+              const actions = [
+                <Button
+                  key="view"
+                  type="link"
+                  size="small"
+                  style={{ padding: 0 }}
+                  onClick={() => onViewPrescription(p.id)}
+                >
+                  查看
+                </Button>,
+                ...(p.status === 'REJECTED'
+                  ? [
+                      <Button
+                        key="reopen"
+                        type="link"
+                        size="small"
+                        danger
+                        style={{ padding: 0 }}
+                        onClick={() => onReopenPrescription(p.id)}
+                      >
+                        重新开方
+                      </Button>,
+                    ]
+                  : []),
+              ];
+              return (
+                <List.Item actions={actions}>
+                  <Space direction="vertical" size={0}>
+                    <Space size={6} wrap>
+                      <Text style={{ fontSize: 12 }}>处方 #{p.id}</Text>
+                      <Tag style={{ marginRight: 0 }}>
+                        {p.status === 'APPROVED'
+                          ? '已通过'
+                          : p.status === 'SUBMITTED'
+                            ? '待审核'
+                            : p.status === 'REJECTED'
+                              ? '已驳回'
+                              : p.status}
+                      </Tag>
+                      {riskCount > 0 && (
+                        <Tooltip
+                          title={
+                            <Space direction="vertical" size={2}>
+                              {p.riskWarnings?.map((w, i) => (
+                                <span key={i} style={{ fontSize: 12 }}>
+                                  {w.message}
+                                </span>
+                              ))}
+                            </Space>
+                          }
+                        >
+                          <Tag color="orange" style={{ marginRight: 0, cursor: 'pointer' }}>
+                            ⚠ {riskCount} 条风险
+                          </Tag>
+                        </Tooltip>
+                      )}
+                    </Space>
+                    <Space size={12}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {p.itemCount} 项
+                      </Text>
+                      {p.issuedAt && (
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {dayjs(p.issuedAt).format('MM-DD HH:mm')}
+                        </Text>
+                      )}
+                    </Space>
+                  </Space>
+                </List.Item>
+              );
+            }}
           />
         </div>
       )}

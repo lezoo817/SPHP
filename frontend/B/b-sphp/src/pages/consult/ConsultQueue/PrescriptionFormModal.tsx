@@ -1,14 +1,28 @@
 /**
  * 接诊台开处方弹窗。
  *
- * - Form.List 多行药品明细：药品搜索下拉（getDrugs）+ 用量/频次/用法/天数/数量；
- * - 提交后展示后端风险拦截结果（WARNING 提示 / AUDIT 待审核 / 无风险直接通过）；
- * - 成功后调用方刷新已开处方列表，本弹窗关闭。
+ * - 顶部「处方模板」下拉：按医生所属科室（deptId 为空返回全院通用+全部）拉取模板，
+ *   选中后把模板药品明细带入 Form.List，医生可增删改后再提交（复用手工开方流程与风险拦截）；
+ * - initialItems：支持「驳回重开」把被驳回处方明细预填进表单；
+ * - Form.List 多行药品明细：药品搜索下拉（getDrugs）+ 用法/天数/数量/用量/频次；
+ * - 提交后展示后端风险拦截结果（WARNING 提示 / AUDIT 待审核 / 无风险直接通过）。
  */
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Form, Input, InputNumber, Modal, Select, Space, Spin, Tag, message } from 'antd';
+import {
+  Alert,
+  Button,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Select,
+  Space,
+  Spin,
+  Tag,
+  message,
+} from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
-import { getDrugs } from '@/services/admin';
+import { getDrugs, getTemplates } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
 
 /** 单行药品明细表单值（对齐 PrescriptionSubmitRequest.ItemDTO） */
@@ -21,9 +35,24 @@ interface PrescriptionItemFormValue {
   quantity?: number;
 }
 
+/** 可带入表单的药品明细（来源：处方模板 / 被驳回处方详情），drugName 用于下拉回显 */
+export interface PrescriptionPrefillItem {
+  drugId: number;
+  drugName?: string;
+  dosage: string;
+  frequency?: string;
+  usageMethod: string;
+  days: number;
+  quantity: number;
+}
+
 interface Props {
   open: boolean;
   submitting: boolean;
+  /** 打开时预填的药品明细（驳回重开场景），空数组表示不预填 */
+  initialItems?: PrescriptionPrefillItem[];
+  /** 医生所属科室 ID（模板列表过滤；为空时返回全院通用+全部模板） */
+  doctorDeptId?: number | null;
   onCancel: () => void;
   onSubmit: (
     items: API.PrescriptionSubmitReq['items'],
@@ -49,6 +78,8 @@ function toDrugOptions(list: API.Drug[]): { label: string; value: number }[] {
 export default function PrescriptionFormModal({
   open,
   submitting,
+  initialItems,
+  doctorDeptId,
   onCancel,
   onSubmit,
 }: Props) {
@@ -59,7 +90,49 @@ export default function PrescriptionFormModal({
   /** 提交成功后的风险拦截结果（展示后再关闭） */
   const [result, setResult] = useState<API.PrescriptionSubmitResult | null>(null);
 
-  /** 打开弹窗时重置表单与结果 */
+  /** 处方模板列表（打开弹窗时按科室拉取一次） */
+  const [templates, setTemplates] = useState<API.PrescriptionTemplate[]>([]);
+  const [templateLoading, setTemplateLoading] = useState(false);
+
+  /** 将模板/驳回处方的药品明细填入表单（合并药品选项，保证 Select 正常回显药名） */
+  const applyItemsToForm = (items: PrescriptionPrefillItem[]) => {
+    const rows: PrescriptionItemFormValue[] = items.map((it) => ({
+      drugId: it.drugId,
+      dosage: it.dosage ?? '',
+      frequency: it.frequency ?? '',
+      usageMethod: it.usageMethod ?? '',
+      days: it.days,
+      quantity: it.quantity,
+    }));
+    // 把模板/驳回处方中不在药品选项里的药品补进 options，避免下拉只显示数字 id
+    setDrugOptions((prev) => {
+      const existingIds = new Set(prev.map((o) => o.value));
+      const extra = items
+        .filter((it) => it.drugName && !existingIds.has(it.drugId))
+        .map((it) => ({ label: it.drugName as string, value: it.drugId }));
+      return extra.length ? [...prev, ...extra] : prev;
+    });
+    form.setFieldsValue({ items: rows });
+  };
+
+  /** 拉取处方模板（deptId 过滤：本部门 + 全院通用） */
+  const loadTemplates = async () => {
+    setTemplateLoading(true);
+    try {
+      const res = await getTemplates({
+        page: 1,
+        size: 50,
+        deptId: doctorDeptId ?? undefined,
+      });
+      setTemplates(res.list ?? []);
+    } catch {
+      // 模板加载失败不阻塞手工开方，下拉为空
+    } finally {
+      setTemplateLoading(false);
+    }
+  };
+
+  /** 打开弹窗时重置表单与结果；有预填明细（驳回重开）则带入 */
   useEffect(() => {
     if (open) {
       form.resetFields();
@@ -69,6 +142,10 @@ export default function PrescriptionFormModal({
         getDrugs({ page: 1, size: 50, status: 'ENABLED' })
           .then((res) => setDrugOptions(toDrugOptions(res.list ?? [])))
           .catch(() => {});
+      }
+      loadTemplates();
+      if (initialItems && initialItems.length > 0) {
+        applyItemsToForm(initialItems);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -92,6 +169,21 @@ export default function PrescriptionFormModal({
       drugSearchLoadingRef.current = false;
     }
   };
+
+  /** 选择模板：带入明细到表单（可编辑），下拉随即复位供再次选择 */
+  const handleTemplateSelect = (templateId: number) => {
+    const template = templates.find((t) => t.id === templateId);
+    if (template?.items?.length) {
+      applyItemsToForm(template.items);
+      message.success(`已带入模板「${template.name}」，可修改后提交`);
+    }
+  };
+
+  /** 模板下拉选项：纯字符串标签（名称 + 项数 + 科室），保证 showSearch 可按文本过滤 */
+  const templateOptions: { label: string; value: number }[] = templates.map((t) => ({
+    label: `${t.name}（${t.itemCount ?? t.items?.length ?? 0} 项${t.deptName ? ` · ${t.deptName}` : ' · 全院通用'}）`,
+    value: t.id,
+  }));
 
   const handleSubmit = async () => {
     try {
@@ -141,6 +233,24 @@ export default function PrescriptionFormModal({
       ]}
     >
       <Spin spinning={submitting}>
+        {/* 处方模板带入入口（可编辑后提交） */}
+        <div style={{ marginBottom: 12 }}>
+          <Space>
+            <Select
+              allowClear
+              showSearch
+              placeholder="从处方模板带入明细（可修改）"
+              style={{ width: 340 }}
+              loading={templateLoading}
+              disabled={Boolean(result)}
+              options={templateOptions}
+              optionFilterProp="label"
+              onChange={handleTemplateSelect}
+              notFoundContent={templateLoading ? <Spin size="small" /> : '暂无可用模板'}
+            />
+          </Space>
+        </div>
+
         <Form form={form} layout="vertical" disabled={Boolean(result)}>
           <Form.List name="items">
             {(fields, { add, remove }) => (

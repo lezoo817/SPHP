@@ -536,6 +536,8 @@ declare global {
       deptName: string;
       status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
       itemCount: number;
+      /** 命中风险规则时的快照（重复用药 WARNING / 高危药品 AUDIT），SUBMITTED 态存在 */
+      riskWarnings?: RiskWarning[];
       issuedAt?: string;
       createdAt: string;
       updatedAt: string;
@@ -553,23 +555,23 @@ declare global {
       quantity: number;
     }
 
-    /** 处方详情 */
+    /** 处方详情（与后端 PrescriptionDetailVO 嵌套结构对齐） */
     interface PrescriptionDetail {
       id: number;
       consultId: number;
-      patientId: number;
-      patientName: string;
-      doctorId: number;
-      doctorName: string;
-      deptId: number;
-      deptName: string;
+      /** 医生信息（嵌套） */
+      doctor?: { id?: number; name?: string; title?: string; deptName?: string };
+      /** 患者信息（嵌套） */
+      patient?: { id?: number; name?: string; gender?: string; dateOfBirth?: string };
       status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
       auditRequired: boolean;
       riskWarnings?: RiskWarning[];
+      /** 驳回原因（仅 REJECTED 时存在） */
       rejectReason?: string;
       items: PrescriptionItem[];
-      createdAt: string;
-      updatedAt: string;
+      issuedAt?: string;
+      auditedAt?: string;
+      createdAt?: string;
     }
 
     /** 处方列表查询参数 */

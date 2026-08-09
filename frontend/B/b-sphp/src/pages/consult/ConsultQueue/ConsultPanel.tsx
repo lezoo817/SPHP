@@ -46,6 +46,8 @@ interface ConsultPanelProps {
   consultPrescriptions: API.Prescription[];
   // 开处方
   onOpenPrescription: () => void;
+  onViewPrescription: (id: number) => void;
+  onReopenPrescription: (id: number) => void;
   // 留言板
   messages: API.MessageVO[];
   messagesLoading: boolean;
@@ -81,6 +83,8 @@ export default function ConsultPanel({
   handleSaveNote,
   consultPrescriptions,
   onOpenPrescription,
+  onViewPrescription,
+  onReopenPrescription,
   messages,
   messagesLoading,
   messageInput,
@@ -150,6 +154,8 @@ export default function ConsultPanel({
               onFieldChange={handleFieldChange}
               onSave={handleSaveNote}
               onOpenPrescription={onOpenPrescription}
+              onViewPrescription={onViewPrescription}
+              onReopenPrescription={onReopenPrescription}
             />
 
             <Divider style={{ margin: '12px 0' }} />

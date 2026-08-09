@@ -37,21 +37,21 @@ export default function AuditDetailModal({
       footer={null}
       onCancel={onCancel}
       width={640}
-      destroyOnClose
+      destroyOnHidden
     >
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40 }}>加载中...</div>
       ) : data ? (
         <>
           <Descriptions size="small" column={2} bordered style={{ marginBottom: 16 }}>
-            <Descriptions.Item label="患者">{data.patientName}</Descriptions.Item>
-            <Descriptions.Item label="医生">{data.doctorName}</Descriptions.Item>
-            <Descriptions.Item label="科室">{data.deptName}</Descriptions.Item>
+            <Descriptions.Item label="患者">{data.patient?.name ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label="医生">{data.doctor?.name ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label="科室">{data.doctor?.deptName ?? '-'}</Descriptions.Item>
             <Descriptions.Item label="状态">
               <Tag color="orange">待审核</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="提交时间" span={2}>
-              {dayjs(data.createdAt).format('YYYY-MM-DD HH:mm')}
+              {data.createdAt ? dayjs(data.createdAt).format('YYYY-MM-DD HH:mm') : '-'}
             </Descriptions.Item>
             {data.rejectReason && (
               <Descriptions.Item label="驳回原因" span={2}>

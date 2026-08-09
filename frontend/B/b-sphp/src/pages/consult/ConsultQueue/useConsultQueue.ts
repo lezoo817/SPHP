@@ -23,6 +23,7 @@ import {
   getConsultHistory,
   getConsultHistoryDetail,
   getPrescriptions,
+  getPrescriptionDetail,
   submitPrescription,
 } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
@@ -31,6 +32,7 @@ import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 import dayjs from 'dayjs';
 import type { SelectedStatus } from './constants';
 import type { NoteField } from './NoteForm';
+import type { PrescriptionPrefillItem } from './PrescriptionFormModal';
 
 /** 待接诊 / 接诊中队列每页条数 */
 const QUEUE_PAGE_SIZE = 10;
@@ -357,6 +359,63 @@ export function useConsultQueue() {
 
   const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false);
   const [submittingPrescription, setSubmittingPrescription] = useState(false);
+  /** 驳回重开时预填进开方弹窗的明细（无预填为 null） */
+  const [prescriptionPrefill, setPrescriptionPrefill] = useState<PrescriptionPrefillItem[] | null>(null);
+
+  // ==================== 处方详情 / 驳回重开 ====================
+
+  const [prescriptionDetailOpen, setPrescriptionDetailOpen] = useState(false);
+  const [prescriptionDetailLoading, setPrescriptionDetailLoading] = useState(false);
+  const [prescriptionDetailData, setPrescriptionDetailData] =
+    useState<API.PrescriptionDetail | null>(null);
+
+  /** 查看处方详情（含风险快照 / 驳回原因） */
+  const handleViewPrescription = async (id: number) => {
+    setPrescriptionDetailLoading(true);
+    setPrescriptionDetailOpen(true);
+    setPrescriptionDetailData(null);
+    try {
+      const data = await getPrescriptionDetail(id);
+      setPrescriptionDetailData(data);
+    } catch (err: unknown) {
+      message.error(getErrorMessage(err, '加载处方详情失败'));
+      setPrescriptionDetailOpen(false);
+    } finally {
+      setPrescriptionDetailLoading(false);
+    }
+  };
+
+  /** 关闭处方详情弹窗 */
+  const handleClosePrescriptionDetail = () => {
+    setPrescriptionDetailOpen(false);
+    setPrescriptionDetailData(null);
+  };
+
+  /** 驳回重开：取被驳回处方明细预填进开方弹窗，医生修改后重新提交 */
+  const handleReopenPrescription = async (prescriptionId: number) => {
+    try {
+      const detail = await getPrescriptionDetail(prescriptionId);
+      const items: PrescriptionPrefillItem[] = detail.items.map((it) => ({
+        drugId: it.drugId,
+        drugName: it.drugName,
+        dosage: it.dosage,
+        frequency: it.frequency,
+        usageMethod: it.usageMethod,
+        days: it.days,
+        quantity: it.quantity,
+      }));
+      setPrescriptionPrefill(items);
+      setPrescriptionModalOpen(true);
+    } catch (err: unknown) {
+      message.error(getErrorMessage(err, '加载处方失败，无法重新开方'));
+    }
+  };
+
+  /** 关闭开方弹窗（同时清除驳回重开预填，避免下次开方残留旧明细） */
+  const closePrescriptionModal = () => {
+    setPrescriptionPrefill(null);
+    setPrescriptionModalOpen(false);
+  };
 
   /** 提交处方：成功后在弹窗内展示风险拦截结果，并刷新已开处方列表 */
   const handleSubmitPrescription = async (
@@ -435,9 +494,20 @@ export function useConsultQueue() {
     handleMessageKeyDown,
     // 处方
     consultPrescriptions: consultPrescriptions ?? [],
+    /** 医生所属科室（模板列表过滤用） */
+    doctorDeptId: currentUser?.deptId ?? null,
     prescriptionModalOpen,
+    closePrescriptionModal,
     setPrescriptionModalOpen,
     submittingPrescription,
     handleSubmitPrescription,
+    // 处方详情 / 驳回重开
+    prescriptionPrefill,
+    prescriptionDetailOpen,
+    prescriptionDetailLoading,
+    prescriptionDetailData,
+    handleViewPrescription,
+    handleClosePrescriptionDetail,
+    handleReopenPrescription,
   };
 }

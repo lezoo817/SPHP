@@ -11,6 +11,7 @@ import { useConsultQueue } from './useConsultQueue';
 import QueuePanel from './QueuePanel';
 import ConsultPanel from './ConsultPanel';
 import PrescriptionFormModal from './PrescriptionFormModal';
+import PrescriptionDetailModal from '@/pages/prescription/PrescriptionList/PrescriptionDetailModal';
 import styles from './index.module.less';
 
 const { Text } = Typography;
@@ -70,14 +71,25 @@ export default function ConsultQueuePage() {
           {...consult}
           pendingSelectedItem={pendingSelectedItem}
           onOpenPrescription={() => consult.setPrescriptionModalOpen(true)}
+          onViewPrescription={consult.handleViewPrescription}
+          onReopenPrescription={consult.handleReopenPrescription}
         />
       </div>
 
       <PrescriptionFormModal
         open={consult.prescriptionModalOpen}
         submitting={consult.submittingPrescription}
-        onCancel={() => consult.setPrescriptionModalOpen(false)}
+        initialItems={consult.prescriptionPrefill ?? undefined}
+        doctorDeptId={consult.doctorDeptId}
+        onCancel={consult.closePrescriptionModal}
         onSubmit={consult.handleSubmitPrescription}
+      />
+
+      <PrescriptionDetailModal
+        open={consult.prescriptionDetailOpen}
+        loading={consult.prescriptionDetailLoading}
+        data={consult.prescriptionDetailData}
+        onCancel={consult.handleClosePrescriptionDetail}
       />
     </div>
   );
