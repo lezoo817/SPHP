@@ -3,8 +3,8 @@
 | --- | --- |
 | 文档名称 | 智愈先锋 Agent 模块系统详细设计说明书 |
 | 项目名称 | 智愈先锋 —— AI驱动的全链路医疗健康平台 |
-| 编写日期 | 2026-08-08 |
-| 文档版本 | V3.0 |
+| 编写日期 | 2026-08-09 |
+| 文档版本 | V3.1 |
 | 文档状态 | 更新中 |
 | 编写人 | Agent 开发组 |
 | 参考文档 | Agent-PRD 2.0、C 端后端系分 V1.3、B 端后端系分 V1.1 |
@@ -19,7 +19,8 @@
 | V1.1 | 2026-07-29 | 重大更新：采用 BFF 统一架构；Agent 退居纯推理角色；工具执行、鉴权、上下文注入全部移交 BFF；新增 B 端 4 场景工具定义 | Agent 开发组 |
 | V2.0 | 2026-07-30 | **架构重构**：废除 BFF 模式，改用 MCP 协议；Agent 担任 MCP Client，内嵌 MCP Server 封装 Java REST API；前端直连 Agent（:8081）；Java 后端退化为纯数据 API + 内部鉴权辅助；删除全部 SSE 自定义事件、BFF 工具回调接口、BFF 安全模型 | Agent 开发组 |
 | V2.1 | 2026-07-31 | **前后端对齐**：SSE card 事件补 session_id；confirm 接口改为同步返回并统一 {code,message,data,traceId} 信封；B 端 token/parse 响应定稿（含 roles/deptId/doctorId/hospitalId）；C 端工具参数对齐后端 V1.3；B 端工具 API 路径统一 /admin/ 前缀（对齐后端 V1.1）；AgentState 补 B 端上下文字段；context 补 hospital_id；明确 B 端鉴权头策略（仅 X-User-Id）；confirm_token 统一 UUID4；支付超时定稿 15 分钟；ReAct 可视化（thought/action/observation 事件） | Agent 开发组 |
-| V3.0 | 2026-08-08 | **代码同步**：C 端工具30→32（新增 recommend_pharmacies/authorize_drug_order_reminder_after_receipt/query_medical_records/interpret_medical_record）；B 端工具参数简化（check_allergy_risk/check_duplicate_medication 仅需 patient_id）；save_pre_consultation 重构（doctor_id+submit）；update_medication_plan 扩展 ENABLE_REMINDER/DISABLE_REMINDER；项目结构补全 mcp_client/mcp_server dispatcher/medical_record/envelope 等；主图新增受控预设动作路由（preset_action_node）；AgentState 新增 11 个字段（patient_id/address_id/preset_action*/action_cards/record_pickers/pending_doctor_choices/rag_context/jwt_token/tool_iteration）；SSE 新增 action_card/options 事件；知识库新增 list/delete 端点；Settings 新增 checkpointer_backend/confirm_done_ttl/max_data_chars/max_tool_iterations 等；Embedding 供应商更新（siliconflow/dashscope） | Agent 开发组 |
+| V3.0 | 2026-08-08 | **代码同步**：C 端工具30→34（新增 recommend_pharmacies/authorize_drug_order_reminder_after_receipt/query_medical_records/interpret_medical_record）；B 端工具参数简化（check_allergy_risk/check_duplicate_medication 仅需 patient_id）；save_pre_consultation 重构（doctor_id+submit）；update_medication_plan 扩展 ENABLE_REMINDER/DISABLE_REMINDER；项目结构补全 mcp_client/mcp_server dispatcher/medical_record/envelope 等；主图新增受控预设动作路由（preset_action_node）；AgentState 新增 11 个字段（patient_id/address_id/preset_action*/action_cards/record_pickers/pending_doctor_choices/rag_context/jwt_token/tool_iteration）；SSE 新增 action_card/options 事件；知识库新增 list/delete 端点；Settings 新增 checkpointer_backend/confirm_done_ttl/max_data_chars/max_tool_iterations 等；Embedding 供应商更新（siliconflow/dashscope） | Agent 开发组 |
+| V3.1 | 2026-08-09 | **实测对齐（代码核查）**：C 端工具数更正 32→34（实际注册 34 个 = 20 L1 + 14 L2）；契约表更新至 51 条（C 端 42 + B 端 9）；confirm 消费方式更正（Lua GET 不删 + 执行成功后 DEL，Value 新增 idempotency_key，Key 会话定界符防越权）；SSE 事件补 record_picker（⑧ 记录选择卡）；confirm 请求体补 login_password（选填）、错误码补 BUSINESS_CONFLICT（Java 业务冲突码 200 返回）；鉴权头策略更正为 JWT 优先（Authorization: Bearer，C 端拦截器拒绝 X-User-Id，无 JWT 回落）；B 端 token/parse 状态更新为已实现（08-08 真实联调完成）；Embedding 默认供应商更正（代码默认 siliconflow BAAI/bge-m3，.env.example 配 dashscope，4 供应商）；健康检查 status 更正（仅 healthy/unhealthy）；启动流程第 3 步更正（无 Redis PING）；补 08-07/08-08 新特性（病历 AI 一键解读、解读选择卡、购药收货后提醒、interpret_report 限定 clinical_ref、ingest_directory 子目录推断 category、seed_kb 批量灌库脚本、Windows SelectorEventLoop 兼容）；补知识库内容现状（docs/kb/ 64 篇：patient_edu 49 + clinical_ref 15） | Agent 开发组 |
 
 
 ---
@@ -32,7 +33,7 @@
 
 + 系统架构边界与 MCP 协议工具调用方式
 + 核心业务流程（对话模型、MCP 工具调用、L2 确认）
-+ Function Calling Schema 定义（C 端 32 工具 + B 端 9 工具）
++ Function Calling Schema 定义（C 端 34 工具 + B 端 9 工具）
 + 接口契约（前端→Agent 对话接口、Agent→Java 鉴权接口、MCP 工具协议）
 + 安全设计（纵深防御、JWT 鉴权方案 A、数据隔离）
 + 非功能性设计（质量属性、可维护性）
@@ -104,7 +105,7 @@ Java 后端（:8080）                       Agent（Python :8081）
 
 + **Agent 直连前端**，前端带 JWT 调 Agent 的对话端点，Agent 端口对外暴露。
 + **Agent 通过 MCP 协议调用工具**。Agent 内嵌 MCP Server 接收 `tools/call` 请求，内部向 Java 后端发 REST 请求获取数据。
-+ **鉴权采用方案 A**：Agent 拿到前端 JWT 后调 Java 已有的 token 解析接口（C 端 `GET /api/c/v1/auth/token/parse`、B 端 `GET /api/b/auth/token/parse`）换取 userId，后续调 Java REST API 时在 Header 中携带 `X-User-Id` 做数据隔离。
++ **鉴权采用方案 A**：Agent 拿到前端 JWT 后调 Java 已有的 token 解析接口（C 端 `GET /api/c/v1/auth/token/parse`、B 端 `GET /api/b/auth/token/parse`）换取 userId；后续调 Java REST API 时**优先透传 JWT（`Authorization: Bearer`，身份头互斥）**，无 JWT 的调用回落 `X-User-Id` 做数据隔离（详见 §6.4）。
 + **Java 后端仅提供 REST 业务数据 API 和 token 解析接口**，不参与 AI 推理、工具编排或对话管理。
 
 调用链路详见 §4.1 整体部署视图。
@@ -308,8 +309,8 @@ graph TB
     C_APP -->|"POST /api/chat/stream<br/>Bearer JWT"| API
     B_WEB -->|"POST /api/chat/stream<br/>Bearer JWT"| API
     API -.->|"JWT校验"| AUTH
-    MCP_INNER -->|"HTTP REST<br/>X-User-Id"| C_API
-    MCP_INNER -->|"HTTP REST<br/>X-User-Id"| B_API
+    MCP_INNER -->|"HTTP REST<br/>Bearer JWT / X-User-Id"| C_API
+    MCP_INNER -->|"HTTP REST<br/>Bearer JWT / X-User-Id"| B_API
     C_API --> PG
     C_API --> REDIS
     C_API --> MQ
@@ -428,7 +429,7 @@ sphp-agent/                             # Agent 模块根目录
 │   │   │   └── factory.py             # LLM 工厂（DeepSeek / 智谱 / 通义，OpenAI 兼容接口）
 │   │   ├── tools/                      # 工具引擎
 │   │   │   ├── schema_registry.py     # Function Calling Schema 注册中心（ToolSchema + ToolRegistry）
-│   │   │   ├── c_schemas.py           # C 端工具 Schema（32 个，启动时加载）
+│   │   │   ├── c_schemas.py           # C 端工具 Schema（34 个，启动时加载）
 │   │   │   └── b_schemas.py           # B 端工具 Schema（9 个，启动时加载）
 │   │   ├── rag/                        # 知识库向量检索（pgvector）
 │   │   │   ├── vectorstore.py         # PGVector 实例管理（async 引擎）
@@ -486,32 +487,28 @@ main.py: lifespan()
     ├── 2. 校验 Java 接口契约表（fail-fast）
     │       validate_contract() + validate_tool_references()
     │       └── 失败 → fatal，进程退出（防止运行期静默降级）
+    │       └── 契约表 JAVA_API_MAP 共 51 条（C 端 42 + B 端 9），启动打印条数日志
     │
-    ├── 3. 初始化基础设施连接
-    │       ├── PostgreSQL: pgvector 连接池（SQLAlchemy async engine）
-    │       └── Redis: 建立连接，执行 PING
-    │           └── 失败 → warn（L2 操作不可用，其他功能正常）
-    │
-    ├── 4. 初始化会话 checkpointer（M6-B3）
+    ├── 3. 初始化会话 checkpointer（M6-B3）
     │       setup_checkpointer() → memory（开发）/ postgres（生产，建 checkpoint_blobs 表）
     │       └── 失败 → fatal
     │
-    ├── 5. 初始化会话元数据存储
+    ├── 4. 初始化会话元数据存储
     │       get_session_store().setup() → memory（开发）/ postgres（生产，建 agent_sessions 表）
     │
-    ├── 6. 注册 Function Calling Schema
-    │       ├── register_c_tools() → 注册 C 端工具 Schema（32 个）
+    ├── 5. 注册 Function Calling Schema
+    │       ├── register_c_tools() → 注册 C 端工具 Schema（34 个）
     │       └── register_b_tools() → 注册 B 端工具 Schema（9 个）
     │
-    ├── 7. 启动 MCP Server
+    ├── 6. 启动 MCP Server
     │       └── stdio transport: 在独立线程中启动，监听 MCP Client 的 tools/list 和 tools/call 请求
     │           └── 失败 → fatal
     │
-    ├── 8. 预连接 MCP Client（M6-C1，in-memory 传输）
+    ├── 7. 预连接 MCP Client（M6-C1，in-memory 传输）
     │       get_mcp_client().connect()
     │       └── 失败 → warn（工具将回退直调封装函数）
     │
-    ├── 9. 注册 FastAPI 路由 + 中间件
+    ├── 8. 注册 FastAPI 路由 + 中间件
     │       中间件（后添加先执行）: CORS → Tracing → JWT → RateLimit
     │       路由:
     │       ├── POST /api/chat/stream            (chat.py)
@@ -525,9 +522,11 @@ main.py: lifespan()
     │       ├── DELETE /api/knowledge/{id}        (knowledge.py)
     │       └── GET  /health                     → 健康检查端点
     │
-    └── 10. 开始接受请求
+    └── 9. 开始接受请求
              └── uvicorn 日志: "Agent started on :8081"
 ```
+
+> **基础设施连接（PG / Redis）为懒加载**：启动时不做连接池预建、不做 Redis PING——首次使用时按需建立（checkpointer 建表、confirm_token 读写等），连通性由 `/health` 端点即时探测（`SELECT 1` / `PING`）。与早期"启动时预建 PG 连接池 + Redis PING"设计不同（避免启动强依赖基础设施可用性）。
 
 **健康检查端点：**
 
@@ -537,10 +536,10 @@ GET /health
 
 | 响应字段 | 类型 | 说明 |
 |----------|------|------|
-| status | string | `healthy` / `degraded` / `unhealthy` |
-| checks.pg | string | PostgreSQL 连接状态 |
-| checks.redis | string | Redis 连接状态 |
-| checks.llm | string | LLM API 连通性 |
+| status | string | `healthy`（全部检查通过）/ `unhealthy`（任一检查失败） |
+| checks.pg | string | PostgreSQL 连通性（`SELECT 1`），`ok` / `error` |
+| checks.redis | string | Redis 连通性（`PING`），`ok` / `error` |
+| checks.llm | string | LLM API 连通性，`ok` / `error` |
 | version | string | Agent 版本号 |
 
 ```json
@@ -559,16 +558,19 @@ GET /health
 
 Agent 收到 SIGTERM/SIGINT 时执行：
 1. 关闭 MCP Server（停止接受新工具调用，等待进行中的调用完成，最长 10s）
-2. 关闭 PostgreSQL 连接池
+2. 关闭 Java HTTP 客户端连接池（httpx）
 3. 关闭 Redis 连接
-4. uvicorn 退出
+4. 关闭 MCP Client 连接
+5. 关闭 checkpointer 连接池（postgres）
+6. 关闭 PGVector 异步引擎（释放连接池，防热重载连接泄漏）
+7. uvicorn 退出
 
 **启动失败分级：**
 
 | 级别 | 含义 | 行为 |
 |------|------|------|
 | fatal | 核心组件不可用，无法提供任何服务 | 进程退出，exit code 1，uvicorn 不启动 |
-| warn | 非核心组件不可用，部分功能降级 | 进程继续启动，`/health` 返回 `degraded`，日志记录告警 |
+| warn | 非核心组件不可用，部分功能降级 | 进程继续启动，工具调用回退直调封装函数（如 MCP Client 预连接失败），日志记录告警 |
 
 
 ---
@@ -681,11 +683,11 @@ graph TD
 | preset_action_node | 主图节点 | **受控预设动作（C 端专属）**：鉴权后优先路由，前端传入 preset_action + 对应 ID 时直接执行允许的 L1 查询（处方解读/病历解读/药店推荐/购药通知），跳过 LLM 意图分类，减少延迟 |
 | b_end_tool_graph | 子图 | **B 端直达工具子图（M8-3）**：tool_caller 绑定 B 端全量 L1/L2 工具（9 个，无白名单）→ safety → executor 循环，跳过 C 端意图分类 |
 | intent_node | 主图节点 | 基于用户消息 + 历史对话，LLM 判断意图类型。输出意图标签用于路由（仅 C 端执行） |
-| triage_graph | 子图 | 追问症状 → RAG 检索 → 推荐科室 → 调 `query_doctors` 查医生 |
-| registration_graph | 子图 | 调 `query_departments` → `query_schedule_slots` → `create_appointment`（含 L2 确认） |
-| consultation_graph | 子图 | 调 `query_consultations` / `query_prescriptions` → `interpret_prescription`；选医生（options 选择卡） |
-| pharmacy_graph | 子图 | 调 `query_pharmacy_stock` / `recommend_pharmacies` → `create_drug_order`（含 L2 确认） |
-| health_graph | 子图 | **健康档案子图（M8-2，场景五）**：10 工具白名单——L1 查询（档案/病历/报告/用药计划/随访/通知）+ L2 变更（过敏史/既往史/报告录入/用药计划更新/随访确认，含 L2 确认） |
+| triage_graph | 子图 | 5 工具白名单（create_triage_assessment / search_medical_knowledge / query_departments / query_doctors / query_health_record）：多轮追问 → RAG 检索 → 科室推荐 → 医生推荐 |
+| registration_graph | 子图 | 8 工具白名单（query_departments / query_doctors / query_schedule_slots / query_appointments / create_appointment（L2）/ cancel_appointment（L2）/ join_waitlist（L2）/ query_payment_status） |
+| consultation_graph | 子图 | 8 工具白名单（save_pre_consultation（L2）/ query_consultations / send_consultation_message（L2）/ query_prescriptions / interpret_prescription / query_health_record / query_departments / query_doctors）：预问诊 → 选医生（options 选择卡）→ 处方解读 |
+| pharmacy_graph | 子图 | 6 工具白名单（recommend_pharmacies / query_pharmacy_stock / create_drug_order（L2）/ query_drug_orders / cancel_drug_order（L2）/ confirm_drug_receipt（L2）） |
+| health_graph | 子图 | **健康档案子图（M8-2，场景五）**：10 工具白名单——L1 查询 5 个（档案 query_health_record / 报告 query_reports / 用药计划 / 随访 / 通知）+ L2 变更 5 个（过敏史 manage_allergy / 既往史 manage_medical_history / 报告录入 create_report / 用药计划更新 update_medication_plan / 随访确认 confirm_follow_up，含 L2 确认） |
 | qa_node | 主图节点 | 调 RAG 检索 → 注入 LLM 上下文 → 生成回复 |
 | chitchat_node | 主图节点 | 不做工具调用，直接 LLM 自由回复 |
 | reply_node | 主图节点 | 生成最终回复（LLM 生成自然语言）。SSE 流式推送由路由级 handler 统一处理（见 §5.12） |
@@ -906,7 +908,7 @@ Agent 端通过 Function Calling Schema 向 LLM 注册工具。每个工具的 S
 | `scope` | 服务对象：`c_end` / `b_end` |
 | `security_level` | 安全等级：L1 / L2 / L3 / L4（L3/L4 不注册） |
 
-**C 端工具 Schema（按业务域分组，共 32 个）：**
+**C 端工具 Schema（按业务域分组，共 34 个）：**
 
 > 以下参数已与 C 端后端系分 V1.3（55 个 API）对齐。所有 API 路径均以 `/api/c/v1` 为前缀，下表省略前缀。
 
@@ -1016,13 +1018,15 @@ Agent 端通过 Function Calling Schema 向 LLM 注册工具。每个工具的 S
 
 > **注**：B 端工具中的多 API 聚合工具（如 `check_drug_interaction`、`recommend_care` 等）不直接对应单一 Java API，而是由 MCP Server 调用多项 API 聚合数据后返回结构化结果。分析与推理统一在 LangGraph 编排层由 LLM 完成，MCP 工具本身不做 LLM 推理。这与 C 端工具行为一致：所有 MCP 工具只做数据搬运，推理层统一收敛到编排节点。`interpret_report` 为纯本地工具（pgvector），不走 MCP Server，与 C 端 `search_medical_knowledge` 同类。
 
+> **注册总数**：MCP Server 实际注册 **41 个 MCP 工具**（C 端 33 + B 端 8，dispatcher.py `_MCP_TOOL_FUNCS` 统一持有工具名→封装函数映射）+ **2 个本地工具**（C 端 `search_medical_knowledge`、B 端 `interpret_report`，pgvector 本地执行，不走 MCP）= Schema 共 **43 个**（C 端 34 + B 端 9）。MCP 契约表 `JAVA_API_MAP` 共 **51 条**（C 端 42 + B 端 9；聚合工具如 `query_patient_history` / `recommend_care` / `check_drug_interaction` 按子接口拆分登记，工具数与契约条数不等）。
+
 #### 5.3.1 工具分发逻辑
 
 LLM 输出的 `tool_calls` 进入 `tool_executor` 节点后，需要区分两类工具并走不同执行路径：
 
 | 工具类型 | 特征 | 执行路径 | 示例 |
 |----------|------|----------|------|
-| MCP 工具 | 调用 Java REST API，需要 `X-User-Id` 做数据隔离 | MCP Client → `tools/call` → MCP Server → httpx → Java | `query_departments`、`create_appointment`、`query_patient_history` |
+| MCP 工具 | 调用 Java REST API，需要身份头（`Authorization: Bearer` JWT 优先，无 JWT 回落 `X-User-Id`）做数据隔离 | MCP Client → `tools/call` → MCP Server → httpx → Java | `query_departments`、`create_appointment`、`query_patient_history` |
 | 本地工具 | 不经过网络，直接调用本地资源（pgvector、LLM） | 直接执行，跳过 MCP 层 | `search_medical_knowledge`、`interpret_report` |
 
 分发逻辑在 `ToolRegistry` 中实现，注册时标记 `executor` 属性：
@@ -1176,8 +1180,8 @@ MCP Server 中的 `java_client.py` 在收到非 2xx 时，解析此 JSON 并包�
 
 | 等级 | 定义 | Agent 行为 | Java 后端行为 |
 |------|------|------------|---------------|
-| L1 查询级 | 只读，不产生业务变更 | 直接通过 MCP 执行工具 | 校验 X-User-Id → DataScope 过滤 → 返回数据 |
-| L2 业务级 | 创建/修改业务数据 | 生成 confirm_token → SSE 推送确认卡片 → 等待用户确认 → MCP 执行 | 校验 X-User-Id → 执行业务逻辑 → 返回结果 |
+| L1 查询级 | 只读，不产生业务变更 | 直接通过 MCP 执行工具 | 校验身份（JWT / X-User-Id）→ DataScope 过滤 → 返回数据 |
+| L2 业务级 | 创建/修改业务数据 | 生成 confirm_token → SSE 推送确认卡片 → 等待用户确认 → MCP 执行 | 校验身份（JWT / X-User-Id）→ 执行业务逻辑 → 返回结果 |
 | L3 资金级 | 涉及资金支付 | **Agent 代码硬拦截，不注册工具** | 不暴露工具入口 |
 | L4 禁止级 | 涉及医疗安全/核心数据变更 | **Agent 代码硬拦截，不注册工具** | 不暴露工具入口 |
 
@@ -1197,21 +1201,27 @@ sequenceDiagram
     Note over A: LLM 决定调用 L2 工具（如 create_appointment）
 
     A->>A: 识别工具等级为 L2
-    A->>R: SET confirm_token (key=token_id, TTL=5min, 绑定 session_id + userId)
+    A->>R: SET confirm_token (key=confirm:{session_id}:{tool}:{token_id}, TTL=5min, 绑定 session_id + userId, 携带幂等键)
     A-->>F: SSE: card (card_type + confirm_token + session_id)
 
     F->>U: 展示确认卡片
     U->>F: 点击"确认"
 
     F->>A: POST /api/chat/confirm (confirm_token + session_id)
-    A->>R: GET + DEL confirm_token (Lua 一次性消费，校验 session_id + userId)
+    A->>R: Lua SCAN 读取 confirm_token（校验 session_id + userId，**不删除**）
     A->>A: 校验 token 有效
 
-    A->>M: MCP tools/call (tool_name + arguments)
-    M->>J: HTTP REST (Header: X-User-Id)
+    A->>M: MCP tools/call (tool_name + arguments + 幂等键)
+    M->>J: HTTP REST (Header: Bearer JWT / X-User-Id + X-Idempotency-Key)
     J->>J: 执行业务逻辑 → 返回结果
     J-->>M: 业务数据
     M-->>A: MCP 工具结果
+
+    alt 执行成功
+        A->>R: DEL confirm_token（消费完成，防重复确认）
+    else 执行失败（Java 未提交 / 网络瞬时失败）
+        A->>R: 保留 confirm_token（用户可重试，幂等键复用防重复执行业务）
+    end
 
     A-->>F: 同步返回 {code, data:{action_result, message}, traceId}
     F->>U: 更新卡片为已完成，展示结果
@@ -1219,10 +1229,11 @@ sequenceDiagram
 
 关键设计：
 - Agent 识别 L2 工具后，不立即调用 MCP——先生成 confirm_token 存入 Redis（5min TTL，绑定 session_id + userId），通过 SSE 推确认卡片（含 `confirm_token` + `session_id`）给前端
-- 前端确认后回调 `/api/chat/confirm`（携带 `confirm_token` + `session_id`），Agent 校验 token（Lua 脚本一次性 get-and-delete + session_id/userId 绑定校验），通过后同步执行 MCP 工具
+- 前端确认后回调 `/api/chat/confirm`（携带 `confirm_token` + `session_id`），Agent 按 session_id 前缀 SCAN 匹配 token_id、校验 user_id 后**读取** token（P2 #17：GET 不删，失败保留供重试），通过后同步执行 MCP 工具
+- **消费与删除分离（P2 #17）**：confirm_token 在**工具执行成功后**才 DEL（防"Java 已提交但响应超时 → 用户重试 → 重复执行业务"）；执行失败时保留 token 供用户重试。同一确认操作的所有执行尝试复用同一 `idempotency_key`（Value 内生成一次），Java 侧按 `X-Idempotency-Key` 去重——网络重试不会重复执行业务（挂号锁定、购药下单等 L2 写操作）
 - **confirm 端点同步返回业务执行结果**（`data.action_result` + `data.message`），前端无需依赖原 SSE 流续推（与前端系分 V1.1 §9.5 一致）
 - **confirm_done 回执机制（M5-T4 / T-M3-L1）**：confirm 成功后将操作结果写入 Redis（key=`confirm_done:{session_id}:{confirm_token_id}`，TTL=3600s），下一轮对话时 reply_node 一次性消费注入上下文，让 LLM 知道"上一轮用户确认了什么操作、执行结果是什么"
-- confirm_token 安全属性：一次性消费、5 分钟 TTL、绑定 userId + session_id
+- confirm_token 安全属性：5 分钟 TTL、绑定 userId + session_id、执行成功后一次性消费（消费前可重试）
 - 超时未确认：confirm_token 过期，Agent 返回 `CONFIRM_EXPIRED`，终止工具执行流程
 
 **confirm_token 结构与生命周期：**
@@ -1233,10 +1244,10 @@ sequenceDiagram
 
 | 属性 | 值 |
 |------|-----|
-| Key 模式 | `confirm:{session_id}:{tool_name}:{token_id}` |
-| Value 类型 | JSON string |
+| Key 模式 | `confirm:{session_id}:{tool_name}:{token_id}`（session_id 写入时包裹 `{}` 边界定界符并做 glob 转义，P2 防冒号前缀跨会话越权——session "abc" 无法匹配 `confirm:abc:def:...` 他人会话 key） |
+| Value 类型 | JSON string（含幂等键 `idempotency_key`，uuid4 生成一次） |
 | TTL | 300s（`CONFIRM_TOKEN_TTL` 环境变量配置） |
-| 消费方式 | `GET` + `DEL`（原子操作，Lua 脚本保证一次性） |
+| 消费方式 | 读取：Lua SCAN 按前缀匹配 + userId 校验后 `GET`（**不删除**）；删除：工具执行成功后单独 `DEL`（`delete_confirm_token_by_token`，幂等，并发双击无害） |
 
 **Value JSON 结构：**
 
@@ -1251,8 +1262,8 @@ sequenceDiagram
     "slot_id": 301,
     "patient_id": 10001
   },
-  "created_at": "2026-07-30T14:30:00Z",
-  "card_type": "confirm_appointment"
+  "card_type": "confirm_appointment",
+  "idempotency_key": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
 }
 ```
 
@@ -1263,28 +1274,53 @@ sequenceDiagram
 | `user_id` | 操作发起人，校验时与当前 JWT 中的 userId 比对，不匹配则拒绝 |
 | `tool_name` | 待执行的工具名，校验通过后直接作为 MCP `tools/call` 的参数 |
 | `tool_arguments` | 工具参数（JSON object），确认前由 Agent 暂存，不传前端 |
-| `created_at` | ISO-8601 时间戳，用于审计，不参与校验（TTL 已处理过期） |
 | `card_type` | 确认卡片类型，与 §6.2.2 中的 `card_type` 枚举对应 |
+| `idempotency_key` | 幂等键（uuid4，写入时生成一次），执行阶段注入 `X-Idempotency-Key` 头，Java 侧按此去重——确认流程的所有执行尝试（含失败重试）复用同一键，防重复执行业务 |
 
-**校验流程（Lua 脚本保证原子性）：**
+**读取流程（Lua 脚本，SCAN 匹配 + 校验，不删除）：**
 
 ```lua
--- Redis Lua: get_and_delete_confirm_token
-local key = KEYS[1]
-local expected_user_id = ARGV[1]
-local value = redis.call('GET', key)
+-- Redis Lua: get_confirm_token_by_token（P2 #17：只读不删）
+-- 前端仅回传 session_id + confirm_token，key 中 tool_name 未知，
+-- 按 session_id 前缀 SCAN 匹配 token_id 后缀，校验 user_id 后 GET
+local session_id = ARGV[1]   -- 已做 {} 定界 + glob 转义
+local token_id = ARGV[2]
+local expected_user_id = ARGV[3]
+local pattern = 'confirm:' .. session_id .. ':*'
+local cursor = '0'
+local suffix = ':' .. token_id
+local value = false
+
+repeat
+    local scan_result = redis.call('SCAN', cursor, 'MATCH', pattern, 'COUNT', 50)
+    cursor = scan_result[1]
+    local keys = scan_result[2]
+    for i, key in ipairs(keys) do
+        local len = #key
+        local suffix_start = len - #suffix + 1
+        if suffix_start >= 1 and string.sub(key, suffix_start) == suffix then
+            local v = redis.call('GET', key)
+            if v ~= false then
+                local data = cjson.decode(v)
+                if data.user_id == expected_user_id then
+                    value = v
+                    break
+                end
+            end
+        end
+    end
+    if value ~= false then
+        break
+    end
+until cursor == '0'
+
 if value == false then
-    return nil  -- token 不存在或已过期
+    return nil  -- token 不存在 / 已过期 / 用户不匹配
 end
-local data = cjson.decode(value)
-if data.user_id ~= expected_user_id then
-    return nil  -- userId 不匹配
-end
-redis.call('DEL', key)
-return value  -- 返回完整 JSON，由 Agent 解析后执行工具
+return value  -- 返回完整 JSON，由 Agent 解析后执行工具（不 DEL）
 ```
 
-> `GET` + `DEL` 在单条 Lua 脚本中完成，Redis 单线程模型天然保证原子性，无需分布式锁。
+> **注意**：与早期"GET + DEL 原子一次性消费"设计不同，当前实现（P2 #17）**读取与删除分离**——读取只校验不删除，工具执行成功后才由 `delete_confirm_token_by_token` 单独 DEL（幂等，重复调用无害）。这样"Java 已提交但响应超时"时用户重试不会重复执行业务（配合 Value 内 `idempotency_key` 复用，Java 侧 `X-Idempotency-Key` 去重双保险）。Redis 单线程模型保证 SCAN + GET 的匹配读取天然原子，无需分布式锁。
 
 ### 5.6 患者全流程时序（C 端核心链路）
 
@@ -1312,7 +1348,7 @@ sequenceDiagram
 
     Note over A: LLM 决定调用 query_departments
     A->>M: MCP tools/call (query_departments)
-    M->>J: GET /departments (Header: X-User-Id)
+    M->>J: GET /departments (Header: Bearer JWT)
     J->>P: 查询启用科室
     P-->>J: 科室列表
     J-->>M: 科室数据
@@ -1320,7 +1356,7 @@ sequenceDiagram
 
     Note over A: LLM 决定调用 query_doctors
     A->>M: MCP tools/call (query_doctors)
-    M->>J: GET /doctors?departmentId=X (Header: X-User-Id)
+    M->>J: GET /doctors?departmentId=X (Header: Bearer JWT)
     J-->>M: 医生+号源
     M-->>A: MCP 结果
 
@@ -1334,10 +1370,10 @@ sequenceDiagram
 
     U->>F: 点击确认
     F->>A: POST /api/chat/confirm (confirm_token)
-    A->>R: GET+DEL confirm_token ✓
+    A->>R: 读取 confirm_token ✓（不删，执行成功后 DEL）
 
     A->>M: MCP tools/call (create_appointment)
-    M->>J: POST /appointments (Header: X-User-Id)
+    M->>J: POST /appointments (Header: Bearer JWT)
     J->>P: Redis Lua 原子预扣
     P-->>J: appointmentId + paymentId
     J-->>M: 挂号成功
@@ -1354,7 +1390,7 @@ sequenceDiagram
 ```
 文档源（txt / md / pdf / csv）
     → 文档加载 → 递归切分 (chunk_size=500, overlap=50)
-    → Embedding 模型（智谱 embedding-3，可扩展多供应商）
+    → Embedding 模型（代码默认硅基流动 BAAI/bge-m3，多供应商可切换）
     → 向量存入 PostgreSQL (pgvector 扩展, IVFFlat/HNSW 索引)
     → 用户问题 → Embedding → 余弦相似度检索 (top_k=5)
     → 相关知识片段 + 来源 → 注入 LLM 上下文
@@ -1364,9 +1400,10 @@ sequenceDiagram
 
 | 项目 | 选型 | 理由 |
 |------|------|------|
-| 默认模型 | 智谱 embedding-3 | 中文医疗文本效果较好，API 稳定 |
-| 向量维度 | 1024 | 与 embedding-3 输出维度一致 |
-| 多供应商 | 工厂模式抽象 | 通过 `EmbedderFactory` 接口切换（智谱 / 通义 / OpenAI），`.env` 中配置 `EMBEDDING_PROVIDER` |
+| 默认模型（代码） | 硅基流动 BAAI/bge-m3 | `settings.embedding_provider` 默认 `siliconflow`，`EMBEDDING_PROVIDER` 未配置时生效 |
+| 示例配置（.env.example） | 阿里云百炼 text-embedding-v4 | 部署参考配置；需 `check_embedding_ctx_length=False`（百炼不接受 tiktoken token ID 输入） |
+| 向量维度 | 1024 | 与 bge-m3 / text-embedding-v4 / 智谱 embedding-3 输出维度一致 |
+| 多供应商 | 工厂模式抽象（embedder.py） | 通过 `EMBEDDING_PROVIDER` 切换（siliconflow / dashscope / zhipu / openai），`.env` 配置对应 API key；智谱走 `zhipu_base_url`（embedding-3） |
 
 **分块策略：**
 
@@ -1397,6 +1434,29 @@ sequenceDiagram
 **检索入口：**
 
 C 端通过 `search_medical_knowledge` 工具面向患者提供科普内容检索。B 端部分工具（如 `interpret_report`）内部使用 pgvector 进行本地知识库查询。知识库检索在 Agent 本地执行，不经过 MCP Server 或 Java 后端。
+
+**分类过滤（category 过滤）：**
+
+知识库文档按 `category` 分两类，检索时按工具语义限定范围：
+
+| category | 面向对象 | 内容 | 检索方 |
+|----------|----------|------|--------|
+| `patient_edu` | 患者科普 | 症状科普、药品科普、就医指导（含"红旗征象（何时就医）"小节） | `search_medical_knowledge`（C 端） |
+| `clinical_ref` | 临床参考 | 检验指标参考范围、临床用药参考（含"由接诊医生判断"声明） | `interpret_report`（B 端，**限定仅检索 clinical_ref**，避免患者科普误入临床解读） |
+
+实现：`search.py` 按 `category` 过滤（pgvector JSONB filter），`ingest.py` 的 `ingest_directory` 按子目录名推断 `category`（`patient_edu/`、`clinical_ref/`），单篇入库经 HTTP 接口显式传 `category`。
+
+**知识库内容现状（2026-08-09）：**
+
+内容位于 `docs/kb/`，共 **64 篇**（校验脚本检查每篇含"参考来源 + 免责声明"；患者科普含"红旗征象（何时就医）"，临床参考含"由接诊医生判断"）：
+
+| 分类 | 篇数 | 内容 |
+|------|------|------|
+| patient_edu 症状科普 | 38 | 发热/头痛/咳嗽/腹痛/胸痛/眩晕/失眠等常见症状（含红旗征象） |
+| patient_edu 药品科普 | 11 | 常用药（感冒药/退烧药/抗生素/慢病药等）的适应症、剂量、冲突、注意事项 |
+| clinical_ref | 15 | 血常规/生化/血脂血糖/尿常规等检验参考范围 + 临床参考（CR 拆细，便于 interpret_report 命中） |
+
+**批量入库：** `scripts/seed_kb.py [目录]`（默认 `docs/kb/`）批量灌库，单篇可用 `ingest` 接口（`--title/--category/--source`）。入库与命中率实测建议在 Linux 环境执行（与生产环境一致；Windows 本地已通过事件循环 patch 兼容 psycopg，见 9.6.3，但 RAG 检索质量验证仍以 Linux 为准，需实测 `qa`/`interpret_report` 命中率）。
 
 ### 5.8 审计追踪
 
@@ -1685,6 +1745,7 @@ Agent 使用 LangGraph 的 `astream_events` API 获取流式输出，在路由�
 | `safety_check` L2 | `event: card` | L2 操作需用户确认 | 确认卡片，含 `confirm_token` + `session_id`（前端确认时一并回传，见 §6.2.1） |
 | reply_node 受控交互 | `event: action_card` | 非 L2 的业务交互卡（如处方解读后推荐药店） | 可点击的交互卡片，点击触发受控预设动作 |
 | reply_node 多选项 | `event: options` | 多选项场景（医生/科室/号源列表） | 单选点选卡片，用户选择后发送 `reply_template` 消息 |
+| reply_node 记录选择 | `event: record_picker` | 病历/处方解读前（受控预设动作） | 记录选择卡片，用户点选后携带 `record_id` 发起实际解读 |
 | 异常 | `event: error` | 鉴权失败、工具执行异常、超时等 | 展示错误提示 |
 | `on_chain_end` | `event: done` | 本轮推理全部完成 | 停止 loading 动画，session_id 随首个 done 返回 |
 
@@ -1692,7 +1753,7 @@ Agent 使用 LangGraph 的 `astream_events` API 获取流式输出，在路由�
 
 **SSE 事件格式：**
 
-各事件（message / thought / action / observation / card / action_card / options / error / done）的**字段定义、示例与 card_type 枚举以 §6.2.1 为准**（字段均已统一：`action.label`、`observation.status/result/summary/duration_ms`、`card.details`、`action_card.action_type`、`options.items`、`error.trace_id`、`done.usage`）。本节仅约定事件时序与前端行为：`message` 逐 token 流式、`thought` 折叠展示、`action`→`observation` 配对合并为一张"调用工具"卡片（loading → 结果）、`card` 触发确认、`action_card` 提供非 L2 交互入口、`options` 提供多选点选、`done` 收尾。
+各事件（message / thought / action / observation / card / action_card / options / record_picker / error / done）的**字段定义、示例与 card_type 枚举以 §6.2.1 为准**（字段均已统一：`action.label`、`observation.status/result/summary/duration_ms`、`card.details`、`action_card.action_type`、`options.items`、`record_picker.items`、`error.trace_id`、`done.usage`）。本节仅约定事件时序与前端行为：`message` 逐 token 流式、`thought` 折叠展示、`action`→`observation` 配对合并为一张"调用工具"卡片（loading → 结果）、`card` 触发确认、`action_card` 提供非 L2 交互入口、`options` 提供多选点选、`record_picker` 提供解读记录选择、`done` 收尾。
 
 **前端渲染示意：**
 
@@ -1835,7 +1896,7 @@ Agent 独立部署于 8081 端口，直接对前端暴露。Java 后端部署于
 | 项目 | 约定 |
 |------|------|
 | 前端 → Agent 鉴权 | 前端携带 JWT Bearer Token + scope 字段，Agent 中间件调 Java `GET /api/c/v1/auth/token/parse`（C 端）/ `GET /api/b/auth/token/parse`（B 端）校验 |
-| Agent → Java 鉴权 | 方案 A：Agent 拿到前端 JWT 后调 Java token/parse 接口换取 userId；后续调业务 API 时 Header 携带 `X-User-Id` |
+| Agent → Java 鉴权 | 方案 A：Agent 拿到前端 JWT 后调 Java token/parse 接口换取 userId；后续调业务 API 时优先透传 JWT（Authorization: Bearer，身份头互斥），无 JWT 回落 X-User-Id |
 | MCP 通信 | Agent 编排层（MCP Client）通过 stdio transport 与内嵌 MCP Server 通信，使用 JSON-RPC 协议 |
 | 内容类型 | `application/json`；前端→Agent 流式对话为 `text/event-stream`（SSE） |
 | 时间格式 | ISO-8601，东八区，如 `2026-07-30T10:00:00+08:00` |
@@ -2085,7 +2146,35 @@ data: {
 | prompt | string | 引导用户选择的提示语 |
 | reply_template | string | 用户选择后会发送的文本模板，`{label}` 占位为选项展示名，默认"我选择{label}" |
 
-**⑧ error——错误事件**
+**⑧ record_picker——记录选择卡（病历/处方解读前）**
+
+病历 AI 解读 / 处方解读前的记录选择卡（08-07 新增，受控预设动作生成）。由 reply_node 构造（`AgentState.record_pickers`），前端展示可点选的记录列表，用户选择后经 `record_id` 发起实际解读——Agent 不擅自选取记录解读，避免"未经用户确认选中哪份病历"的歧义。
+
+```
+event: record_picker
+data: {
+  "picker_type": "medical_record",
+  "title": "请选择要解读的病历",
+  "confirm_text": "确认",
+  "cancel_text": "取消",
+  "items": [
+    {"id": "7001", "title": "呼吸内科 · 王医生病历", "description": "2026-07-28 10:30"},
+    {"id": "7002", "title": "神经内科 · 李医生病历", "description": "2026-07-25 09:00"}
+  ]
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| picker_type | string | 记录类型：`medical_record`（病历）/ `prescription`（处方），决定前端渲染样式 |
+| title | string | 卡片标题 |
+| confirm_text | string | 确认按钮文本（默认"确认"） |
+| cancel_text | string | 取消按钮文本（默认"取消"） |
+| items | array | 最近 30 天可解读记录列表，每项含 `id`（记录 ID，用户选择后回传）、`title`、`description`（医生/日期） |
+
+> 与 `options` 的区别：options 用于医生/科室/号源等"业务数据选择"（选择后由 LLM 按 reply_template 继续处理）；record_picker 用于"解读对象选择"（选择后触发对应受控预设解读动作，如 `preset_interpret_medical_record`）。与 `action_card` 同理，record_picker 在回复流式结束后延迟推送。
+
+**⑨ error——错误事件**
 
 ```
 event: error
@@ -2098,7 +2187,7 @@ data: {"code": "TOOL_FAILED", "message": "号源已被抢完，请选择其他�
 | message | string | 面向用户的可读错误描述 |
 | trace_id | string | 全链路追踪 ID |
 
-**⑨ done——本轮结束**
+**⑩ done——本轮结束**
 
 ```
 event: done
@@ -2130,15 +2219,19 @@ X-Scope: b_end
 |------|------|------|------|
 | confirm_token | string | 是 | Agent 在 `card` 事件中下发的确认令牌（UUID4） |
 | session_id | string | 是 | 当前对话会话 ID，来自 `card` 事件或首个 `done` 事件 |
+| login_password | string | 否 | 登录密码（M8-9）。仅取消已支付挂号等需要密码复核的操作时由用户在确认弹层输入，Agent 透传给工具（如 `cancel_appointment` 的 `login_password` 形参，Java 侧校验）；不进 Redis tool_arguments、不进 LLM schema，经 confirm_inputs 合并到执行参数 |
 
 **请求示例：**
 
 ```json
 {
   "confirm_token": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "session_id": "sess_abc123"
+  "session_id": "sess_abc123",
+  "login_password": "123456"
 }
 ```
+
+> 无密码复核要求的操作（绝大多数 L2 工具）请求体仅传 `confirm_token` + `session_id`，`login_password` 缺省即可。
 
 **成功响应（200）-- 统一信封 `{code, message, data, traceId}`：**
 
@@ -2178,6 +2271,8 @@ X-Scope: b_end
 | CONFIRM_EXPIRED | 400 | 令牌已过期（超过 5 分钟） | 提示"操作已超时，请重新发起" |
 | SESSION_MISMATCH | 400 | 令牌与会话不匹配 | 提示用户刷新重试 |
 | AUTH_EXPIRED / AUTH_INVALID | 401 | JWT 无效或过期 | 跳转登录页 |
+| BUSINESS_CONFLICT | 200 | Java 业务冲突/校验错误（业务码 `A` 开头，如 `A0443`"已有进行中问诊"）——**预期业务拦截而非系统故障**（M8-9） | 按 `message` 展示业务提示（如"当前医生仍有进行中的预问诊"），不视为崩溃 |
+| TOOL_FAILED | 500 | 工具执行失败（非业务冲突的系统性失败） | 提示"操作失败，请重试"（confirm_token 保留，可携带原卡片重试） |
 
 ```json
 {
@@ -2310,7 +2405,7 @@ Authorization: Bearer <JWT Token>
 
 Agent 不自建鉴权接口，直接调用 Java 后端已有的 token 解析接口校验前端 JWT 并获取 userId。C 端和 B 端各自独立部署，JWT 签名密钥互不通用，Agent 根据 chat 请求中的 `scope` 字段决定调用哪一侧的接口。
 
-**scope 来源**：前端在 chat 请求体中传入 `scope`（`c_end` / `b_end`），标识当前用户归属。Agent 据此选择鉴权接口和工具集（C 端 32 个 / B 端 9 个），不依赖鉴权接口返回 scope。
+**scope 来源**：前端在 chat 请求体中传入 `scope`（`c_end` / `b_end`），标识当前用户归属。Agent 据此选择鉴权接口和工具集（C 端 34 个 / B 端 9 个），不依赖鉴权接口返回 scope。
 
 **C 端鉴权（已有接口）：**
 
@@ -2419,17 +2514,22 @@ Java 后端（:8080）
 ```
 方法: GET/POST/PUT/PATCH/DELETE（根据具体 API）
 路径: C 端 /api/c/v1/{resource} ；B 端 /api/b/admin/{resource} 或 /api/b/doctor/{resource}
-Header:
-  X-User-Id: {userId}       ← Agent 从鉴权获得的 userId
-  X-Idempotency-Key: {key}  ← 创建型操作的幂等键（由 MCP Server 生成）
+Header（身份头互斥，java_client.py 统一实现）:
+  Authorization: Bearer {JWT}   ← 有 JWT 时优先（chat_stream 将 JWT 写入 AgentState.jwt_token，
+                                   经 __jwt_token__ 内部键透传 MCP 链路，call_java_api 注入此头；
+                                   有 JWT 时绝不发 X-User-Id——C 端拦截器见 X-User-Id 直接 401）
+  X-User-Id: {userId}           ← 无 JWT（内部/匿名调用）时回落，做数据隔离
+  X-Idempotency-Key: {key}      ← 写操作（POST/PUT/PATCH）必带；幂等键来源优先级：
+                                   显式参数 > 确认流程 Value 内 idempotency_key > 调用内生成一次；
+                                   重试全程复用同一键，Java 侧去重
   Content-Type: application/json
 ```
 
 **B 端鉴权头策略：**
 
-Agent 调 B 端业务 API（`/api/b/*`）时仅传 `X-User-Id`，不转发 B 端 JWT，也不传 `X-Roles` / `X-Hospital-Id` 等额外头。Java 端通过内部鉴权辅助（拦截器或 Filter）按 `X-User-Id` 查询 `b_user` 表，补全 role / hospitalId / doctorId / deptId 上下文，供 DataScope 数据权限过滤使用。Agent 侧无需感知 B 端多字段鉴权细节，实现最简。
+Agent 调 B 端业务 API（`/api/b/*`）时**优先透传 JWT（`Authorization: Bearer`，与 C 端同构，B 端 `token/parse` 已实现）**；仅当无 JWT 的调用（内部/匿名场景）回落 `X-User-Id`。无论哪种头，Java 端均按用户身份加载 b_user 上下文（role / hospitalId / doctorId / deptId），供 DataScope 数据权限过滤使用。Agent 侧无需感知 B 端多字段鉴权细节，实现最简。
 
-> **待后端确认**：Java 端需确认该内部鉴权辅助已实现或计划实现（即收到 `X-User-Id` 后自动加载 b_user 上下文），否则 B 端 DataScope 无法正常工作。
+> **已联调确认**（08-08 真实环境联调）：B 端 `GET /api/b/auth/token/parse` 已实现，B 端前端带 JWT 直连 Agent 的链路已验证，不再依赖"仅 X-User-Id"的早期约定（V2.1 记录）。
 
 > **注**：所有 Java REST API 的详细定义（路径、参数、响应结构）见 C 端后端系分 §5 和 B 端后端系分 §5.2。本模块只描述 MCP Server 如何封装和调用这些 API，不重复定义 API 细节。
 
@@ -2657,7 +2757,7 @@ LangGraph 图中流转的核心状态对象：
 | messages | list[Any] | `[]` | 对话消息列表（dict 或 BaseMessage），LangGraph 内置 `add_messages` reducer 自动追加 |
 | session_id | str \| None | `None` | 会话唯一标识，首次对话时生成，随首个 `done` 事件返回前端 |
 | intent | NotRequired[str \| None] | — | 当前识别的业务意图（NotRequired：意图粘性依赖 checkpointer 跨轮保留，首轮由 intent_node 写入后跨轮保留） |
-| user_id | int \| None | `None` | 从 JWT 鉴权获得的用户 ID，MCP 调用时注入 Header `X-User-Id` |
+| user_id | int \| None | `None` | 从 JWT 鉴权获得的用户 ID，MCP 调用时用于身份头（有 JWT 注入 `Authorization: Bearer`，无 JWT 回落 Header `X-User-Id`） |
 | scope | str | `"c_end"` | 当前服务端：`c_end` / `b_end` |
 | roles | list[str] \| None | `None` | B 端用户角色（`ADMIN` / `DEPT_HEAD` / `DOCTOR`），由 auth_node 写入 |
 | dept_id | int \| None | `None` | B 端用户所属科室 ID，由 auth_node 写入 |
@@ -2756,7 +2856,7 @@ class ToolSchema:
 |------|------|------|
 | 第一层：prompt 禁令 | C 端/B 端系统提示词 | 明确禁止 L3/L4 操作 |
 | 第二层：代码硬拦截 | Agent 工具执行器 | 执行前检查 `security_level`，L3/L4 直接返回 error，不下发 MCP `tools/call` |
-| 第三层：Java 鉴权 + API 隔离 | Java 后端 | Java 从 Header `X-User-Id` 过滤数据；API 层面禁止支付/处方类入口 |
+| 第三层：Java 鉴权 + API 隔离 | Java 后端 | Java 从身份头（`Authorization: Bearer` JWT 优先 / `X-User-Id` 回落）过滤数据；API 层面禁止支付/处方类入口 |
 
 核心原则：prompt 禁令只是辅助，真正的安全防线在代码层和 Java API 层。
 
@@ -2765,11 +2865,11 @@ class ToolSchema:
 | 安全机制 | 实现 |
 |----------|------|
 | JWT 鉴权 | 方案 A：Agent 调 Java `GET /api/c/v1/auth/token/parse`（C 端）/ `GET /api/b/auth/token/parse`（B 端）换取 userId；Java 密钥不离开 Java 端 |
-| 数据隔离 | C 端：Agent 调 Java REST API 时 Header 携带 `X-User-Id`，Java Service 层通过 DataScope 过滤（仅返回当前用户可见数据）。B 端：同样仅传 `X-User-Id`，Java 内部鉴权辅助按 userId 加载 b_user 上下文（role / hospitalId / doctorId / deptId），供 DataScope 多字段过滤使用（**待后端确认**该辅助已实现） |
+| 数据隔离 | C 端：Agent 调 Java REST API 时优先透传 JWT（`Authorization: Bearer`，C 端拦截器拒绝 X-User-Id），Java Service 层通过 DataScope 过滤（仅返回当前用户可见数据）。B 端：同样优先 Bearer JWT（无 JWT 回落 `X-User-Id`），Java 内部鉴权辅助按用户身份加载 b_user 上下文（role / hospitalId / doctorId / deptId），供 DataScope 多字段过滤使用（**08-08 联调验证通过**） |
 | 工具权限 | MCP Server 中每个工具函数校验参数合法性；L3/L4 工具不注册 |
 | 幂等 | 创建型操作的 `X-Idempotency-Key` 由 MCP Server 生成，Java 后端复用传统幂等键机制（Redis 24h） |
 | 网络隔离 | Java 业务接口仅 localhost 可访问（Agent ↔ Java 同机部署）；Agent 端口对外暴露但仅接受 JWT 鉴权请求 |
-| L2 confirm_token | 一次性消费（Redis get-and-delete）、5 分钟 TTL、绑定 userId + session_id |
+| L2 confirm_token | 5 分钟 TTL、绑定 userId + session_id、读取不删除 + 执行成功后 DEL（幂等键贯穿防重复执行业务，P2 #17） |
 
 ### 8.3 禁止操作红线
 
@@ -2868,10 +2968,20 @@ volumes:
 
 | 变量 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `EMBEDDING_PROVIDER` | string | 是 | Embedding 供应商：`siliconflow` / `zhipu` / `dashscope` |
-| `EMBEDDING_API_KEY` | string | 是 | API 密钥（可与 LLM 共用） |
+| `EMBEDDING_PROVIDER` | string | 是 | Embedding 供应商：`siliconflow`（默认）/ `dashscope` / `zhipu` / `openai`（代码默认 siliconflow=BAAI/bge-m3，.env.example 示例配 dashscope=text-embedding-v4） |
+| `EMBEDDING_API_KEY` | string | 是 | API 密钥（可与 LLM 共用；硅基流动走 `SILICONFLOW_API_KEY`，百炼走 `DASHSCOPE_EMBEDDING_API_KEY`，智谱走 `ZHIPU_API_KEY`） |
 | `EMBEDDING_BASE_URL` | string | 否 | 自定义 API 地址 |
-| `EMBEDDING_MODEL` | string | 否 | 模型名，默认按供应商选择（如 siliconflow=BAAI/bge-m3） |
+| `EMBEDDING_MODEL` | string | 否 | 模型名，默认按供应商选择（如 siliconflow=BAAI/bge-m3、dashscope=text-embedding-v4、zhipu=embedding-3） |
+
+**知识库（RAG）：**
+
+| 变量 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `KB_COLLECTION` | string | 否 | `medical_knowledge` | pgvector 集合名 |
+| `KB_CHUNK_SIZE` | int | 否 | `500` | 文档切分块大小（字符） |
+| `KB_CHUNK_OVERLAP` | int | 否 | `50` | 切分重叠（字符） |
+| `KB_TOP_K` | int | 否 | `5` | 检索返回 top_k 条 |
+| `KB_MIN_SCORE` | float | 否 | `0.3` | 相似度阈值，低于则视为无相关内容 |
 
 **数据库与缓存：**
 
@@ -3042,6 +3152,9 @@ Agent (:8081)
 | Python 依赖 | requirements.txt（含 dev 依赖） | requirements.txt（仅生产依赖） |
 | 前端代理 | Umi proxy 直连 localhost:8081 | Nginx 反向代理 |
 | 健康检查 | 手动 curl | 接入 Prometheus / 云监控 |
+| 事件循环（Windows 开发机） | **uvicorn loop factory 替换为 SelectorEventLoop**（main.py 模块顶层 patch） | Linux 默认 Selector/epoll，无需处理 |
+
+> **Windows 开发环境约束（08-07 修复）**：psycopg 异步驱动不兼容 ProactorEventLoop（报 `Psycopg cannot use the ProactorEventLoop`），而 uvicorn 0.36+ 的 `asyncio_loop_factory` 在 Windows 上**硬编码返回 ProactorEventLoop** 且绕过 event loop policy——仅设置 policy 无效。main.py 在模块顶层替换 `uvicorn.loops.asyncio.asyncio_loop_factory` 为 `SelectorEventLoop`（`import_from_string` 每次动态 getattr，对 `python -m app.main` / `uvicorn app.main:app` / IDE 直跑所有启动路径生效；仅 Windows 生效）。修复前 RAG 检索在 Windows 本地会静默降级为空（Proactor + psycopg 不兼容）；patch 后 psycopg 链路（含 postgres checkpointer）本地可用，但知识库入库与命中率验证仍建议以 Linux 环境为准（与生产一致，且本地未复测 RAG 检索质量）。
 
 生产环境建议额外配置：
 
@@ -3229,13 +3342,13 @@ async def check_rate_limit(user_id: str) -> bool:
 
 ### 11.2 接口层面
 
-2. **B 端 token 解析端点实现**：响应格式已与后端系分 §7.3.0(3) 对齐（返回 userId / account / roles / deptId / doctorId / hospitalId / tokenExpiresAt，信封 {code:"00000", message, data, traceId}）。**Java 端仍需实现 `GET /api/b/auth/token/parse` REST 端点**（可通过 `StpUtil.getLoginIdAsLong()` + `StpUtil.getRoleList()` 轻量实现），当前仅有拦截器级校验。
+2. **B 端 token 解析端点（已实现 ✅）**：响应格式已与后端系分 §7.3.0(3) 对齐（返回 userId / account / roles / deptId / doctorId / hospitalId / tokenExpiresAt，信封 {code:"00000", message, data, traceId}）。`GET /api/b/auth/token/parse` REST 端点已由 Java 端实现（08-08 真实环境联调验证通过），Agent 中间件按 scope 选择 C/B 端解析路径（`settings.b_auth_parse_path`）。
 3. **B 端 API 查询参数**：B 端后端系分已升级至 V1.1，API 路径统一为 `/api/b/admin/*` 和 `/api/b/doctor/*`。工具表参数已与 V1.1 对齐，但部分 API 查询参数规格仍待 B 端后端补充完善。
-4. **B 端鉴权头策略**：Agent 调 B 端业务 API 时仅传 `X-User-Id`（§6.4），依赖 Java 端内部鉴权辅助按 userId 加载 b_user 上下文（role / hospitalId / doctorId / deptId）供 DataScope 使用。**待后端确认**该内部鉴权辅助已实现或计划实现。
+4. **B 端鉴权头策略**：Agent 调 B 端业务 API 时优先透传 JWT（`Authorization: Bearer`，与 C 端同构）；无 JWT 的调用回落 `X-User-Id`（§6.4）。Java 端按用户身份加载 b_user 上下文（role / hospitalId / doctorId / deptId）供 DataScope 使用——该内部鉴权辅助**已联调验证**（08-08 B 端接诊/患者档案等场景数据隔离正确）。
 5. **generate_draft_note 双入口**：B 端前端系分 §6.2 描述医生手动 `PUT /note` 保存病历，Agent 文档设为 L2 工具（`generate_draft_note`）。双入口可共存，但需 B 端前端确认是否处理 `confirm_draft_note` 确认卡片渲染。
 6. **hospital_id 前端联动**：C 端工具（`query_departments`、`query_schedule_slots` 等）需要 `hospital_id` 参数，已在 §6.2.1 context 中补充该字段（标注"待前端确认"）。前端系分当前 context 不含 hospital_id，需 C 端前端确认是否在对话请求中传入当前选择的医院 ID。
 7. **confirm_appointment 扩展 details**：前端系分列出 6 个扩展字段（remaining_slots / hospital_name / doctor_title / location / lock_expire_seconds / payment_notice），标注"待后端补充"。Agent 系分当前仅含 4 个基础字段，待后端补充后同步。
 
 ### 11.3 产品层面
 
-8. **工具清单最终确认**：本文档 C 端 32 个工具参数已与 C 端后端系分 V1.3（55 个 API）对齐，B 端 9 个工具 API 路径已与 B 端后端系分 V1.1（42 个 API）对齐。最终能力集需三方确认。
+8. **工具清单最终确认**：本文档 C 端 34 个工具参数已与 C 端后端系分 V1.3（55 个 API）对齐（实际注册 34 个 = 20 L1 + 14 L2，MCP 契约表共 51 条 = C 端 42 + B 端 9），B 端 9 个工具 API 路径已与 B 端后端系分 V1.1（42 个 API）对齐。最终能力集需三方确认。
