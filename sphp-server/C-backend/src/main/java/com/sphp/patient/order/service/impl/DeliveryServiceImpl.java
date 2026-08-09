@@ -176,6 +176,7 @@ public class DeliveryServiceImpl implements DeliveryService {
      */
     @Override
     public String deliveryResolveOrderAddress(Long addressId, String legacyDeliveryAddress) {
+        // 旧版地址存在时优先使用
         boolean hasLegacyAddress = deliveryValidateOrderAddressArguments(addressId, legacyDeliveryAddress);
         if (hasLegacyAddress) {
             return legacyDeliveryAddress.trim();
@@ -211,6 +212,7 @@ public class DeliveryServiceImpl implements DeliveryService {
             detailAddress = snapshot;
         } else {
             DeliveryAddress address = deliveryRequireOwnedAddress(addressId, deliveryCurrentUserId());
+            // 新版地址结构化字段
             snapshot = deliveryBuildOrderAddressSnapshot(address);
             userProvince = DeliveryProvinceEnum.valueOf(address.getProvince());
             detailAddress = address.getDetailAddress();
@@ -225,6 +227,7 @@ public class DeliveryServiceImpl implements DeliveryService {
 
     /**
      * 推荐配送 Pharmacy。
+     * 价格（45%）、距离（30%）、时间（25%)
      * @param patientId 可选就诊人 ID，未传时使用本人
      * @param prescriptionId 已批准处方 ID
      * @param addressId 当前账号收货地址 ID
@@ -234,9 +237,13 @@ public class DeliveryServiceImpl implements DeliveryService {
     @Override
     public List<DeliveryPharmacyRecommendationVO> deliveryRecommendPharmacies(Long patientId, Long prescriptionId, Long addressId, String sort) {
         Long userId = deliveryCurrentUserId();
+        // 处方
         OrderPrescriptionRecord prescription = deliveryRequireAccessibleApprovedPrescription(userId, patientId, prescriptionId);
+        //用户地址
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, userId);
+        //医院地址
         String hospitalAddress = deliveryDataMapper.deliverySelectHospitalAddress(prescription.hospitalId());
+        // 配送省市
         DeliveryProvinceEnum hospitalProvince = DeliveryProvinceEnum.resolveFromAddress(hospitalAddress);
 
         if (hospitalProvince == null) {
@@ -245,9 +252,9 @@ public class DeliveryServiceImpl implements DeliveryService {
         }
         // 用户地址
         DeliveryProvinceEnum userProvince = DeliveryProvinceEnum.valueOf(address.getProvince());
-
+        // 跨省系数
         double coefficient = deliveryProperties.deliveryProvinceCoefficient(userProvince, hospitalProvince);
-        // 配送省市
+        // 排序参数
         DeliverySortEnum sortEnum = deliveryResolveSort(sort);
         Map<Long, Integer> quantities = new LinkedHashMap<>();
         for (OrderPrescriptionItemRecord item : orderDataMapper.selectOrderPrescriptionItems(prescriptionId)) {
@@ -260,8 +267,11 @@ public class DeliveryServiceImpl implements DeliveryService {
         }
         // 候选
         List<DeliveryRecommendationCandidate> candidates = pharmacyStocks.values().stream()
-                .map(stocks -> deliveryBuildRecommendationCandidate(address, hospitalProvince, coefficient, quantities, stocks)).toList();
-        return deliverySortCandidates(candidates, sortEnum).stream().map(candidate -> deliveryToRecommendationVo(candidate, candidates)).toList();
+                .map(stocks -> deliveryBuildRecommendationCandidate(address, hospitalProvince, coefficient, quantities, stocks)) // 构建推荐候选
+                .toList();
+        return deliverySortCandidates(candidates, sortEnum).stream()
+                .map(candidate -> deliveryToRecommendationVo(candidate, candidates))
+                .toList();
     }
 
     /**
@@ -440,7 +450,7 @@ public class DeliveryServiceImpl implements DeliveryService {
 
     /**
      * 根据单个药房的真实库存与稳定模拟结果创建候选项。
-     *
+     * 价格（45%）、距离（30%）、时间（25%)
      * @param address 当前账号地址
      * @param hospitalProvince 医院省市
      * @param coefficient 跨省系数
@@ -501,12 +511,29 @@ public class DeliveryServiceImpl implements DeliveryService {
      * @return 范围为零至一百的分数
      */
     private double deliveryScore(DeliveryRecommendationCandidate candidate, List<DeliveryRecommendationCandidate> candidates) {
-        int minAmount = candidates.stream().mapToInt(DeliveryRecommendationCandidate::amountCent).min().orElse(0);
-        int maxAmount = candidates.stream().mapToInt(DeliveryRecommendationCandidate::amountCent).max().orElse(0);
-        long minDistance = candidates.stream().mapToLong(item -> item.simulation().distanceMeters()).min().orElse(0L);
-        long maxDistance = candidates.stream().mapToLong(item -> item.simulation().distanceMeters()).max().orElse(0L);
-        int minMinutes = candidates.stream().mapToInt(item -> item.simulation().estimatedDeliveryMinutes()).min().orElse(0);
-        int maxMinutes = candidates.stream().mapToInt(item -> item.simulation().estimatedDeliveryMinutes()).max().orElse(0);
+        int minAmount = candidates.stream()
+                .mapToInt(DeliveryRecommendationCandidate::amountCent).min() // 最小总价
+                .orElse(0);
+        int maxAmount = candidates.stream()
+                .mapToInt(DeliveryRecommendationCandidate::amountCent) // 最大总价
+                .max()
+                .orElse(0);
+        long minDistance = candidates.stream()
+                .mapToLong(item -> item.simulation().distanceMeters()) // 最小距离
+                .min()
+                .orElse(0L);
+        long maxDistance = candidates.stream()
+                .mapToLong(item -> item.simulation().distanceMeters()) // 最大距离
+                .max()
+                .orElse(0L);
+        int minMinutes = candidates.stream()
+                .mapToInt(item -> item.simulation().estimatedDeliveryMinutes()) // 最小配送时长
+                .min()
+                .orElse(0);
+        int maxMinutes = candidates.stream()
+                .mapToInt(item -> item.simulation().estimatedDeliveryMinutes()) // 最大配送时长
+                .max()
+                .orElse(0);
         return 45D * deliveryNormalizeScore(candidate.amountCent(), minAmount, maxAmount)
                 + 30D * deliveryNormalizeScore(candidate.simulation().distanceMeters(), minDistance, maxDistance)
                 + 25D * deliveryNormalizeScore(candidate.simulation().estimatedDeliveryMinutes(), minMinutes, maxMinutes);

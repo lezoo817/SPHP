@@ -17,6 +17,7 @@ import {
   Select,
   Space,
   Spin,
+  Table,
   Tabs,
   Tag,
   Typography,
@@ -35,6 +36,7 @@ import dayjs from 'dayjs';
 import {
   getOnlineConsultationDetail,
   getOnlineConsultations,
+  getDoctorDrugs,
   getTemplates,
   replyOnlineConsultation,
   startOnlineConsultation,
@@ -60,6 +62,38 @@ interface PrescriptionFormValues {
   }>;
 }
 
+interface AllergySummaryItem {
+  allergen?: string;
+  reaction?: string;
+}
+
+interface MedicalHistorySummaryItem {
+  content?: string;
+  name?: string;
+  occurredAt?: string;
+  date?: string;
+}
+
+/** 将后端性别枚举转换为 B 端展示文案。 */
+function formatGender(gender?: string): string {
+  if (gender === 'MALE' || gender === '男') return '男';
+  if (gender === 'FEMALE' || gender === '女') return '女';
+  return '未知';
+}
+
+/** 将预问诊中的日期统一格式化为 YYYY/MM/DD。 */
+function formatHistoryDate(value?: string): string {
+  if (!value) return '-';
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed.format('YYYY/MM/DD') : value;
+}
+
+/** 读取 AI 摘要中的数组字段，兼容接口返回空值或旧格式。 */
+function readSummaryArray<T>(summary: Record<string, any> | undefined, key: string): T[] {
+  const value = summary?.[key];
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
 const STATUS_TEXT: Record<OnlineStatus, string> = {
   PENDING: '待回复',
   IN_PROGRESS: '回复中',
@@ -81,6 +115,7 @@ export default function OnlineConsultationPage() {
   const [starting, setStarting] = useState(false);
   const [replying, setReplying] = useState(false);
   const [submittingPrescription, setSubmittingPrescription] = useState(false);
+  const [drugKeyword, setDrugKeyword] = useState('');
   const [form] = Form.useForm<PrescriptionFormValues>();
 
   const listQuery = useQuery({
@@ -93,14 +128,32 @@ export default function OnlineConsultationPage() {
     queryFn: () => getOnlineConsultationDetail(selectedId as number),
     enabled: Boolean(selectedId),
   });
+  const detail = detailQuery.data;
   const templatesQuery = useQuery({
     queryKey: ['prescription', 'templates', 'online-consultation'],
     queryFn: () => getTemplates({ page: 1, size: 100 }),
   });
+  const drugsQuery = useQuery({
+    queryKey: ['drug', 'online-consultation-options', drugKeyword],
+    queryFn: () => getDoctorDrugs({
+      name: drugKeyword.trim() || undefined,
+      status: 'ENABLED',
+      page: 1,
+      size: 100,
+    }),
+    enabled: detail?.status === 'IN_PROGRESS',
+    staleTime: 30_000,
+  });
 
-  const detail = detailQuery.data;
   const templates = templatesQuery.data?.list ?? [];
+  const drugOptions = (drugsQuery.data?.list ?? []).map((drug) => ({
+    value: drug.id,
+    label: `${drug.name}${drug.specification ? `（${drug.specification}）` : ''}`,
+  }));
   const patient = detail?.patientDetail.patient;
+  const aiSummary = detail?.patientDetail.aiSummary;
+  const allergyRows = readSummaryArray<AllergySummaryItem>(aiSummary, 'allergies');
+  const medicalHistoryRows = readSummaryArray<MedicalHistorySummaryItem>(aiSummary, 'medicalHistories');
   const selectedTemplateOptions = useMemo(
     () => templates.map((item) => ({ value: item.id, label: item.name })),
     [templates],
@@ -268,7 +321,7 @@ export default function OnlineConsultationPage() {
             <section className={styles.section}>
               <Title level={5}>患者信息</Title>
               <Descriptions size="small" column={3}>
-                <Descriptions.Item label="性别">{patient?.gender || '-'}</Descriptions.Item>
+                <Descriptions.Item label="性别">{formatGender(patient?.gender)}</Descriptions.Item>
                 <Descriptions.Item label="出生日期">{patient?.dateOfBirth || '-'}</Descriptions.Item>
                 <Descriptions.Item label="电话">{patient?.phone || '-'}</Descriptions.Item>
               </Descriptions>
@@ -277,16 +330,50 @@ export default function OnlineConsultationPage() {
             <section className={styles.section}>
               <Title level={5}>AI 预问诊摘要</Title>
               <Descriptions size="small" column={1}>
-                <Descriptions.Item label="主诉">{detail.chiefComplaint || '-'}</Descriptions.Item>
                 <Descriptions.Item label="现病史">
                   {detail.historyOfPresentIllness || '-'}
                 </Descriptions.Item>
               </Descriptions>
-              {detail.patientDetail.aiSummary && (
-                <pre className={styles.summaryJson}>
-                  {JSON.stringify(detail.patientDetail.aiSummary, null, 2)}
-                </pre>
-              )}
+              <div className={styles.summaryTables}>
+                <Title level={5}>主诉</Title>
+                <div className={styles.complaintBox}>
+                  {detail.chiefComplaint || '-'}
+                </div>
+                <Title level={5}>过敏史</Title>
+                <Table<AllergySummaryItem>
+                  size="small"
+                  bordered
+                  pagination={false}
+                  rowKey={(row, index) => `${row.allergen ?? 'allergy'}-${index}`}
+                  locale={{ emptyText: '暂无过敏史' }}
+                  dataSource={allergyRows}
+                  columns={[
+                    { title: '名称', dataIndex: 'allergen', key: 'allergen', render: (value) => value || '-' },
+                    { title: '过敏反应', dataIndex: 'reaction', key: 'reaction', render: (value) => value || '-' },
+                  ]}
+                />
+                <Title level={5} className={styles.historyTitle}>既往史</Title>
+                <Table<MedicalHistorySummaryItem>
+                  size="small"
+                  bordered
+                  pagination={false}
+                  rowKey={(row, index) => `${row.name ?? row.content ?? 'history'}-${index}`}
+                  locale={{ emptyText: '暂无既往史' }}
+                  dataSource={medicalHistoryRows}
+                  columns={[
+                    {
+                      title: '名称',
+                      key: 'name',
+                      render: (_, row) => row.name || row.content || '-',
+                    },
+                    {
+                      title: '时间',
+                      key: 'occurredAt',
+                      render: (_, row) => formatHistoryDate(row.occurredAt || row.date),
+                    },
+                  ]}
+                />
+              </div>
             </section>
 
             {detail.status === 'PENDING' && (
@@ -316,14 +403,24 @@ export default function OnlineConsultationPage() {
                         <>
                           {fields.map((field) => (
                             <div className={styles.prescriptionRow} key={field.key}>
-                              <Form.Item name={[field.name, 'drugId']} label="药品 ID" rules={[{ required: true }]}> 
-                                <InputNumber min={1} />
+                              <Form.Item name={[field.name, 'drugId']} label="药品名称" rules={[{ required: true, message: '请选择药品' }]}> 
+                                <Select
+                                  showSearch
+                                  allowClear
+                                  placeholder="输入药品名称搜索"
+                                  options={drugOptions}
+                                  loading={drugsQuery.isFetching}
+                                  filterOption={false}
+                                  onSearch={setDrugKeyword}
+                                  onClear={() => setDrugKeyword('')}
+                                  notFoundContent={drugKeyword ? '未找到匹配药品' : '暂无可用药品'}
+                                />
                               </Form.Item>
                               <Form.Item name={[field.name, 'dosage']} label="单次用量" rules={[{ required: true }]}> 
                                 <Input placeholder="如 1 片" />
                               </Form.Item>
                               <Form.Item name={[field.name, 'frequency']} label="频次" rules={[{ required: true }]}> 
-                                <Input placeholder="如 每日三次" />
+                                <Input placeholder="如 每日3次" />
                               </Form.Item>
                               <Form.Item name={[field.name, 'usageMethod']} label="用法" rules={[{ required: true }]}> 
                                 <Input placeholder="如 口服" />

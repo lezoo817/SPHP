@@ -66,3 +66,24 @@ C 端 agent 挂号服务出现"选医生卡片"bug：后端 M8-6/M8-7/M8-8 问�
 - 禁止私自编译构建(命令由用户手动执行)
 - 禁止越界修改其他模块
 - Agent 注释用中文
+
+## B 端 L2 工具卡状态机修复（2026-08-09）
+
+### Bug 现象
+医生确认查询患者档案后，确认卡片变绿"已确认"显示档案，但**上方那张"查询患者档案"工具卡永远停在"待确认"**。
+
+### 根因
+`frontend/B/b-sphp/src/hooks/useAgentStream.ts` 中 `resolveL2ToolCard(cardType, patch)` 第 181-201 行只匹配 `status === 'loading'` 的工具卡。
+
+实际状态机：
+1. AI 调工具 → 工具卡 = `loading`（"调用中"）
+2. 后端下发 `card` 事件 → `appendConfirmCard` 把它收尾为 `pending`（"待确认"）
+3. 用户点击确认 → `confirm()` 再调它想翻为 `success`，但条件还只匹配 `loading` → 找不到 → 工具卡永远卡在 `pending`
+
+### 修复（已实施）
+- `resolveL2ToolCard` 查找条件 `status === 'loading'` → `status === 'loading' || status === 'pending'`
+- 同步新增兜底：找不到对应工具卡时（SSE 丢包等边界场景）新建一张 success 卡片，行为与 `updateToolCard` 的 fallback 一致
+
+### 后续可能 bug
+若相同模式还被其他工具（如 `confirm_medication_plan` 等）用到，应一并检查它们在不同状态的工具卡上是否被正确收尾。
+
