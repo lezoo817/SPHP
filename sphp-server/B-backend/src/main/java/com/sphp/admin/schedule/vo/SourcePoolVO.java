@@ -14,6 +14,9 @@ import java.time.LocalDate;
  * <p>数据来源：schedule / slot / slot_snapshot 三表实时聚合，只读，不落新表。
  * 科室（诊室）取 {@code schedule.dept_id → department.name}。
  * 剩余号源口径与排班列表一致：已发布时段取 AVAILABLE + RELEASED 快照数（C 端可预约）。
+ *
+ * @author lezoo17
+ * @date 2026-08-09
  */
 @Data
 @Builder
@@ -48,4 +51,7 @@ public class SourcePoolVO {
 
     @Schema(description = "锁定中号源数（LOCKED 快照数）")
     private Long lockedSlots;
+
+    @Schema(description = "是否已过期（PUBLISHED 且 schedule_date < today）")
+    private Boolean isExpired;
 }

@@ -328,6 +328,8 @@ declare global {
       remainSlots: number; // 剩余可约号源数
       soldSlots: number; // 已约号源数
       lockedSlots: number; // 锁定中号源数
+      /** 是否已过期（PUBLISHED 且 schedule_date < today），与后端 EXPIRED 口径一致 */
+      isExpired?: boolean;
     }
 
     // ===================== 接诊台 =====================
