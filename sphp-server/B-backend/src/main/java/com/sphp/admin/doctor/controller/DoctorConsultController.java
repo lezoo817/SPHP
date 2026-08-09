@@ -41,7 +41,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/b/doctor")
-@Tag(name = "4-接诊台", description = "待接诊队列/患者详情/接诊/病历/消息")
+@Tag(name = "接诊台", description = "待接诊队列/患者详情/接诊/病历/消息")
 @RequiredArgsConstructor
 public class DoctorConsultController {
 
@@ -49,7 +49,7 @@ public class DoctorConsultController {
     private static final int MAX_PAGE_SIZE = 100;
 
     private static int clampSize(int size) {
-        return Math.max(1, Math.min(size, MAX_PAGE_SIZE));
+        return Math.clamp(size, 1, MAX_PAGE_SIZE);
     }
 
     private final DoctorConsultService doctorConsultService;

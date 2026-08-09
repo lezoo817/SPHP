@@ -42,6 +42,10 @@ public class PrescriptionDetailVO {
     @Schema(description = "风险警告列表")
     private List<RiskWarningVO> riskWarnings;
 
+    /** 驳回原因（仅 REJECTED 时存在，供医生侧展示与重新开方参照） */
+    @Schema(description = "驳回原因")
+    private String rejectReason;
+
     @Schema(description = "处方明细")
     private List<ItemVO> items;
 
@@ -50,6 +54,9 @@ public class PrescriptionDetailVO {
 
     @Schema(description = "审核时间")
     private OffsetDateTime auditedAt;
+
+    @Schema(description = "创建时间")
+    private OffsetDateTime createdAt;
 
     @Data
     @Builder

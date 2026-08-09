@@ -25,7 +25,7 @@ export default function ChangeStatusModal({
       title="切换医生状态"
       open={open}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       onCancel={onCancel}
       width={480}
     >

@@ -187,6 +187,8 @@ declare global {
       scheduleDate: string; // yyyy-MM-dd
       shift: 'MORNING' | 'AFTERNOON';
       totalSlots: number;
+      /** 创建成功后立即发布（后端按 1小时/段 自动配置号源时段并发布） */
+      publishImmediately?: boolean;
     }
 
     /** 号源时段配置项（后端返回） */
@@ -328,6 +330,8 @@ declare global {
       remainSlots: number; // 剩余可约号源数
       soldSlots: number; // 已约号源数
       lockedSlots: number; // 锁定中号源数
+      /** 是否已过期（PUBLISHED 且 schedule_date < today），与后端 EXPIRED 口径一致 */
+      isExpired?: boolean;
     }
 
     // ===================== 接诊台 =====================
@@ -532,6 +536,8 @@ declare global {
       deptName: string;
       status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
       itemCount: number;
+      /** 命中风险规则时的快照（重复用药 WARNING / 高危药品 AUDIT），SUBMITTED 态存在 */
+      riskWarnings?: RiskWarning[];
       issuedAt?: string;
       createdAt: string;
       updatedAt: string;
@@ -549,23 +555,23 @@ declare global {
       quantity: number;
     }
 
-    /** 处方详情 */
+    /** 处方详情（与后端 PrescriptionDetailVO 嵌套结构对齐） */
     interface PrescriptionDetail {
       id: number;
       consultId: number;
-      patientId: number;
-      patientName: string;
-      doctorId: number;
-      doctorName: string;
-      deptId: number;
-      deptName: string;
+      /** 医生信息（嵌套） */
+      doctor?: { id?: number; name?: string; title?: string; deptName?: string };
+      /** 患者信息（嵌套） */
+      patient?: { id?: number; name?: string; gender?: string; dateOfBirth?: string };
       status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
       auditRequired: boolean;
       riskWarnings?: RiskWarning[];
+      /** 驳回原因（仅 REJECTED 时存在） */
       rejectReason?: string;
       items: PrescriptionItem[];
-      createdAt: string;
-      updatedAt: string;
+      issuedAt?: string;
+      auditedAt?: string;
+      createdAt?: string;
     }
 
     /** 处方列表查询参数 */

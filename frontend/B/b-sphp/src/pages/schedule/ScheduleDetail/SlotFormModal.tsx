@@ -137,7 +137,7 @@ export default function SlotFormModal({
       open={open}
       onOk={handleSubmit}
       onCancel={onCancel}
-      destroyOnClose
+      destroyOnHidden
       width={420}
     >
       <Form form={slotForm} layout="vertical" initialValues={formInitialValues}>

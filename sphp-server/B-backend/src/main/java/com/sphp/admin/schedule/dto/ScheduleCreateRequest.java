@@ -35,4 +35,9 @@ public class ScheduleCreateRequest {
     @Max(value = 99, message = "号源总数需在 1~99 之间")
     @Schema(description = "号源总数（1~99）", requiredMode = Schema.RequiredMode.REQUIRED)
     private Integer totalSlots;
+
+    /** 创建成功后立即发布：后端按默认拆分（1小时/段）自动配置号源时段并发布 */
+    @Schema(description = "创建成功后立即发布（后端按 1小时/段 自动配置号源时段并发布），默认 false",
+            requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+    private Boolean publishImmediately;
 }

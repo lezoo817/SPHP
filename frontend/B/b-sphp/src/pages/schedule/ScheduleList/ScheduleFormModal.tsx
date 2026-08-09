@@ -13,6 +13,7 @@ import {
   ProFormSelect,
   ProFormDatePicker,
   ProFormDigit,
+  ProFormCheckbox,
 } from '@ant-design/pro-components';
 import { getDepartments, getDoctors } from '@/services/admin';
 import dayjs from 'dayjs';
@@ -26,6 +27,8 @@ interface CreateScheduleFormValues {
   scheduleDate: Dayjs | string;
   shift: 'MORNING' | 'AFTERNOON';
   totalSlots: number;
+  /** 创建成功后立即发布（后端自动按 1小时/段 配置号源时段并发布） */
+  publishImmediately: boolean;
 }
 
 interface Props {
@@ -73,7 +76,7 @@ export default function ScheduleFormModal({
     },
   ];
 
-  /** 打开弹窗时重置表单，避免上一次残留值（destroyOnClose 下仍保险） */
+  /** 打开弹窗时重置表单，避免上一次残留值（destroyOnHidden 下仍保险） */
   useEffect(() => {
     if (open) {
       createForm.resetFields();
@@ -140,6 +143,7 @@ export default function ScheduleFormModal({
       scheduleDate: dayjs(values.scheduleDate).format('YYYY-MM-DD'),
       shift: values.shift,
       totalSlots: values.totalSlots,
+      publishImmediately: values.publishImmediately,
     });
   };
 
@@ -148,7 +152,7 @@ export default function ScheduleFormModal({
       title="新增排班"
       open={open}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       onCancel={onCancel}
       width={520}
     >
@@ -156,6 +160,7 @@ export default function ScheduleFormModal({
         form={createForm}
         onFinish={handleFinish}
         submitter={{ submitButtonProps: { loading: submitting } }}
+        initialValues={{ publishImmediately: true }}
       >
         <ProFormSelect
           name="deptId"
@@ -209,6 +214,9 @@ export default function ScheduleFormModal({
           fieldProps={{ addonAfter: '个（1~99）', style: { width: '100%' } }}
           placeholder="请输入号源总数"
         />
+        <ProFormCheckbox name="publishImmediately">
+          创建成功后立即发布（自动按 1小时/段 配置号源时段）
+        </ProFormCheckbox>
       </ProForm>
     </Modal>
   );

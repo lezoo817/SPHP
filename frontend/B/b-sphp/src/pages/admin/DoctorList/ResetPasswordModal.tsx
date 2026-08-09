@@ -24,7 +24,7 @@ export default function ResetPasswordModal({
       title="重置密码"
       open={open}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       onCancel={onCancel}
       width={480}
     >

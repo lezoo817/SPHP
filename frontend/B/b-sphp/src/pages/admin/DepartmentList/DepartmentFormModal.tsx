@@ -42,7 +42,7 @@ export default function DepartmentFormModal({
       title={editingDept ? '编辑科室' : '新增科室'}
       open={open}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       onCancel={onCancel}
       width={520}
     >
