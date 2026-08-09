@@ -452,13 +452,18 @@ def _extract_patient_allergy_history(
     （元素为 dict 或字符串）。此处防御性格式化为可读摘要，供 AI 即时处方解读
     注入患者真实过敏史做禁忌核对（方向 B 禁忌检测）。
 
+    取**最新一次**成功查询结果（逆序迭代）：就诊人切换后子图循环内 tool_results
+    可能累积旧/新两份档案，逆序保证以最近查询（当前就诊人）为准，避免跨患者
+    误用旧档案摘要（2026-08-09 健康档案会话内复用引入的边界）。最新结果档案
+    为空时直接返回 None（不降级到更早的旧档案）。
+
     Args:
         tool_results: 本轮工具执行结果列表。
 
     Returns:
         str | None: 过敏史/既往史摘要；本轮无有效结果或档案为空时返回 None。
     """
-    for result in tool_results or []:
+    for result in reversed(tool_results or []):
         if result.get("tool_name") != "query_health_record" or not result.get("success"):
             continue
         data = result.get("data")
@@ -477,6 +482,32 @@ def _extract_patient_allergy_history(
         if not parts:
             return None
         return "；".join(parts)
+    return None
+
+
+def _get_patient_allergy_history(state: AgentState) -> str | None:
+    """取患者过敏史/既往史摘要（新查优先，缓存绑定回退，2026-08-09）。
+
+    导诊/问诊的 query_health_record 已优化为会话内复用（tool_caller 按
+    health_record_patient_id 判定过滤），复用后的后续轮 tool_results 不再含新的
+    query_health_record 结果。此处先取本轮最新一次新查结果（AI 即时解读等场景
+    仍可能同轮新查档案，且逆序取最新保证就诊人切换后不误用旧档案）；取不到时
+    仅当缓存与**当前就诊人绑定**（health_record_patient_id == patient_id）才回退
+    到 tool_caller 缓存的 health_record_summary，未绑定（切换/从未加载）不回退，
+    避免跨患者注入旧过敏史。
+
+    Args:
+        state: 当前图状态，含 tool_results / health_record_patient_id /
+            health_record_summary。
+
+    Returns:
+        str | None: 过敏史/既往史摘要；无新查结果且无绑定缓存时返回 None。
+    """
+    fresh = _extract_patient_allergy_history(state.get("tool_results"))
+    if fresh is not None:
+        return fresh
+    if state.get("health_record_patient_id") == state.get("patient_id"):
+        return state.get("health_record_summary")
     return None
 
 
@@ -838,8 +869,9 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
 
         if interpretation and interpretation.get("source") == _AI_FALLBACK_SOURCE:
             # 注入患者真实过敏史/既往史（方向 B 禁忌检测）：即时解读可据此
-            # 核对处方药品是否与过敏史冲突；本轮无档案数据时传 None。
-            allergy_history = _extract_patient_allergy_history(tool_results)
+            # 核对处方药品是否与过敏史冲突。优先本轮新查的 query_health_record，
+            # 会话内复用后后续轮无新查结果时回退缓存摘要，不因复用而退化。
+            allergy_history = _get_patient_allergy_history(state)
             fallback_context = _build_ai_fallback_context(interpretation, allergy_history)
             if fallback_context:
                 # 即时说明只能使用已授权读取的处方详情，避免模型补造医疗事实。
