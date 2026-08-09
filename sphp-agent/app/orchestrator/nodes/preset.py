@@ -46,10 +46,15 @@ def resolve_preset_interpretation_picker(context: dict[str, Any] | None) -> str 
     if not context:
         return None
     action = context.get("preset_action")
-    return action if action in {
-        PRESET_SELECT_PRESCRIPTION_INTERPRETATION,
-        PRESET_SELECT_MEDICAL_RECORD_INTERPRETATION,
-    } else None
+    return (
+        action
+        if action
+        in {
+            PRESET_SELECT_PRESCRIPTION_INTERPRETATION,
+            PRESET_SELECT_MEDICAL_RECORD_INTERPRETATION,
+        }
+        else None
+    )
 
 
 def resolve_preset_medical_record_interpretation(
@@ -121,8 +126,7 @@ def resolve_preset_drug_order_reminder_authorization(
     """
     if (
         not context
-        or context.get("preset_action")
-        != PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT
+        or context.get("preset_action") != PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT
     ):
         return None
     drug_order_id = context.get("drug_order_id")

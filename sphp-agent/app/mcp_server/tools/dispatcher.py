@@ -118,7 +118,10 @@ _MCP_TOOL_FUNCS: dict[str, tuple[str, str]] = {
     "query_pharmacy_stock": ("pharmacy", "query_pharmacy_stock"),
     "recommend_pharmacies": ("pharmacy", "recommend_pharmacies"),
     "create_drug_order": ("pharmacy", "create_drug_order"),
-    "authorize_drug_order_reminder_after_receipt": ("pharmacy", "authorize_drug_order_reminder_after_receipt"),
+    "authorize_drug_order_reminder_after_receipt": (
+        "pharmacy",
+        "authorize_drug_order_reminder_after_receipt",
+    ),
     "query_drug_orders": ("pharmacy", "query_drug_orders"),
     "cancel_drug_order": ("pharmacy", "cancel_drug_order"),
     "confirm_drug_receipt": ("pharmacy", "confirm_drug_receipt"),

@@ -30,8 +30,11 @@ REPLY_SYSTEM_PROMPT = """你是一个医疗健康助手，正在为用户提供�
 3. 保持回复简洁、专业，避免过度医疗建议
 4. 涉及诊断、用药建议时，提醒用户咨询专业医生
 5. 涉及日期/排班信息时，以当前日期 {today} 为参照，不得混淆或编造日期
+6. 涉及用药、处方解读时，主动核对患者过敏史与药物相互作用，发现冲突应提示用户及时联系医生
 
 注意：
+- 语气温暖、专业，避免制造焦虑；涉及可能引起担忧的诊断/检查表述时，
+  用平和措辞说明并引导就医
 - 不要编造医疗数据
 - 不要替代医生做诊断
 - 不确定的内容要明确告知
@@ -408,6 +411,139 @@ def _extract_degraded_health_record(
     return False
 
 
+def _format_health_items(items: Any, field: str) -> str:
+    """将健康档案的过敏史/既往史列表格式化为可读文本。
+
+    兼容 dict 元素（取 ``allergen`` / ``historyName`` / ``name``，可选 ``reaction``）
+    与字符串元素；空列表或非列表返回空串。
+
+    Args:
+        items: 健康档案条目列表。
+        field: dict 元素中取名的字段（allergen / historyName）。
+
+    Returns:
+        str: 顿号分隔的条目文本；无可读条目时返回空串。
+    """
+    if not isinstance(items, list):
+        return ""
+    names: list[str] = []
+    for item in items:
+        if isinstance(item, dict):
+            name = item.get(field) or item.get("name")
+            if not name:
+                continue
+            text = str(name)
+            reaction = item.get("reaction")
+            if isinstance(reaction, str) and reaction.strip():
+                text = f"{text}({reaction.strip()})"
+        else:
+            text = str(item)
+        if text.strip():
+            names.append(text.strip())
+    return "、".join(names)
+
+
+def _extract_patient_allergy_history(
+    tool_results: list[dict[str, Any]] | None,
+) -> str | None:
+    """从本轮 query_health_record 成功结果提取患者过敏史/既往史摘要。
+
+    Java 健康档案结构：``data.allergies`` 与 ``data.medicalHistories`` 列表
+    （元素为 dict 或字符串）。此处防御性格式化为可读摘要，供 AI 即时处方解读
+    注入患者真实过敏史做禁忌核对（方向 B 禁忌检测）。
+
+    Args:
+        tool_results: 本轮工具执行结果列表。
+
+    Returns:
+        str | None: 过敏史/既往史摘要；本轮无有效结果或档案为空时返回 None。
+    """
+    for result in tool_results or []:
+        if result.get("tool_name") != "query_health_record" or not result.get("success"):
+            continue
+        data = result.get("data")
+        if not isinstance(data, dict):
+            continue
+        payload = data.get("data")
+        if not isinstance(payload, dict):
+            continue
+        allergies = _format_health_items(payload.get("allergies"), "allergen")
+        histories = _format_health_items(payload.get("medicalHistories"), "historyName")
+        parts: list[str] = []
+        if allergies:
+            parts.append(f"过敏史：{allergies}")
+        if histories:
+            parts.append(f"既往史：{histories}")
+        if not parts:
+            return None
+        return "；".join(parts)
+    return None
+
+
+def _build_emotional_guide(state: AgentState) -> str | None:
+    """构造按情绪注入的确定性回复引导（方向 A 情感陪伴）。
+
+    intent_node 判定用户情绪焦虑/低落时，要求回复"先共情安抚、再正常完成本次
+    服务"，并明确 AI 不能确诊、不得以"重病/癌症"等措辞加重焦虑、引导就医与
+    进一步检查；用户不满时要求诚恳致歉、如实说明、引导解决。情绪为中性/积极
+    或无记录时返回 None（不注入）。
+
+    Args:
+        state: 当前图状态，含 emotion 字段（intent_node 写入）。
+
+    Returns:
+        str | None: 情绪引导提示；neutral/positive 或无记录时返回 None。
+    """
+    emotion = state.get("emotion")
+    if emotion in ("anxious", "distressed"):
+        return (
+            '用户当前情绪为焦虑/担忧。回复必须**先共情安抚**（如"我理解您的担忧"），'
+            "再正常完成本次服务（回答提问或推进流程）。安抚时注意：明确 AI 不能确诊、"
+            '也不能排除疾病；避免用"重病""癌症""很严重"等措辞加重焦虑；用平和、'
+            "确定的语气给出下一步建议（就医/进一步检查/咨询医生）；若涉及急危重症症状"
+            "（胸痛、呼吸困难、剧烈头痛伴呕吐等），明确提示立即就医。"
+        )
+    if emotion == "angry":
+        return (
+            "用户当前情绪不满。回复先诚恳致歉或体谅其感受，再基于工具结果与事实"
+            "如实说明情况，并引导用户解决问题；不推诿、不敷衍、不编造。"
+        )
+    return None
+
+
+def _build_doctor_recommendation_guide(state: AgentState) -> str | None:
+    """构造导诊医生推荐的可解释理由引导（方向 B 可解释推荐）。
+
+    导诊场景（intent=triage）本轮 query_doctors 成功返回医生列表时，确定性要求
+    回复 LLM 逐个说明推荐理由，且理由只能引用工具结果中真实存在的医生字段
+    （擅长方向/职称/号源余量/挂号费），**不得编造**好评率/评分等不存在的字段。
+
+    仅在导诊场景注入：在线问诊选医生走 pending_doctor_choices 选择卡
+    （M8-7 已约束"请在卡片中选择"），与此引导互斥，不会同时命中。
+
+    Args:
+        state: 当前图状态，含 intent 与 tool_results。
+
+    Returns:
+        str | None: 医生推荐理由引导；非导诊意图或 query_doctors 未成功时返回 None。
+    """
+    if state.get("intent") != "triage":
+        return None
+    doctors_queried = any(
+        r.get("tool_name") == "query_doctors" and r.get("success")
+        for r in state.get("tool_results") or []
+    )
+    if not doctors_queried:
+        return None
+    return (
+        "本轮已查到医生列表，推荐医生时必须**逐个说明推荐理由**。"
+        "理由只能引用工具结果中真实存在的医生字段（擅长方向/职称/号源余量/挂号费），"
+        '例如"这位医生擅长X方向、职称Y"。**不得编造**好评率、评分、患者数等工具结果'
+        "中不存在的字段；若某位医生的擅长方向等字段缺失，如实只列可用的信息即可，"
+        "不要补造。"
+    )
+
+
 def _build_triage_guide(state: AgentState) -> str | None:
     """构造导诊推荐完成后的下一步引导（2026-08-07）。
 
@@ -515,11 +651,13 @@ def _format_official_interpretation(payload: dict[str, Any]) -> str | None:
     return "\n\n".join(sections)
 
 
-def _build_ai_fallback_context(payload: dict[str, Any]) -> str | None:
+def _build_ai_fallback_context(payload: dict[str, Any], allergy_history: str | None) -> str | None:
     """构造 AI 即时处方解读的严格回复约束。
 
     Args:
         payload: source 为 AI_FALLBACK 的标准化解读载荷。
+        allergy_history: 患者真实过敏史/既往史摘要（来自本轮 query_health_record，
+            方向 B 禁忌检测）；本轮无该数据时传 None。
 
     Returns:
         注入回复模型的系统上下文；处方详情缺失时返回 None。
@@ -531,9 +669,11 @@ def _build_ai_fallback_context(payload: dict[str, Any]) -> str | None:
         detail = json.dumps(prescription, ensure_ascii=False)
     except (TypeError, ValueError):
         return None
+    allergy_block = f"患者健康档案（真实数据）：{allergy_history}\n\n" if allergy_history else ""
     return (
         "当前回复必须基于以下真实处方详情生成即时说明：\n"
         f"{detail}\n\n"
+        f"{allergy_block}"
         "这是“AI 即时解读”，首行必须使用该标题。"
         "输出必须是自然的纯文本段落，不得使用 Markdown 标题、列表、编号、星号、"
         "反引号或其他标记语法。"
@@ -547,6 +687,9 @@ def _build_ai_fallback_context(payload: dict[str, Any]) -> str | None:
         "不能据此判断用户患有对应疾病。"
         "可结合药品通用知识提示孕哺期、严重肝肾功能异常、过敏史、驾车和检查前停药等注意事项，"
         "但不编造具体停药时长、禁忌或相互作用；不确定时应建议咨询医生或药师。"
+        "若下方提供了患者健康档案，请对照其过敏史/既往史与处方药品逐一核对，"
+        "发现过敏冲突（如对青霉素过敏且处方含青霉素类药物）必须明确警告"
+        '"检测到过敏冲突，请立即联系医生"；未发现冲突则无需主动提及过敏史。'
         "处方中的规格、单次用量、频次、用法和疗程必须按原始数据复述；任一字段缺失时必须明确写“处方未提供该信息”。"
         "不得调整剂量、频次、疗程，也不得要求用户自行停药或换药。"
         "末尾必须写“本说明仅供健康信息理解，请遵医嘱用药；如有不适请及时联系医生。”"
@@ -646,6 +789,12 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
             tool_summary = _format_tool_results(tool_results)
             llm_messages.append({"role": "system", "content": f"工具调用结果：\n{tool_summary}"})
 
+        # 情绪引导（方向 A 情感陪伴）：intent_node 判定焦虑/低落/不满时，
+        # 确定性注入安抚/致歉引导，避免回复生硬或加重焦虑。
+        emotional_guide = _build_emotional_guide(state)
+        if emotional_guide:
+            llm_messages.append({"role": "system", "content": emotional_guide})
+
         # 档案来源降级提示（2026-08-07）：前端会话残留了他账号的就诊人 ID 时，
         # query_health_record 被 Java 数据隔离拒绝后降级为查当前账号本人档案
         # （见 health.py query_health_record）。此处识别该来源标记，引导 LLM
@@ -681,8 +830,17 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         if triage_followup:
             llm_messages.append({"role": "system", "content": triage_followup})
 
+        # 导诊医生推荐理由引导（方向 B 可解释推荐）：导诊场景查到医生后，
+        # 确定性要求逐个说明推荐理由，且禁止编造工具结果中不存在的字段。
+        doctor_guide = _build_doctor_recommendation_guide(state)
+        if doctor_guide:
+            llm_messages.append({"role": "system", "content": doctor_guide})
+
         if interpretation and interpretation.get("source") == _AI_FALLBACK_SOURCE:
-            fallback_context = _build_ai_fallback_context(interpretation)
+            # 注入患者真实过敏史/既往史（方向 B 禁忌检测）：即时解读可据此
+            # 核对处方药品是否与过敏史冲突；本轮无档案数据时传 None。
+            allergy_history = _extract_patient_allergy_history(tool_results)
+            fallback_context = _build_ai_fallback_context(interpretation, allergy_history)
             if fallback_context:
                 # 即时说明只能使用已授权读取的处方详情，避免模型补造医疗事实。
                 llm_messages.append({"role": "system", "content": fallback_context})

@@ -52,7 +52,9 @@ TRIAGE_SCENE_PROMPT = """【智能导诊场景指令】
 
 【医生推荐】
 6. 基于医生擅长、号源情况，向用户推荐 **3 位医生**（从 query_doctors 结果中选择，
-   不要编造医生），列出姓名、职称、擅长方向，供用户选择。
+   不要编造医生），列出姓名、职称、擅长方向，**逐个说明推荐理由**（理由仅引用
+   query_doctors 返回的真实字段，如擅长方向、职称、号源余量；不得编造好评率、
+   评分等结果中不存在的字段），供用户选择。
 
 【询问挂号/问诊】
 7. 推荐完科室和医生后，**必须询问用户**："需要我帮您预约挂号，还是发起在线问诊？"
@@ -66,6 +68,4 @@ TRIAGE_SCENE_PROMPT = """【智能导诊场景指令】
 
 def build_triage_graph() -> Any:
     """构造导诊子图（编译后），注入导诊场景指令。"""
-    return build_tool_subgraph(
-        tool_names=TRIAGE_TOOLS, scene_prompt=TRIAGE_SCENE_PROMPT
-    )
+    return build_tool_subgraph(tool_names=TRIAGE_TOOLS, scene_prompt=TRIAGE_SCENE_PROMPT)

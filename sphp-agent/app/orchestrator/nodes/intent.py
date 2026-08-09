@@ -11,6 +11,7 @@ import logging
 from typing import Any
 
 from app.engine.llm.factory import build_llm
+from app.orchestrator.emotion import detect_emotion
 from app.orchestrator.state import AgentState
 from app.orchestrator.utils import get_last_user_content
 
@@ -113,7 +114,7 @@ async def _llm_classify(prompt: str) -> str:
 async def intent_node(state: AgentState) -> dict[str, Any]:
     """意图识别节点（系分 §5.2.2，含意图粘性）。
 
-    分类用户意图，返回 ``{"intent": "triage"}``。
+    分类用户意图并识别情绪，返回 ``{"intent": "triage", "emotion": "anxious"}``。
 
     意图粘性：已处于业务会话（``state.intent`` ∈ STICKY_INTENTS）时，用粘性 prompt
     让 LLM 判断保持/切换，禁用关键词快速通道（避免问诊中补症状被切回 triage）。
@@ -122,17 +123,23 @@ async def intent_node(state: AgentState) -> dict[str, Any]:
     首轮或非粘性（None / qa / chitchat）：关键词快速通道（≤10 字）+ LLM 分类，
     失败降级为 ``"qa"`` 兜底。
 
+    情绪识别（方向 A 情感陪伴）：从最新用户消息用关键词确定性判定情绪
+    （detect_emotion），所有返回路径均带上 emotion，供 reply_node 注入安抚引导。
+    意图分类逻辑本身不变，情绪识别不额外调用 LLM。
+
     Args:
         state: 当前图状态，包含 messages 与 intent（历史意图）字段。
 
     Returns:
-        dict: 部分状态更新，包含 intent 字段。
+        dict: 部分状态更新，包含 intent 与 emotion 字段。
 
     Raises:
         无：意图识别失败时降级兜底（粘性场景保持原意图，非粘性降级 qa）。
     """
     user_message = get_last_user_content(state)
     last_intent = state.get("intent")
+    # 情绪识别（确定性关键词，所有分支共用）
+    emotion = detect_emotion(user_message)
 
     # 意图粘性：已处于业务会话 -> LLM 判断保持/切换（禁用关键词快速通道）
     if last_intent in STICKY_INTENTS:
@@ -152,15 +159,15 @@ async def intent_node(state: AgentState) -> dict[str, Any]:
                 last_intent,
                 len(user_message),
             )
-            return {"intent": intent}
+            return {"intent": intent, "emotion": emotion}
         except Exception as e:
             logger.error("LLM粘性意图分类失败: %s, 保持 %s", str(e), last_intent)
-            return {"intent": last_intent}
+            return {"intent": last_intent, "emotion": emotion}
 
     # 首轮/非粘性：关键词快速通道优先
     quick = _keyword_quick_channel(user_message)
     if quick:
-        return {"intent": quick}
+        return {"intent": quick, "emotion": emotion}
 
     # LLM 意图分类
     try:
@@ -173,8 +180,8 @@ async def intent_node(state: AgentState) -> dict[str, Any]:
             logger.warning("LLM返回未定义意图: %s, 降级为qa", intent)
             intent = "qa"
         logger.info("LLM意图分类: %s (消息长度: %d)", intent, len(user_message))
-        return {"intent": intent}
+        return {"intent": intent, "emotion": emotion}
 
     except Exception as e:
         logger.error("LLM意图分类失败: %s, 降级为qa", str(e))
-        return {"intent": "qa"}  # 降级兜底
+        return {"intent": "qa", "emotion": emotion}  # 降级兜底

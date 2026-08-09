@@ -79,9 +79,7 @@ def route_after_auth(state: AgentState) -> str:
         and prescription_id > 0
     )
     has_drug_order_id = (
-        isinstance(drug_order_id, int)
-        and not isinstance(drug_order_id, bool)
-        and drug_order_id > 0
+        isinstance(drug_order_id, int) and not isinstance(drug_order_id, bool) and drug_order_id > 0
     )
     has_medical_record_id = (
         isinstance(medical_record_id, int)
@@ -92,17 +90,19 @@ def route_after_auth(state: AgentState) -> str:
         action in (PRESET_INTERPRET_PRESCRIPTION, PRESET_RECOMMEND_PRESCRIPTION_PHARMACY)
         and has_prescription_id
     )
-    is_medical_record_preset = (
-        action == PRESET_INTERPRET_MEDICAL_RECORD and has_medical_record_id
-    )
+    is_medical_record_preset = action == PRESET_INTERPRET_MEDICAL_RECORD and has_medical_record_id
     is_interpretation_picker = action in (
         PRESET_SELECT_PRESCRIPTION_INTERPRETATION,
         PRESET_SELECT_MEDICAL_RECORD_INTERPRETATION,
     )
-    is_paid_order_preset = action in (
-        PRESET_NOTIFY_DRUG_ORDER_PAID,
-        PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT,
-    ) and has_drug_order_id
+    is_paid_order_preset = (
+        action
+        in (
+            PRESET_NOTIFY_DRUG_ORDER_PAID,
+            PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT,
+        )
+        and has_drug_order_id
+    )
     has_controlled_preset = (
         is_prescription_preset
         or is_medical_record_preset

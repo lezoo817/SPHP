@@ -25,6 +25,12 @@ class AgentState(TypedDict):
     # 不传此字段（否则 None 覆盖历史意图），首轮由 intent_node 写入后跨轮保留。
     intent: NotRequired[str | None]
 
+    # 当前轮用户情绪（方向 A 情感陪伴）：由 intent_node 从最新用户消息判定，
+    # 取值 neutral / anxious / distressed / positive / angry。
+    # NotRequired：B 端 / 预设路径不经 intent_node，emotion 保持 None，
+    # reply_node 据此决定是否注入安抚/致歉引导。
+    emotion: NotRequired[str | None]
+
     # 从 JWT 鉴权获得的用户 ID，MCP 调用时注入 Header X-User-Id
     user_id: int | None
 
