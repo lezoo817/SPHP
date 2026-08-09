@@ -1,0 +1,26 @@
+# 统一文本文件行尾为 LF（仓库存储与检出均用 LF），
+# 消除 Windows core.autocrlf=true 造成的 git status 全量噪音。
+# 声明 binary 的例外文件必须放在本规则之后。
+* text=auto eol=lf
+
+# 二进制文件：防止 text=auto 误判导致内容被转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.bmp binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.otf binary
+*.pdf binary
+*.zip binary
+*.jar binary
+*.war binary
+*.class binary
+*.xlsx binary
+*.docx binary
+*.pptx binary
