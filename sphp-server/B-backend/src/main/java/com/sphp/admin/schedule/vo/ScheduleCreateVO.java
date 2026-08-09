@@ -21,7 +21,7 @@ public class ScheduleCreateVO {
     @Schema(description = "排班ID")
     private Long id;
 
-    @Schema(description = "状态：DRAFT")
+    @Schema(description = "状态：DRAFT（未立即发布）或 PUBLISHED（立即发布成功）")
     private String status;
 
     @Schema(description = "创建时间")

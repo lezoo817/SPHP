@@ -187,6 +187,8 @@ declare global {
       scheduleDate: string; // yyyy-MM-dd
       shift: 'MORNING' | 'AFTERNOON';
       totalSlots: number;
+      /** 创建成功后立即发布（后端按 1小时/段 自动配置号源时段并发布） */
+      publishImmediately?: boolean;
     }
 
     /** 号源时段配置项（后端返回） */
