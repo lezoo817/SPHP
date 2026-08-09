@@ -10,6 +10,9 @@ import java.time.LocalDate;
 
 /**
  * 既往史 VO。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @Builder
