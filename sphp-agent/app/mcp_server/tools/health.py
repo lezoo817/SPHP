@@ -33,9 +33,8 @@ def _is_patient_access_denied(result: dict[str, Any]) -> bool:
     if result.get("code") == "A0301":
         return True
     error = result.get("error")
-    return (
-        isinstance(error, dict)
-        and (error.get("code") == "A0301" or error.get("http_status") == 403)
+    return isinstance(error, dict) and (
+        error.get("code") == "A0301" or error.get("http_status") == 403
     )
 
 

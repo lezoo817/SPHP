@@ -53,9 +53,7 @@ def route_continue(state: AgentState) -> str:
     return "end"
 
 
-def _bind_tool_caller(
-    allowed_tools: list[str] | None, scene_prompt: str | None = None
-) -> Any:
+def _bind_tool_caller(allowed_tools: list[str] | None, scene_prompt: str | None = None) -> Any:
     """构造绑定工具白名单与场景提示词的 tool_caller 节点函数（闭包，兼容 LangGraph 传参）。
 
     Args:
@@ -77,9 +75,7 @@ def _bind_tool_caller(
         Returns:
             dict: tool_caller 的状态更新。
         """
-        return await tool_caller(
-            state, allowed_tools=allowed_tools, scene_prompt=scene_prompt
-        )
+        return await tool_caller(state, allowed_tools=allowed_tools, scene_prompt=scene_prompt)
 
     return _caller
 

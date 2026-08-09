@@ -1205,9 +1205,7 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     # 已支付挂号取消需登录密码：仅确认时由用户输入透传，不进 Redis tool_arguments
     # （record 里仅 appointment_id）、不进 LLM schema，经 confirm_inputs 合并到
     # exec_args 按参数名绑定到 cancel_appointment 的 login_password 形参。
-    confirm_inputs = (
-        {"login_password": req.login_password} if req.login_password else None
-    )
+    confirm_inputs = {"login_password": req.login_password} if req.login_password else None
     result = await execute_mcp_tool(
         tool_name,
         arguments,
