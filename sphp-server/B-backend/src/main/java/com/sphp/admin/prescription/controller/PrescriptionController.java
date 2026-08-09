@@ -29,6 +29,9 @@ import org.springframework.web.bind.annotation.RestController;
  * 按当前登录用户所属医院做数据隔离过滤；
  * 医生角色仅可访问本人处方，管理员/科室主任可访问全院或本科室处方。
  * 包含处方提交、列表、详情、审核。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @RestController
 @RequestMapping("/b")

@@ -11,6 +11,9 @@ import java.util.List;
 
 /**
  * 处方列表项 VO。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @Builder

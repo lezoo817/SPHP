@@ -46,6 +46,9 @@ import java.util.stream.Collectors;
  * <p>按当前登录用户所属医院（{@code hospital_id}）做数据隔离过滤；
  * 仅创建/更新/删除需医生身份，查询不限角色。
  * 模板状态字段与 {@link BUserStatusEnum} 复用（仅 ENABLED / DISABLED 两态）。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Slf4j
 @Service

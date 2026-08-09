@@ -10,6 +10,9 @@ import java.util.List;
 
 /**
  * 处方提交响应 VO。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @Builder

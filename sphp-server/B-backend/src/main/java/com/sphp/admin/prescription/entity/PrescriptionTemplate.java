@@ -13,6 +13,9 @@ import java.util.List;
 
 /**
  * 处方模板表实体（对应表 prescription_template）。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @TableName(value = "prescription_template", autoResultMap = true)

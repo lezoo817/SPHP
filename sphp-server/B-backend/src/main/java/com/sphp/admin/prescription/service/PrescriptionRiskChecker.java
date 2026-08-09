@@ -37,6 +37,9 @@ import java.util.regex.Pattern;
  * </ul>
  *
  * <p>过敏原数据源：patient_allergy 表 + consult_record.ai_summary.allergies。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Slf4j
 @Service
@@ -191,7 +194,14 @@ public class PrescriptionRiskChecker {
         return allergens;
     }
 
-    /** 解析 ai_summary.allergies（jsonb 字符串数组）；解析失败返回空列表 */
+    /**
+     * 解析 ai_summary.allergies（jsonb 字符串数组）；解析失败返回空列表。
+     *
+     * @param aiSummaryJson 问诊摘要 JSON 字符串
+     * @return 过敏原列表；摘要为空或解析失败返回空列表
+     * @implNote TODO(lezoo17) 2026-08-09: AI 模块尚未向 ai_summary.allergies 写入数据，
+     *           此来源当前恒为空，过敏拦截仅依赖 patient_allergy；待 AI 侧接通后移除本说明。
+     */
     private List<String> parseAiAllergies(String aiSummaryJson) {
         if (!StringUtils.hasText(aiSummaryJson)) {
             return List.of();
