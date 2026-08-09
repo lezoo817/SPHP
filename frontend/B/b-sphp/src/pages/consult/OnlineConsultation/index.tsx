@@ -36,6 +36,7 @@ import dayjs from 'dayjs';
 import {
   getOnlineConsultationDetail,
   getOnlineConsultations,
+  getDrugs,
   getTemplates,
   replyOnlineConsultation,
   startOnlineConsultation,
@@ -114,6 +115,7 @@ export default function OnlineConsultationPage() {
   const [starting, setStarting] = useState(false);
   const [replying, setReplying] = useState(false);
   const [submittingPrescription, setSubmittingPrescription] = useState(false);
+  const [drugKeyword, setDrugKeyword] = useState('');
   const [form] = Form.useForm<PrescriptionFormValues>();
 
   const listQuery = useQuery({
@@ -126,13 +128,28 @@ export default function OnlineConsultationPage() {
     queryFn: () => getOnlineConsultationDetail(selectedId as number),
     enabled: Boolean(selectedId),
   });
+  const detail = detailQuery.data;
   const templatesQuery = useQuery({
     queryKey: ['prescription', 'templates', 'online-consultation'],
     queryFn: () => getTemplates({ page: 1, size: 100 }),
   });
+  const drugsQuery = useQuery({
+    queryKey: ['drug', 'online-consultation-options', drugKeyword],
+    queryFn: () => getDrugs({
+      name: drugKeyword.trim() || undefined,
+      status: 'ENABLED',
+      page: 1,
+      size: 100,
+    }),
+    enabled: detail?.status === 'IN_PROGRESS',
+    staleTime: 30_000,
+  });
 
-  const detail = detailQuery.data;
   const templates = templatesQuery.data?.list ?? [];
+  const drugOptions = (drugsQuery.data?.list ?? []).map((drug) => ({
+    value: drug.id,
+    label: `${drug.name}${drug.specification ? `（${drug.specification}）` : ''}`,
+  }));
   const patient = detail?.patientDetail.patient;
   const aiSummary = detail?.patientDetail.aiSummary;
   const allergyRows = readSummaryArray<AllergySummaryItem>(aiSummary, 'allergies');
@@ -386,14 +403,24 @@ export default function OnlineConsultationPage() {
                         <>
                           {fields.map((field) => (
                             <div className={styles.prescriptionRow} key={field.key}>
-                              <Form.Item name={[field.name, 'drugId']} label="药品 ID" rules={[{ required: true }]}> 
-                                <InputNumber min={1} />
+                              <Form.Item name={[field.name, 'drugId']} label="药品名称" rules={[{ required: true, message: '请选择药品' }]}> 
+                                <Select
+                                  showSearch
+                                  allowClear
+                                  placeholder="输入药品名称搜索"
+                                  options={drugOptions}
+                                  loading={drugsQuery.isFetching}
+                                  filterOption={false}
+                                  onSearch={setDrugKeyword}
+                                  onClear={() => setDrugKeyword('')}
+                                  notFoundContent={drugKeyword ? '未找到匹配药品' : '暂无可用药品'}
+                                />
                               </Form.Item>
                               <Form.Item name={[field.name, 'dosage']} label="单次用量" rules={[{ required: true }]}> 
                                 <Input placeholder="如 1 片" />
                               </Form.Item>
                               <Form.Item name={[field.name, 'frequency']} label="频次" rules={[{ required: true }]}> 
-                                <Input placeholder="如 每日三次" />
+                                <Input placeholder="如 每日3次" />
                               </Form.Item>
                               <Form.Item name={[field.name, 'usageMethod']} label="用法" rules={[{ required: true }]}> 
                                 <Input placeholder="如 口服" />
