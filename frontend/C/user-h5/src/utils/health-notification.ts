@@ -1,10 +1,10 @@
-import type { Appointment, Consultation, FollowUpPlan, MedicationPlan, MedicationPlanAction, NotificationItem, NotificationType } from '../typings/api';
+import type { Appointment, FollowUpPlan, MedicationPlan, MedicationPlanAction, NotificationItem, NotificationType } from '../typings/api';
 import { createIdempotencyKey } from './form';
 
 /** 首页跨就诊人查询到的原始待办数据。 */
-export interface PatientHealthSource { patientId: number; patientName: string; appointments: Appointment[]; consultations?: Consultation[]; medicationPlans: MedicationPlan[]; followUps: FollowUpPlan[]; }
+export interface PatientHealthSource { patientId: number; patientName: string; appointments: Appointment[]; medicationPlans: MedicationPlan[]; followUps: FollowUpPlan[]; }
 /** 首页统一展示的健康待办卡片数据。 */
-export interface HealthTodo { id: number; type: 'APPOINTMENT' | 'MEDICATION' | 'FOLLOW_UP' | 'CONSULTATION'; patientId: number; patientName: string; title: string; detail: string; departmentLocation?: string; occurredAt?: string; isExpired?: boolean; /** 后端已开启提醒时允许首页执行本地服药确认。 */ reminderEnabled?: boolean; }
+export interface HealthTodo { id: number; type: 'APPOINTMENT' | 'MEDICATION' | 'FOLLOW_UP'; patientId: number; patientName: string; title: string; detail: string; departmentLocation?: string; occurredAt?: string; isExpired?: boolean; /** 后端已开启提醒时允许首页执行本地服药确认。 */ reminderEnabled?: boolean; }
 /** 用药提醒页可切换的计划分类。 */
 export type MedicationPlanTab = 'IN_PROGRESS' | 'COMPLETED';
 
@@ -103,7 +103,7 @@ export function getMedicationActionText(action: MedicationPlanAction): string {
 }
 
 /**
- * 聚合全部就诊人的待处理挂号、用药和随访计划。
+ * 聚合全部就诊人的未完成挂号、用药和随访计划。
  * @param sources 按就诊人读取的服务端数据
  * @param nowMillis 用于判定预约是否过期的当前时间戳
  * @returns 按处理时间升序排列的首页健康待办
@@ -118,8 +118,7 @@ export function buildHealthTodos(sources: PatientHealthSource[], nowMillis = Dat
       return { id: item.id, type: 'APPOINTMENT' as const, patientId: source.patientId, patientName: source.patientName, title: `${item.departmentName} · ${item.doctorName}`, detail: isExpired ? '已过期' : item.status === 'UNPAID' ? '挂号待支付' : '挂号待就诊', departmentLocation: item.departmentLocation, occurredAt: item.startTime, isExpired };
     }),
     ...source.medicationPlans.filter((item) => item.status === 'ACTIVE').map((item) => ({ id: item.id, type: 'MEDICATION' as const, patientId: source.patientId, patientName: source.patientName, title: item.drugName, detail: `${item.dosage} · ${item.frequency}`, occurredAt: item.nextReminderAt, reminderEnabled: item.reminderEnabled })),
-    // 仅已完成问诊进入首页提醒，点击后由首页记录已查看并跳转详情。
-    ...(source.consultations || []).filter((item) => item.status === 'COMPLETED').map((item) => ({ id: item.id, type: 'CONSULTATION' as const, patientId: source.patientId, patientName: source.patientName, title: `${item.doctorName || '医生待确认'} · 在线问诊`, detail: '问诊已完成', occurredAt: item.updatedAt })),
+    // 已完成问诊属于历史记录，不再作为首页健康待办展示，避免待办区被已完成事项占满。
     ...source.followUps.filter((item) => item.status === 'PENDING_CONFIRM' || item.status === 'CONFIRMED').map((item) => ({ id: item.id, type: 'FOLLOW_UP' as const, patientId: source.patientId, patientName: source.patientName, title: item.type || '随访计划', detail: item.content, occurredAt: item.remindAt || item.dueAt })),
   ]);
   // 无时间的数据置后，避免遮挡已确定处理时间的真实待办。

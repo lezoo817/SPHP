@@ -573,20 +573,15 @@ describe('健康待办、提醒与通知规则', () => {
     expect(todos[1].departmentLocation).toBeUndefined();
   });
 
-  it('仅将已完成在线问诊聚合为首页待办', () => {
+  it('不将已完成在线问诊聚合为首页待办', () => {
     const todos = buildHealthTodos([{
       patientId: 1,
       patientName: '张三',
       appointments: [],
-      consultations: [
-        { id: 801, doctorName: '刘医生', status: 'COMPLETED', updatedAt: '2026-08-09T21:51:00+08:00' },
-        { id: 802, doctorName: '王医生', status: 'PENDING', updatedAt: '2026-08-09T22:00:00+08:00' },
-      ],
       medicationPlans: [],
       followUps: [],
     }]);
-    expect(todos).toHaveLength(1);
-    expect(todos[0]).toMatchObject({ id: 801, type: 'CONSULTATION', patientId: 1, detail: '问诊已完成' });
+    expect(todos).toHaveLength(0);
   });
 
   it('挂号开始后但结束前仍保持待就诊状态', () => {
