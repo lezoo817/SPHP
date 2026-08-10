@@ -3,26 +3,13 @@ import org.springframework.amqp.core.*;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Qualifier;
+
+import static com.sphp.patient.common.constant.RegisteringConstant.*;
+
 /** C端挂号支付超时 RabbitMQ 拓扑配置。 */
 @Configuration
 public class RegisteringRabbitMqConfig {
-    /** 业务交换机名称。 */
-    public static final String BUSINESS_EXCHANGE = "cend.business.exchange";
 
-    /** 死信交换机名称。 */
-    public static final String DLX_EXCHANGE = "cend.dlx.exchange";
-
-    /** 挂号延迟队列名称。 */
-    public static final String DELAY_QUEUE = "cend.appointment.delay.queue";
-
-    /** 挂号超时队列名称。 */
-    public static final String TIMEOUT_QUEUE = "cend.appointment.timeout.queue";
-
-    /** 锁号路由键。 */
-    public static final String LOCKED_KEY = "appointment.locked";
-
-    /** 超时路由键。 */
-    public static final String TIMEOUT_KEY = "appointment.timeout";
 
     /** 声明业务 Topic 交换机。 */
     @Bean

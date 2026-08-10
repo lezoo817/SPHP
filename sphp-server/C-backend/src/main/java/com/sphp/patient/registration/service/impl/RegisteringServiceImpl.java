@@ -128,6 +128,7 @@ public class RegisteringServiceImpl implements RegisteringService {
             if (appointmentMapper.insert(appointment) != 1) {
                 throw systemError("挂号订单创建失败");
             }
+            // 创建支付单
             RegisteringPaymentOrder payment = new RegisteringPaymentOrder();
             payment.setAppointmentId(appointment.getId());
             payment.setPayerUserId(userId);

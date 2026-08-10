@@ -25,8 +25,6 @@ import static com.sphp.patient.common.constant.CIdempotencyConstant.IDEMPOTENCY_
 @RequiredArgsConstructor
 public class CIdempotencyService {
 
-
-
     private final StringRedisTemplate redisTemplate;
     // JSON 序列化, 用于序列化缓存结果
     private final ObjectMapper objectMapper;

@@ -10,8 +10,9 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 
-import static com.sphp.patient.registration.config.RegisteringRabbitMqConfig.BUSINESS_EXCHANGE;
-import static com.sphp.patient.registration.config.RegisteringRabbitMqConfig.LOCKED_KEY;
+import static com.sphp.patient.common.constant.RegisteringConstant.BUSINESS_EXCHANGE;
+import static com.sphp.patient.common.constant.RegisteringConstant.LOCKED_KEY;
+
 
 /** 挂号锁定事件的事务后消息投递器。 */
 @Component

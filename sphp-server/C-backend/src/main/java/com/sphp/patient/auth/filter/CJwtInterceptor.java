@@ -35,9 +35,11 @@ import static com.sphp.shared.common.enums.ErrorCodeEnum.UNAUTHORIZED;
 @Component
 @RequiredArgsConstructor
 public class CJwtInterceptor implements HandlerInterceptor {
-
+    // JWT 服务
     private final CJwtService jwtService;
+
     private final StringRedisTemplate redisTemplate;
+    // JSON 序列化器
     private final ObjectMapper objectMapper;
 
     /**

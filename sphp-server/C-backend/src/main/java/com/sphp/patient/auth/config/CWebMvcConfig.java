@@ -12,7 +12,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 @RequiredArgsConstructor
 public class CWebMvcConfig implements WebMvcConfigurer {
-
+    // C端 JWT 拦截器
     private final CJwtInterceptor cJwtInterceptor;
 
     /**
@@ -25,11 +25,11 @@ public class CWebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(cJwtInterceptor)
                 .addPathPatterns("/c/v1/**")
                 .excludePathPatterns(
-                        "/c/v1/auth/captcha",
-                        "/c/v1/auth/register",
-                        "/c/v1/auth/login",
-                        "/c/v1/auth/token/refresh",
-                        "/c/v1/payments/callback"
+                        "/c/v1/auth/captcha", //图形验证码
+                        "/c/v1/auth/register", //注册
+                        "/c/v1/auth/login", //登录
+                        "/c/v1/auth/token/refresh", //刷新令牌
+                        "/c/v1/payments/callback" //支付回调
                 );
     }
 }

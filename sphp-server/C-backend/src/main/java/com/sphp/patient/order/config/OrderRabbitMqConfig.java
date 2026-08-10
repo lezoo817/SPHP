@@ -13,6 +13,10 @@ import static com.sphp.patient.common.constant.OrderConstant.*;
 
 /**
  * 订单 RabbitMQ 配置。
+ * <p>
+ *     使用死信队列模拟延时队列
+ *   队列设 TTL → 无人消费 → 到期进 DLX → 转发到真正的处理队列 → 消费者执行超时逻辑。
+ * </p>
  */
 @Configuration
 public class OrderRabbitMqConfig {

@@ -25,6 +25,8 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 
 import java.security.Principal;
 
+import static com.sphp.patient.common.constant.CAuthConstant.REFRESH_SESSION_KEY_PREFIX;
+
 /**
  * 在线问诊 STOMP WebSocket 配置。
  *
@@ -125,7 +127,7 @@ public class ConsultationWebSocketConfig implements WebSocketMessageBrokerConfig
         String token = authorization.substring("Bearer ".length()).trim();
         if ("C".equals(clientType)) {
             CJwtClaims claims = cJwtService.parseAccessToken(token);
-            String session = redisTemplate.opsForValue().get(CAuthConstant.REFRESH_SESSION_KEY_PREFIX + claims.sessionHash());
+            String session = redisTemplate.opsForValue().get(REFRESH_SESSION_KEY_PREFIX + claims.sessionHash());
             if (!StringUtils.hasText(session) || !session.startsWith(claims.userId() + ":")) {
                 throw new MessageDeliveryException("C端登录会话已失效");
             }

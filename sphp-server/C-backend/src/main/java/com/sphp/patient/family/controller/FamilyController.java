@@ -42,7 +42,7 @@ import static com.sphp.shared.common.constant.HeaderConstant.IDEMPOTENCY_KEY;
 @Tag(name = "C端家庭成员", description = "查询、新增、更新和停用解绑家庭成员")
 @RequiredArgsConstructor
 public class FamilyController {
-
+    // 家庭服务
     private final FamilyService familyService;
     // 幂等服务
     private final CIdempotencyService idempotencyService;

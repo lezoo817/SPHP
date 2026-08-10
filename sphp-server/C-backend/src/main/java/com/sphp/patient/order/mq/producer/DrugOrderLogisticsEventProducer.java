@@ -25,7 +25,7 @@ public class DrugOrderLogisticsEventProducer {
      *
      * @param event 待延迟处理的物流推进事件
      */
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT) // 事务提交后执行
     public void publishDrugOrderLogisticsEvent(DrugOrderLogisticsAdvanceEvent event) {
         // 仅在数据已提交后投递，避免消费者读取事务回滚的订单状态。
         rabbitTemplate.convertAndSend(BUSINESS_EXCHANGE, DRUG_ORDER_LOGISTICS_SCHEDULE_ROUTING_KEY, event);

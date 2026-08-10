@@ -18,7 +18,6 @@ public class RabbitMqConfig {
 
     /**
      * 基于 JDK 序列化的消息转换器，并放行本项目事件类。
-     * <p>
      * Spring Boot 会自动将该唯一 MessageConverter 应用到 RabbitTemplate
      * 与 @RabbitListener 容器工厂，生产与消费两端同时生效。
      *

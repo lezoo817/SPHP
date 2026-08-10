@@ -6,6 +6,9 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.UUID;
+
+import static com.sphp.patient.common.enums.DrugOrderLogisticsStatusEnum.*;
+
 @Slf4j
 /**
  * 购药订单模拟物流状态推进事件。
@@ -23,8 +26,8 @@ public record DrugOrderLogisticsAdvanceEvent(String eventId, Long drugOrderId,
      */
     public static DrugOrderLogisticsAdvanceEvent toInTransit(Long drugOrderId) {
         log.info("物流状态推进事件 创建待发货进入运输中 {}", drugOrderId);
-        return create(drugOrderId, DrugOrderLogisticsStatusEnum.PENDING_SHIPMENT,
-                DrugOrderLogisticsStatusEnum.IN_TRANSIT);
+        return create(drugOrderId, PENDING_SHIPMENT,
+                IN_TRANSIT);
     }
 
     /**
@@ -35,8 +38,8 @@ public record DrugOrderLogisticsAdvanceEvent(String eventId, Long drugOrderId,
      */
     public static DrugOrderLogisticsAdvanceEvent toReceive(Long drugOrderId) {
         log.info("物流状态推进事件 创建运输中进入待收货 {}", drugOrderId);
-        return create(drugOrderId, DrugOrderLogisticsStatusEnum.IN_TRANSIT,
-                DrugOrderLogisticsStatusEnum.TO_RECEIVE);
+        return create(drugOrderId, IN_TRANSIT,
+                TO_RECEIVE);
     }
 
     /**

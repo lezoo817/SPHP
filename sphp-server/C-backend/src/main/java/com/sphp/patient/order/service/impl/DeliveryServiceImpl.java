@@ -415,7 +415,7 @@ public class DeliveryServiceImpl implements DeliveryService {
                 .province(address.getProvince())
                 .provinceName(province.getDisplayName())
                 .city(address.getCity())
-                .district(address.getDistrict())
+                .district(address.getDistrict()) // 区县可能为空
                 .detailAddress(address.getDetailAddress())
                 .isDefault(address.getIsDefault())
                 .createdAt(address.getCreatedAt())
