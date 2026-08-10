@@ -38,6 +38,9 @@ class CardRecord(TypedDict):
     event: str  # card / action_card / record_picker / options
     payload: dict[str, Any]
     created_at: str  # ISO 8601 时间
+    # 卡片锚点（2026-08-10）：该卡片产生轮次结束时可见消息（user/assistant）
+    # 总数，历史接口据此把卡片插回对话中对应位置（而非堆到末尾）。
+    anchor: int
 
 
 class CardStore(Protocol):
@@ -54,15 +57,19 @@ class CardStore(Protocol):
         user_id: int | None,
         session_id: str,
         cards: list[tuple[str, dict[str, Any]]],
+        anchor: int,
     ) -> None:
         """按序追加一批卡片事件（``(event, payload)``），``seq`` 自增。
 
         由 SSE 层会话锁保证同会话串行，``seq`` 无并发竞争；跨会话天然并行。
+        ``anchor`` 为本批卡片共同的消息锚点（该轮结束时可见消息总数），供
+        历史重放时把卡片插回对应位置。
 
         Args:
             user_id: 用户 ID（匿名为 None，PG 下 NOT NULL 违反被调用方吞掉）。
             session_id: 会话 ID（外部契约）。
             cards: 本轮产生的卡片事件列表，顺序即前端展示顺序。
+            anchor: 本轮结束时可见消息总数（卡片应插到第 anchor 条消息之后）。
         """
 
     async def list_by_session(
@@ -107,6 +114,7 @@ class MemoryCardStore:
         user_id: int | None,
         session_id: str,
         cards: list[tuple[str, dict[str, Any]]],
+        anchor: int,
     ) -> None:
         if not cards:
             return
@@ -120,6 +128,7 @@ class MemoryCardStore:
                     "event": event,
                     "payload": payload,
                     "created_at": now,
+                    "anchor": anchor,
                 }
             )
 
@@ -133,6 +142,7 @@ class MemoryCardStore:
                 "event": r["event"],
                 "payload": r["payload"],
                 "created_at": r["created_at"],
+                "anchor": r["anchor"],
             }
             for r in records
         ]
@@ -165,6 +175,7 @@ class PostgresCardStore:
             seq         BIGINT       NOT NULL,
             event       TEXT         NOT NULL,
             payload     JSONB        NOT NULL,
+            anchor      INTEGER      NOT NULL DEFAULT 0,
             created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
             PRIMARY KEY (user_id, session_id, seq)
         )
@@ -180,6 +191,11 @@ class PostgresCardStore:
             return
         async with self._pool.connection() as conn:
             await conn.execute(self._DDL)
+            # 2026-08-10 新增 anchor 列：对已存在的表（旧 DDL 无此列）做幂等迁移
+            await conn.execute(
+                "ALTER TABLE agent_cards "
+                "ADD COLUMN IF NOT EXISTS anchor INTEGER NOT NULL DEFAULT 0"
+            )
         logger.info("PG 卡片历史表 agent_cards 已就绪")
 
     async def append_batch(
@@ -187,6 +203,7 @@ class PostgresCardStore:
         user_id: int | None,
         session_id: str,
         cards: list[tuple[str, dict[str, Any]]],
+        anchor: int,
     ) -> None:
         if self._pool is None or not cards:
             return
@@ -203,9 +220,9 @@ class PostgresCardStore:
             base = row["m"] if row else 0
             for i, (event, payload) in enumerate(cards):
                 await conn.execute(
-                    "INSERT INTO agent_cards (user_id, session_id, seq, event, payload) "
-                    "VALUES (%s, %s, %s, %s, %s)",
-                    (user_id, session_id, base + i + 1, event, Jsonb(payload)),
+                    "INSERT INTO agent_cards (user_id, session_id, seq, event, payload, anchor) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    (user_id, session_id, base + i + 1, event, Jsonb(payload), anchor),
                 )
 
     async def list_by_session(
@@ -215,7 +232,7 @@ class PostgresCardStore:
             return []
         async with self._pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT seq, event, payload, created_at FROM agent_cards "
+                "SELECT seq, event, payload, anchor, created_at FROM agent_cards "
                 "WHERE user_id = %s AND session_id = %s ORDER BY seq ASC",
                 (user_id, session_id),
             )
@@ -225,6 +242,7 @@ class PostgresCardStore:
                 "seq": r["seq"],
                 "event": r["event"],
                 "payload": r["payload"],
+                "anchor": r["anchor"],
                 "created_at": (r["created_at"].isoformat() if r["created_at"] is not None else ""),
             }
             for r in rows
