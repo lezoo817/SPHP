@@ -118,6 +118,65 @@
   margin-top: 12px;
 }
 
+/* ===== 在线问诊聊天气泡 ===== */
+/* 固定消息区高度，避免长会话挤压处方和结束问诊操作。 */
+.chatViewport {
+  min-height: 220px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 14px;
+  margin-bottom: 12px;
+  background: #f7f8fa;
+  border: 1px solid #e3e7ed;
+  border-radius: 6px;
+}
+
+.chatMessage {
+  display: flex;
+  margin-bottom: 12px;
+}
+
+.chatMessage:last-child {
+  margin-bottom: 0;
+}
+
+/* 患者消息保持在左侧，使用中性底色便于连续阅读。 */
+.patientMessage {
+  justify-content: flex-start;
+}
+
+/* 医生自己的消息置于右侧，使用浅蓝色与患者消息区分。 */
+.doctorMessage {
+  justify-content: flex-end;
+}
+
+.messageBubble {
+  max-width: min(78%, 620px);
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  word-break: break-word;
+}
+
+.doctorMessage .messageBubble {
+  background: #e8f3ff;
+  border-color: #cde5ff;
+}
+
+.messageBubble small {
+  display: block;
+  margin-bottom: 5px;
+  color: #7b8491;
+}
+
+.messageBubble p {
+  margin: 0;
+  color: #1f2937;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
 @media (max-width: 960px) {
   .workspace {
     grid-template-columns: 1fr;

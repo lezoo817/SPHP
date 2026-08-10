@@ -485,12 +485,19 @@ export default function OnlineConsultationPage() {
                 <Divider />
                 <section className={styles.section}>
                   <Title level={5}>问诊消息</Title>
-                  <List
-                    size="small"
-                    dataSource={detail.messages}
-                    locale={{ emptyText: '暂无消息' }}
-                    renderItem={(item) => <List.Item><Text strong>{item.senderType === 'DOCTOR' ? '医生' : '患者'}：</Text>{item.content}<Text type="secondary">{item.createdAt ? dayjs(item.createdAt).format('MM-DD HH:mm') : ''}</Text></List.Item>}
-                  />
+                  <div className={styles.chatViewport}>
+                    {detail.messages.length === 0 ? (
+                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无消息" />
+                    ) : detail.messages.map((item) => {
+                      const isDoctor = item.senderType === 'DOCTOR';
+                      return <article className={`${styles.chatMessage} ${isDoctor ? styles.doctorMessage : styles.patientMessage}`} key={item.messageId}>
+                        <div className={styles.messageBubble}>
+                          <small>{isDoctor ? '医生' : '患者'} · {item.createdAt ? dayjs(item.createdAt).format('YYYY/MM/DD HH:mm') : '-'}</small>
+                          <p>{item.content}</p>
+                        </div>
+                      </article>;
+                    })}
+                  </div>
                   <TextArea
                     rows={5}
                     maxLength={2000}
