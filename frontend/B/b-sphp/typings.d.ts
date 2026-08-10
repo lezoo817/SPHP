@@ -847,6 +847,7 @@ declare global {
       dosage: string;
       frequency: string;
       usageMethod: string;
+      durationDays?: number;
       status: 'ACTIVE' | 'PAUSED' | 'COMPLETED';
       nextRemindAt?: string;
       createdAt: string;
