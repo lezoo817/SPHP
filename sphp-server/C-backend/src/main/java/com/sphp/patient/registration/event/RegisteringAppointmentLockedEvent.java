@@ -3,7 +3,14 @@ import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/** 挂号锁定后用于支付超时检查的领域事件。 */
+/**
+ * 挂号锁定事件
+ * @param eventId 事件 ID
+ * @param appointmentId 挂号订单 ID
+ * @param userId 付款 C 端用户 ID
+ * @param occurredAt 挂号锁定时间
+ * @param expireAt 支付截止时间
+ */
 public record RegisteringAppointmentLockedEvent(String eventId, Long appointmentId, Long userId,
                                                 OffsetDateTime occurredAt, OffsetDateTime expireAt) implements Serializable {
 

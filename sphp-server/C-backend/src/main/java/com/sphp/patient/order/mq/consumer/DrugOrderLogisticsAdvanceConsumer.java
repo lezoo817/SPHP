@@ -34,6 +34,7 @@ public class DrugOrderLogisticsAdvanceConsumer {
                     event == null ? null : event.eventId(), event == null ? null : event.drugOrderId(),
                     event == null ? null : event.expectedLogisticsStatus(),
                     event == null ? null : event.targetLogisticsStatus());
+            // 调用服务层方法推进物流状态
             orderLogisticsService.advanceDrugOrderLogistics(event);
             log.info("购药订单物流推进消息消费完成 eventId={}, drugOrderId={}",
                     event == null ? null : event.eventId(), event == null ? null : event.drugOrderId());

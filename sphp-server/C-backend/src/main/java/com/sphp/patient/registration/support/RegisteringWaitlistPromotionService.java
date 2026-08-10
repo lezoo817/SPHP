@@ -97,13 +97,13 @@ public class RegisteringWaitlistPromotionService {
         }
         // 站内通知经事务后事件投递，避免数据库回滚后误告知候补人。
         notificationEventProducer.publishNotification(
-                "APPOINTMENT_WAITLIST_NOTIFIED",
-                waitlist.id(),
-                waitlist.userId(),
-                waitlist.patientId(),
-                APPOINTMENT,
-                "候补号源可预约",
-                "已有可用号源，请在当前时段结束前完成预约。号源不保留，建议尽快操作。"
+                "APPOINTMENT_WAITLIST_NOTIFIED",  // 候补通知
+                waitlist.id(), // 候补 ID
+                waitlist.userId(), // 用户 ID
+                waitlist.patientId(), // 就诊人 ID
+                NotificationTypeEnum.APPOINTMENT, // 通知类型
+                "候补号源可预约", // 通知标题
+                "已有可用号源，请在当前时段结束前完成预约。号源不保留，建议尽快操作。" // 通知内容
         );
     }
 }

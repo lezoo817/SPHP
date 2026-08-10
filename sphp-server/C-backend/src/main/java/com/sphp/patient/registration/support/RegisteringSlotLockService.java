@@ -22,8 +22,6 @@ import static com.sphp.shared.common.enums.ErrorCodeEnum.SYSTEM_ERROR;
 @RequiredArgsConstructor
 public class RegisteringSlotLockService {
 
-
-
     private final StringRedisTemplate redisTemplate;
 
     /**

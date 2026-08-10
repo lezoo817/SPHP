@@ -23,6 +23,9 @@ import org.springframework.format.annotation.DateTimeFormat;
 import java.time.LocalDate;
 import java.util.List;
 
+import static com.sphp.patient.common.constant.RegistrationConstant.DEFAULT_PAGE_NO;
+import static com.sphp.patient.common.constant.RegistrationConstant.DEFAULT_PAGE_SIZE;
+
 /**
  * C端挂号资源查询接口。
  */
@@ -81,8 +84,8 @@ public class RegistrationController {
             @RequestParam(required = false) @Positive(message = "pageSize 必须为正数")
             @Max(value = 100, message = "pageSize 不能超过 100") Integer pageSize) {
         // 在接口层补齐默认分页值，确保下游查询参数稳定且方便前端重放请求。
-        int resolvedPageNo = pageNo == null ? RegistrationConstant.DEFAULT_PAGE_NO : pageNo;
-        int resolvedPageSize = pageSize == null ? RegistrationConstant.DEFAULT_PAGE_SIZE : pageSize;
+        int resolvedPageNo = pageNo == null ? DEFAULT_PAGE_NO : pageNo;
+        int resolvedPageSize = pageSize == null ? DEFAULT_PAGE_SIZE : pageSize;
         return Result.success("查询成功",
                 registrationService.listDoctors(hospitalId, departmentId, date, resolvedPageNo, resolvedPageSize));
     }

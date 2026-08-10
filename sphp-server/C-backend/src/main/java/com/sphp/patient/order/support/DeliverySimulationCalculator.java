@@ -27,25 +27,26 @@ public class DeliverySimulationCalculator {
     public DeliverySimulationResult deliveryCalculate(DeliveryProvinceEnum userProvince, String detailAddress,
                                                        Long hospitalId, Long pharmacyId, DeliveryProvinceEnum hospitalProvince,
                                                        double provinceCoefficient) {
+        // 标准化地址以消除门牌、楼栋和房间号造成的无意义差异
         String normalizedAddress = deliveryNormalizeAddress(detailAddress);
         String baseSeed = userProvince.name() + ':' + normalizedAddress + ':' + hospitalId;
-        // 偏移量
+        //计算文本的正数哈希值，避免运行时随机数导致展示结果漂移
         long pharmacyDistanceOffset = deliveryPositiveHash(pharmacyId + ":distance") % 2_001L;
-        // 时效偏移量
+        // 计算文本的正数哈希值，避免运行时随机数导致展示结果漂移
         int pharmacyTimeOffset = (int) (deliveryPositiveHash(pharmacyId + ":time") % 16L);
 
-        // 同省
+        // 同省的配送
         if (userProvince == hospitalProvince) {
             long baseDistanceMeters = (5L + deliveryPositiveHash(baseSeed + ":same-distance") % 45L) * 1_000L;
             int baseDeliveryMinutes = 900 + (int) (deliveryPositiveHash(baseSeed + ":same-time") % 46L);
             return new DeliverySimulationResult(baseDistanceMeters + pharmacyDistanceOffset,
                     baseDeliveryMinutes + pharmacyTimeOffset);
         }
-        // 不同省
+        // 不同省的配送
         long jitterKilometers = deliveryPositiveHash(baseSeed + ":cross-distance") % 61L - 30L;
-        // 省距离系数
+        // 省距离系数，通过随机数模拟不同省之间的距离差异
         long baseDistanceMeters = Math.round((150D + provinceCoefficient * 450D + jitterKilometers) * 1_000D);
-        // 省时间系数
+        // 省时间系数，通过随机数模拟不同省之间的配送时间差异
         int baseDeliveryMinutes = 960 + (int) Math.ceil(provinceCoefficient * 240D)
                 + (int) (deliveryPositiveHash(baseSeed + ":cross-time") % 91L);
         return new DeliverySimulationResult(baseDistanceMeters + pharmacyDistanceOffset,
@@ -71,11 +72,13 @@ public class DeliverySimulationCalculator {
      */
     private long deliveryPositiveHash(String value) {
         try {
+            // 获取 SHA-256 消息摘要实例
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
             long result = 0L;
             for (int index = 0; index < Long.BYTES; index++) {
                 result = (result << Byte.SIZE) | (digest[index] & 0xffL);
             }
+            // 确保结果为正数
             return result & Long.MAX_VALUE;
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 算法不可用", exception);

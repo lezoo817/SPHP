@@ -1,169 +1,4605 @@
 /* C 端 H5 的登录、资料与表单页面共用样式，使用原型中的暖白、深墨与医疗红。 */
-:root { color: #172238; background: #f6f4f3; font-family: "Microsoft YaHei", Arial, sans-serif; }
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; background: #f6f4f3; }
-button, input, select, textarea { font: inherit; }
-button { cursor: pointer; }
-button:disabled { cursor: not-allowed; opacity: .58; }
+:root {
+  color: #172238;
+  background: #f6f4f3;
+  font-family: "Microsoft YaHei", Arial, sans-serif;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #f6f4f3;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
 
 /* 首页采用紧凑的医院定位栏和可滑动医疗服务窗，突出挂号与问诊两个高频入口。 */
-.home-page{min-height:100vh;padding:0 0 90px;background:#f4f7ff}.home-page .home-hero{display:none}.home-overview{padding:12px 18px 0;background:#f4f7ff}.home-appbar{display:grid;grid-template-columns:minmax(0,1fr) auto 36px;align-items:center;gap:8px;min-height:38px}.home-appbar__hospital{display:flex;min-width:0;align-items:center;gap:3px;padding:4px 0;border:0;background:transparent;color:#18243b;text-align:left}.home-appbar__hospital svg:first-child{flex:0 0 auto;color:#1477f8}.home-appbar__hospital span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;font-weight:800}.home-appbar__hospital svg:last-child{flex:0 0 auto;color:#97a1b3}.home-appbar__brand{color:#1477f8;font-size:13px;font-weight:900;white-space:nowrap}.home-appbar__notice{display:grid;place-items:center;width:36px;height:36px;padding:0;border:0;border-radius:50%;background:#e7f1ff;color:#1477f8}.home-search-bar{display:flex;width:100%;align-items:center;gap:9px;margin:9px 0 12px;padding:12px 14px;border:0;border-radius:12px;background:#fff;color:#a0a9b8;text-align:left;box-shadow:0 4px 14px rgba(42,83,139,.08)}.home-search-bar svg{flex:0 0 auto;color:#8f9bad}.home-search-bar span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.home-promo{position:relative;overflow:hidden;border-radius:14px;box-shadow:0 10px 24px rgba(18,91,187,.16);touch-action:pan-y}.home-promo__track{display:flex;width:100%;transition:transform .3s ease}.home-promo__slide{display:block;flex:0 0 100%;width:100%;margin:0;padding:0;border:0;background:#1477f8}.home-promo__slide img{display:block;width:100%;aspect-ratio:2.37/1;object-fit:cover}.home-promo__pager{position:absolute;right:13px;bottom:10px;display:flex;gap:5px}.home-promo__pager i{display:block;width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.55);transition:width .2s,background .2s}.home-promo__pager i.is-active{width:17px;border-radius:4px;background:#fff}.home-page .home-content{padding:0 18px}.home-page .home-content>.hospital-switch,.home-page .home-content>.search-bar{display:none}.home-page .patient-switch-card{margin:14px 0 20px;padding:16px 17px;border:1px solid #e6edf9;border-radius:12px;box-shadow:0 5px 15px rgba(42,83,139,.06)}.home-page .patient-switch-card b{font-size:18px}.home-page .patient-switch-card p{margin-top:5px;font-size:14px}.home-page h2{margin:0 0 12px;color:#172b4d;font-size:22px}.home-page .quick-grid{padding:9px 3px;border:1px solid #e6edf9;border-radius:12px;box-shadow:0 5px 15px rgba(42,83,139,.06)}.home-page .quick-grid button{min-height:96px;color:#1477f8}.home-page .quick-grid span{font-size:14px}.home-page .todo-section{margin-top:24px}.home-page .text-button{color:#1477f8}@media (prefers-reduced-motion:reduce){.home-promo__track,.home-promo__pager i{transition:none}}@media (max-width:360px){.home-overview{padding-right:12px;padding-left:12px}.home-page .home-content{padding-right:12px;padding-left:12px}.home-appbar__brand{display:none}.home-appbar{grid-template-columns:minmax(0,1fr) 36px}.home-promo{border-radius:12px}.home-page .quick-grid button{min-height:90px}.home-page .quick-grid span{font-size:13px}}
-main.home-page { min-height: 100vh; padding: 0 0 90px; background: #f4f7ff; }
-.login-page { min-height: 100vh; padding: 50px 28px 36px; background: linear-gradient(154deg, #e6caa1 0 29%, #d4d1d5 29% 100%); }
-.login-brand { display: flex; align-items: center; gap: 15px; }.brand-mark { display: grid; width: 58px; height: 58px; place-items: center; border: 3px solid #9e3140; border-radius: 50%; color: #9e3140; font-size: 27px; font-weight: 800; }.login-brand strong { display: block; font-size: 28px; }.login-brand span { color: #746a67; font-size: 14px; }
-.login-intro { margin: 52px 0 48px; }.login-intro h1 { margin: 0 0 12px; font-size: clamp(29px, 8vw, 38px); line-height: 1.2; }.login-intro p { margin: 0; color: #685e5a; }
-.login-card, .profile-card, .health-grid, .reminder-card, .menu-card, .member-card, .health-summary, .record-list { border-radius: 16px; background: #fff; box-shadow: 0 8px 28px rgba(58, 38, 30, .08); }.login-card { max-width: 650px; margin: auto; padding: 30px; }.login-card h2 { margin: 0; font-size: 29px; }.login-card > p, .dialog-hint { margin: 9px 0 26px; color: #756f76; }
-label { display: grid; gap: 8px; margin: 18px 0; color: #1e293c; font-weight: 700; }.input-wrap, .form-stack input, .form-stack select, .form-stack textarea { width: 100%; border: 1px solid #d8d2d2; border-radius: 9px; background: #fff; color: #172238; }.input-wrap { display: flex; align-items: center; gap: 12px; padding: 0 15px; color: #756e71; }.input-wrap input { flex: 1; min-width: 0; border: 0; padding: 16px 0; outline: 0; }.input-icon, .icon-button { display: inline-grid; place-items: center; border: 0; background: transparent; color: #746f74; }.login-options, .profile-card__footer, .section-title, .reminder-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.check-label { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 14px; color: #59616b; font-weight: 400; }.text-button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: #b33444; padding: 6px 0; }.primary-button, .secondary-button, .add-button { width: 100%; min-height: 50px; border-radius: 9px; font-weight: 800; }.primary-button { border: 0; background: #b33444; color: #fff; margin-top: 16px; }.secondary-button { border: 1px solid #b33444; background: transparent; color: #b33444; margin-top: 14px; }.form-error { margin: 12px 0 0; color: #b33444; }.form-success { margin: 12px 0 0; color: #177a58; }
-.dialog-mask { position: fixed; z-index: 10; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(20, 27, 40, .48); }.dialog { box-sizing: border-box; width: min(100%, 420px); max-height: min(720px, 88vh); overflow: auto; padding: 24px; border-radius: 16px; background: #fff; }.dialog__header { display: flex; align-items: center; justify-content: space-between; }.dialog__header h2 { margin: 0; font-size: 24px; }.captcha-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.captcha-row img { width: 168px; height: 64px; border: 1px solid #e7d08f; border-radius: 9px; object-fit: contain; background: #fff5cc; }.captcha-tip { color: #80777a; font-size: 13px; }
+.home-page {
+  min-height: 100vh;
+  padding: 0 0 90px;
+  background: #f4f7ff;
+}
+.home-page .home-hero {
+  display: none;
+}
+.home-overview {
+  padding: 12px 18px 0;
+  background: #f4f7ff;
+}
+.home-appbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 36px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+}
+.home-appbar__hospital {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: #18243b;
+  text-align: left;
+}
+.home-appbar__hospital svg:first-child {
+  flex: 0 0 auto;
+  color: #1477f8;
+}
+.home-appbar__hospital span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 800;
+}
+.home-appbar__hospital svg:last-child {
+  flex: 0 0 auto;
+  color: #97a1b3;
+}
+.home-appbar__brand {
+  color: #1477f8;
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.home-appbar__notice {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #e7f1ff;
+  color: #1477f8;
+}
+.home-search-bar {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 9px;
+  margin: 9px 0 12px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: #fff;
+  color: #a0a9b8;
+  text-align: left;
+  box-shadow: 0 4px 14px rgba(42, 83, 139, 0.08);
+}
+.home-search-bar svg {
+  flex: 0 0 auto;
+  color: #8f9bad;
+}
+.home-search-bar span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.home-promo {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  box-shadow: 0 10px 24px rgba(18, 91, 187, 0.16);
+  touch-action: pan-y;
+}
+.home-promo__track {
+  display: flex;
+  width: 100%;
+  transition: transform 0.3s ease;
+}
+.home-promo__slide {
+  display: block;
+  flex: 0 0 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: #1477f8;
+}
+.home-promo__slide img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2.37/1;
+  object-fit: cover;
+}
+.home-promo__pager {
+  position: absolute;
+  right: 13px;
+  bottom: 10px;
+  display: flex;
+  gap: 5px;
+}
+.home-promo__pager i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  transition:
+    width 0.2s,
+    background 0.2s;
+}
+.home-promo__pager i.is-active {
+  width: 17px;
+  border-radius: 4px;
+  background: #fff;
+}
+.home-page .home-content {
+  padding: 0 18px;
+}
+.home-page .home-content > .hospital-switch,
+.home-page .home-content > .search-bar {
+  display: none;
+}
+.home-page .patient-switch-card {
+  margin: 14px 0 20px;
+  padding: 16px 17px;
+  border: 1px solid #e6edf9;
+  border-radius: 12px;
+  box-shadow: 0 5px 15px rgba(42, 83, 139, 0.06);
+}
+.home-page .patient-switch-card b {
+  font-size: 18px;
+}
+.home-page .patient-switch-card p {
+  margin-top: 5px;
+  font-size: 14px;
+}
+.home-page h2 {
+  margin: 0 0 12px;
+  color: #172b4d;
+  font-size: 22px;
+}
+.home-page .quick-grid {
+  padding: 9px 3px;
+  border: 1px solid #e6edf9;
+  border-radius: 12px;
+  box-shadow: 0 5px 15px rgba(42, 83, 139, 0.06);
+}
+.home-page .quick-grid button {
+  min-height: 96px;
+  color: #1477f8;
+}
+.home-page .quick-grid span {
+  font-size: 14px;
+}
+.home-page .todo-section {
+  margin-top: 24px;
+}
+.home-page .text-button {
+  color: #1477f8;
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-promo__track,
+  .home-promo__pager i {
+    transition: none;
+  }
+}
+@media (max-width: 360px) {
+  .home-overview {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+  .home-page .home-content {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+  .home-appbar__brand {
+    display: none;
+  }
+  .home-appbar {
+    grid-template-columns: minmax(0, 1fr) 36px;
+  }
+  .home-promo {
+    border-radius: 12px;
+  }
+  .home-page .quick-grid button {
+    min-height: 90px;
+  }
+  .home-page .quick-grid span {
+    font-size: 13px;
+  }
+}
+/* 登录页：品牌标识、欢迎语与登录表单卡片。 */
+main.home-page {
+  min-height: 100vh;
+  padding: 0 0 90px;
+  background: #f4f7ff;
+}
+.login-page {
+  min-height: 100vh;
+  padding: 50px 28px 36px;
+  background: linear-gradient(154deg, #e6caa1 0 29%, #d4d1d5 29% 100%);
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+.brand-mark {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border: 3px solid #9e3140;
+  border-radius: 50%;
+  color: #9e3140;
+  font-size: 27px;
+  font-weight: 800;
+}
+.login-brand strong {
+  display: block;
+  font-size: 28px;
+}
+.login-brand span {
+  color: #746a67;
+  font-size: 14px;
+}
+.login-intro {
+  margin: 52px 0 48px;
+}
+.login-intro h1 {
+  margin: 0 0 12px;
+  font-size: clamp(29px, 8vw, 38px);
+  line-height: 1.2;
+}
+.login-intro p {
+  margin: 0;
+  color: #685e5a;
+}
+.login-card,
+.profile-card,
+.health-grid,
+.reminder-card,
+.menu-card,
+.member-card,
+.health-summary,
+.record-list {
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(58, 38, 30, 0.08);
+}
+.login-card {
+  max-width: 650px;
+  margin: auto;
+  padding: 30px;
+}
+.login-card h2 {
+  margin: 0;
+  font-size: 29px;
+}
+.login-card > p,
+.dialog-hint {
+  margin: 9px 0 26px;
+  color: #756f76;
+}
+/* 通用表单控件：登录、资料编辑和弹窗表单共用。 */
+label {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0;
+  color: #1e293c;
+  font-weight: 700;
+}
+.input-wrap,
+.form-stack input,
+.form-stack select,
+.form-stack textarea {
+  width: 100%;
+  border: 1px solid #d8d2d2;
+  border-radius: 9px;
+  background: #fff;
+  color: #172238;
+}
+.input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 15px;
+  color: #756e71;
+}
+.input-wrap input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 16px 0;
+  outline: 0;
+}
+.input-icon,
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #746f74;
+}
+.login-options,
+.profile-card__footer,
+.section-title,
+.reminder-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.check-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+  font-size: 14px;
+  color: #59616b;
+  font-weight: 400;
+}
+.text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: #b33444;
+  padding: 6px 0;
+}
+.primary-button,
+.secondary-button,
+.add-button {
+  width: 100%;
+  min-height: 50px;
+  border-radius: 9px;
+  font-weight: 800;
+}
+.primary-button {
+  border: 0;
+  background: #b33444;
+  color: #fff;
+  margin-top: 16px;
+}
+.secondary-button {
+  border: 1px solid #b33444;
+  background: transparent;
+  color: #b33444;
+  margin-top: 14px;
+}
+.form-error {
+  margin: 12px 0 0;
+  color: #b33444;
+}
+.form-success {
+  margin: 12px 0 0;
+  color: #177a58;
+}
+/* 应用内弹窗：遮罩层、标题栏、验证码及操作区。 */
+.dialog-mask {
+  position: fixed;
+  z-index: 10;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(20, 27, 40, 0.48);
+}
+.dialog {
+  box-sizing: border-box;
+  width: min(100%, 420px);
+  max-height: min(720px, 88vh);
+  overflow: auto;
+  padding: 24px;
+  border-radius: 16px;
+  background: #fff;
+}
+.dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dialog__header h2 {
+  margin: 0;
+  font-size: 24px;
+}
+.captcha-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.captcha-row img {
+  width: 168px;
+  height: 64px;
+  border: 1px solid #e7d08f;
+  border-radius: 9px;
+  object-fit: contain;
+  background: #fff5cc;
+}
+.captcha-tip {
+  color: #80777a;
+  font-size: 13px;
+}
 /* 弹窗表单输入框采用边框盒模型，避免窄屏时内边距导致宽度溢出。 */
-.dialog label > input,.dialog label > select,.dialog label > textarea{box-sizing:border-box;max-width:100%}
+.dialog label > input,
+.dialog label > select,
+.dialog label > textarea {
+  box-sizing: border-box;
+  max-width: 100%;
+}
 /* 退出登录确认弹窗的双按钮并列展示，保证窄屏下均有稳定的点击区域。 */
-.logout-dialog-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.logout-dialog-actions .primary-button,.logout-dialog-actions .secondary-button{margin-top:0}
+.logout-dialog-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.logout-dialog-actions .primary-button,
+.logout-dialog-actions .secondary-button {
+  margin-top: 0;
+}
 /* 健康档案删除确认框让提示跨越双按钮列，窄屏下保持按钮尺寸稳定。 */
-.health-delete-confirm{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.health-delete-confirm p{grid-column:1/-1;margin:0 0 8px;color:#756f76;line-height:1.6}.health-delete-confirm .primary-button,.health-delete-confirm .secondary-button{margin-top:0}
-.mine-page { min-height: 100vh; padding: 28px 28px 100px; background: linear-gradient(#ecd0a6 0 308px, #f6f4f3 308px); }.mine-hero { display: flex; justify-content: space-between; align-items: center; margin-bottom: 42px; font-size: 34px; font-weight: 900; }.more-button { min-width: 105px; border: 1px solid #dad4d4; border-radius: 28px; background: #fff; color: #1d293c; font-size: 24px; letter-spacing: 4px; }.profile-card { padding: 26px 28px; }.profile-card__top { display: flex; justify-content: space-between; align-items: flex-start; }.profile-card h1 { margin: 0; font-size: 27px; }.profile-card h1 em, .member-card h2 em { margin-left: 9px; padding: 5px 8px; border-radius: 5px; background: #f7e8eb; color: #b33444; font-size: 13px; font-style: normal; font-weight: 500; }.profile-card__top p { margin: 8px 0; color: #6c6871; }.profile-lines { margin: 17px 0; border-top: 1px solid #eee7e5; border-bottom: 1px solid #eee7e5; }.profile-lines p { margin: 0; padding: 9px 0; color: #62606a; }.profile-lines span { margin-left: 14px; color: #1d2b40; }.mine-section { margin: 25px 0; }.mine-section h2, .record-section h2 { margin: 0 0 16px; font-size: 27px; }.health-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 20px 12px; }.health-entry { display: grid; min-height: 106px; place-items: center; gap: 8px; border: 0; background: transparent; color: #6f6064; }.health-entry span { color: #1d293c; font-size: 15px; text-align: center; }.reminder-card { padding: 20px; }.reminder-card p { margin: 0; color: #6d6870; }.menu-card { overflow: hidden; }.menu-item { display: flex; width: 100%; align-items: center; gap: 15px; padding: 20px; border: 0; border-bottom: 1px solid #ebe5e3; background: #fff; color: #1d293c; text-align: left; }.menu-item span { flex: 1; font-size: 18px; }.menu-item em { border-radius: 5px; background: #f0edef; color: #979097; padding: 3px 6px; font-size: 12px; font-style: normal; }.logout-button { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin: 20px 0; border: 0; background: transparent; color: #b33444; font-weight: 800; }.bottom-tab { position: fixed; z-index: 4; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(4, 1fr); min-height: 76px; border-top: 1px solid #e8e2e1; background: #fff; }.bottom-tab__item { display: grid; place-items: center; gap: 3px; border: 0; background: transparent; color: #736e73; }.bottom-tab__item.is-active { color: #b33444; font-weight: 800; }.toast { position: fixed; z-index: 12; right: 20px; bottom: 100px; left: 20px; padding: 13px 16px; border-radius: 10px; background: #243246; color: #fff; text-align: center; box-shadow: 0 5px 18px rgba(0,0,0,.2); }
-.subpage { min-height: 100vh; background: #f6f4f3; }.page-header { display: grid; grid-template-columns: 76px minmax(0, 1fr) 76px; align-items: center; min-height: 60px; padding: 0 18px; background: #fff; text-align: center; }.page-header__controls { display: flex; align-items: center; gap: 2px; }.page-header__home { color: #b33444; }.page-header h1 { overflow: hidden; margin: 0; text-overflow: ellipsis; white-space: nowrap; font-size: 19px; }.subpage-content { max-width: 680px; margin: auto; padding: 22px 18px; }.add-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; margin-bottom: 18px; border: 1px solid #b33444; background: #fff; color: #b33444; }.member-list { display: grid; gap: 13px; }.member-card { display: flex; align-items: center; gap: 14px; padding: 18px; color: #756268; }.member-card > div:nth-child(2) { flex: 1; color: #1d293c; }.member-card h2 { margin: 0; font-size: 18px; }.member-card p { margin: 6px 0 0; color: #747078; font-size: 14px; }.card-actions { display: flex; gap: 8px; }.danger-icon { color: #b33444; }.empty-state { padding: 28px 12px; color: #7d777c; text-align: center; }.form-stack label { margin: 0 0 16px; }.form-stack input, .form-stack select, .form-stack textarea { padding: 12px; font-weight: 400; outline-color: #b33444; }.health-summary { display: flex; gap: 13px; padding: 18px; color: #b33444; }.health-summary h2 { margin: 0; color: #1d293c; font-size: 18px; }.health-summary p { margin: 6px 0 0; color: #747078; }.record-section { margin-top: 27px; }.section-title h2 { margin: 0; }.record-list { overflow: hidden; }.record-item { display: flex; align-items: center; justify-content: space-between; padding: 17px 18px; border-bottom: 1px solid #eee8e6; }.record-item:last-child { border-bottom: 0; }.record-item h3 { margin: 0; font-size: 17px; }.record-item p { margin: 6px 0 0; color: #777178; font-size: 14px; }
-@media (max-width: 360px) { .login-page { padding: 36px 18px 28px; }.login-card, .profile-card { padding: 22px; }.health-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }.mine-page { padding-right: 18px; padding-left: 18px; }.profile-card h1 { font-size: 23px; }.mine-hero { font-size: 31px; } }
+.health-delete-confirm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.health-delete-confirm p {
+  grid-column: 1/-1;
+  margin: 0 0 8px;
+  color: #756f76;
+  line-height: 1.6;
+}
+.health-delete-confirm .primary-button,
+.health-delete-confirm .secondary-button {
+  margin-top: 0;
+}
+/* “我的”页面：个人资料卡、健康服务入口与账户菜单。 */
+.mine-page {
+  min-height: 100vh;
+  padding: 28px 28px 100px;
+  background: linear-gradient(#ecd0a6 0 308px, #f6f4f3 308px);
+}
+.mine-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 42px;
+  font-size: 34px;
+  font-weight: 900;
+}
+.more-button {
+  min-width: 105px;
+  border: 1px solid #dad4d4;
+  border-radius: 28px;
+  background: #fff;
+  color: #1d293c;
+  font-size: 24px;
+  letter-spacing: 4px;
+}
+.profile-card {
+  padding: 26px 28px;
+}
+.profile-card__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.profile-card h1 {
+  margin: 0;
+  font-size: 27px;
+}
+.profile-card h1 em,
+.member-card h2 em {
+  margin-left: 9px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: #f7e8eb;
+  color: #b33444;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 500;
+}
+.profile-card__top p {
+  margin: 8px 0;
+  color: #6c6871;
+}
+.profile-lines {
+  margin: 17px 0;
+  border-top: 1px solid #eee7e5;
+  border-bottom: 1px solid #eee7e5;
+}
+.profile-lines p {
+  margin: 0;
+  padding: 9px 0;
+  color: #62606a;
+}
+.profile-lines span {
+  margin-left: 14px;
+  color: #1d2b40;
+}
+.mine-section {
+  margin: 25px 0;
+}
+.mine-section h2,
+.record-section h2 {
+  margin: 0 0 16px;
+  font-size: 27px;
+}
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 20px 12px;
+}
+.health-entry {
+  display: grid;
+  min-height: 106px;
+  place-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: #6f6064;
+}
+.health-entry span {
+  color: #1d293c;
+  font-size: 15px;
+  text-align: center;
+}
+.reminder-card {
+  padding: 20px;
+}
+.reminder-card p {
+  margin: 0;
+  color: #6d6870;
+}
+.menu-card {
+  overflow: hidden;
+}
+.menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 15px;
+  padding: 20px;
+  border: 0;
+  border-bottom: 1px solid #ebe5e3;
+  background: #fff;
+  color: #1d293c;
+  text-align: left;
+}
+.menu-item span {
+  flex: 1;
+  font-size: 18px;
+}
+.menu-item em {
+  border-radius: 5px;
+  background: #f0edef;
+  color: #979097;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-style: normal;
+}
+.logout-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin: 20px 0;
+  border: 0;
+  background: transparent;
+  color: #b33444;
+  font-weight: 800;
+}
+/* 全局底部导航与轻提示：所有一级页面共用。 */
+.bottom-tab {
+  position: fixed;
+  z-index: 4;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  min-height: 76px;
+  border-top: 1px solid #e8e2e1;
+  background: #fff;
+}
+.bottom-tab__item {
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  border: 0;
+  background: transparent;
+  color: #736e73;
+}
+.bottom-tab__item.is-active {
+  color: #b33444;
+  font-weight: 800;
+}
+.toast {
+  position: fixed;
+  z-index: 12;
+  right: 20px;
+  bottom: 100px;
+  left: 20px;
+  padding: 13px 16px;
+  border-radius: 10px;
+  background: #243246;
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.2);
+}
+/* 二级页面公共骨架：页头、内容容器、列表和空状态。 */
+.subpage {
+  min-height: 100vh;
+  background: #f6f4f3;
+}
+.page-header {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 76px;
+  align-items: center;
+  min-height: 60px;
+  padding: 0 18px;
+  background: #fff;
+  text-align: center;
+}
+.page-header__controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.page-header__home {
+  color: #b33444;
+}
+.page-header h1 {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 19px;
+}
+.subpage-content {
+  max-width: 680px;
+  margin: auto;
+  padding: 22px 18px;
+}
+.add-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-bottom: 18px;
+  border: 1px solid #b33444;
+  background: #fff;
+  color: #b33444;
+}
+.member-list {
+  display: grid;
+  gap: 13px;
+}
+.member-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  color: #756268;
+}
+.member-card > div:nth-child(2) {
+  flex: 1;
+  color: #1d293c;
+}
+.member-card h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.member-card p {
+  margin: 6px 0 0;
+  color: #747078;
+  font-size: 14px;
+}
+.card-actions {
+  display: flex;
+  gap: 8px;
+}
+.danger-icon {
+  color: #b33444;
+}
+.empty-state {
+  padding: 28px 12px;
+  color: #7d777c;
+  text-align: center;
+}
+.form-stack label {
+  margin: 0 0 16px;
+}
+.form-stack input,
+.form-stack select,
+.form-stack textarea {
+  padding: 12px;
+  font-weight: 400;
+  outline-color: #b33444;
+}
+.health-summary {
+  display: flex;
+  gap: 13px;
+  padding: 18px;
+  color: #b33444;
+}
+.health-summary h2 {
+  margin: 0;
+  color: #1d293c;
+  font-size: 18px;
+}
+.health-summary p {
+  margin: 6px 0 0;
+  color: #747078;
+}
+.record-section {
+  margin-top: 27px;
+}
+.section-title h2 {
+  margin: 0;
+}
+.record-list {
+  overflow: hidden;
+}
+.record-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 17px 18px;
+  border-bottom: 1px solid #eee8e6;
+}
+.record-item:last-child {
+  border-bottom: 0;
+}
+.record-item h3 {
+  margin: 0;
+  font-size: 17px;
+}
+.record-item p {
+  margin: 6px 0 0;
+  color: #777178;
+  font-size: 14px;
+}
+/* 登录和“我的”页面的 360px 窄屏适配。 */
+@media (max-width: 360px) {
+  .login-page {
+    padding: 36px 18px 28px;
+  }
+  .login-card,
+  .profile-card {
+    padding: 22px;
+  }
+  .health-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .mine-page {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+  .profile-card h1 {
+    font-size: 23px;
+  }
+  .mine-hero {
+    font-size: 31px;
+  }
+}
 
 /* 健康档案摘要卡可直接打开就诊人选择，末尾箭头保留稳定的点击提示。 */
-.health-summary--switch{width:100%;align-items:center;border:0;text-align:left}.health-summary--switch>div{min-width:0;flex:1}.health-summary--switch>svg:last-child{flex:0 0 auto;color:#847f85}
+.health-summary--switch {
+  width: 100%;
+  align-items: center;
+  border: 0;
+  text-align: left;
+}
+.health-summary--switch > div {
+  min-width: 0;
+  flex: 1;
+}
+.health-summary--switch > svg:last-child {
+  flex: 0 0 auto;
+  color: #847f85;
+}
 
 /* 首页、挂号和问诊使用与原型一致的医疗红色信息层级。 */
-.home-page,.assistant-page { min-height:100vh; padding-bottom:90px; background:#f7f5f4; }.home-hero { padding:32px 28px 52px; color:#fff; background:linear-gradient(115deg,#942434,#c9505e); }.home-brand{display:flex;gap:13px;align-items:center}.home-brand>b{display:grid;place-items:center;width:52px;height:52px;border:3px solid #fff;border-radius:50%;font-size:25px}.home-brand strong,.home-brand span{display:block}.home-brand strong{font-size:27px}.home-hero p{margin:29px 0 0;font-size:22px}.home-content,.assistant-content{padding:0 28px}.hospital-switch{width:100%;margin:-24px 0 10px;padding:11px 14px;border:0;border-radius:9px;background:#fff;color:#772c37;text-align:left}.hospital-switch svg{float:right}.search-bar{display:flex;width:100%;gap:8px;padding:13px 15px;border-radius:15px;background:#fff;box-shadow:0 6px 16px rgba(0,0,0,.06)}.search-bar input{flex:1;min-width:0;border:0;outline:0}.search-bar button{border:0;background:transparent;color:#b33444}.patient-switch-card,.assistant-patient{display:flex;width:100%;justify-content:space-between;align-items:center;margin:20px 0;padding:20px 22px;border:0;border-radius:15px;background:#fff;text-align:left}.patient-switch-card b{font-size:21px}.patient-switch-card p,.assistant-patient span{display:block;margin:7px 0 0;color:#777}.quick-grid{display:grid;grid-template-columns:repeat(3,1fr);padding:12px;background:#fff;border-radius:15px}.quick-grid button{display:grid;gap:8px;place-items:center;min-height:104px;border:0;background:transparent;color:#b33444}.quick-grid span{color:#1d293c}.todo-item,.record-card,.slot-card{display:flex;width:100%;align-items:center;gap:10px;margin:10px 0;padding:16px;border:0;border-radius:12px;background:#fff;text-align:left}.todo-item span,.record-card span,.slot-card span{flex:1;color:#777}.todo-item b,.record-card b,.slot-card b{display:block}.todo-item em,.record-card em,.slot-card em{color:#16875c;font-style:normal}.filter-input{width:100%;padding:12px;border:1px solid #ddd;border-radius:8px}.choice-row{display:flex;width:100%;justify-content:space-between;margin-top:8px;padding:14px 0;border:0;border-bottom:1px solid #eee;background:#fff;text-align:left}.choice-row small{color:#777}.search-results{margin:12px 0;padding:14px;border-radius:12px;background:#fff}.search-results button{display:flex;width:100%;justify-content:space-between;padding:11px 0;border:0;border-bottom:1px solid #eee;background:#fff;text-align:left}.assistant-title{display:flex;justify-content:space-between;align-items:center;padding:28px}.assistant-title h1{margin:0;font-size:33px}.flow-card{padding:24px;border-radius:15px;background:#fff}.flow-card h2{margin-top:0}.flow-card h2 em{float:right;padding:5px 8px;border-radius:5px;background:#f8e5e8;color:#b33444;font-size:14px;font-style:normal}.flow-highlight{padding:18px;border-left:5px solid #c75b68;background:#fcf8f8}.flow-highlight b,.flow-highlight span{display:block}.flow-card ol{padding-left:24px;line-height:2.6}.flow-card li.active{color:#b33444;font-weight:700}.flow-card li.done{color:#16875c}.assistant-tabs{display:grid;grid-template-columns:repeat(3,1fr);margin:20px 0}.assistant-tabs button{padding:13px;border:0;border-bottom:2px solid #ddd;background:transparent}.assistant-tabs button.active{border-color:#b33444;color:#b33444;font-weight:700}.chip-list{display:flex;flex-wrap:wrap;gap:8px}.chip-list button{padding:9px 13px;border:1px solid #e2d7d8;border-radius:18px;background:#fff}.chip-list button.active{border-color:#b33444;background:#b33444;color:#fff}.payment-card{text-align:center}.payment-card>b{display:block;margin:25px 0;font-size:34px;color:#b33444}.chat-list{min-height:330px;padding:12px;background:#fff}.doctor-message,.mine-message{max-width:80%;width:max-content;margin:12px 0;padding:10px;border-radius:9px}.doctor-message{background:#eee}.mine-message{margin-left:auto;background:#f7dde1}.chat-input{display:flex;gap:8px;margin-top:12px}.chat-input textarea{flex:1;padding:10px;border:1px solid #ddd;border-radius:8px}.chat-input button{width:48px;border:0;border-radius:8px;background:#b33444;color:#fff}
+/* 首页与就诊助手的早期共享布局：保留给公共入口和基础卡片。 */
+.home-page,
+.assistant-page {
+  min-height: 100vh;
+  padding-bottom: 90px;
+  background: #f7f5f4;
+}
+.home-hero {
+  padding: 32px 28px 52px;
+  color: #fff;
+  background: linear-gradient(115deg, #942434, #c9505e);
+}
+.home-brand {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+}
+.home-brand > b {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  font-size: 25px;
+}
+.home-brand strong,
+.home-brand span {
+  display: block;
+}
+.home-brand strong {
+  font-size: 27px;
+}
+.home-hero p {
+  margin: 29px 0 0;
+  font-size: 22px;
+}
+.home-content,
+.assistant-content {
+  padding: 0 28px;
+}
+.hospital-switch {
+  width: 100%;
+  margin: -24px 0 10px;
+  padding: 11px 14px;
+  border: 0;
+  border-radius: 9px;
+  background: #fff;
+  color: #772c37;
+  text-align: left;
+}
+.hospital-switch svg {
+  float: right;
+}
+.search-bar {
+  display: flex;
+  width: 100%;
+  gap: 8px;
+  padding: 13px 15px;
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+}
+.search-bar input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+}
+.search-bar button {
+  border: 0;
+  background: transparent;
+  color: #b33444;
+}
+.patient-switch-card,
+.assistant-patient {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  margin: 20px 0;
+  padding: 20px 22px;
+  border: 0;
+  border-radius: 15px;
+  background: #fff;
+  text-align: left;
+}
+.patient-switch-card b {
+  font-size: 21px;
+}
+.patient-switch-card p,
+.assistant-patient span {
+  display: block;
+  margin: 7px 0 0;
+  color: #777;
+}
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 12px;
+  background: #fff;
+  border-radius: 15px;
+}
+.quick-grid button {
+  display: grid;
+  gap: 8px;
+  place-items: center;
+  min-height: 104px;
+  border: 0;
+  background: transparent;
+  color: #b33444;
+}
+.quick-grid span {
+  color: #1d293c;
+}
+.todo-item,
+.record-card,
+.slot-card {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #fff;
+  text-align: left;
+}
+.todo-item span,
+.record-card span,
+.slot-card span {
+  flex: 1;
+  color: #777;
+}
+.todo-item b,
+.record-card b,
+.slot-card b {
+  display: block;
+}
+.todo-item em,
+.record-card em,
+.slot-card em {
+  color: #16875c;
+  font-style: normal;
+}
+.filter-input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+.choice-row {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding: 14px 0;
+  border: 0;
+  border-bottom: 1px solid #eee;
+  background: #fff;
+  text-align: left;
+}
+.choice-row small {
+  color: #777;
+}
+.search-results {
+  margin: 12px 0;
+  padding: 14px;
+  border-radius: 12px;
+  background: #fff;
+}
+.search-results button {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  padding: 11px 0;
+  border: 0;
+  border-bottom: 1px solid #eee;
+  background: #fff;
+  text-align: left;
+}
+.assistant-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 28px;
+}
+.assistant-title h1 {
+  margin: 0;
+  font-size: 33px;
+}
+.flow-card {
+  padding: 24px;
+  border-radius: 15px;
+  background: #fff;
+}
+.flow-card h2 {
+  margin-top: 0;
+}
+.flow-card h2 em {
+  float: right;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: #f8e5e8;
+  color: #b33444;
+  font-size: 14px;
+  font-style: normal;
+}
+.flow-highlight {
+  padding: 18px;
+  border-left: 5px solid #c75b68;
+  background: #fcf8f8;
+}
+.flow-highlight b,
+.flow-highlight span {
+  display: block;
+}
+.flow-card ol {
+  padding-left: 24px;
+  line-height: 2.6;
+}
+.flow-card li.active {
+  color: #b33444;
+  font-weight: 700;
+}
+.flow-card li.done {
+  color: #16875c;
+}
+.assistant-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 20px 0;
+}
+.assistant-tabs button {
+  padding: 13px;
+  border: 0;
+  border-bottom: 2px solid #ddd;
+  background: transparent;
+}
+.assistant-tabs button.active {
+  border-color: #b33444;
+  color: #b33444;
+  font-weight: 700;
+}
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip-list button {
+  padding: 9px 13px;
+  border: 1px solid #e2d7d8;
+  border-radius: 18px;
+  background: #fff;
+}
+.chip-list button.active {
+  border-color: #b33444;
+  background: #b33444;
+  color: #fff;
+}
+.payment-card {
+  text-align: center;
+}
+.payment-card > b {
+  display: block;
+  margin: 25px 0;
+  font-size: 34px;
+  color: #b33444;
+}
+.chat-list {
+  min-height: 330px;
+  padding: 12px;
+  background: #fff;
+}
+.doctor-message,
+.mine-message {
+  max-width: 80%;
+  width: max-content;
+  margin: 12px 0;
+  padding: 10px;
+  border-radius: 9px;
+}
+.doctor-message {
+  background: #eee;
+}
+.mine-message {
+  margin-left: auto;
+  background: #f7dde1;
+}
+.chat-input {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.chat-input textarea {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+.chat-input button {
+  width: 48px;
+  border: 0;
+  border-radius: 8px;
+  background: #b33444;
+  color: #fff;
+}
 
 /* 购药页“我的处方”整行可点击，右箭头明确表示可进入完整处方查询。 */
-.pharmacy-section-link{display:flex;width:100%;align-items:center;justify-content:space-between;margin:22px 0 16px;padding:0;border:0;background:transparent;color:#172238;text-align:left}.pharmacy-section-link span{font-size:27px;font-weight:800}.pharmacy-section-link svg{color:#6e6a73}/* 购药页处方区域固定展示四张卡片，更多处方仅在该区域内纵向滚动。 */.pharmacy-prescription-list{display:grid;grid-auto-rows:112px;gap:10px;max-height:478px;overflow-y:auto;overscroll-behavior:contain;padding:0 2px;-webkit-overflow-scrolling:touch}.pharmacy-prescription-list .record-card{height:112px;margin:0}.mine-prescription-patient{gap:12px;margin:0 0 18px;padding:19px 20px;border:1px solid #f1eeee;border-radius:16px;box-shadow:0 8px 22px rgba(65,55,55,.09)}.mine-prescription-patient>span{flex:1;margin:0;color:#75717a}.mine-prescription-patient b{display:inline-flex;flex:0 0 auto;align-items:center;gap:5px;color:#b33444;font-size:16px}.mine-prescription-patient b:first-of-type{color:#172238;font-size:19px;font-weight:800}@media (max-width:360px){.pharmacy-section-link span{font-size:24px}.pharmacy-prescription-list{grid-auto-rows:106px;gap:8px;max-height:448px}.pharmacy-prescription-list .record-card{height:106px}.mine-prescription-patient{padding:17px 14px}.mine-prescription-patient b{font-size:14px}.mine-prescription-patient b:first-of-type{font-size:17px}}
+/* 购药首页处方区域：入口、固定高度列表和当前就诊人信息。 */
+.pharmacy-section-link {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  margin: 22px 0 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #172238;
+  text-align: left;
+}
+.pharmacy-section-link span {
+  font-size: 27px;
+  font-weight: 800;
+}
+.pharmacy-section-link svg {
+  color: #6e6a73;
+} /* 购药页处方区域固定展示四张卡片，更多处方仅在该区域内纵向滚动。 */
+.pharmacy-prescription-list {
+  display: grid;
+  grid-auto-rows: 112px;
+  gap: 10px;
+  max-height: 478px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 2px;
+  -webkit-overflow-scrolling: touch;
+}
+.pharmacy-prescription-list .record-card {
+  height: 112px;
+  margin: 0;
+}
+.mine-prescription-patient {
+  gap: 12px;
+  margin: 0 0 18px;
+  padding: 19px 20px;
+  border: 1px solid #f1eeee;
+  border-radius: 16px;
+  box-shadow: 0 8px 22px rgba(65, 55, 55, 0.09);
+}
+.mine-prescription-patient > span {
+  flex: 1;
+  margin: 0;
+  color: #75717a;
+}
+.mine-prescription-patient b {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: #b33444;
+  font-size: 16px;
+}
+.mine-prescription-patient b:first-of-type {
+  color: #172238;
+  font-size: 19px;
+  font-weight: 800;
+}
+@media (max-width: 360px) {
+  .pharmacy-section-link span {
+    font-size: 24px;
+  }
+  .pharmacy-prescription-list {
+    grid-auto-rows: 106px;
+    gap: 8px;
+    max-height: 448px;
+  }
+  .pharmacy-prescription-list .record-card {
+    height: 106px;
+  }
+  .mine-prescription-patient {
+    padding: 17px 14px;
+  }
+  .mine-prescription-patient b {
+    font-size: 14px;
+  }
+  .mine-prescription-patient b:first-of-type {
+    font-size: 17px;
+  }
+}
 
 /* 独立医院和搜索页面使用紧凑列表，便于窄屏浏览结果。 */
-.discovery-page{background:#f5f5f5}.discovery-input{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#fff;box-shadow:0 2px 9px rgba(0,0,0,.08)}.discovery-input input{flex:1;min-width:0;border:0;outline:0;font-size:18px}.discovery-input button{border:0;background:transparent;color:#b33444}.discovery-input .search-submit{padding:9px 13px;border-radius:8px;background:#b65b66;color:#fff}.result-count{color:#777}.hospital-item,.department-result,.doctor-result{display:block;width:100%;margin:10px 0;padding:17px;border:0;border-radius:10px;background:#fff;text-align:left;box-shadow:0 2px 9px rgba(0,0,0,.05)}.hospital-item b,.hospital-item span,.hospital-item small,.department-result b,.department-result span{display:block}.hospital-item span,.hospital-item small,.department-result span{margin-top:6px;color:#777}.hospital-item.selected{border:1px solid #b33444}.result-tabs{display:grid;grid-template-columns:repeat(2,1fr);margin:22px 0 12px}.result-tabs button{padding:12px;border:0;border-bottom:2px solid #ddd;background:transparent;font-size:18px}.result-tabs button.active{border-color:#b33444;color:#a93e4b}.doctor-result{display:flex;gap:14px;align-items:center}.doctor-avatar{display:grid;flex:0 0 auto;place-items:center;width:57px;height:57px;border-radius:50%;background:#d99da5;color:#fff;font-size:24px;font-weight:700}.doctor-result b{font-size:19px}.doctor-result small{color:#666;font-size:14px;font-weight:400}.doctor-result p{margin:7px 0;color:#555;line-height:1.45}.doctor-result em{color:#16875c;font-size:13px;font-style:normal}
+/* 医院发现与搜索页面：搜索框、结果切换标签和医生/科室列表。 */
+.discovery-page {
+  background: #f5f5f5;
+}
+.discovery-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 2px 9px rgba(0, 0, 0, 0.08);
+}
+.discovery-input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  font-size: 18px;
+}
+.discovery-input button {
+  border: 0;
+  background: transparent;
+  color: #b33444;
+}
+.discovery-input .search-submit {
+  padding: 9px 13px;
+  border-radius: 8px;
+  background: #b65b66;
+  color: #fff;
+}
+.result-count {
+  color: #777;
+}
+.hospital-item,
+.department-result,
+.doctor-result {
+  display: block;
+  width: 100%;
+  margin: 10px 0;
+  padding: 17px;
+  border: 0;
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  box-shadow: 0 2px 9px rgba(0, 0, 0, 0.05);
+}
+.hospital-item b,
+.hospital-item span,
+.hospital-item small,
+.department-result b,
+.department-result span {
+  display: block;
+}
+.hospital-item span,
+.hospital-item small,
+.department-result span {
+  margin-top: 6px;
+  color: #777;
+}
+.hospital-item.selected {
+  border: 1px solid #b33444;
+}
+.result-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  margin: 22px 0 12px;
+}
+.result-tabs button {
+  padding: 12px;
+  border: 0;
+  border-bottom: 2px solid #ddd;
+  background: transparent;
+  font-size: 18px;
+}
+.result-tabs button.active {
+  border-color: #b33444;
+  color: #a93e4b;
+}
+.doctor-result {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+.doctor-avatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 57px;
+  height: 57px;
+  border-radius: 50%;
+  background: #d99da5;
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+}
+.doctor-result b {
+  font-size: 19px;
+}
+.doctor-result small {
+  color: #666;
+  font-size: 14px;
+  font-weight: 400;
+}
+.doctor-result p {
+  margin: 7px 0;
+  color: #555;
+  line-height: 1.45;
+}
+.doctor-result em {
+  color: #16875c;
+  font-size: 13px;
+  font-style: normal;
+}
 
 /* 购药页以地址簿驱动推荐结果，展示后端返回的模拟距离、时效和真实价格。 */
 /* 库存页通过整张配送地址卡片打开地址选择，避免原生下拉框遮挡地址信息。 */
-.pharmacy-delivery-address{display:flex;width:100%;align-items:center;gap:10px;margin-bottom:12px;padding:14px;border:0;border-radius:10px;background:#fff;color:#b33444;text-align:left;box-shadow:0 2px 9px rgba(0,0,0,.05)}.pharmacy-delivery-address>div{min-width:0;flex:1;color:#1d293c}.pharmacy-delivery-address b,.pharmacy-delivery-address span{display:block}.pharmacy-delivery-address span{overflow:hidden;margin-top:4px;color:#747078;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.pharmacy-delivery-address>svg:last-child{flex:0 0 auto;color:#847f85}.pharmacy-recommendation-card{align-items:flex-start}.pharmacy-recommendation-card>div{min-width:0;flex:1}.pharmacy-recommendation-card b,.pharmacy-recommendation-card span,.pharmacy-recommendation-card small{display:block}.pharmacy-recommendation-card b em{margin-left:6px;padding:2px 5px;border-radius:4px;background:#f8e5e8;color:#b33444;font-size:11px;font-style:normal;font-weight:500}.pharmacy-recommendation-card span{margin-top:6px;color:#747078;font-size:14px}.pharmacy-recommendation-card>div>small{margin-top:5px;color:#8b8589;font-size:12px;line-height:1.35}.pharmacy-recommendation-card aside{display:grid;justify-items:end;gap:6px;flex:0 0 auto}.pharmacy-recommendation-card aside strong{color:#16875c;font-size:15px}.pharmacy-recommendation-card aside small{color:#747078;font-size:12px;white-space:nowrap}
+.pharmacy-delivery-address {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #fff;
+  color: #b33444;
+  text-align: left;
+  box-shadow: 0 2px 9px rgba(0, 0, 0, 0.05);
+}
+.pharmacy-delivery-address > div {
+  min-width: 0;
+  flex: 1;
+  color: #1d293c;
+}
+.pharmacy-delivery-address b,
+.pharmacy-delivery-address span {
+  display: block;
+}
+.pharmacy-delivery-address span {
+  overflow: hidden;
+  margin-top: 4px;
+  color: #747078;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.pharmacy-delivery-address > svg:last-child {
+  flex: 0 0 auto;
+  color: #847f85;
+}
+.pharmacy-recommendation-card {
+  align-items: flex-start;
+}
+.pharmacy-recommendation-card > div {
+  min-width: 0;
+  flex: 1;
+}
+.pharmacy-recommendation-card b,
+.pharmacy-recommendation-card span,
+.pharmacy-recommendation-card small {
+  display: block;
+}
+.pharmacy-recommendation-card b em {
+  margin-left: 6px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #f8e5e8;
+  color: #b33444;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 500;
+}
+.pharmacy-recommendation-card span {
+  margin-top: 6px;
+  color: #747078;
+  font-size: 14px;
+}
+.pharmacy-recommendation-card > div > small {
+  margin-top: 5px;
+  color: #8b8589;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.pharmacy-recommendation-card aside {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.pharmacy-recommendation-card aside strong {
+  color: #16875c;
+  font-size: 15px;
+}
+.pharmacy-recommendation-card aside small {
+  color: #747078;
+  font-size: 12px;
+  white-space: nowrap;
+}
 
 /* 当前医院科室页采用固定双栏，左侧目录切换时右侧仅刷新对应医生。 */
-.department-page{background:#f5f5f5}.department-content{padding:12px 0 0}.department-search-entry{display:flex;width:calc(100% - 36px);align-items:center;gap:10px;margin:0 18px 12px;padding:13px 14px;border:0;border-radius:9px;background:#fff;color:#9a9aa0;text-align:left;box-shadow:0 2px 9px rgba(0,0,0,.08)}.department-browser{display:grid;grid-template-columns:minmax(104px,31%) minmax(0,1fr);min-height:calc(100vh - 136px);border-top:1px solid #ece9e8;background:#fff}.department-sidebar{overflow:auto;padding:5px 0;background:#f7f7f7}.department-sidebar button{display:block;width:100%;min-height:58px;padding:10px 14px;border:0;border-left:3px solid transparent;background:transparent;color:#373941;text-align:left;word-break:break-word}.department-sidebar button.active{border-left-color:#b33444;background:#fff;color:#9f2637;font-weight:700}.department-sidebar p{padding:12px;color:#777;text-align:center}.department-doctors{overflow:auto;padding:5px 12px}.department-doctor{display:flex;width:100%;align-items:center;gap:10px;padding:15px 2px;border:0;border-bottom:1px solid #efeded;background:#fff;color:#262b34;text-align:left}.department-doctor__icon{display:grid;flex:0 0 auto;place-items:center;width:38px;height:38px;border-radius:50%;background:#fae8eb;color:#b33444}.department-doctor div{min-width:0;flex:1}.department-doctor b,.department-doctor small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.department-doctor small{margin-top:5px;color:#777;font-size:13px}.department-doctor em{flex:0 0 auto;color:#16875c;font-size:12px;font-style:normal}.search-empty-state{display:grid;min-height:440px;place-content:center;justify-items:center;color:#c1bfc0}.search-empty-state svg{color:#c9c7c8}.search-empty-state p{margin:20px 0 0;font-size:22px}
+.department-page {
+  background: #f5f5f5;
+}
+.department-content {
+  padding: 12px 0 0;
+}
+.department-search-entry {
+  display: flex;
+  width: calc(100% - 36px);
+  align-items: center;
+  gap: 10px;
+  margin: 0 18px 12px;
+  padding: 13px 14px;
+  border: 0;
+  border-radius: 9px;
+  background: #fff;
+  color: #9a9aa0;
+  text-align: left;
+  box-shadow: 0 2px 9px rgba(0, 0, 0, 0.08);
+}
+.department-browser {
+  display: grid;
+  grid-template-columns: minmax(104px, 31%) minmax(0, 1fr);
+  min-height: calc(100vh - 136px);
+  border-top: 1px solid #ece9e8;
+  background: #fff;
+}
+.department-sidebar {
+  overflow: auto;
+  padding: 5px 0;
+  background: #f7f7f7;
+}
+.department-sidebar button {
+  display: block;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 14px;
+  border: 0;
+  border-left: 3px solid transparent;
+  background: transparent;
+  color: #373941;
+  text-align: left;
+  word-break: break-word;
+}
+.department-sidebar button.active {
+  border-left-color: #b33444;
+  background: #fff;
+  color: #9f2637;
+  font-weight: 700;
+}
+.department-sidebar p {
+  padding: 12px;
+  color: #777;
+  text-align: center;
+}
+.department-doctors {
+  overflow: auto;
+  padding: 5px 12px;
+}
+.department-doctor {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 2px;
+  border: 0;
+  border-bottom: 1px solid #efeded;
+  background: #fff;
+  color: #262b34;
+  text-align: left;
+}
+.department-doctor__icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #fae8eb;
+  color: #b33444;
+}
+.department-doctor div {
+  min-width: 0;
+  flex: 1;
+}
+.department-doctor b,
+.department-doctor small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.department-doctor small {
+  margin-top: 5px;
+  color: #777;
+  font-size: 13px;
+}
+.department-doctor em {
+  flex: 0 0 auto;
+  color: #16875c;
+  font-size: 12px;
+  font-style: normal;
+}
+.search-empty-state {
+  display: grid;
+  min-height: 440px;
+  place-content: center;
+  justify-items: center;
+  color: #c1bfc0;
+}
+.search-empty-state svg {
+  color: #c9c7c8;
+}
+.search-empty-state p {
+  margin: 20px 0 0;
+  font-size: 22px;
+}
 
 /* 个人资料页只展示脱敏值，编辑敏感字段时保持空白避免回写脱敏文本。 */
-.profile-page{background:#f6f4f3}.profile-safe-info{display:flex;gap:12px;margin-bottom:18px;padding:17px;border-radius:10px;background:#fff;color:#b33444;box-shadow:0 3px 12px rgba(0,0,0,.05)}.profile-safe-info div{min-width:0}.profile-safe-info b,.profile-safe-info span{display:block}.profile-safe-info b{color:#263247}.profile-safe-info span{overflow:hidden;margin-top:6px;color:#676b74;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.profile-form{padding:18px;border-radius:10px;background:#fff;box-shadow:0 3px 12px rgba(0,0,0,.05)}.profile-form textarea{width:100%;resize:vertical;border:1px solid #d8d2d2;border-radius:9px;padding:12px;color:#172238;outline-color:#b33444}
+.profile-page {
+  background: #f6f4f3;
+}
+.profile-safe-info {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 17px;
+  border-radius: 10px;
+  background: #fff;
+  color: #b33444;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.05);
+}
+.profile-safe-info div {
+  min-width: 0;
+}
+.profile-safe-info b,
+.profile-safe-info span {
+  display: block;
+}
+.profile-safe-info b {
+  color: #263247;
+}
+.profile-safe-info span {
+  overflow: hidden;
+  margin-top: 6px;
+  color: #676b74;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.profile-form {
+  padding: 18px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.05);
+}
+.profile-form textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #d8d2d2;
+  border-radius: 9px;
+  padding: 12px;
+  color: #172238;
+  outline-color: #b33444;
+}
 
 /* 就诊人选择卡独立承载点击区域，编辑和解绑按钮不参与当前就诊人切换。 */
-.profile-card__switch{padding:5px}.member-card{padding:0}.member-card.is-current{outline:2px solid #d87b87}.member-card__select{display:flex;min-width:0;flex:1;align-items:center;gap:14px;padding:18px;border:0;background:transparent;color:#756268;text-align:left}.member-card__select>div{min-width:0;flex:1;color:#1d293c}.member-card__select h2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.member-card__select p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.member-card .card-actions{flex:0 0 auto;padding-right:14px}.member-card.is-current .member-card__select h2 em{background:#f7e8eb;color:#b33444}
+.profile-card__switch {
+  padding: 5px;
+}
+.member-card {
+  padding: 0;
+}
+.member-card.is-current {
+  outline: 2px solid #d87b87;
+}
+.member-card__select {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  border: 0;
+  background: transparent;
+  color: #756268;
+  text-align: left;
+}
+.member-card__select > div {
+  min-width: 0;
+  flex: 1;
+  color: #1d293c;
+}
+.member-card__select h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.member-card__select p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.member-card .card-actions {
+  flex: 0 0 auto;
+  padding-right: 14px;
+}
+.member-card.is-current .member-card__select h2 em {
+  background: #f7e8eb;
+  color: #b33444;
+}
 
 /* 医生个人挂号页只使用接口提供的医生资料和已发布号源。 */
-.doctor-page{background:#f6f4f3}.doctor-profile-card{display:flex;gap:15px;padding:20px;border-radius:10px;background:#fff;box-shadow:0 3px 12px rgba(0,0,0,.05)}.doctor-profile-avatar{display:grid;flex:0 0 auto;place-items:center;width:66px;height:66px;border-radius:50%;background:#d99da5;color:#fff;font-size:28px;font-weight:800}.doctor-profile-card h2{margin:0;font-size:23px}.doctor-profile-card h2 small{color:#6f7075;font-size:15px;font-weight:400}.doctor-profile-card p{margin:7px 0;color:#65656c;line-height:1.4}.doctor-profile-card strong{color:#b33444;font-size:14px}.doctor-service-card{display:flex;gap:13px;align-items:center;margin-top:18px;padding:17px;border-radius:10px;background:#fff;color:#b33444}.doctor-service-card h2{margin:0;color:#1d293c;font-size:19px}.doctor-service-card p{margin:6px 0 0;color:#777;font-size:14px}.doctor-schedule{margin-top:22px}.doctor-schedule h2{margin:0 0 12px;font-size:23px}.doctor-date-tabs{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));overflow:hidden;border-radius:10px;background:#fff}.doctor-date-tabs button{display:grid;min-height:58px;place-items:center;border:0;border-right:1px solid #ece7e6;background:#fff;color:#68676b}.doctor-date-tabs button:last-child{border-right:0}.doctor-date-tabs button.active{background:#f8e5e8;color:#b33444}.doctor-date-tabs b{font-size:14px}.doctor-date-tabs span{font-size:12px}.doctor-slot-card{display:flex;width:100%;align-items:center;gap:10px;margin-top:10px;padding:15px;border:0;border-radius:10px;background:#fff;color:#b33444;text-align:left;box-shadow:0 2px 9px rgba(0,0,0,.04)}.doctor-slot-card div{min-width:0;flex:1;color:#1d293c}.doctor-slot-card b,.doctor-slot-card span{display:block}.doctor-slot-card b{font-size:15px}.doctor-slot-card span{margin-top:5px;color:#777;font-size:13px}.doctor-slot-card em{flex:0 0 auto;max-width:108px;color:#16875c;font-size:12px;font-style:normal;text-align:right}
+.doctor-page {
+  background: #f6f4f3;
+}
+.doctor-profile-card {
+  display: flex;
+  gap: 15px;
+  padding: 20px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.05);
+}
+.doctor-profile-avatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  background: #d99da5;
+  color: #fff;
+  font-size: 28px;
+  font-weight: 800;
+}
+.doctor-profile-card h2 {
+  margin: 0;
+  font-size: 23px;
+}
+.doctor-profile-card h2 small {
+  color: #6f7075;
+  font-size: 15px;
+  font-weight: 400;
+}
+.doctor-profile-card p {
+  margin: 7px 0;
+  color: #65656c;
+  line-height: 1.4;
+}
+.doctor-profile-card strong {
+  color: #b33444;
+  font-size: 14px;
+}
+.doctor-service-card {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  margin-top: 18px;
+  padding: 17px;
+  border-radius: 10px;
+  background: #fff;
+  color: #b33444;
+}
+.doctor-service-card h2 {
+  margin: 0;
+  color: #1d293c;
+  font-size: 19px;
+}
+.doctor-service-card p {
+  margin: 6px 0 0;
+  color: #777;
+  font-size: 14px;
+}
+.doctor-schedule {
+  margin-top: 22px;
+}
+.doctor-schedule h2 {
+  margin: 0 0 12px;
+  font-size: 23px;
+}
+.doctor-date-tabs {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  overflow: hidden;
+  border-radius: 10px;
+  background: #fff;
+}
+.doctor-date-tabs button {
+  display: grid;
+  min-height: 58px;
+  place-items: center;
+  border: 0;
+  border-right: 1px solid #ece7e6;
+  background: #fff;
+  color: #68676b;
+}
+.doctor-date-tabs button:last-child {
+  border-right: 0;
+}
+.doctor-date-tabs button.active {
+  background: #f8e5e8;
+  color: #b33444;
+}
+.doctor-date-tabs b {
+  font-size: 14px;
+}
+.doctor-date-tabs span {
+  font-size: 12px;
+}
+.doctor-slot-card {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 15px;
+  border: 0;
+  border-radius: 10px;
+  background: #fff;
+  color: #b33444;
+  text-align: left;
+  box-shadow: 0 2px 9px rgba(0, 0, 0, 0.04);
+}
+.doctor-slot-card div {
+  min-width: 0;
+  flex: 1;
+  color: #1d293c;
+}
+.doctor-slot-card b,
+.doctor-slot-card span {
+  display: block;
+}
+.doctor-slot-card b {
+  font-size: 15px;
+}
+.doctor-slot-card span {
+  margin-top: 5px;
+  color: #777;
+  font-size: 13px;
+}
+.doctor-slot-card em {
+  flex: 0 0 auto;
+  max-width: 108px;
+  color: #16875c;
+  font-size: 12px;
+  font-style: normal;
+  text-align: right;
+}
 
 /* 购药物流入口和独立订单页使用固定网格，防止窄屏状态卡片挤压。 */
-.logistics-card{margin:20px 0;padding:17px 12px 12px;border-radius:12px;background:#fff;box-shadow:0 3px 12px rgba(0,0,0,.05)}.logistics-card h2{margin:0 10px;font-size:20px}.logistics-status-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin-top:10px}.logistics-status-card{display:grid;min-height:66px;place-items:center;align-content:center;gap:7px;padding:4px 1px;border:0;background:transparent;color:#b33444}.logistics-status-card span{color:#293446;font-size:12px;white-space:nowrap}.pharmacy-orders{padding-top:16px}.order-search{margin-bottom:10px}.order-tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin:8px -4px 12px}.order-tabs button{padding:12px 1px;border:0;border-bottom:2px solid #ddd;background:transparent;color:#5e6168;white-space:nowrap;font-size:13px}.order-tabs button.active{border-color:#b33444;color:#b33444;font-weight:700}.order-list-card{display:flex;width:100%;justify-content:space-between;gap:14px;margin:10px 0;padding:16px;border:0;border-radius:10px;background:#fff;text-align:left;box-shadow:0 2px 9px rgba(0,0,0,.05)}.order-list-card div{min-width:0}.order-list-card b,.order-list-card span,.order-list-card small{display:block}.order-list-card b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:17px}.order-list-card span,.order-list-card small{margin-top:6px;color:#757077}.order-list-card small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.order-list-card aside{display:grid;align-content:space-between;justify-items:end;flex:0 0 auto}.order-list-card em{color:#b33444;font-size:13px;font-style:normal}.order-list-card strong{color:#16875c;font-size:14px}
+.logistics-card {
+  margin: 20px 0;
+  padding: 17px 12px 12px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.05);
+}
+.logistics-card h2 {
+  margin: 0 10px;
+  font-size: 20px;
+}
+.logistics-status-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 10px;
+}
+.logistics-status-card {
+  display: grid;
+  min-height: 66px;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  padding: 4px 1px;
+  border: 0;
+  background: transparent;
+  color: #b33444;
+}
+.logistics-status-card span {
+  color: #293446;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.pharmacy-orders {
+  padding-top: 16px;
+}
+.order-search {
+  margin-bottom: 10px;
+}
+.order-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 8px -4px 12px;
+}
+.order-tabs button {
+  padding: 12px 1px;
+  border: 0;
+  border-bottom: 2px solid #ddd;
+  background: transparent;
+  color: #5e6168;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.order-tabs button.active {
+  border-color: #b33444;
+  color: #b33444;
+  font-weight: 700;
+}
+.order-list-card {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 10px 0;
+  padding: 16px;
+  border: 0;
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  box-shadow: 0 2px 9px rgba(0, 0, 0, 0.05);
+}
+.order-list-card div {
+  min-width: 0;
+}
+.order-list-card b,
+.order-list-card span,
+.order-list-card small {
+  display: block;
+}
+.order-list-card b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 17px;
+}
+.order-list-card span,
+.order-list-card small {
+  margin-top: 6px;
+  color: #757077;
+}
+.order-list-card small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.order-list-card aside {
+  display: grid;
+  align-content: space-between;
+  justify-items: end;
+  flex: 0 0 auto;
+}
+.order-list-card em {
+  color: #b33444;
+  font-size: 13px;
+  font-style: normal;
+}
+.order-list-card strong {
+  color: #16875c;
+  font-size: 14px;
+}
 
 /* 已取消和超时订单只保留历史摘要，使用灰阶并禁用详情入口。 */
-.order-list-card.is-invalid,.order-list-card.is-invalid:disabled{cursor:not-allowed;opacity:1;background:#f1f1f1;box-shadow:none}.order-list-card.is-invalid b{color:#777}.order-list-card.is-invalid span,.order-list-card.is-invalid small{color:#999}.order-list-card.is-invalid em,.order-list-card.is-invalid strong{color:#969696}
+.order-list-card.is-invalid,
+.order-list-card.is-invalid:disabled {
+  cursor: not-allowed;
+  opacity: 1;
+  background: #f1f1f1;
+  box-shadow: none;
+}
+.order-list-card.is-invalid b {
+  color: #777;
+}
+.order-list-card.is-invalid span,
+.order-list-card.is-invalid small {
+  color: #999;
+}
+.order-list-card.is-invalid em,
+.order-list-card.is-invalid strong {
+  color: #969696;
+}
 
 /* 过期挂号待办保留一次关闭入口，但以灰阶提示其已不能继续就诊。 */
-.health-todo-card.is-expired{background:#f1f1f1;color:#8a8588;box-shadow:none}.health-todo-card.is-expired .health-todo-card__icon{background:#dedbdd;color:#8a8588}.health-todo-card.is-expired b,.health-todo-card.is-expired span,.health-todo-card.is-expired small,.health-todo-card.is-expired svg{color:#8a8588}
+.health-todo-card.is-expired {
+  background: #f1f1f1;
+  color: #8a8588;
+  box-shadow: none;
+}
+.health-todo-card.is-expired .health-todo-card__icon {
+  background: #dedbdd;
+  color: #8a8588;
+}
+.health-todo-card.is-expired b,
+.health-todo-card.is-expired span,
+.health-todo-card.is-expired small,
+.health-todo-card.is-expired svg {
+  color: #8a8588;
+}
 
 /* 用药计划页的就诊人入口显示当前选择，并触发页面内计划重新加载。 */
-.plan-page__patient-switch{display:flex;width:100%;align-items:center;gap:12px;padding:0;border:0;background:transparent;text-align:left}.plan-page__patient-switch>div{min-width:0;flex:1}.plan-page__patient-switch>svg:last-child{color:#b33444}.plan-page__patient-switch h2{margin:0}.plan-page__patient-switch p{margin:5px 0 0;color:#756d72}
+.plan-page__patient-switch {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.plan-page__patient-switch > div {
+  min-width: 0;
+  flex: 1;
+}
+.plan-page__patient-switch > svg:last-child {
+  color: #b33444;
+}
+.plan-page__patient-switch h2 {
+  margin: 0;
+}
+.plan-page__patient-switch p {
+  margin: 5px 0 0;
+  color: #756d72;
+}
 
 /* AI 助手悬浮球：可拖动，位置持久化，登录页与 AI 助手页不展示。 */
-.agent-float{position:fixed;z-index:50;display:grid;place-items:center;gap:1px;width:56px;height:56px;border:0;border-radius:50%;background:linear-gradient(135deg,#b33444,#c9505e);color:#fff;box-shadow:0 8px 22px rgba(179,52,68,.42);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;transition:box-shadow .2s,transform .15s}.agent-float.is-dragging{box-shadow:0 12px 30px rgba(179,52,68,.55);transform:scale(1.06);cursor:grabbing}.agent-float__label{font-size:11px;font-weight:700;letter-spacing:1px}
+.agent-float {
+  position: fixed;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  gap: 1px;
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #b33444, #c9505e);
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(179, 52, 68, 0.42);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    box-shadow 0.2s,
+    transform 0.15s;
+}
+.agent-float.is-dragging {
+  box-shadow: 0 12px 30px rgba(179, 52, 68, 0.55);
+  transform: scale(1.06);
+  cursor: grabbing;
+}
+.agent-float__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
 
 /* AI 助手全屏会话页：顶部栏 + 消息流 + 输入框。 */
-.agent-page{display:flex;flex-direction:column;height:100vh;background:#f6f4f3}.agent-page__header{display:grid;grid-template-columns:76px minmax(0,1fr) 76px;align-items:center;min-height:54px;padding:0 14px;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.04)}.agent-page__controls{display:flex;align-items:center;gap:2px}.agent-page__header h1{overflow:hidden;margin:0;text-overflow:ellipsis;white-space:nowrap;font-size:19px;text-align:center}.agent-page__back,.agent-page__home{display:grid;place-items:center;border:0;background:transparent;color:#1d293c}.agent-page__home{color:#b33444}/* AI 助手顶部使用紧凑就诊人卡片，切换时保持全局选择并避免占用对话区域。 */.agent-page__patient-switch{display:flex;align-items:center;gap:7px;min-height:38px;margin:7px 14px;padding:7px 10px;border:1px solid #eee5e4;border-radius:8px;background:#fff;color:#777078;text-align:left;box-shadow:0 2px 8px rgba(47,34,36,.04)}.agent-page__patient-switch>span{font-size:12px}.agent-page__patient-switch b{min-width:0;flex:1;overflow:hidden;color:#1d293c;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.agent-page__patient-switch em{display:inline-flex;align-items:center;gap:3px;flex:0 0 auto;color:#b33444;font-size:12px;font-style:normal;font-weight:700}.agent-page__patient-switch>svg{flex:0 0 auto;color:#8b8589}@media (max-width:360px){.agent-page__patient-switch{margin-right:10px;margin-left:10px;padding-right:8px;padding-left:8px}.agent-page__patient-switch>span{font-size:11px}.agent-page__patient-switch b{font-size:13px}.agent-page__patient-switch em{font-size:11px}}
-.agent-chat{display:flex;flex-direction:column;flex:1;min-height:0}.agent-chat__bar{display:flex;align-items:center;justify-content:space-between;padding:9px 16px;border-bottom:1px solid #eee7e5;background:#fff;color:#756f76;font-size:13px}.agent-chat__status{display:inline-flex;align-items:center;gap:6px}.agent-chat__reset{display:inline-flex;align-items:center;gap:5px;border:1px solid #e3dcdc;border-radius:20px;background:#fff;color:#5a555b;padding:5px 11px;font-size:13px}.agent-spin{animation:agent-spin 1s linear infinite}@keyframes agent-spin{to{transform:rotate(360deg)}}
-.agent-chat__error{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 16px 0;padding:11px 14px;border-radius:10px;background:#fdecee;color:#b33444;font-size:14px}.agent-chat__retry{border:0;background:transparent;color:#b33444;font-weight:700;text-decoration:underline}
-.agent-chat__list{flex:1;min-height:0;overflow-y:auto;padding:14px 16px 8px;-webkit-overflow-scrolling:touch}.agent-chat__welcome{padding:24px 4px}.agent-chat__welcome-text{margin:0 0 18px;color:#1d293c;font-size:16px;line-height:1.6}.agent-chat__quick-bar{margin:0 0 18px;padding:14px 14px 12px;border-radius:14px;background:#fff;box-shadow:0 2px 10px rgba(29,41,60,.05)}.agent-chat__quick-title{margin:0 0 10px;font-size:13px;font-weight:600;color:#756f76;letter-spacing:.5px}.agent-chat__quick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:10px}.agent-chat__quick-card{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:12px;border:1px solid #efe9e6;border-radius:12px;background:#fff;text-align:left;cursor:pointer;transition:all .15s}.agent-chat__quick-card:hover:not(:disabled){border-color:#b33444;box-shadow:0 3px 10px rgba(179,52,68,.08);transform:translateY(-1px)}.agent-chat__quick-card:disabled{opacity:.5;cursor:not-allowed}.agent-chat__quick-icon{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,#fdecee,#fbe5d5);font-size:0;color:#b33444}.agent-chat__quick-label{margin-top:2px;font-size:14px;font-weight:600;color:#1d293c}.agent-chat__quick-desc{margin:0;font-size:11px;line-height:1.45;color:#9a9498}
-.agent-msg{display:flex;gap:9px;margin:14px 0}.agent-msg--user{flex-direction:row-reverse}.agent-msg__avatar{display:grid;flex:0 0 auto;place-items:center;width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#b33444,#c9505e);color:#fff;font-size:13px;font-weight:700}.agent-msg__bubble{max-width:78%;padding:11px 14px;border-radius:14px;background:#fff;box-shadow:0 2px 9px rgba(0,0,0,.04)}.agent-msg--user .agent-msg__bubble{background:#b33444;color:#fff}.agent-msg__text{margin:0;font-size:15px;line-height:1.55;white-space:pre-wrap;word-break:break-word}.agent-msg__disclaimer{margin:8px 0 0;padding-top:8px;border-top:1px dashed #eee;font-size:12px;color:#9a9498}
-.agent-thought{margin:10px 0;padding:9px 12px;border-radius:10px;background:#f1ede9;color:#6f6a6e}.agent-thought__header{display:flex;align-items:center;gap:7px;width:100%;border:0;background:transparent;color:#6f6a6e;font-size:13px}.agent-thought__chevron{transition:transform .2s}.agent-thought__chevron.is-open{transform:rotate(180deg)}.agent-thought__content{margin:8px 0 0;font-size:13px;line-height:1.55;white-space:pre-wrap;color:#5a555b}
-.agent-tool{margin:10px 0;padding:11px 13px;border-radius:11px;background:#fff;border:1px solid #eee7e5}.agent-tool--loading{border-color:#e6d9c2}.agent-tool--pending{border-color:#e6d9c2}.agent-tool--error{border-color:#f0c9cd}.agent-tool__header{display:flex;align-items:center;gap:8px}.agent-tool__icon{display:grid;place-items:center;color:#b33444}.agent-tool__label{flex:1;font-size:14px;font-weight:600;color:#1d293c}.agent-tool__status{font-size:12px;color:#9a9498}.agent-tool--success .agent-tool__status{color:#16875c}.agent-tool--pending .agent-tool__status{color:#b8860b}.agent-tool--error .agent-tool__status{color:#b33444}.agent-tool__toggle{border:0;background:transparent;color:#9a9498;padding:2px}.agent-tool__chevron{transition:transform .2s}.agent-tool__chevron.is-open{transform:rotate(180deg)}.agent-tool__summary{margin:7px 0 0;font-size:13px;color:#5a555b}.agent-tool__error{margin:5px 0 0;font-size:13px;color:#b33444}.agent-tool__detail{margin-top:9px}.agent-tool__section{margin-top:6px}.agent-tool__section-title{margin:0 0 4px;font-size:12px;color:#9a9498}.agent-tool__code{margin:0;padding:9px;border-radius:8px;background:#f6f4f3;overflow:auto;font-size:12px;line-height:1.5;max-height:200px}
-.agent-card{margin:12px 0;padding:13px 15px;border-radius:12px;background:#fff;box-shadow:0 3px 12px rgba(0,0,0,.05);border:1px solid #eee7e5}.agent-card--done{border-color:#cde8d9}.agent-card--error,.agent-card--expired{border-color:#f0c9cd;background:#fdf6f7}.agent-card__header{display:flex;align-items:center;gap:8px}.agent-card__icon{display:grid;place-items:center;color:#b33444}.agent-card--done .agent-card__icon{color:#16875c}.agent-card--error .agent-card__icon,.agent-card--expired .agent-card__icon{color:#b33444}.agent-card__title{flex:1;font-size:15px;font-weight:700;color:#1d293c}.agent-card__summary{margin:7px 0 0;font-size:14px;color:#5a555b;line-height:1.5}.agent-card__toggle{margin-top:7px;border:0;background:transparent;color:#b33444;font-size:13px;padding:0}.agent-card__details{margin:8px 0 0;padding:0}.agent-card__detail-row{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid #f3eeec;font-size:13px}.agent-card__detail-row:last-child{border-bottom:0}.agent-card__detail-row dt{flex:0 0 auto;color:#9a9498;margin:0}.agent-card__detail-row dd{margin:0;color:#1d293c;word-break:break-word}.agent-card__expire{margin:7px 0 0;font-size:12px;color:#9a9498}.agent-card__result{margin:8px 0 0;padding:8px 10px;border-radius:8px;background:#eaf6f0;color:#16875c;font-size:13px}.agent-card__error-text{margin:8px 0 0;padding:8px 10px;border-radius:8px;background:#fdecee;color:#b33444;font-size:13px}.agent-card__actions{margin-top:10px}.agent-card__confirm{width:100%;min-height:42px;border:0;border-radius:9px;background:#b33444;color:#fff;font-weight:700}.agent-card__confirm:disabled{background:#c9b0b4;cursor:not-allowed}.agent-card__password{margin-top:10px}.agent-card__password label{display:block;font-size:13px;color:#9a9498}.agent-card__password input{width:100%;margin-top:5px;padding:9px 11px;border:1px solid #e7dfe0;border-radius:9px;font-size:15px;color:#1d293c}.agent-card__password input:focus{outline:0;border-color:#b33444}.agent-card__password-hint{margin:5px 0 0;font-size:12px;color:#9a9498}
+.agent-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f6f4f3;
+}
+.agent-page__header {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 76px;
+  align-items: center;
+  min-height: 54px;
+  padding: 0 14px;
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
+}
+.agent-page__controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.agent-page__header h1 {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 19px;
+  text-align: center;
+}
+.agent-page__back,
+.agent-page__home {
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #1d293c;
+}
+.agent-page__home {
+  color: #b33444;
+} /* AI 助手顶部使用紧凑就诊人卡片，切换时保持全局选择并避免占用对话区域。 */
+.agent-page__patient-switch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  margin: 7px 14px;
+  padding: 7px 10px;
+  border: 1px solid #eee5e4;
+  border-radius: 8px;
+  background: #fff;
+  color: #777078;
+  text-align: left;
+  box-shadow: 0 2px 8px rgba(47, 34, 36, 0.04);
+}
+.agent-page__patient-switch > span {
+  font-size: 12px;
+}
+.agent-page__patient-switch b {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #1d293c;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.agent-page__patient-switch em {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  color: #b33444;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+.agent-page__patient-switch > svg {
+  flex: 0 0 auto;
+  color: #8b8589;
+}
+@media (max-width: 360px) {
+  .agent-page__patient-switch {
+    margin-right: 10px;
+    margin-left: 10px;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+  .agent-page__patient-switch > span {
+    font-size: 11px;
+  }
+  .agent-page__patient-switch b {
+    font-size: 13px;
+  }
+  .agent-page__patient-switch em {
+    font-size: 11px;
+  }
+}
+/* AI 助手会话主体：状态栏、欢迎区和快捷提问入口。 */
+.agent-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.agent-chat__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 16px;
+  border-bottom: 1px solid #eee7e5;
+  background: #fff;
+  color: #756f76;
+  font-size: 13px;
+}
+.agent-chat__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-chat__reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #e3dcdc;
+  border-radius: 20px;
+  background: #fff;
+  color: #5a555b;
+  padding: 5px 11px;
+  font-size: 13px;
+}
+.agent-spin {
+  animation: agent-spin 1s linear infinite;
+}
+@keyframes agent-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.agent-chat__error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 16px 0;
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: #fdecee;
+  color: #b33444;
+  font-size: 14px;
+}
+.agent-chat__retry {
+  border: 0;
+  background: transparent;
+  color: #b33444;
+  font-weight: 700;
+  text-decoration: underline;
+}
+.agent-chat__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.agent-chat__welcome {
+  padding: 24px 4px;
+}
+.agent-chat__welcome-text {
+  margin: 0 0 18px;
+  color: #1d293c;
+  font-size: 16px;
+  line-height: 1.6;
+}
+.agent-chat__quick-bar {
+  margin: 0 0 18px;
+  padding: 14px 14px 12px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(29, 41, 60, 0.05);
+}
+.agent-chat__quick-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #756f76;
+  letter-spacing: 0.5px;
+}
+.agent-chat__quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 10px;
+}
+.agent-chat__quick-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #efe9e6;
+  border-radius: 12px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.agent-chat__quick-card:hover:not(:disabled) {
+  border-color: #b33444;
+  box-shadow: 0 3px 10px rgba(179, 52, 68, 0.08);
+  transform: translateY(-1px);
+}
+.agent-chat__quick-card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.agent-chat__quick-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #fdecee, #fbe5d5);
+  font-size: 0;
+  color: #b33444;
+}
+.agent-chat__quick-label {
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d293c;
+}
+.agent-chat__quick-desc {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #9a9498;
+}
+/* AI 助手消息流：用户与助手气泡、思考过程展示。 */
+.agent-msg {
+  display: flex;
+  gap: 9px;
+  margin: 14px 0;
+}
+.agent-msg--user {
+  flex-direction: row-reverse;
+}
+.agent-msg__avatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #b33444, #c9505e);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+.agent-msg__bubble {
+  max-width: 78%;
+  padding: 11px 14px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 2px 9px rgba(0, 0, 0, 0.04);
+}
+.agent-msg--user .agent-msg__bubble {
+  background: #b33444;
+  color: #fff;
+}
+.agent-msg__text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.agent-msg__disclaimer {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px dashed #eee;
+  font-size: 12px;
+  color: #9a9498;
+}
+.agent-thought {
+  margin: 10px 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: #f1ede9;
+  color: #6f6a6e;
+}
+.agent-thought__header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #6f6a6e;
+  font-size: 13px;
+}
+.agent-thought__chevron {
+  transition: transform 0.2s;
+}
+.agent-thought__chevron.is-open {
+  transform: rotate(180deg);
+}
+.agent-thought__content {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  color: #5a555b;
+}
+/* AI 助手工具调用卡：加载、成功、异常和可展开的执行结果。 */
+.agent-tool {
+  margin: 10px 0;
+  padding: 11px 13px;
+  border-radius: 11px;
+  background: #fff;
+  border: 1px solid #eee7e5;
+}
+.agent-tool--loading {
+  border-color: #e6d9c2;
+}
+.agent-tool--pending {
+  border-color: #e6d9c2;
+}
+.agent-tool--error {
+  border-color: #f0c9cd;
+}
+.agent-tool__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.agent-tool__icon {
+  display: grid;
+  place-items: center;
+  color: #b33444;
+}
+.agent-tool__label {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d293c;
+}
+.agent-tool__status {
+  font-size: 12px;
+  color: #9a9498;
+}
+.agent-tool--success .agent-tool__status {
+  color: #16875c;
+}
+.agent-tool--pending .agent-tool__status {
+  color: #b8860b;
+}
+.agent-tool--error .agent-tool__status {
+  color: #b33444;
+}
+.agent-tool__toggle {
+  border: 0;
+  background: transparent;
+  color: #9a9498;
+  padding: 2px;
+}
+.agent-tool__chevron {
+  transition: transform 0.2s;
+}
+.agent-tool__chevron.is-open {
+  transform: rotate(180deg);
+}
+.agent-tool__summary {
+  margin: 7px 0 0;
+  font-size: 13px;
+  color: #5a555b;
+}
+.agent-tool__error {
+  margin: 5px 0 0;
+  font-size: 13px;
+  color: #b33444;
+}
+.agent-tool__detail {
+  margin-top: 9px;
+}
+.agent-tool__section {
+  margin-top: 6px;
+}
+.agent-tool__section-title {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: #9a9498;
+}
+.agent-tool__code {
+  margin: 0;
+  padding: 9px;
+  border-radius: 8px;
+  background: #f6f4f3;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 200px;
+}
+/* AI 助手确认卡：L2 操作确认、密码输入和反馈状态。 */
+.agent-card {
+  margin: 12px 0;
+  padding: 13px 15px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.05);
+  border: 1px solid #eee7e5;
+}
+.agent-card--done {
+  border-color: #cde8d9;
+}
+.agent-card--error,
+.agent-card--expired {
+  border-color: #f0c9cd;
+  background: #fdf6f7;
+}
+.agent-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.agent-card__icon {
+  display: grid;
+  place-items: center;
+  color: #b33444;
+}
+.agent-card--done .agent-card__icon {
+  color: #16875c;
+}
+.agent-card--error .agent-card__icon,
+.agent-card--expired .agent-card__icon {
+  color: #b33444;
+}
+.agent-card__title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1d293c;
+}
+.agent-card__summary {
+  margin: 7px 0 0;
+  font-size: 14px;
+  color: #5a555b;
+  line-height: 1.5;
+}
+.agent-card__toggle {
+  margin-top: 7px;
+  border: 0;
+  background: transparent;
+  color: #b33444;
+  font-size: 13px;
+  padding: 0;
+}
+.agent-card__details {
+  margin: 8px 0 0;
+  padding: 0;
+}
+.agent-card__detail-row {
+  display: flex;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid #f3eeec;
+  font-size: 13px;
+}
+.agent-card__detail-row:last-child {
+  border-bottom: 0;
+}
+.agent-card__detail-row dt {
+  flex: 0 0 auto;
+  color: #9a9498;
+  margin: 0;
+}
+.agent-card__detail-row dd {
+  margin: 0;
+  color: #1d293c;
+  word-break: break-word;
+}
+.agent-card__expire {
+  margin: 7px 0 0;
+  font-size: 12px;
+  color: #9a9498;
+}
+.agent-card__result {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #eaf6f0;
+  color: #16875c;
+  font-size: 13px;
+}
+.agent-card__error-text {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fdecee;
+  color: #b33444;
+  font-size: 13px;
+}
+.agent-card__actions {
+  margin-top: 10px;
+}
+.agent-card__confirm {
+  width: 100%;
+  min-height: 42px;
+  border: 0;
+  border-radius: 9px;
+  background: #b33444;
+  color: #fff;
+  font-weight: 700;
+}
+.agent-card__confirm:disabled {
+  background: #c9b0b4;
+  cursor: not-allowed;
+}
+.agent-card__password {
+  margin-top: 10px;
+}
+.agent-card__password label {
+  display: block;
+  font-size: 13px;
+  color: #9a9498;
+}
+.agent-card__password input {
+  width: 100%;
+  margin-top: 5px;
+  padding: 9px 11px;
+  border: 1px solid #e7dfe0;
+  border-radius: 9px;
+  font-size: 15px;
+  color: #1d293c;
+}
+.agent-card__password input:focus {
+  outline: 0;
+  border-color: #b33444;
+}
+.agent-card__password-hint {
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: #9a9498;
+}
 
 /* 可选项卡片（AgentSelectCard）：区别于 L2 确认卡片，单选点选。视觉沿用 agent-card 基调。 */
-.agent-select{margin:12px 0;padding:13px 15px;border-radius:12px;background:#fff;box-shadow:0 3px 12px rgba(0,0,0,.05);border:1px solid #eee7e5}.agent-select--selected{border-color:#cde8d9}.agent-select__header{display:flex;align-items:center;gap:8px}.agent-select__icon{display:grid;place-items:center;color:#b33444}.agent-select__title{flex:1;font-size:15px;font-weight:700;color:#1d293c}.agent-select__list{margin:10px 0 0;padding:0;list-style:none}.agent-select__list li+li{margin-top:8px}.agent-select__item{display:flex;width:100%;align-items:center;gap:10px;padding:10px 12px;border:1px solid #e7dfe0;border-radius:10px;background:#fff;color:#1d293c;text-align:left;transition:border-color .15s,background .15s}.agent-select__item:hover:not(:disabled){border-color:#b33444;background:#fdf5f6}.agent-select__item.is-selected{border-color:#16875c;background:#eaf6f0}.agent-select__item:disabled{cursor:not-allowed;background:#f6f4f3;color:#9a9498}.agent-select__item-main{flex:1;min-width:0;display:grid;gap:3px}.agent-select__item-label{font-size:14px;font-weight:600}.agent-select__item-desc{font-size:12px;color:#777}.agent-select__item-mark{display:grid;flex:0 0 auto;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid #ddd;color:#16875c}.agent-select__item.is-selected .agent-select__item-mark{border-color:#16875c;background:#16875c;color:#fff}.agent-select__hint{margin:10px 0 0;font-size:12px;color:#16875c}
-.agent-chat__stop{display:block;margin:12px auto 4px;padding:7px 18px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#5a555b;font-size:13px}
-.agent-chat__actions{display:flex;align-items:center;gap:6px}
-.agent-chat__action-btn{display:grid;place-items:center;width:32px;height:32px;border:1px solid #e3dcdc;border-radius:50%;background:#fff;color:#5a555b;transition:all .2s}
-.agent-chat__action-btn:hover{background:#f8f5f4;color:#b33444}
-.agent-chat__action-btn--active{background:#b33444;border-color:#b33444;color:#fff}
-.agent-chat__history{flex:1;min-height:0;display:flex;flex-direction:column;background:#f6f4f3}
-.agent-chat__history-header{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#fff;border-bottom:1px solid #eee7e5}
-.agent-chat__history-header h3{flex:1;margin:0;font-size:16px;color:#1d293c}
-.agent-chat__history-close{display:grid;place-items:center;border:0;background:transparent;color:#1d293c}
-.agent-chat__history-list{flex:1;min-height:0;overflow-y:auto;padding:12px;-webkit-overflow-scrolling:touch}
-.agent-chat__history-loading,.agent-chat__history-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:48px 16px;color:#9a9498}
-.agent-chat__history-loading span,.agent-chat__history-empty span{font-size:14px}
-.agent-chat__history-error{display:flex;align-items:center;justify-content:space-between;padding:16px;background:#fdecee;border-radius:10px;color:#b33444;font-size:14px}
-.agent-chat__history-error button{border:0;background:transparent;color:#b33444;font-weight:700;text-decoration:underline}
-.agent-chat__history-item{display:flex;align-items:stretch;width:100%;margin-bottom:10px;border-radius:12px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);transition:box-shadow .2s;overflow:hidden}
-.agent-chat__history-item:hover{box-shadow:0 4px 14px rgba(0,0,0,.08)}
-.agent-chat__history-item-main{flex:1;min-width:0;display:block;padding:14px;border:0;background:transparent;text-align:left}
-.agent-chat__history-item-title{font-size:15px;font-weight:600;color:#1d293c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.agent-chat__history-item-preview{margin-top:6px;font-size:13px;color:#756f76;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.agent-chat__history-item-meta{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:12px;color:#9a9498}
-.agent-chat__history-item-count{color:#b33444}
-.agent-chat__history-item-delete{display:grid;place-items:center;padding:0 12px;border:0;background:transparent;color:#9a9498;transition:color .2s}
-.agent-chat__history-item-delete:hover{color:#b33444}
-.agent-chat__input-bar{display:flex;align-items:flex-end;gap:8px;padding:10px 14px 14px;border-top:1px solid #eee7e5;background:#fff}.agent-chat__input{flex:1;min-height:40px;max-height:120px;padding:10px 12px;border:1px solid #ddd;border-radius:10px;background:#fff;color:#172238;font-size:15px;resize:none;outline-color:#b33444;line-height:1.5}.agent-chat__send{display:grid;place-items:center;flex:0 0 auto;width:44px;height:44px;border:0;border-radius:10px;background:#b33444;color:#fff}.agent-chat__send:disabled{background:#c9b0b4}
-@media (max-width:360px){.agent-msg__bubble{max-width:84%}}
+.agent-select {
+  margin: 12px 0;
+  padding: 13px 15px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.05);
+  border: 1px solid #eee7e5;
+}
+.agent-select--selected {
+  border-color: #cde8d9;
+}
+.agent-select__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.agent-select__icon {
+  display: grid;
+  place-items: center;
+  color: #b33444;
+}
+.agent-select__title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1d293c;
+}
+.agent-select__list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.agent-select__list li + li {
+  margin-top: 8px;
+}
+.agent-select__item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e7dfe0;
+  border-radius: 10px;
+  background: #fff;
+  color: #1d293c;
+  text-align: left;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.agent-select__item:hover:not(:disabled) {
+  border-color: #b33444;
+  background: #fdf5f6;
+}
+.agent-select__item.is-selected {
+  border-color: #16875c;
+  background: #eaf6f0;
+}
+.agent-select__item:disabled {
+  cursor: not-allowed;
+  background: #f6f4f3;
+  color: #9a9498;
+}
+.agent-select__item-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.agent-select__item-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.agent-select__item-desc {
+  font-size: 12px;
+  color: #777;
+}
+.agent-select__item-mark {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid #ddd;
+  color: #16875c;
+}
+.agent-select__item.is-selected .agent-select__item-mark {
+  border-color: #16875c;
+  background: #16875c;
+  color: #fff;
+}
+.agent-select__hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #16875c;
+}
+.agent-chat__stop {
+  display: block;
+  margin: 12px auto 4px;
+  padding: 7px 18px;
+  border: 1px solid #ddd;
+  border-radius: 20px;
+  background: #fff;
+  color: #5a555b;
+  font-size: 13px;
+}
+.agent-chat__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-chat__action-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #e3dcdc;
+  border-radius: 50%;
+  background: #fff;
+  color: #5a555b;
+  transition: all 0.2s;
+}
+.agent-chat__action-btn:hover {
+  background: #f8f5f4;
+  color: #b33444;
+}
+.agent-chat__action-btn--active {
+  background: #b33444;
+  border-color: #b33444;
+  color: #fff;
+}
+/* AI 助手历史会话抽屉：历史记录加载、预览和删除操作。 */
+.agent-chat__history {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f6f4f3;
+}
+.agent-chat__history-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid #eee7e5;
+}
+.agent-chat__history-header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  color: #1d293c;
+}
+.agent-chat__history-close {
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #1d293c;
+}
+.agent-chat__history-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+.agent-chat__history-loading,
+.agent-chat__history-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 48px 16px;
+  color: #9a9498;
+}
+.agent-chat__history-loading span,
+.agent-chat__history-empty span {
+  font-size: 14px;
+}
+.agent-chat__history-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background: #fdecee;
+  border-radius: 10px;
+  color: #b33444;
+  font-size: 14px;
+}
+.agent-chat__history-error button {
+  border: 0;
+  background: transparent;
+  color: #b33444;
+  font-weight: 700;
+  text-decoration: underline;
+}
+.agent-chat__history-item {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.2s;
+  overflow: hidden;
+}
+.agent-chat__history-item:hover {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+.agent-chat__history-item-main {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  padding: 14px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.agent-chat__history-item-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1d293c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-chat__history-item-preview {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #756f76;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-chat__history-item-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #9a9498;
+}
+.agent-chat__history-item-count {
+  color: #b33444;
+}
+.agent-chat__history-item-delete {
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: #9a9498;
+  transition: color 0.2s;
+}
+.agent-chat__history-item-delete:hover {
+  color: #b33444;
+}
+/* AI 助手固定输入栏：多行输入与发送按钮。 */
+.agent-chat__input-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid #eee7e5;
+  background: #fff;
+}
+.agent-chat__input {
+  flex: 1;
+  min-height: 40px;
+  max-height: 120px;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: #fff;
+  color: #172238;
+  font-size: 15px;
+  resize: none;
+  outline-color: #b33444;
+  line-height: 1.5;
+}
+.agent-chat__send {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: #b33444;
+  color: #fff;
+}
+.agent-chat__send:disabled {
+  background: #c9b0b4;
+}
+@media (max-width: 360px) {
+  .agent-msg__bubble {
+    max-width: 84%;
+  }
+}
 
 /* 就诊助手采用轻阴影卡片和圆点连线，突出当前就诊流程的先后关系。 */
-.assistant-page{background:#f5f3f2}.assistant-title{padding:28px 28px 20px}.assistant-patient,.assistant-page .flow-card,.assistant-page .record-card{border:1px solid #f1eeee;box-shadow:0 8px 22px rgba(65,55,55,.09)}.assistant-patient{gap:12px;margin:12px 0 22px;padding:19px 20px;border-radius:16px}.assistant-patient__name{flex:0 1 auto;margin:0!important;color:#172238!important;font-size:19px;font-weight:800}.assistant-patient>span:not(.assistant-patient__name){flex:1;margin:0;color:#75717a}.assistant-patient b{display:inline-flex;flex:0 0 auto;align-items:center;gap:5px;color:#b33444;font-size:16px}.assistant-page .flow-card{padding:22px 18px;border-radius:16px}.assistant-page .flow-card h2{margin:0 0 18px;font-size:25px}.assistant-page .flow-highlight{padding:16px 18px;border-left:5px solid #c95765;background:#fcf8f8}.assistant-page .flow-highlight b{font-size:17px}.assistant-page .flow-highlight span{margin-top:6px;color:#6e6a73}.assistant-page .flow-highlight small{display:block;margin-top:5px;color:#6e6a73;font-size:13px;line-height:1.35;word-break:break-word}.flow-steps{margin:20px 0 12px;padding:0;list-style:none}.flow-step{position:relative;display:grid;grid-template-columns:40px minmax(0,1fr) auto;align-items:center;min-height:58px;color:#2a2f3a}.flow-step:not(:last-child)::after{position:absolute;top:35px;left:19px;width:2px;height:31px;background:#ded8d9;content:""}.flow-step__dot{position:relative;z-index:1;display:block;width:22px;height:22px;margin-left:8px;border:3px solid #cbc5c6;border-radius:50%;background:#fff}.flow-step b{font-size:17px}.flow-step small{color:#8a8388;font-size:13px}.flow-step.is-done .flow-step__dot{border-color:#b33444;box-shadow:inset 0 0 0 4px #fff;background:#b33444}.flow-step.is-done b,.flow-step.is-done small{color:#16875c}.flow-step.is-active .flow-step__dot{border-color:#f0aab2;box-shadow:inset 0 0 0 5px #b33444;background:#f6c7cd}.flow-step.is-active b,.flow-step.is-active small{color:#b33444;font-weight:800}.assistant-page .assistant-tabs{margin:26px 0 12px}.assistant-page .assistant-tabs button{color:#77717a;font-size:17px}.assistant-page .assistant-tabs button.active{border-color:#b33444;color:#b33444}.assistant-page .record-card{align-items:start;gap:12px;min-height:106px;margin:12px 0;padding:20px 18px;border-radius:14px}.record-card__main{display:grid;min-width:0;flex:1;gap:6px}.record-card__main b,.record-card__main span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.record-card__main b{font-size:17px}.record-card__main span{color:#747078;font-size:14px}.record-card__main small{color:#747078;font-size:13px;line-height:1.35;word-break:break-word}.record-card__status{flex:0 0 auto;padding:5px 8px;border-radius:6px;font-size:14px;font-style:normal;font-weight:800}.record-card__status.status-paid{background:#e6f4ec;color:#16875c}.record-card__status.status-unpaid{background:#f9ead7;color:#a55c12}.record-card__status.status-cancelled{background:#f8e5e8;color:#b33444}.record-card__status.status-completed{background:#e8eef8;color:#47678d}.record-card__status.status-no_show{background:#f4ece1;color:#8b5d2e}@media (max-width:360px){.assistant-content{padding:0 18px}.assistant-patient{padding:17px 14px}.assistant-patient b{font-size:14px}.assistant-page .flow-card{padding:20px 16px}.flow-step{grid-template-columns:35px minmax(0,1fr) auto}.flow-step__dot{margin-left:6px}.flow-step:not(:last-child)::after{left:16px}.flow-step b{font-size:16px}.flow-step small{font-size:12px}.record-card__status{padding:4px 6px;font-size:12px}}
+.assistant-page {
+  background: #f5f3f2;
+}
+.assistant-title {
+  padding: 28px 28px 20px;
+}
+.assistant-patient,
+.assistant-page .flow-card,
+.assistant-page .record-card {
+  border: 1px solid #f1eeee;
+  box-shadow: 0 8px 22px rgba(65, 55, 55, 0.09);
+}
+.assistant-patient {
+  gap: 12px;
+  margin: 12px 0 22px;
+  padding: 19px 20px;
+  border-radius: 16px;
+}
+.assistant-patient__name {
+  flex: 0 1 auto;
+  margin: 0 !important;
+  color: #172238 !important;
+  font-size: 19px;
+  font-weight: 800;
+}
+.assistant-patient > span:not(.assistant-patient__name) {
+  flex: 1;
+  margin: 0;
+  color: #75717a;
+}
+.assistant-patient b {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: #b33444;
+  font-size: 16px;
+}
+.assistant-page .flow-card {
+  padding: 22px 18px;
+  border-radius: 16px;
+}
+.assistant-page .flow-card h2 {
+  margin: 0 0 18px;
+  font-size: 25px;
+}
+.assistant-page .flow-highlight {
+  padding: 16px 18px;
+  border-left: 5px solid #c95765;
+  background: #fcf8f8;
+}
+.assistant-page .flow-highlight b {
+  font-size: 17px;
+}
+.assistant-page .flow-highlight span {
+  margin-top: 6px;
+  color: #6e6a73;
+}
+.assistant-page .flow-highlight small {
+  display: block;
+  margin-top: 5px;
+  color: #6e6a73;
+  font-size: 13px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.flow-steps {
+  margin: 20px 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.flow-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 58px;
+  color: #2a2f3a;
+}
+.flow-step:not(:last-child)::after {
+  position: absolute;
+  top: 35px;
+  left: 19px;
+  width: 2px;
+  height: 31px;
+  background: #ded8d9;
+  content: "";
+}
+.flow-step__dot {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 22px;
+  height: 22px;
+  margin-left: 8px;
+  border: 3px solid #cbc5c6;
+  border-radius: 50%;
+  background: #fff;
+}
+.flow-step b {
+  font-size: 17px;
+}
+.flow-step small {
+  color: #8a8388;
+  font-size: 13px;
+}
+.flow-step.is-done .flow-step__dot {
+  border-color: #b33444;
+  box-shadow: inset 0 0 0 4px #fff;
+  background: #b33444;
+}
+.flow-step.is-done b,
+.flow-step.is-done small {
+  color: #16875c;
+}
+.flow-step.is-active .flow-step__dot {
+  border-color: #f0aab2;
+  box-shadow: inset 0 0 0 5px #b33444;
+  background: #f6c7cd;
+}
+.flow-step.is-active b,
+.flow-step.is-active small {
+  color: #b33444;
+  font-weight: 800;
+}
+.assistant-page .assistant-tabs {
+  margin: 26px 0 12px;
+}
+.assistant-page .assistant-tabs button {
+  color: #77717a;
+  font-size: 17px;
+}
+.assistant-page .assistant-tabs button.active {
+  border-color: #b33444;
+  color: #b33444;
+}
+.assistant-page .record-card {
+  align-items: start;
+  gap: 12px;
+  min-height: 106px;
+  margin: 12px 0;
+  padding: 20px 18px;
+  border-radius: 14px;
+}
+.record-card__main {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 6px;
+}
+.record-card__main b,
+.record-card__main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-card__main b {
+  font-size: 17px;
+}
+.record-card__main span {
+  color: #747078;
+  font-size: 14px;
+}
+.record-card__main small {
+  color: #747078;
+  font-size: 13px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.record-card__status {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 800;
+}
+.record-card__status.status-paid {
+  background: #e6f4ec;
+  color: #16875c;
+}
+.record-card__status.status-unpaid {
+  background: #f9ead7;
+  color: #a55c12;
+}
+.record-card__status.status-cancelled {
+  background: #f8e5e8;
+  color: #b33444;
+}
+.record-card__status.status-completed {
+  background: #e8eef8;
+  color: #47678d;
+}
+.record-card__status.status-no_show {
+  background: #f4ece1;
+  color: #8b5d2e;
+}
+@media (max-width: 360px) {
+  .assistant-content {
+    padding: 0 18px;
+  }
+  .assistant-patient {
+    padding: 17px 14px;
+  }
+  .assistant-patient b {
+    font-size: 14px;
+  }
+  .assistant-page .flow-card {
+    padding: 20px 16px;
+  }
+  .flow-step {
+    grid-template-columns: 35px minmax(0, 1fr) auto;
+  }
+  .flow-step__dot {
+    margin-left: 6px;
+  }
+  .flow-step:not(:last-child)::after {
+    left: 16px;
+  }
+  .flow-step b {
+    font-size: 16px;
+  }
+  .flow-step small {
+    font-size: 12px;
+  }
+  .record-card__status {
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+}
 
 /* 健康服务入口固定图标与文字的中心轴，未读通知通过右上角红点提示。 */
-.health-grid{align-items:start}.health-entry{grid-template-rows:38px 22px;align-content:center;justify-items:center;gap:4px;padding:4px 0 10px}.health-entry__icon{position:relative;display:grid;place-items:center;width:40px;height:38px;color:#6f6064}.health-entry__label{display:block;width:100%;transform:translateY(-3px);color:#1d293c;text-align:center;white-space:nowrap;font-size:15px;line-height:1.35}.health-entry__badge{position:absolute;top:1px;right:0;width:9px;height:9px;border:2px solid #fff;border-radius:50%;background:#c53648}@media (max-width:360px){.health-entry{grid-template-rows:36px 21px;gap:3px;padding-bottom:8px}.health-entry__icon{width:38px;height:36px}.health-entry__label{font-size:14px}}
+.health-grid {
+  align-items: start;
+}
+.health-entry {
+  grid-template-rows: 38px 22px;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  padding: 4px 0 10px;
+}
+.health-entry__icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 38px;
+  color: #6f6064;
+}
+.health-entry__label {
+  display: block;
+  width: 100%;
+  transform: translateY(-3px);
+  color: #1d293c;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 15px;
+  line-height: 1.35;
+}
+.health-entry__badge {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  width: 9px;
+  height: 9px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #c53648;
+}
+@media (max-width: 360px) {
+  .health-entry {
+    grid-template-rows: 36px 21px;
+    gap: 3px;
+    padding-bottom: 8px;
+  }
+  .health-entry__icon {
+    width: 38px;
+    height: 36px;
+  }
+  .health-entry__label {
+    font-size: 14px;
+  }
+}
 
 /* 就诊助手三类记录固定同一行，紧凑标签避免窄屏时换行。 */
-.assistant-page .assistant-tabs{grid-template-columns:repeat(3,minmax(0,1fr));gap:0}.assistant-page .assistant-tabs button{min-width:0;padding:10px 2px;font-size:15px;white-space:nowrap}.assistant-page .assistant-waiting-button:disabled{cursor:not-allowed;background:#c8c4c5;color:#fff;opacity:1}
+.assistant-page .assistant-tabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+}
+.assistant-page .assistant-tabs button {
+  min-width: 0;
+  padding: 10px 2px;
+  font-size: 15px;
+  white-space: nowrap;
+}
+.assistant-page .assistant-waiting-button:disabled {
+  cursor: not-allowed;
+  background: #c8c4c5;
+  color: #fff;
+  opacity: 1;
+}
 
 /* 通知页五类标签固定同一行，缩小间距以适配 320px 窄屏。 */
-.notification-filter-tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin:0 0 14px}.notification-filter-tabs button{min-width:0;min-height:40px;padding:8px 1px;border:0;border-bottom:2px solid #ded8d9;background:transparent;color:#6e6a73;font-size:14px;white-space:nowrap}.notification-filter-tabs button.active{border-color:#b33444;color:#b33444;font-weight:700}
+.notification-filter-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0 0 14px;
+}
+.notification-filter-tabs button {
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 1px;
+  border: 0;
+  border-bottom: 2px solid #ded8d9;
+  background: transparent;
+  color: #6e6a73;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.notification-filter-tabs button.active {
+  border-color: #b33444;
+  color: #b33444;
+  font-weight: 700;
+}
 
 /* 已支付挂号在预约开始前允许通过密码确认取消，记录操作区保持状态和命令对齐。 */
-.registration-record-actions{display:grid;justify-items:end;align-content:space-between;gap:8px;flex:0 0 auto}.registration-record-actions .text-button{font-size:13px;font-weight:700}
+.registration-record-actions {
+  display: grid;
+  justify-items: end;
+  align-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.registration-record-actions .text-button {
+  font-size: 13px;
+  font-weight: 700;
+}
 
 /* 重复预约由后端明确拒绝后锁定当前医生的课程表，避免用户继续提交无效挂号。 */
-.duplicate-appointment-notice{margin:14px 0;padding:14px;border:1px solid #efd8db;border-radius:12px;background:#fff7f8;color:#7b3640}.duplicate-appointment-notice b{display:block;color:#b33444;font-size:17px}.duplicate-appointment-notice p{margin:7px 0 12px;font-size:14px;line-height:1.5}.doctor-timetable__slot.is-disabled{cursor:not-allowed;background:#e5e1e2;color:#817a7c;opacity:1}.doctor-timetable__slot.is-disabled em{color:#817a7c}.doctor-timetable__slot.is-disabled .doctor-timetable__duplicate-text{display:block;width:2em;margin:0 auto;color:#817a7c;line-height:1.25;text-align:center;white-space:normal}.duplicate-payment-notice{margin:0 0 12px;padding:11px;border-radius:8px;background:#fff4f4;color:#a93e4b;font-size:14px;line-height:1.5}.payment-card .primary-button:disabled{cursor:not-allowed;background:#c8c4c5;color:#fff;opacity:1}
+.duplicate-appointment-notice {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid #efd8db;
+  border-radius: 12px;
+  background: #fff7f8;
+  color: #7b3640;
+}
+.duplicate-appointment-notice b {
+  display: block;
+  color: #b33444;
+  font-size: 17px;
+}
+.duplicate-appointment-notice p {
+  margin: 7px 0 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.doctor-timetable__slot.is-disabled {
+  cursor: not-allowed;
+  background: #e5e1e2;
+  color: #817a7c;
+  opacity: 1;
+}
+.doctor-timetable__slot.is-disabled em {
+  color: #817a7c;
+}
+.doctor-timetable__slot.is-disabled .doctor-timetable__duplicate-text {
+  display: block;
+  width: 2em;
+  margin: 0 auto;
+  color: #817a7c;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+}
+.duplicate-payment-notice {
+  margin: 0 0 12px;
+  padding: 11px;
+  border-radius: 8px;
+  background: #fff4f4;
+  color: #a93e4b;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.payment-card .primary-button:disabled {
+  cursor: not-allowed;
+  background: #c8c4c5;
+  color: #fff;
+  opacity: 1;
+}
 
 /* 购药处方详情将立即购药按钮固定在底部，药品列表预留空间避免被操作栏遮挡。 */
 /* 处方笺编号与开具时间分行展示；购药列表统一显示不含秒的开具时间。 */
-.pharmacy-prescription-detail-page .subpage-content{padding-bottom:100px}.pharmacy-prescription-paper{overflow:hidden;border:1px solid #d8d5d2;border-radius:4px;background:#fff;box-shadow:0 8px 22px rgba(47,34,36,.06)}.pharmacy-prescription-paper__header{padding:22px 18px 15px;border-bottom:1px solid #2c3540}.pharmacy-prescription-paper__header>div{display:flex;align-items:center;justify-content:space-between;gap:12px}.pharmacy-prescription-paper__header b{color:#1d293c;font-size:25px;letter-spacing:0}.pharmacy-prescription-paper__header em{padding:4px 8px;border:1px solid #b33444;border-radius:3px;color:#b33444;font-size:13px;font-style:normal}.pharmacy-prescription-paper__meta{display:grid;gap:5px;margin-top:13px;color:#716d70;font-size:13px;line-height:1.45}.pharmacy-prescription-paper__items{padding:0 18px}.pharmacy-prescription-paper__columns,.pharmacy-prescription-paper__item{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.8fr) minmax(0,1.1fr);gap:10px}.pharmacy-prescription-paper__columns{padding:13px 0 10px;border-bottom:1px solid #d8d5d2;color:#777078;font-size:13px}.pharmacy-prescription-paper__item{padding:15px 0;border-bottom:1px dashed #dfdcda;color:#27303a;font-size:14px;line-height:1.5}.pharmacy-prescription-paper__item b,.pharmacy-prescription-paper__item span{min-width:0;overflow-wrap:anywhere}.pharmacy-prescription-paper__item b{font-size:16px}.pharmacy-prescription-paper__item small{display:block;margin-top:4px;color:#777078;font-size:12px;line-height:1.4}.pharmacy-prescription-paper__signature{display:flex;justify-content:flex-end;gap:5px;padding:22px 18px;color:#535057}.pharmacy-prescription-paper__signature b{min-width:5em;color:#1d293c;text-align:right}.pharmacy-prescription-summary{display:grid;min-width:0;flex:1;gap:3px}.pharmacy-prescription-summary b,.pharmacy-prescription-summary span,.pharmacy-prescription-summary small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pharmacy-prescription-summary span,.pharmacy-prescription-summary small{color:#777078;font-size:14px}.pharmacy-prescription-summary small{font-size:12px}.pharmacy-purchase-bar{position:fixed;z-index:5;right:0;bottom:0;left:0;padding:10px 18px max(10px,env(safe-area-inset-bottom));border-top:1px solid #eee7e5;background:rgba(255,255,255,.98);box-shadow:0 -5px 18px rgba(47,34,36,.08)}.pharmacy-purchase-bar .primary-button{display:flex;align-items:center;justify-content:center;gap:7px;max-width:644px;margin:0 auto}.pharmacy-purchase-bar .primary-button:disabled{cursor:not-allowed;background:#c8c4c5;color:#fff;opacity:1}@media (max-width:360px){.pharmacy-prescription-paper__header{padding:18px 14px 13px}.pharmacy-prescription-paper__header b{font-size:22px}.pharmacy-prescription-paper__items{padding:0 14px}.pharmacy-prescription-paper__columns,.pharmacy-prescription-paper__item{grid-template-columns:minmax(0,1fr) minmax(0,.72fr) minmax(0,1fr);gap:7px}.pharmacy-prescription-paper__columns{font-size:12px}.pharmacy-prescription-paper__item{font-size:13px}.pharmacy-prescription-paper__signature{padding:18px 14px}.pharmacy-prescription-summary small{font-size:11px}}
+.pharmacy-prescription-detail-page .subpage-content {
+  padding-bottom: 100px;
+}
+.pharmacy-prescription-paper {
+  overflow: hidden;
+  border: 1px solid #d8d5d2;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(47, 34, 36, 0.06);
+}
+.pharmacy-prescription-paper__header {
+  padding: 22px 18px 15px;
+  border-bottom: 1px solid #2c3540;
+}
+.pharmacy-prescription-paper__header > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pharmacy-prescription-paper__header b {
+  color: #1d293c;
+  font-size: 25px;
+  letter-spacing: 0;
+}
+.pharmacy-prescription-paper__header em {
+  padding: 4px 8px;
+  border: 1px solid #b33444;
+  border-radius: 3px;
+  color: #b33444;
+  font-size: 13px;
+  font-style: normal;
+}
+.pharmacy-prescription-paper__meta {
+  display: grid;
+  gap: 5px;
+  margin-top: 13px;
+  color: #716d70;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.pharmacy-prescription-paper__items {
+  padding: 0 18px;
+}
+.pharmacy-prescription-paper__columns,
+.pharmacy-prescription-paper__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.8fr) minmax(0, 1.1fr);
+  gap: 10px;
+}
+.pharmacy-prescription-paper__columns {
+  padding: 13px 0 10px;
+  border-bottom: 1px solid #d8d5d2;
+  color: #777078;
+  font-size: 13px;
+}
+.pharmacy-prescription-paper__item {
+  padding: 15px 0;
+  border-bottom: 1px dashed #dfdcda;
+  color: #27303a;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.pharmacy-prescription-paper__item b,
+.pharmacy-prescription-paper__item span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pharmacy-prescription-paper__item b {
+  font-size: 16px;
+}
+.pharmacy-prescription-paper__item small {
+  display: block;
+  margin-top: 4px;
+  color: #777078;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.pharmacy-prescription-paper__signature {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+  padding: 22px 18px;
+  color: #535057;
+}
+.pharmacy-prescription-paper__signature b {
+  min-width: 5em;
+  color: #1d293c;
+  text-align: right;
+}
+.pharmacy-prescription-summary {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+.pharmacy-prescription-summary b,
+.pharmacy-prescription-summary span,
+.pharmacy-prescription-summary small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pharmacy-prescription-summary span,
+.pharmacy-prescription-summary small {
+  color: #777078;
+  font-size: 14px;
+}
+.pharmacy-prescription-summary small {
+  font-size: 12px;
+}
+.pharmacy-purchase-bar {
+  position: fixed;
+  z-index: 5;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 10px 18px max(10px, env(safe-area-inset-bottom));
+  border-top: 1px solid #eee7e5;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 -5px 18px rgba(47, 34, 36, 0.08);
+}
+.pharmacy-purchase-bar .primary-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  max-width: 644px;
+  margin: 0 auto;
+}
+.pharmacy-purchase-bar .primary-button:disabled {
+  cursor: not-allowed;
+  background: #c8c4c5;
+  color: #fff;
+  opacity: 1;
+}
+@media (max-width: 360px) {
+  .pharmacy-prescription-paper__header {
+    padding: 18px 14px 13px;
+  }
+  .pharmacy-prescription-paper__header b {
+    font-size: 22px;
+  }
+  .pharmacy-prescription-paper__items {
+    padding: 0 14px;
+  }
+  .pharmacy-prescription-paper__columns,
+  .pharmacy-prescription-paper__item {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.72fr) minmax(0, 1fr);
+    gap: 7px;
+  }
+  .pharmacy-prescription-paper__columns {
+    font-size: 12px;
+  }
+  .pharmacy-prescription-paper__item {
+    font-size: 13px;
+  }
+  .pharmacy-prescription-paper__signature {
+    padding: 18px 14px;
+  }
+  .pharmacy-prescription-summary small {
+    font-size: 11px;
+  }
+}
 
 /* 处方详情增加 AI 解读入口，双按钮固定栏为内容预留安全距离。 */
-.pharmacy-prescription-detail-page .subpage-content{padding-bottom:164px}.pharmacy-purchase-bar{display:grid;gap:8px}.pharmacy-ai-interpret-button{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;max-width:644px;min-height:46px;margin:0 auto;border:1px solid #b33444;border-radius:8px;background:#fff;color:#b33444;font-weight:800}.pharmacy-ai-interpret-button:disabled{cursor:not-allowed;border-color:#d5c9cb;color:#a89ca0}
+.pharmacy-prescription-detail-page .subpage-content {
+  padding-bottom: 164px;
+}
+.pharmacy-purchase-bar {
+  display: grid;
+  gap: 8px;
+}
+.pharmacy-ai-interpret-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  max-width: 644px;
+  min-height: 46px;
+  margin: 0 auto;
+  border: 1px solid #b33444;
+  border-radius: 8px;
+  background: #fff;
+  color: #b33444;
+  font-weight: 800;
+}
+.pharmacy-ai-interpret-button:disabled {
+  cursor: not-allowed;
+  border-color: #d5c9cb;
+  color: #a89ca0;
+}
 
 /* 候补可预约提醒固定在首页顶端，模拟手机通知但不遮挡操作入口。 */
-.waitlist-banner{position:fixed;z-index:11;top:max(12px,env(safe-area-inset-top));left:50%;display:flex;width:min(calc(100% - 28px),620px);align-items:center;gap:8px;padding:12px 10px 12px 13px;border:1px solid #f0d7da;border-radius:13px;background:rgba(255,255,255,.98);box-shadow:0 10px 28px rgba(49,32,35,.2);transform:translateX(-50%);animation:waitlist-banner-in .28s ease-out}.waitlist-banner__body{display:flex;min-width:0;flex:1;align-items:center;gap:11px;border:0;background:transparent;color:#1d293c;text-align:left}.waitlist-banner__icon{display:grid;flex:0 0 auto;place-items:center;width:42px;height:42px;border-radius:11px;background:#b33444;color:#fff}.waitlist-banner__content{display:grid;min-width:0;gap:3px}.waitlist-banner__content b,.waitlist-banner__content>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.waitlist-banner__content b{font-size:16px}.waitlist-banner__content>span{color:#676168;font-size:13px}.waitlist-banner__content small{color:#a39ba0;font-size:12px}.waitlist-banner__close{display:grid;flex:0 0 auto;place-items:center;width:30px;height:30px;border:0;border-radius:50%;background:transparent;color:#928a8f}@keyframes waitlist-banner-in{from{opacity:0;transform:translate(-50%,-18px)}to{opacity:1;transform:translate(-50%,0)}}@media (max-width:360px){.waitlist-banner{width:calc(100% - 22px);padding-left:10px}.waitlist-banner__icon{width:38px;height:38px}.waitlist-banner__content b{font-size:15px}.waitlist-banner__content>span{font-size:12px}}
+.waitlist-banner {
+  position: fixed;
+  z-index: 11;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  display: flex;
+  width: min(calc(100% - 28px), 620px);
+  align-items: center;
+  gap: 8px;
+  padding: 12px 10px 12px 13px;
+  border: 1px solid #f0d7da;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 10px 28px rgba(49, 32, 35, 0.2);
+  transform: translateX(-50%);
+  animation: waitlist-banner-in 0.28s ease-out;
+}
+.waitlist-banner__body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 11px;
+  border: 0;
+  background: transparent;
+  color: #1d293c;
+  text-align: left;
+}
+.waitlist-banner__icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: #b33444;
+  color: #fff;
+}
+.waitlist-banner__content {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+.waitlist-banner__content b,
+.waitlist-banner__content > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.waitlist-banner__content b {
+  font-size: 16px;
+}
+.waitlist-banner__content > span {
+  color: #676168;
+  font-size: 13px;
+}
+.waitlist-banner__content small {
+  color: #a39ba0;
+  font-size: 12px;
+}
+.waitlist-banner__close {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #928a8f;
+}
+@keyframes waitlist-banner-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -18px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+@media (max-width: 360px) {
+  .waitlist-banner {
+    width: calc(100% - 22px);
+    padding-left: 10px;
+  }
+  .waitlist-banner__icon {
+    width: 38px;
+    height: 38px;
+  }
+  .waitlist-banner__content b {
+    font-size: 15px;
+  }
+  .waitlist-banner__content > span {
+    font-size: 12px;
+  }
+}
 
 /* 报告页面使用紧凑日期筛选和文档层级，适配移动端报告阅读。 */
 /* 病历详情的 AI 解读入口保持与处方入口一致的紧凑操作样式。 */
-.report-page,.report-detail-page{background:#f6f4f3}.report-patient-card{display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;padding:18px;border:1px solid #eee7e5;border-radius:13px;background:#fff;text-align:left;box-shadow:0 4px 14px rgba(47,34,36,.06)}.report-patient-card span{display:grid;min-width:0;gap:5px}.report-patient-card b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:19px}.report-patient-card small{color:#797278}.report-patient-card em{display:inline-flex;flex:0 0 auto;align-items:center;gap:5px;color:#b33444;font-style:normal;font-weight:700}.report-filter-card{padding:18px;border-radius:13px;background:#fff;box-shadow:0 4px 14px rgba(47,34,36,.06)}.report-filter-card__title{display:flex;align-items:center;gap:9px;color:#b33444}.report-filter-card__title h2{margin:0;color:#1d293c;font-size:20px}.report-date-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}.report-date-row label{min-width:0;margin:0;color:#747078;font-size:13px}.report-date-row input{width:100%;min-width:0;padding:10px 8px;border:1px solid #dcd5d4;border-radius:8px;background:#fff;color:#1d293c;font-size:14px}.report-quick-ranges{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:14px}.report-quick-ranges button{min-height:39px;border:1px solid #e0d7d6;border-radius:8px;background:#fff;color:#6e6569;font-size:14px}.report-quick-ranges button.active{border-color:#b33444;background:#b33444;color:#fff}.report-list-card{display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding:18px;border:1px solid #eee7e5;border-radius:13px;background:#fff;color:#1d293c;text-align:left;box-shadow:0 4px 14px rgba(47,34,36,.06)}.report-list-card>div{min-width:0}.report-list-card h2{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:18px}.report-list-card p,.report-list-card small{display:block;margin:7px 0 0;overflow:hidden;color:#6f6a70;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.report-list-card small{margin-top:5px;font-size:12px}.report-list-card svg{flex:0 0 auto;color:#857b80}.report-empty-state{display:grid;place-items:center;gap:8px;padding:72px 18px;color:#aaa2a5;text-align:center}.report-empty-state h2{margin:7px 0 0;color:#676168;font-size:20px}.report-empty-state p{margin:0;font-size:14px}.report-detail-title{display:flex;align-items:center;gap:12px;margin-bottom:15px;padding:18px;border-radius:13px;background:#fff;box-shadow:0 4px 14px rgba(47,34,36,.06);color:#b33444}.report-detail-title h2{margin:0;color:#1d293c;font-size:21px}.report-detail-title p{margin:6px 0 0;color:#706a70;font-size:14px}.report-document{padding:20px;border:1px solid #e6dfdc;border-radius:13px;background:#fff;box-shadow:0 4px 14px rgba(47,34,36,.06)}.report-document__header{display:flex;align-items:center;gap:11px;padding-bottom:15px;border-bottom:1px solid #eee7e5;color:#b33444}.report-document__header div{display:grid;gap:4px}.report-document__header b{color:#1d293c;font-size:19px}.report-document__header span{color:#777078;font-size:13px}.report-document__meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 10px;margin:18px 0}.report-document__meta div{min-width:0}.report-document__meta dt{color:#918a8e;font-size:13px}.report-document__meta dd{margin:5px 0 0;overflow:hidden;color:#242d3b;text-overflow:ellipsis;white-space:nowrap;font-size:15px}.report-document__content{padding:17px 0;border-top:1px solid #eee7e5}.report-document__content h3{margin:0 0 10px;font-size:18px}.report-document__content p{margin:0;color:#454047;white-space:pre-wrap;word-break:break-word;line-height:1.8}.report-document__updated{margin:0;color:#928a8f;font-size:12px}.report-detail-page__ai-button{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:46px;margin-top:14px;border:1px solid #b33444;border-radius:8px;background:#fff;color:#b33444;font-weight:800}.report-detail-page__ai-button:disabled{cursor:not-allowed;border-color:#d5c9cb;color:#a89ca0}.report-interpretation{margin-top:15px;padding:19px;border:1px solid #e8d8bb;border-radius:13px;background:#fffaf0;color:#5f5138}.report-interpretation>div{display:flex;align-items:center;gap:8px;color:#a66a19}.report-interpretation h2{margin:0;font-size:19px}.report-interpretation p{margin:12px 0;white-space:pre-wrap;word-break:break-word;line-height:1.75}.report-interpretation small,.report-interpretation time{display:block;color:#86775f;font-size:12px;line-height:1.55}.report-interpretation time{margin-top:8px}.report-interpretation.pending{display:flex;align-items:flex-start;gap:10px;border-color:#e5dfda;background:#fff;color:#756c70}.report-interpretation.pending h2{color:#565057}.report-interpretation.pending p{margin:5px 0 0;color:#837b80;line-height:1.45}@media (max-width:360px){.report-patient-card,.report-filter-card,.report-list-card,.report-document,.report-interpretation{padding-right:14px;padding-left:14px}.report-patient-card em{font-size:13px}.report-date-row{gap:7px}.report-date-row input{padding:9px 5px;font-size:12px}.report-quick-ranges{gap:6px}.report-quick-ranges button{font-size:12px}.report-document__meta{grid-template-columns:1fr;gap:11px}}
+.report-page,
+.report-detail-page {
+  background: #f6f4f3;
+}
+.report-patient-card {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 18px;
+  border: 1px solid #eee7e5;
+  border-radius: 13px;
+  background: #fff;
+  text-align: left;
+  box-shadow: 0 4px 14px rgba(47, 34, 36, 0.06);
+}
+.report-patient-card span {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+.report-patient-card b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 19px;
+}
+.report-patient-card small {
+  color: #797278;
+}
+.report-patient-card em {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: #b33444;
+  font-style: normal;
+  font-weight: 700;
+}
+.report-filter-card {
+  padding: 18px;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(47, 34, 36, 0.06);
+}
+.report-filter-card__title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #b33444;
+}
+.report-filter-card__title h2 {
+  margin: 0;
+  color: #1d293c;
+  font-size: 20px;
+}
+.report-date-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+.report-date-row label {
+  min-width: 0;
+  margin: 0;
+  color: #747078;
+  font-size: 13px;
+}
+.report-date-row input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 8px;
+  border: 1px solid #dcd5d4;
+  border-radius: 8px;
+  background: #fff;
+  color: #1d293c;
+  font-size: 14px;
+}
+.report-quick-ranges {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 14px;
+}
+.report-quick-ranges button {
+  min-height: 39px;
+  border: 1px solid #e0d7d6;
+  border-radius: 8px;
+  background: #fff;
+  color: #6e6569;
+  font-size: 14px;
+}
+.report-quick-ranges button.active {
+  border-color: #b33444;
+  background: #b33444;
+  color: #fff;
+}
+.report-list-card {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px solid #eee7e5;
+  border-radius: 13px;
+  background: #fff;
+  color: #1d293c;
+  text-align: left;
+  box-shadow: 0 4px 14px rgba(47, 34, 36, 0.06);
+}
+.report-list-card > div {
+  min-width: 0;
+}
+.report-list-card h2 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+}
+.report-list-card p,
+.report-list-card small {
+  display: block;
+  margin: 7px 0 0;
+  overflow: hidden;
+  color: #6f6a70;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.report-list-card small {
+  margin-top: 5px;
+  font-size: 12px;
+}
+.report-list-card svg {
+  flex: 0 0 auto;
+  color: #857b80;
+}
+.report-empty-state {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 72px 18px;
+  color: #aaa2a5;
+  text-align: center;
+}
+.report-empty-state h2 {
+  margin: 7px 0 0;
+  color: #676168;
+  font-size: 20px;
+}
+.report-empty-state p {
+  margin: 0;
+  font-size: 14px;
+}
+.report-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+  padding: 18px;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(47, 34, 36, 0.06);
+  color: #b33444;
+}
+.report-detail-title h2 {
+  margin: 0;
+  color: #1d293c;
+  font-size: 21px;
+}
+.report-detail-title p {
+  margin: 6px 0 0;
+  color: #706a70;
+  font-size: 14px;
+}
+.report-document {
+  padding: 20px;
+  border: 1px solid #e6dfdc;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(47, 34, 36, 0.06);
+}
+.report-document__header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #eee7e5;
+  color: #b33444;
+}
+.report-document__header div {
+  display: grid;
+  gap: 4px;
+}
+.report-document__header b {
+  color: #1d293c;
+  font-size: 19px;
+}
+.report-document__header span {
+  color: #777078;
+  font-size: 13px;
+}
+.report-document__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px 10px;
+  margin: 18px 0;
+}
+.report-document__meta div {
+  min-width: 0;
+}
+.report-document__meta dt {
+  color: #918a8e;
+  font-size: 13px;
+}
+.report-document__meta dd {
+  margin: 5px 0 0;
+  overflow: hidden;
+  color: #242d3b;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+.report-document__content {
+  padding: 17px 0;
+  border-top: 1px solid #eee7e5;
+}
+.report-document__content h3 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+.report-document__content p {
+  margin: 0;
+  color: #454047;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.8;
+}
+.report-document__updated {
+  margin: 0;
+  color: #928a8f;
+  font-size: 12px;
+}
+.report-detail-page__ai-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 46px;
+  margin-top: 14px;
+  border: 1px solid #b33444;
+  border-radius: 8px;
+  background: #fff;
+  color: #b33444;
+  font-weight: 800;
+}
+.report-detail-page__ai-button:disabled {
+  cursor: not-allowed;
+  border-color: #d5c9cb;
+  color: #a89ca0;
+}
+.report-interpretation {
+  margin-top: 15px;
+  padding: 19px;
+  border: 1px solid #e8d8bb;
+  border-radius: 13px;
+  background: #fffaf0;
+  color: #5f5138;
+}
+.report-interpretation > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #a66a19;
+}
+.report-interpretation h2 {
+  margin: 0;
+  font-size: 19px;
+}
+.report-interpretation p {
+  margin: 12px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.75;
+}
+.report-interpretation small,
+.report-interpretation time {
+  display: block;
+  color: #86775f;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.report-interpretation time {
+  margin-top: 8px;
+}
+.report-interpretation.pending {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-color: #e5dfda;
+  background: #fff;
+  color: #756c70;
+}
+.report-interpretation.pending h2 {
+  color: #565057;
+}
+.report-interpretation.pending p {
+  margin: 5px 0 0;
+  color: #837b80;
+  line-height: 1.45;
+}
+@media (max-width: 360px) {
+  .report-patient-card,
+  .report-filter-card,
+  .report-list-card,
+  .report-document,
+  .report-interpretation {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+  .report-patient-card em {
+    font-size: 13px;
+  }
+  .report-date-row {
+    gap: 7px;
+  }
+  .report-date-row input {
+    padding: 9px 5px;
+    font-size: 12px;
+  }
+  .report-quick-ranges {
+    gap: 6px;
+  }
+  .report-quick-ranges button {
+    font-size: 12px;
+  }
+  .report-document__meta {
+    grid-template-columns: 1fr;
+    gap: 11px;
+  }
+}
 
 /* 解读选择卡限定列表高度，避免大量近期记录挤压 AI 对话区域。 */
-.agent-record-picker{margin:12px 0;border:1px solid #e5dadd;border-radius:8px;background:#fff;overflow:hidden}.agent-record-picker__header{display:flex;align-items:center;justify-content:center;gap:8px;min-height:54px;padding:0 14px;border-bottom:1px solid #efe7e7;color:#b33444}.agent-record-picker__header h3{margin:0;font-size:17px}.agent-record-picker__list{max-height:272px;overflow-y:auto;padding:0 14px}.agent-record-picker__item{display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;padding:14px 6px;border:0;border-bottom:1px solid #eee5e6;background:#fff;color:#242d3b;text-align:left}.agent-record-picker__item:last-child{border-bottom:0}.agent-record-picker__item b,.agent-record-picker__item small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.agent-record-picker__item b{font-size:15px}.agent-record-picker__item small{margin-top:5px;color:#82797d;font-size:12px}.agent-record-picker__item.is-selected{background:#fdf4f5;color:#a72e3f}.agent-record-picker__actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-top:1px solid #efe7e7}.agent-record-picker__actions button{min-height:48px;border:0;background:#fff;color:#746d72;font-size:16px;font-weight:700}.agent-record-picker__actions button+button{border-left:1px solid #efe7e7;color:#b33444}.agent-record-picker__actions button:disabled{color:#bcb4b6}.agent-record-picker>p{margin:0;padding:10px;color:#777078;font-size:13px;text-align:center}
+.agent-record-picker {
+  margin: 12px 0;
+  border: 1px solid #e5dadd;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+.agent-record-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 54px;
+  padding: 0 14px;
+  border-bottom: 1px solid #efe7e7;
+  color: #b33444;
+}
+.agent-record-picker__header h3 {
+  margin: 0;
+  font-size: 17px;
+}
+.agent-record-picker__list {
+  max-height: 272px;
+  overflow-y: auto;
+  padding: 0 14px;
+}
+.agent-record-picker__item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 6px;
+  border: 0;
+  border-bottom: 1px solid #eee5e6;
+  background: #fff;
+  color: #242d3b;
+  text-align: left;
+}
+.agent-record-picker__item:last-child {
+  border-bottom: 0;
+}
+.agent-record-picker__item b,
+.agent-record-picker__item small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-record-picker__item b {
+  font-size: 15px;
+}
+.agent-record-picker__item small {
+  margin-top: 5px;
+  color: #82797d;
+  font-size: 12px;
+}
+.agent-record-picker__item.is-selected {
+  background: #fdf4f5;
+  color: #a72e3f;
+}
+.agent-record-picker__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid #efe7e7;
+}
+.agent-record-picker__actions button {
+  min-height: 48px;
+  border: 0;
+  background: #fff;
+  color: #746d72;
+  font-size: 16px;
+  font-weight: 700;
+}
+.agent-record-picker__actions button + button {
+  border-left: 1px solid #efe7e7;
+  color: #b33444;
+}
+.agent-record-picker__actions button:disabled {
+  color: #bcb4b6;
+}
+.agent-record-picker > p {
+  margin: 0;
+  padding: 10px;
+  color: #777078;
+  font-size: 13px;
+  text-align: center;
+}
 
 /* 就诊记录沿用报告筛选层级，双 Tab 仅展示已完成或已失效的非交互挂号卡片。 */
-.appointment-record-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:18px 0 4px;border-bottom:1px solid #e6dfde}.appointment-record-tabs button{min-width:0;padding:12px 4px;border:0;border-bottom:2px solid transparent;background:transparent;color:#756e73;font-size:16px;white-space:nowrap}.appointment-record-tabs button.active{border-bottom-color:#b33444;color:#b33444;font-weight:800}.appointment-record-card{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-top:14px;padding:18px;border:1px solid #eee7e5;border-radius:13px;background:#fff;box-shadow:0 4px 14px rgba(47,34,36,.06)}.appointment-record-card>div{display:grid;min-width:0;flex:1;gap:6px}.appointment-record-card b{font-size:17px}.appointment-record-card span{min-width:0;overflow:hidden;color:#58535a;text-overflow:ellipsis;white-space:nowrap;font-size:15px}.appointment-record-card small{color:#777078;font-size:13px;line-height:1.45;overflow-wrap:anywhere}.appointment-record-card__status{flex:0 0 auto;padding:5px 8px;border-radius:6px;background:#f4ece1;color:#8b5d2e;font-size:13px;font-style:normal;font-weight:800}.appointment-record-card__status.status-completed{background:#e8eef8;color:#47678d}.appointment-record-card__status.status-cancelled{background:#f8e5e8;color:#b33444}@media (max-width:360px){.appointment-record-tabs{gap:3px}.appointment-record-tabs button{padding-right:0;padding-left:0;font-size:14px}.appointment-record-card{gap:8px;padding:16px 14px}.appointment-record-card b{font-size:16px}.appointment-record-card span{font-size:14px}.appointment-record-card__status{padding:4px 6px;font-size:12px}}
+.appointment-record-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 18px 0 4px;
+  border-bottom: 1px solid #e6dfde;
+}
+.appointment-record-tabs button {
+  min-width: 0;
+  padding: 12px 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #756e73;
+  font-size: 16px;
+  white-space: nowrap;
+}
+.appointment-record-tabs button.active {
+  border-bottom-color: #b33444;
+  color: #b33444;
+  font-weight: 800;
+}
+.appointment-record-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px solid #eee7e5;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(47, 34, 36, 0.06);
+}
+.appointment-record-card > div {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 6px;
+}
+.appointment-record-card b {
+  font-size: 17px;
+}
+.appointment-record-card span {
+  min-width: 0;
+  overflow: hidden;
+  color: #58535a;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+.appointment-record-card small {
+  color: #777078;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.appointment-record-card__status {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #f4ece1;
+  color: #8b5d2e;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 800;
+}
+.appointment-record-card__status.status-completed {
+  background: #e8eef8;
+  color: #47678d;
+}
+.appointment-record-card__status.status-cancelled {
+  background: #f8e5e8;
+  color: #b33444;
+}
+@media (max-width: 360px) {
+  .appointment-record-tabs {
+    gap: 3px;
+  }
+  .appointment-record-tabs button {
+    padding-right: 0;
+    padding-left: 0;
+    font-size: 14px;
+  }
+  .appointment-record-card {
+    gap: 8px;
+    padding: 16px 14px;
+  }
+  .appointment-record-card b {
+    font-size: 16px;
+  }
+  .appointment-record-card span {
+    font-size: 14px;
+  }
+  .appointment-record-card__status {
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+}
 
 /* 购药订单将待支付确认与支付后物流拆分，避免未支付时出现无效物流信息。 */
-.pharmacy-order-page .subpage-content,.pharmacy-logistics-page .subpage-content{display:grid;gap:16px;padding-top:24px}.pharmacy-order-summary,.pharmacy-order-items,.logistics-state-card,.logistics-order-summary,.logistics-trace-card{border:1px solid #eee7e5;border-radius:12px;background:#fff;box-shadow:0 5px 16px rgba(47,34,36,.06)}.pharmacy-order-summary,.logistics-order-summary{padding:20px}.pharmacy-order-summary h2,.logistics-order-summary h2{margin:0;color:#172238;font-size:23px;line-height:1.35}.pharmacy-order-summary p,.logistics-order-summary p{margin:11px 0 0;color:#635d63;font-size:16px}.pharmacy-order-items{overflow:hidden}.pharmacy-order-items article,.logistics-order-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 18px;border-bottom:1px solid #f0ebea}.pharmacy-order-items article:last-child,.logistics-order-item:last-child{border-bottom:0}.pharmacy-order-items b,.logistics-order-item b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:17px}.pharmacy-order-items span,.logistics-order-item span{flex:0 0 auto;color:#756d72;font-size:14px}.logistics-state-card{display:flex;align-items:center;gap:14px;padding:20px;color:#b33444}.logistics-state-card svg{flex:0 0 auto}.logistics-state-card h2{margin:0;color:#172238;font-size:21px}.logistics-state-card p{margin:6px 0 0;color:#756d72;font-size:14px}.logistics-trace-card{padding:20px}.logistics-trace-card header{display:flex;align-items:center;gap:8px;color:#b33444}.logistics-trace-card header h2{margin:0;color:#172238;font-size:19px}.logistics-trace-card>p{margin:17px 0 0;color:#756d72;font-size:14px}.logistics-trace-card article{position:relative;display:flex;gap:12px;padding:17px 0 0}.logistics-trace-card article:not(:last-child)::after{position:absolute;top:40px;left:6px;width:1px;height:calc(100% - 10px);background:#e1d6d7;content:""}.logistics-trace-card article i{z-index:1;display:block;flex:0 0 auto;width:13px;height:13px;margin-top:4px;border-radius:50%;background:#c33a4d}.logistics-trace-card article div{display:grid;gap:5px}.logistics-trace-card article b{font-size:15px}.logistics-trace-card article span{color:#81797e;font-size:13px}@media (max-width:360px){.pharmacy-order-summary,.logistics-order-summary,.logistics-state-card,.logistics-trace-card{padding:17px 14px}.pharmacy-order-summary h2,.logistics-order-summary h2{font-size:20px}.pharmacy-order-items article,.logistics-order-item{padding:15px 14px}.pharmacy-order-items b,.logistics-order-item b{font-size:15px}.pharmacy-order-items span,.logistics-order-item span{font-size:12px}}
+.pharmacy-order-page .subpage-content,
+.pharmacy-logistics-page .subpage-content {
+  display: grid;
+  gap: 16px;
+  padding-top: 24px;
+}
+.pharmacy-order-summary,
+.pharmacy-order-items,
+.logistics-state-card,
+.logistics-order-summary,
+.logistics-trace-card {
+  border: 1px solid #eee7e5;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 5px 16px rgba(47, 34, 36, 0.06);
+}
+.pharmacy-order-summary,
+.logistics-order-summary {
+  padding: 20px;
+}
+.pharmacy-order-summary h2,
+.logistics-order-summary h2 {
+  margin: 0;
+  color: #172238;
+  font-size: 23px;
+  line-height: 1.35;
+}
+.pharmacy-order-summary p,
+.logistics-order-summary p {
+  margin: 11px 0 0;
+  color: #635d63;
+  font-size: 16px;
+}
+.pharmacy-order-items {
+  overflow: hidden;
+}
+.pharmacy-order-items article,
+.logistics-order-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 17px 18px;
+  border-bottom: 1px solid #f0ebea;
+}
+.pharmacy-order-items article:last-child,
+.logistics-order-item:last-child {
+  border-bottom: 0;
+}
+.pharmacy-order-items b,
+.logistics-order-item b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 17px;
+}
+.pharmacy-order-items span,
+.logistics-order-item span {
+  flex: 0 0 auto;
+  color: #756d72;
+  font-size: 14px;
+}
+.logistics-state-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  color: #b33444;
+}
+.logistics-state-card svg {
+  flex: 0 0 auto;
+}
+.logistics-state-card h2 {
+  margin: 0;
+  color: #172238;
+  font-size: 21px;
+}
+.logistics-state-card p {
+  margin: 6px 0 0;
+  color: #756d72;
+  font-size: 14px;
+}
+.logistics-trace-card {
+  padding: 20px;
+}
+.logistics-trace-card header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b33444;
+}
+.logistics-trace-card header h2 {
+  margin: 0;
+  color: #172238;
+  font-size: 19px;
+}
+.logistics-trace-card > p {
+  margin: 17px 0 0;
+  color: #756d72;
+  font-size: 14px;
+}
+.logistics-trace-card article {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 17px 0 0;
+}
+.logistics-trace-card article:not(:last-child)::after {
+  position: absolute;
+  top: 40px;
+  left: 6px;
+  width: 1px;
+  height: calc(100% - 10px);
+  background: #e1d6d7;
+  content: "";
+}
+.logistics-trace-card article i {
+  z-index: 1;
+  display: block;
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #c33a4d;
+}
+.logistics-trace-card article div {
+  display: grid;
+  gap: 5px;
+}
+.logistics-trace-card article b {
+  font-size: 15px;
+}
+.logistics-trace-card article span {
+  color: #81797e;
+  font-size: 13px;
+}
+@media (max-width: 360px) {
+  .pharmacy-order-summary,
+  .logistics-order-summary,
+  .logistics-state-card,
+  .logistics-trace-card {
+    padding: 17px 14px;
+  }
+  .pharmacy-order-summary h2,
+  .logistics-order-summary h2 {
+    font-size: 20px;
+  }
+  .pharmacy-order-items article,
+  .logistics-order-item {
+    padding: 15px 14px;
+  }
+  .pharmacy-order-items b,
+  .logistics-order-item b {
+    font-size: 15px;
+  }
+  .pharmacy-order-items span,
+  .logistics-order-item span {
+    font-size: 12px;
+  }
+}
 
 /* 订单页面统一展示就诊人与下单时的收货地址快照，窄屏允许地址自然换行。 */
-.pharmacy-order-delivery-card{display:grid;gap:14px;padding:18px 20px;border:1px solid #eee7e5;border-radius:12px;background:#fff;box-shadow:0 5px 16px rgba(47,34,36,.06)}.pharmacy-order-delivery-card__patient,.pharmacy-order-delivery-card__address{display:flex;align-items:flex-start;gap:11px}.pharmacy-order-delivery-card svg{flex:0 0 auto;margin-top:2px;color:#b33444}.pharmacy-order-delivery-card div>div{display:grid;gap:4px;min-width:0}.pharmacy-order-delivery-card b{color:#172238;font-size:15px}.pharmacy-order-delivery-card span{color:#635d63;font-size:14px;line-height:1.5;overflow-wrap:anywhere}@media (max-width:360px){.pharmacy-order-delivery-card{padding:16px 14px}}
+.pharmacy-order-delivery-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px;
+  border: 1px solid #eee7e5;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 5px 16px rgba(47, 34, 36, 0.06);
+}
+.pharmacy-order-delivery-card__patient,
+.pharmacy-order-delivery-card__address {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+.pharmacy-order-delivery-card svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #b33444;
+}
+.pharmacy-order-delivery-card div > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.pharmacy-order-delivery-card b {
+  color: #172238;
+  font-size: 15px;
+}
+.pharmacy-order-delivery-card span {
+  color: #635d63;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 360px) {
+  .pharmacy-order-delivery-card {
+    padding: 16px 14px;
+  }
+}
 
 /* 物流详情以横向四阶段进度展示自动配送状态，适配窄屏标签长度。 */
-.logistics-progress{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:24px 0 3px;padding:0;list-style:none}.logistics-progress__step{position:relative;z-index:0;display:grid;justify-items:center;gap:9px;min-width:0;color:#a98489;text-align:center}.logistics-progress__step:not(:last-child)::after{position:absolute;z-index:-1;top:14px;left:calc(50% + 14px);width:calc(100% - 28px);height:3px;background:#efd8dc;content:""}.logistics-progress__step.is-done:not(:last-child)::after{background:#c33a4d}.logistics-progress__dot{display:block;width:29px;height:29px;border:3px solid #df9ca6;border-radius:50%;background:#fff}.logistics-progress__step b{min-width:0;color:inherit;font-size:13px;font-weight:700;line-height:1.35}.logistics-progress__step.is-done{color:#b33444}.logistics-progress__step.is-done .logistics-progress__dot{border-color:#c33a4d;box-shadow:inset 0 0 0 6px #fff;background:#c33a4d}.logistics-progress__step.is-active{color:#b33444}.logistics-progress__step.is-active .logistics-progress__dot{border-color:#b33444;box-shadow:inset 0 0 0 5px #fff;background:#c33a4d}@media (max-width:360px){.logistics-progress{margin-top:20px}.logistics-progress__step{gap:7px}.logistics-progress__dot{width:25px;height:25px}.logistics-progress__step:not(:last-child)::after{top:12px;left:calc(50% + 12px);width:calc(100% - 24px)}.logistics-progress__step b{font-size:12px;word-break:break-all}}
+.logistics-progress {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 24px 0 3px;
+  padding: 0;
+  list-style: none;
+}
+.logistics-progress__step {
+  position: relative;
+  z-index: 0;
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: #a98489;
+  text-align: center;
+}
+.logistics-progress__step:not(:last-child)::after {
+  position: absolute;
+  z-index: -1;
+  top: 14px;
+  left: calc(50% + 14px);
+  width: calc(100% - 28px);
+  height: 3px;
+  background: #efd8dc;
+  content: "";
+}
+.logistics-progress__step.is-done:not(:last-child)::after {
+  background: #c33a4d;
+}
+.logistics-progress__dot {
+  display: block;
+  width: 29px;
+  height: 29px;
+  border: 3px solid #df9ca6;
+  border-radius: 50%;
+  background: #fff;
+}
+.logistics-progress__step b {
+  min-width: 0;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.logistics-progress__step.is-done {
+  color: #b33444;
+}
+.logistics-progress__step.is-done .logistics-progress__dot {
+  border-color: #c33a4d;
+  box-shadow: inset 0 0 0 6px #fff;
+  background: #c33a4d;
+}
+.logistics-progress__step.is-active {
+  color: #b33444;
+}
+.logistics-progress__step.is-active .logistics-progress__dot {
+  border-color: #b33444;
+  box-shadow: inset 0 0 0 5px #fff;
+  background: #c33a4d;
+}
+@media (max-width: 360px) {
+  .logistics-progress {
+    margin-top: 20px;
+  }
+  .logistics-progress__step {
+    gap: 7px;
+  }
+  .logistics-progress__dot {
+    width: 25px;
+    height: 25px;
+  }
+  .logistics-progress__step:not(:last-child)::after {
+    top: 12px;
+    left: calc(50% + 12px);
+    width: calc(100% - 24px);
+  }
+  .logistics-progress__step b {
+    font-size: 12px;
+    word-break: break-all;
+  }
+}
 
 /* 首页恢复医疗红主题，顶部品牌沿用原有圆形“智”字识别。 */
-main.home-page,.home-overview{background:#f7f5f4}.home-overview{padding-top:14px}.home-appbar{grid-template-columns:minmax(0,1fr) auto}.home-appbar__hospital svg:first-child{color:#b33444}.home-appbar__hospital svg:last-child{color:#a08e93}.home-appbar__brand{display:inline-flex;align-items:center;gap:6px;color:#8e2737;white-space:nowrap}.home-appbar__brand b{display:grid;place-items:center;width:30px;height:30px;border:2px solid currentColor;border-radius:50%;font-size:16px;line-height:1}.home-appbar__brand strong{font-size:17px;font-weight:900}.home-appbar__notice{display:none}.home-search-bar{box-shadow:0 4px 14px rgba(82,43,49,.08)}.home-search-bar svg{color:#9f8086}.home-promo{box-shadow:0 10px 24px rgba(122,40,53,.14)}.home-page .patient-switch-card,.home-page .quick-grid{border-color:#eee2e4;box-shadow:0 5px 15px rgba(82,43,49,.06)}.home-page h2{color:#3d1d27}.home-page .quick-grid button,.home-page .text-button{color:#b33444}.home-page .quick-grid button:hover{background:#fdf5f6}@media (max-width:360px){.home-appbar{grid-template-columns:minmax(0,1fr) auto}.home-appbar__brand{display:inline-flex}.home-appbar__brand strong{font-size:16px}.home-appbar__brand b{width:28px;height:28px;font-size:15px}}
+main.home-page,
+.home-overview {
+  background: #f7f5f4;
+}
+.home-overview {
+  padding-top: 14px;
+}
+.home-appbar {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.home-appbar__hospital svg:first-child {
+  color: #b33444;
+}
+.home-appbar__hospital svg:last-child {
+  color: #a08e93;
+}
+.home-appbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #8e2737;
+  white-space: nowrap;
+}
+.home-appbar__brand b {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  font-size: 16px;
+  line-height: 1;
+}
+.home-appbar__brand strong {
+  font-size: 17px;
+  font-weight: 900;
+}
+.home-appbar__notice {
+  display: none;
+}
+.home-search-bar {
+  box-shadow: 0 4px 14px rgba(82, 43, 49, 0.08);
+}
+.home-search-bar svg {
+  color: #9f8086;
+}
+.home-promo {
+  box-shadow: 0 10px 24px rgba(122, 40, 53, 0.14);
+}
+.home-page .patient-switch-card,
+.home-page .quick-grid {
+  border-color: #eee2e4;
+  box-shadow: 0 5px 15px rgba(82, 43, 49, 0.06);
+}
+.home-page h2 {
+  color: #3d1d27;
+}
+.home-page .quick-grid button,
+.home-page .text-button {
+  color: #b33444;
+}
+.home-page .quick-grid button:hover {
+  background: #fdf5f6;
+}
+@media (max-width: 360px) {
+  .home-appbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .home-appbar__brand {
+    display: inline-flex;
+  }
+  .home-appbar__brand strong {
+    font-size: 16px;
+  }
+  .home-appbar__brand b {
+    width: 28px;
+    height: 28px;
+    font-size: 15px;
+  }
+}
 
 /* 首页顶部使用橙黄到暖灰渐变的弧形背景，烘托医院和服务入口。 */
-.home-overview{position:relative;z-index:0;background:transparent}.home-overview::before{position:absolute;z-index:-1;top:0;right:0;left:0;height:218px;background:linear-gradient(128deg,#e2c487 0%,#d3ae78 46%,#c5b49d 73%,#adb3b1 100%);clip-path:ellipse(105% 100% at 50% 0);content:""}
+.home-overview {
+  position: relative;
+  z-index: 0;
+  background: transparent;
+}
+.home-overview::before {
+  position: absolute;
+  z-index: -1;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 218px;
+  background: linear-gradient(
+    128deg,
+    #e2c487 0%,
+    #d3ae78 46%,
+    #c5b49d 73%,
+    #adb3b1 100%
+  );
+  clip-path: ellipse(105% 100% at 50% 0);
+  content: "";
+}
 
 /* 轮播窗与宣传图统一直角尺寸，并以对应底色填充源图透明圆角。 */
-.home-page .home-promo{margin:0;border-radius:0}.home-promo__slide{overflow:hidden;border-radius:0;background:#0079ff}.home-promo__slide--consultation{background:#ff932f}.home-promo__slide img{border-radius:0;transform:scale(1.13)}
+.home-page .home-promo {
+  margin: 0;
+  border-radius: 0;
+}
+.home-promo__slide {
+  overflow: hidden;
+  border-radius: 0;
+  background: #0079ff;
+}
+.home-promo__slide--consultation {
+  background: #ff932f;
+}
+.home-promo__slide img {
+  border-radius: 0;
+  transform: scale(1.13);
+}
 
 /* 首页就诊人卡片支持横向滑动切换，末尾保留添加家庭成员入口。 */
-.home-page .patient-carousel{margin:14px 0 20px}.home-page .patient-carousel__track{display:flex;gap:0;overflow-x:auto;padding:0 0 5px;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch}.home-page .patient-carousel__track::-webkit-scrollbar{display:none}.home-page .patient-carousel__card,.home-page .patient-carousel__add-card{display:grid;flex:0 0 100%;min-height:150px;align-content:start;border-radius:12px;text-align:left;scroll-snap-align:start}.home-page .patient-carousel__card{gap:7px;padding:17px;border:1px solid #eadbdd;background:#fff;color:#312028;box-shadow:0 5px 15px rgba(82,43,49,.06)}.home-page .patient-carousel__card.is-current{border-color:#b33444;background:#b33444;color:#fff;box-shadow:0 8px 19px rgba(179,52,68,.25)}.home-page .patient-carousel__hint{display:block;justify-self:center;color:#9a747b;font-size:12px;line-height:1.2}.home-page .patient-carousel__card.is-current .patient-carousel__hint{color:#ffe9ec}.home-page .patient-carousel__name{display:flex;align-items:center;gap:7px;font-size:22px;line-height:1.2}.home-page .patient-carousel__name em{padding:2px 5px;border-radius:4px;background:#f9e8ea;color:#b33444;font-size:11px;font-style:normal}.home-page .patient-carousel__card.is-current .patient-carousel__name em{background:rgba(255,255,255,.18);color:#fff}.home-page .patient-carousel__card>span:not(.patient-carousel__hint),.home-page .patient-carousel__card small{overflow:hidden;color:#71656a;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.home-page .patient-carousel__card small{margin-top:4px;font-size:13px}.home-page .patient-carousel__card.is-current>span:not(.patient-carousel__hint),.home-page .patient-carousel__card.is-current small{color:#fff1f3}.home-page .patient-carousel__add-card{position:relative;place-items:center;align-content:center;gap:8px;border:1px dashed #cb9ba2;background:#fffafa;color:#9a3140;text-align:center}.home-page .patient-carousel__add-card>.patient-carousel__hint{position:absolute;top:17px;left:50%;color:#886e73;transform:translateX(-50%)}.home-page .patient-carousel__add-card>span{display:grid;place-items:center;width:34px;height:34px;margin-top:10px;border-radius:50%;background:#f8e8ea;color:#b33444}.home-page .patient-carousel__add-card>b{font-size:17px}.home-page .patient-carousel__add-card small{color:#886e73;font-size:13px}
+.home-page .patient-carousel {
+  margin: 14px 0 20px;
+}
+.home-page .patient-carousel__track {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  padding: 0 0 5px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.home-page .patient-carousel__track::-webkit-scrollbar {
+  display: none;
+}
+.home-page .patient-carousel__card,
+.home-page .patient-carousel__add-card {
+  display: grid;
+  flex: 0 0 100%;
+  min-height: 150px;
+  align-content: start;
+  border-radius: 12px;
+  text-align: left;
+  scroll-snap-align: start;
+}
+.home-page .patient-carousel__card {
+  gap: 7px;
+  padding: 17px;
+  border: 1px solid #eadbdd;
+  background: #fff;
+  color: #312028;
+  box-shadow: 0 5px 15px rgba(82, 43, 49, 0.06);
+}
+.home-page .patient-carousel__card.is-current {
+  border-color: #b33444;
+  background: #b33444;
+  color: #fff;
+  box-shadow: 0 8px 19px rgba(179, 52, 68, 0.25);
+}
+.home-page .patient-carousel__hint {
+  display: block;
+  justify-self: center;
+  color: #9a747b;
+  font-size: 12px;
+  line-height: 1.2;
+}
+.home-page .patient-carousel__card.is-current .patient-carousel__hint {
+  color: #ffe9ec;
+}
+.home-page .patient-carousel__name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 22px;
+  line-height: 1.2;
+}
+.home-page .patient-carousel__name em {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #f9e8ea;
+  color: #b33444;
+  font-size: 11px;
+  font-style: normal;
+}
+.home-page .patient-carousel__card.is-current .patient-carousel__name em {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+.home-page .patient-carousel__card > span:not(.patient-carousel__hint),
+.home-page .patient-carousel__card small {
+  overflow: hidden;
+  color: #71656a;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.home-page .patient-carousel__card small {
+  margin-top: 4px;
+  font-size: 13px;
+}
+.home-page
+  .patient-carousel__card.is-current
+  > span:not(.patient-carousel__hint),
+.home-page .patient-carousel__card.is-current small {
+  color: #fff1f3;
+}
+.home-page .patient-carousel__add-card {
+  position: relative;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  border: 1px dashed #cb9ba2;
+  background: #fffafa;
+  color: #9a3140;
+  text-align: center;
+}
+.home-page .patient-carousel__add-card > .patient-carousel__hint {
+  position: absolute;
+  top: 17px;
+  left: 50%;
+  color: #886e73;
+  transform: translateX(-50%);
+}
+.home-page .patient-carousel__add-card > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-top: 10px;
+  border-radius: 50%;
+  background: #f8e8ea;
+  color: #b33444;
+}
+.home-page .patient-carousel__add-card > b {
+  font-size: 17px;
+}
+.home-page .patient-carousel__add-card small {
+  color: #886e73;
+  font-size: 13px;
+}
 
 .chat-list {
   /* 在线问诊消息区固定高度，历史消息在容器内滚动。 */

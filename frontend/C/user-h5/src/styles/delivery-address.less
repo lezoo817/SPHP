@@ -1,8 +1,410 @@
 /* 收货地址簿采用无嵌套卡片列表，窄屏下保持地址和操作可辨识。 */
 /* 收货地址头部保持标题居中，新增入口在窄屏下也不会挤出视口。 */
-.address-page{min-height:100vh;background:#f7f5f4}.address-page__header{position:relative;display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:8px}.address-page__header h1{position:absolute;left:50%;transform:translateX(-50%);pointer-events:none}.address-page__header>div{display:flex;align-items:center;justify-content:flex-end;min-width:0}.address-page__header>.page-header__controls{justify-content:flex-start}.address-page__add{flex:0 0 auto;padding:7px 2px;font-weight:800;white-space:nowrap}.address-page__content{padding-top:15px}.address-search{margin-bottom:14px}.address-card{position:relative;display:flex;align-items:center;gap:12px;margin:0 -28px;padding:22px 28px;border-bottom:1px solid #e9e4e2;background:#fff}.address-card__main{min-width:0;flex:1}.address-card__region,.address-card__receiver{margin:0;color:#777078;font-size:14px;line-height:1.5}.address-card h2{margin:8px 0;font-size:21px;line-height:1.4;word-break:break-word}.address-card__receiver{font-size:16px;color:#35313a}.address-card__receiver em{margin-left:9px;padding:3px 6px;border-radius:4px;background:#fff0e4;color:#d85f16;font-size:12px;font-style:normal}.address-card__menu{flex:0 0 auto;width:38px;height:38px;color:#756f74}.address-card__quick-menu{position:absolute;z-index:3;top:50%;right:72px;display:grid;min-width:80px;overflow:hidden;border:1px solid #e2dbda;border-radius:7px;background:#fff;box-shadow:0 7px 18px rgba(41,31,34,.18);transform:translateY(-50%)}.address-card__quick-menu button{display:flex;align-items:center;justify-content:center;gap:4px;min-height:36px;border:0;border-bottom:1px solid #eee8e7;background:#fff;color:#39333a;font-size:13px;font-weight:700}.address-card__quick-menu button:last-child{border-bottom:0}.address-card__quick-menu button.danger{color:#bf3c3c}.address-delete-confirm{padding-top:12px}.address-delete-confirm p{margin:0;color:#5e575e;line-height:1.6}.address-delete-confirm>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:22px}.address-delete-confirm .primary-button,.address-delete-confirm .secondary-button{margin:0}.address-empty{display:grid;place-items:center;gap:9px;padding:68px 22px;color:#78727a;text-align:center}.address-empty svg{color:#b33444}.address-empty p{margin:0}.address-empty .primary-button{max-width:240px}
+.address-page {
+  min-height: 100vh;
+  background: #f7f5f4;
+}
+.address-page__header {
+  position: relative;
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  gap: 8px;
+}
+.address-page__header h1 {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.address-page__header > div {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.address-page__header > .page-header__controls {
+  justify-content: flex-start;
+}
+.address-page__add {
+  flex: 0 0 auto;
+  padding: 7px 2px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.address-page__content {
+  padding-top: 15px;
+}
+.address-search {
+  margin-bottom: 14px;
+}
+.address-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 -28px;
+  padding: 22px 28px;
+  border-bottom: 1px solid #e9e4e2;
+  background: #fff;
+}
+.address-card__main {
+  min-width: 0;
+  flex: 1;
+}
+.address-card__region,
+.address-card__receiver {
+  margin: 0;
+  color: #777078;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.address-card h2 {
+  margin: 8px 0;
+  font-size: 21px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.address-card__receiver {
+  font-size: 16px;
+  color: #35313a;
+}
+.address-card__receiver em {
+  margin-left: 9px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: #fff0e4;
+  color: #d85f16;
+  font-size: 12px;
+  font-style: normal;
+}
+/* 地址卡片操作区：三点菜单、就地编辑/删除选项与删除确认弹窗。 */
+.address-card__menu {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  color: #756f74;
+}
+.address-card__quick-menu {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  right: 72px;
+  display: grid;
+  min-width: 80px;
+  overflow: hidden;
+  border: 1px solid #e2dbda;
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: 0 7px 18px rgba(41, 31, 34, 0.18);
+  transform: translateY(-50%);
+}
+.address-card__quick-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 36px;
+  border: 0;
+  border-bottom: 1px solid #eee8e7;
+  background: #fff;
+  color: #39333a;
+  font-size: 13px;
+  font-weight: 700;
+}
+.address-card__quick-menu button:last-child {
+  border-bottom: 0;
+}
+.address-card__quick-menu button.danger {
+  color: #bf3c3c;
+}
+.address-delete-confirm {
+  padding-top: 12px;
+}
+.address-delete-confirm p {
+  margin: 0;
+  color: #5e575e;
+  line-height: 1.6;
+}
+.address-delete-confirm > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 22px;
+}
+.address-delete-confirm .primary-button,
+.address-delete-confirm .secondary-button {
+  margin: 0;
+}
+/* 地址簿空状态：无地址时引导用户新增收货地址。 */
+.address-empty {
+  display: grid;
+  place-items: center;
+  gap: 9px;
+  padding: 68px 22px;
+  color: #78727a;
+  text-align: center;
+}
+.address-empty svg {
+  color: #b33444;
+}
+.address-empty p {
+  margin: 0;
+}
+.address-empty .primary-button {
+  max-width: 240px;
+}
 /* 地址表单用白色地区卡和红色必填标记强化填写顺序与错误反馈。 */
-.address-form-page{min-height:100vh;background:#f7f5f4}.address-form{padding-bottom:106px}.address-form label{margin:0;padding:18px 0;border-bottom:1px solid #e9e4e2}.address-form label>b,.address-region-field b{display:block;color:#1d293c}.address-form label>b i,.address-region-field b i{margin-right:4px;color:#c33a4d;font-style:normal}.address-form label input{min-height:45px;padding:11px 13px;border:1px solid transparent;border-radius:0;background:#fff;border-bottom-color:#ece7e5;outline-color:#b33444}.address-form label.is-invalid input{border-color:#c33a4d;background:#fff8f8;box-shadow:inset 0 0 0 1px rgba(195,58,77,.08)}.address-region-field{display:grid;grid-template-columns:minmax(0,1fr) auto 20px;align-items:center;gap:8px;width:100%;margin-bottom:12px;padding:18px;border:1px solid transparent;border-radius:10px;background:#fff;color:#1d293c;text-align:left;box-shadow:0 3px 12px rgba(58,38,30,.05)}.address-region-field.is-invalid{border-color:#c33a4d;background:#fff8f8;box-shadow:0 0 0 1px rgba(195,58,77,.1)}.address-region-field span,.address-default-toggle span{display:grid;gap:5px}.address-region-field small,.address-default-toggle small{color:#827b82;font-size:13px;font-weight:400}.address-region-field strong{overflow:hidden;color:#b33444;font-size:15px;text-align:right;text-overflow:ellipsis;white-space:nowrap}.address-default-toggle{display:flex!important;align-items:center;justify-content:space-between;gap:16px}.address-default-toggle input{width:20px!important;height:20px;accent-color:#b33444}.address-form__submit{position:fixed;z-index:4;right:28px;bottom:20px;left:28px;width:auto;margin:0}
+.address-form-page {
+  min-height: 100vh;
+  background: #f7f5f4;
+}
+.address-form {
+  padding-bottom: 106px;
+}
+.address-form label {
+  margin: 0;
+  padding: 18px 0;
+  border-bottom: 1px solid #e9e4e2;
+}
+.address-form label > b,
+.address-region-field b {
+  display: block;
+  color: #1d293c;
+}
+.address-form label > b i,
+.address-region-field b i {
+  margin-right: 4px;
+  color: #c33a4d;
+  font-style: normal;
+}
+.address-form label input {
+  min-height: 45px;
+  padding: 11px 13px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: #fff;
+  border-bottom-color: #ece7e5;
+  outline-color: #b33444;
+}
+.address-form label.is-invalid input {
+  border-color: #c33a4d;
+  background: #fff8f8;
+  box-shadow: inset 0 0 0 1px rgba(195, 58, 77, 0.08);
+}
+.address-region-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 20px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 18px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #fff;
+  color: #1d293c;
+  text-align: left;
+  box-shadow: 0 3px 12px rgba(58, 38, 30, 0.05);
+}
+.address-region-field.is-invalid {
+  border-color: #c33a4d;
+  background: #fff8f8;
+  box-shadow: 0 0 0 1px rgba(195, 58, 77, 0.1);
+}
+.address-region-field span,
+.address-default-toggle span {
+  display: grid;
+  gap: 5px;
+}
+.address-region-field small,
+.address-default-toggle small {
+  color: #827b82;
+  font-size: 13px;
+  font-weight: 400;
+}
+.address-region-field strong {
+  overflow: hidden;
+  color: #b33444;
+  font-size: 15px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.address-default-toggle {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.address-default-toggle input {
+  width: 20px !important;
+  height: 20px;
+  accent-color: #b33444;
+}
+.address-form__submit {
+  position: fixed;
+  z-index: 4;
+  right: 28px;
+  bottom: 20px;
+  left: 28px;
+  width: auto;
+  margin: 0;
+}
 /* 所在地区按原型从底部升起，仅在省、市两级之间切换。 */
-.region-sheet-mask{position:fixed;z-index:30;inset:0;display:flex;align-items:flex-end;background:rgba(23,34,56,.48)}.region-sheet{width:100%;max-height:84vh;overflow:hidden;border-radius:18px 18px 0 0;background:#fff;animation:region-sheet-enter .2s ease-out}.region-sheet__header{display:flex;align-items:center;justify-content:space-between;padding:21px 22px 14px;border-bottom:1px solid #eee8e7}.region-sheet__header>div{display:flex;align-items:center;gap:8px}.region-sheet__header h2{margin:0;font-size:23px}.region-sheet__selected{display:flex;align-items:center;gap:7px;padding:15px 22px;border-bottom:1px solid #eee8e7;color:#7d767d}.region-sheet__selected button{overflow:hidden;max-width:46%;border:0;background:transparent;color:#b33444;font-weight:700;text-overflow:ellipsis;white-space:nowrap}.region-sheet__selected button.active{color:#1d293c}.region-sheet__selected b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.region-list{max-height:calc(84vh - 137px);overflow-y:auto;padding:4px 0 22px}.region-list__group{position:relative}.region-list__group button{display:grid;grid-template-columns:minmax(0,1fr) auto 18px;align-items:center;gap:8px;width:100%;min-height:53px;padding:7px 22px 7px 54px;border:0;background:#fff;color:#26212b;text-align:left}.region-list__group button.selected,.region-list--cities button.selected{background:#fff9f9;color:#b33444;font-weight:700}.region-list__group small{color:#9b9499;font-size:12px}.region-list__letter{position:absolute;top:20px;left:22px;color:#9a949b;font-size:13px}.region-list__title{margin:0;padding:14px 22px 8px;color:#1d293c;font-size:18px;font-weight:800}.region-list--cities button{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;width:100%;min-height:53px;padding:7px 22px;border:0;background:#fff;color:#26212b;text-align:left}.region-list--cities button b{color:#b33444;font-size:12px}@keyframes region-sheet-enter{from{transform:translateY(100%)}to{transform:translateY(0)}}
-@media (max-width:360px){.address-card{margin-right:-18px;margin-left:-18px;padding:19px 18px}.address-card h2{font-size:19px}.address-page__header{padding-right:14px;padding-left:14px}.address-page__add{font-size:14px}.region-sheet__header h2{font-size:21px}.region-list>button{padding-right:18px;padding-left:18px}.address-form__submit{right:18px;left:18px}}
+.region-sheet-mask {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(23, 34, 56, 0.48);
+}
+.region-sheet {
+  width: 100%;
+  max-height: 84vh;
+  overflow: hidden;
+  border-radius: 18px 18px 0 0;
+  background: #fff;
+  animation: region-sheet-enter 0.2s ease-out;
+}
+.region-sheet__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 21px 22px 14px;
+  border-bottom: 1px solid #eee8e7;
+}
+.region-sheet__header > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.region-sheet__header h2 {
+  margin: 0;
+  font-size: 23px;
+}
+.region-sheet__selected {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 15px 22px;
+  border-bottom: 1px solid #eee8e7;
+  color: #7d767d;
+}
+.region-sheet__selected button {
+  overflow: hidden;
+  max-width: 46%;
+  border: 0;
+  background: transparent;
+  color: #b33444;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.region-sheet__selected button.active {
+  color: #1d293c;
+}
+.region-sheet__selected b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.region-list {
+  max-height: calc(84vh - 137px);
+  overflow-y: auto;
+  padding: 4px 0 22px;
+}
+.region-list__group {
+  position: relative;
+}
+.region-list__group button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 18px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 53px;
+  padding: 7px 22px 7px 54px;
+  border: 0;
+  background: #fff;
+  color: #26212b;
+  text-align: left;
+}
+.region-list__group button.selected,
+.region-list--cities button.selected {
+  background: #fff9f9;
+  color: #b33444;
+  font-weight: 700;
+}
+.region-list__group small {
+  color: #9b9499;
+  font-size: 12px;
+}
+.region-list__letter {
+  position: absolute;
+  top: 20px;
+  left: 22px;
+  color: #9a949b;
+  font-size: 13px;
+}
+.region-list__title {
+  margin: 0;
+  padding: 14px 22px 8px;
+  color: #1d293c;
+  font-size: 18px;
+  font-weight: 800;
+}
+.region-list--cities button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 53px;
+  padding: 7px 22px;
+  border: 0;
+  background: #fff;
+  color: #26212b;
+  text-align: left;
+}
+.region-list--cities button b {
+  color: #b33444;
+  font-size: 12px;
+}
+@keyframes region-sheet-enter {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+/* 收货地址页在 360px 宽度下压缩标题、卡片和地区选择面板。 */
+@media (max-width: 360px) {
+  .address-card {
+    margin-right: -18px;
+    margin-left: -18px;
+    padding: 19px 18px;
+  }
+  .address-card h2 {
+    font-size: 19px;
+  }
+  .address-page__header {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+  .address-page__add {
+    font-size: 14px;
+  }
+  .region-sheet__header h2 {
+    font-size: 21px;
+  }
+  .region-list > button {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+  .address-form__submit {
+    right: 18px;
+    left: 18px;
+  }
+}

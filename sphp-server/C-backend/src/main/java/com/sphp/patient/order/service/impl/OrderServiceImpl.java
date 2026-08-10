@@ -272,7 +272,7 @@ public class OrderServiceImpl implements OrderService {
         }
         return DrugOrderReminderActivationVO.builder()
                 .drugOrderId(drugOrderId)
-                .status("PENDING_RECEIPT")
+                .status("PENDING_RECEIPT") // 订单已收货时同步完成启用
                 .authorizedAt(now)
                 .build();
     }
@@ -543,6 +543,7 @@ public class OrderServiceImpl implements OrderService {
             return;
         }
         for (MedicationReminderPlanRecord plan : orderDataMapper.selectOrderMedicationReminderPlans(drugOrderId)) {
+            // 解析计划频次为具体时间
             List<LocalTime> reminderTimes = proposalResolveReminderTimes(plan.frequency());
             // 条件更新尊重用户收货前已暂停、完成或手动开启的计划状态。
             orderDataMapper.enableOrderMedicationReminderPlan(
@@ -599,8 +600,8 @@ public class OrderServiceImpl implements OrderService {
                             .items(group.stream()
                                     .map(row -> PharmacyInventoryVO.Item.builder()
                                             .drugId(row.drugId())
-                                            .availableCount(row.availableCount())
-                                            .unitPriceCent(row.unitPriceCent())
+                                            .availableCount(row.availableCount()) // 可用库存
+                                            .unitPriceCent(row.unitPriceCent()) // 单价
                                             .build())
                                     .toList())
                             .build();
@@ -620,10 +621,10 @@ public class OrderServiceImpl implements OrderService {
                 .orderName(record.orderName())
                 .pharmacyName(record.pharmacyName())
                 .status(record.status())
-                .logisticsStatus(record.logisticsStatus())
-                .latestLogisticsNode(record.latestLogisticsNode())
+                .logisticsStatus(record.logisticsStatus()) // 物流状态
+                .latestLogisticsNode(record.latestLogisticsNode()) // 最新物流节点
                 .amountCent(record.amountCent())
-                .expireAt(record.expireAt())
+                .expireAt(record.expireAt()) // 订单过期时间
                 .patientName(record.patientName())
                 .build();
     }

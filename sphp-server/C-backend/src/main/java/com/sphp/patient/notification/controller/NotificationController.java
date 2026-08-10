@@ -40,7 +40,7 @@ import static com.sphp.shared.common.enums.ErrorCodeEnum.INVALID_PARAMETER;
 @Tag(name = "C端站内通知", description = "查询通知并标记已读")
 @RequiredArgsConstructor
 public class NotificationController {
-
+    // 通知服务
     private final NotificationService notificationService;
     // 幂等服务
     private final CIdempotencyService idempotencyService;

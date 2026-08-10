@@ -170,7 +170,7 @@ export default function DoctorBookingPage() {
     }
   }
 
-  return <main className="subpage doctor-page"><PageHeader title="医生主页" backPath="/home/departments" /><section className="subpage-content">
+  return <main className="subpage doctor-page"><PageHeader title="医生主页" backPath={initialDepartmentId ? `/home/departments?departmentId=${initialDepartmentId}` : '/home/departments'} /><section className="subpage-content">
     {loadingDoctor && <p className="empty-state">正在读取医生资料...</p>}
     {!loadingDoctor && doctor && <><section className="doctor-profile-card"><span className="doctor-profile-avatar">{doctor.name.slice(0, 1)}</span><div><h2>{doctor.name} <small>{doctor.title || '医生'}</small></h2><p>{doctor.departmentName || '所属科室待确认'}</p><p>{doctor.specialty || '暂无专长说明'}</p><strong>挂号费 {formatAmount(doctor.registrationFeeCent)}</strong></div></section><section className="doctor-service-card"><CalendarPlus size={26} /><div><h2>预约挂号</h2></div></section>{isDuplicateBookingBlocked && <section className="duplicate-appointment-notice"><b>已有待就诊挂号</b><p>当前就诊人正在等待该医生接诊，完成、取消或失效后可再次预约。</p><button className="secondary-button" type="button" onClick={() => navigate('/assistant')}>查看挂号记录</button></section>}<section className="doctor-schedule"><h2>{doctor.departmentName || '门诊'}号源</h2>{loadingSchedule && <p className="empty-state">号源加载中...</p>}{!loadingSchedule && <ScheduleTable dates={dates} selectedDate={selectedDate} slotsByDate={slotsByDate} loadingDates={loadingDates} isDuplicateBookingBlocked={isDuplicateBookingBlocked} isCheckingBookingStatus={checkingBookingStatus} onSelectDate={selectDate} onChooseSlot={chooseSlot} />}</section></>}
     {!loadingDoctor && !doctor && <p className="empty-state">暂无可展示的医生资料</p>}

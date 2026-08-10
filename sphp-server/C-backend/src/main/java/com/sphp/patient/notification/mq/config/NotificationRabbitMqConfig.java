@@ -106,7 +106,12 @@ public class NotificationRabbitMqConfig {
 
     /**
      * 创建消费失败后进入死信交换机的业务队列。
-     *
+     * <p>
+     *     通知队列流程（真正的死信）：
+     * Producer → BusinessExchange → notificationQueue → @RabbitListener 消费
+     *                                           ↓ 消费失败
+     *                                        DLX → deadLetterQueue → 人工排查
+     * </p>
      * @param queueName 队列名称
      * @return 持久化业务队列
      */

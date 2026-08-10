@@ -1,15 +1,442 @@
 /* 首页跨就诊人健康待办与提醒计划页面，避免移动端长文本遮挡操作。 */
-.todo-count{color:#b33444;font-size:14px;font-weight:700;white-space:nowrap}/* 健康待办标题区在窄屏同时容纳数量与一键完成操作，避免挤压标题或超出页面。 */.todo-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}.todo-complete-all{flex:none;min-height:29px;padding:4px 8px;border:1px solid #dba9b0;border-radius:6px;background:#fff;color:#b33444;font-size:13px;font-weight:700;white-space:nowrap}.todo-complete-all:active{background:#fff1f3}.health-todo-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;margin:10px 0;padding:15px;border:0;border-radius:10px;background:#fff;color:#1d293c;text-align:left;box-shadow:0 5px 15px rgba(58,38,30,.06)}.health-todo-card.has-location{align-items:start;min-height:104px;padding:18px}.health-todo-card__icon{display:grid;width:38px;height:38px;place-items:center;border-radius:8px;background:#f8e4e7;color:#b33444;font-weight:800}.health-todo-card__icon.medication{background:#e5f3eb;color:#177a58}.health-todo-card__icon.follow_up{background:#e6edf8;color:#3d6094}.health-todo-card b,.health-todo-card span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.health-todo-card span{margin-top:5px;color:#716c72;font-size:14px}.health-todo-card small{display:block;margin-top:6px;color:#716c72;font-size:13px;line-height:1.35;white-space:normal;word-break:break-word}.health-todo-card.has-location>svg{margin-top:11px}
+.todo-count {
+  color: #b33444;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+} /* 健康待办标题区在窄屏同时容纳数量与一键完成操作，避免挤压标题或超出页面。 */
+.todo-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.todo-complete-all {
+  flex: none;
+  min-height: 29px;
+  padding: 4px 8px;
+  border: 1px solid #dba9b0;
+  border-radius: 6px;
+  background: #fff;
+  color: #b33444;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.todo-complete-all:active {
+  background: #fff1f3;
+}
+.health-todo-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin: 10px 0;
+  padding: 15px;
+  border: 0;
+  border-radius: 10px;
+  background: #fff;
+  color: #1d293c;
+  text-align: left;
+  box-shadow: 0 5px 15px rgba(58, 38, 30, 0.06);
+}
+.health-todo-card.has-location {
+  align-items: start;
+  min-height: 104px;
+  padding: 18px;
+}
+.health-todo-card__icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 8px;
+  background: #f8e4e7;
+  color: #b33444;
+  font-weight: 800;
+}
+.health-todo-card__icon.medication {
+  background: #e5f3eb;
+  color: #177a58;
+}
+.health-todo-card__icon.follow_up {
+  background: #e6edf8;
+  color: #3d6094;
+}
+.health-todo-card b,
+.health-todo-card span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.health-todo-card span {
+  margin-top: 5px;
+  color: #716c72;
+  font-size: 14px;
+}
+.health-todo-card small {
+  display: block;
+  margin-top: 6px;
+  color: #716c72;
+  font-size: 13px;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-word;
+}
+.health-todo-card.has-location > svg {
+  margin-top: 11px;
+}
 /* 已开启提醒的用药待办首次确认后灰显，第二次点击可关闭当前提醒时段。 */
-.health-todo-card.is-medication-taken{background:#efeeed;color:#89848a;box-shadow:none}.health-todo-card.is-medication-taken .health-todo-card__icon.medication{background:#dfdddc;color:#8b878a}.health-todo-card.is-medication-taken span{color:#928d92}.health-todo-card__taken{color:#817c81;font-size:14px;font-style:normal;font-weight:700;white-space:nowrap}
+.health-todo-card.is-medication-taken {
+  background: #efeeed;
+  color: #89848a;
+  box-shadow: none;
+}
+.health-todo-card.is-medication-taken .health-todo-card__icon.medication {
+  background: #dfdddc;
+  color: #8b878a;
+}
+.health-todo-card.is-medication-taken span {
+  color: #928d92;
+}
+.health-todo-card__taken {
+  color: #817c81;
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 700;
+  white-space: nowrap;
+}
 
 /* 首页待办区固定容纳约八张常规卡片，更多待办仅在该区域内纵向滚动。 */
-.home-health-todo-list{display:grid;gap:10px;max-height:672px;overflow-y:auto;overscroll-behavior:contain;padding:0 3px 0 0;-webkit-overflow-scrolling:touch}.home-health-todo-list .health-todo-card{margin:0}.home-health-todo-list::-webkit-scrollbar{width:4px}.home-health-todo-list::-webkit-scrollbar-thumb{border-radius:4px;background:#d7d3d4}
-.plan-page{padding-bottom:34px}.plan-page__intro,.notification-page__intro{display:flex;gap:12px;align-items:flex-start;margin-bottom:18px}.plan-page__intro svg,.notification-page__intro svg{flex:none;color:#b33444}.plan-page__intro h2,.notification-page__intro h2{margin:0;font-size:22px}.plan-page__intro p,.notification-page__intro p{margin:5px 0 0;color:#756f76;font-size:14px}.plan-card{margin:12px 0;padding:17px;border-radius:10px;background:#fff;box-shadow:0 5px 15px rgba(58,38,30,.06)}.plan-card__top{display:flex;justify-content:space-between;gap:10px}.plan-card__top>div{min-width:0}.plan-card h3{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:19px}.plan-card__top p{margin:6px 0;color:#6d6870;word-break:break-word}.status-tag{flex:none;height:max-content;padding:4px 7px;border-radius:5px;background:#f0edef;color:#756f76;font-size:12px;font-style:normal}.status-tag.active,.status-tag.confirmed{background:#e5f3eb;color:#177a58}.status-tag.pending_confirm{background:#f9e9ca;color:#9a6200}.status-tag.completed,.status-tag.cancelled{background:#f0edef;color:#756f76}.plan-time{display:flex;align-items:center;gap:7px;margin:10px 0;color:#625e65;font-size:14px}.plan-actions{display:flex;gap:10px;margin-top:14px}.plan-action-button{min-height:38px;padding:8px 12px;border:0;border-radius:7px;background:#b33444;color:#fff;font-weight:700}.plan-actions .secondary-button{width:auto;min-height:38px;margin:0;padding:8px 12px}.full-width{width:100%;margin-top:8px}
+.home-health-todo-list {
+  display: grid;
+  gap: 10px;
+  max-height: 672px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 3px 0 0;
+  -webkit-overflow-scrolling: touch;
+}
+.home-health-todo-list .health-todo-card {
+  margin: 0;
+}
+.home-health-todo-list::-webkit-scrollbar {
+  width: 4px;
+}
+.home-health-todo-list::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: #d7d3d4;
+}
+/* “我的 > 用药提醒”：计划卡、状态标签、提醒时间和操作按钮。 */
+.plan-page {
+  padding-bottom: 34px;
+}
+.plan-page__intro,
+.notification-page__intro {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+.plan-page__intro svg,
+.notification-page__intro svg {
+  flex: none;
+  color: #b33444;
+}
+.plan-page__intro h2,
+.notification-page__intro h2 {
+  margin: 0;
+  font-size: 22px;
+}
+.plan-page__intro p,
+.notification-page__intro p {
+  margin: 5px 0 0;
+  color: #756f76;
+  font-size: 14px;
+}
+.plan-card {
+  margin: 12px 0;
+  padding: 17px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 5px 15px rgba(58, 38, 30, 0.06);
+}
+.plan-card__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.plan-card__top > div {
+  min-width: 0;
+}
+.plan-card h3 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 19px;
+}
+.plan-card__top p {
+  margin: 6px 0;
+  color: #6d6870;
+  word-break: break-word;
+}
+.status-tag {
+  flex: none;
+  height: max-content;
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: #f0edef;
+  color: #756f76;
+  font-size: 12px;
+  font-style: normal;
+}
+.status-tag.active,
+.status-tag.confirmed {
+  background: #e5f3eb;
+  color: #177a58;
+}
+.status-tag.pending_confirm {
+  background: #f9e9ca;
+  color: #9a6200;
+}
+.status-tag.completed,
+.status-tag.cancelled {
+  background: #f0edef;
+  color: #756f76;
+}
+.plan-time {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 0;
+  color: #625e65;
+  font-size: 14px;
+}
+.plan-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.plan-action-button {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: #b33444;
+  color: #fff;
+  font-weight: 700;
+}
+.plan-actions .secondary-button {
+  width: auto;
+  min-height: 38px;
+  margin: 0;
+  padding: 8px 12px;
+}
+.full-width {
+  width: 100%;
+  margin-top: 8px;
+}
 /* 用药计划双 Tab 以底部高亮区分未完成与已完成记录，窄屏保持均等点击区域。 */
-.medication-plan-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 4px;border-bottom:1px solid #e6dfde}.medication-plan-tabs button{min-width:0;padding:12px 4px;border:0;border-bottom:2px solid transparent;background:transparent;color:#756e73;font-size:16px;white-space:nowrap}.medication-plan-tabs button.active{border-bottom-color:#b33444;color:#b33444;font-weight:800}
+.medication-plan-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 4px;
+  border-bottom: 1px solid #e6dfde;
+}
+.medication-plan-tabs button {
+  min-width: 0;
+  padding: 12px 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #756e73;
+  font-size: 16px;
+  white-space: nowrap;
+}
+.medication-plan-tabs button.active {
+  border-bottom-color: #b33444;
+  color: #b33444;
+  font-weight: 800;
+}
 
 /* 用药提醒的就诊人切换区使用白色卡片，和下方计划列表形成清晰层级。 */
-.plan-page__patient-switch{width:100%;padding:17px;border:0;border-radius:10px;background:#fff;text-align:left;box-shadow:0 5px 15px rgba(58,38,30,.06)}.plan-page__patient-switch>div{min-width:0;flex:1}.plan-page__patient-switch>svg:last-child{color:#b33444}
-.notification-page__intro>div{min-width:0;flex:1}.notification-mark-all{flex:0 0 auto;padding:7px 9px;border:1px solid #e5c7cb;border-radius:7px;background:#fff;color:#b33444;font-size:13px;font-weight:700}.notification-mark-all:disabled{cursor:not-allowed;opacity:.58}.notification-read-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 10px;border-bottom:1px solid #e6dfde}.notification-read-tabs button{min-height:38px;border:0;border-bottom:2px solid transparent;background:transparent;color:#756e73;font-size:14px}.notification-read-tabs button.active{border-bottom-color:#b33444;color:#b33444;font-weight:800}.notification-card{display:block;width:100%;margin:10px 0;padding:16px;border:0;border-radius:10px;background:#fff;color:#1d293c;text-align:left;box-shadow:0 5px 15px rgba(58,38,30,.06)}.notification-card.unread{border-left:4px solid #b33444;background:#fffafa}.notification-card__top{display:flex;align-items:center;gap:8px}.notification-card__top em{padding:3px 6px;border-radius:5px;background:#f7e8eb;color:#b33444;font-size:12px;font-style:normal}.notification-card__top span{flex:1;overflow:hidden;color:#716c72;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.notification-card__top i{color:#b33444;font-size:12px;font-style:normal}.notification-card h3{margin:11px 0 6px;font-size:18px}.notification-card p{display:-webkit-box;overflow:hidden;margin:0;color:#625e65;line-height:1.55;-webkit-box-orient:vertical;-webkit-line-clamp:2}.notification-card small{display:block;margin-top:10px;color:#89838a}.load-more-button{display:flex;align-items:center;justify-content:center;gap:4px;width:100%;min-height:44px;margin:16px 0;border:0;background:transparent;color:#b33444;font-weight:700}
-@media (max-width:360px){.todo-actions{gap:5px}.todo-count{font-size:12px}.todo-complete-all{padding:4px 6px;font-size:12px}.health-todo-card{padding:13px 11px;gap:9px}.health-todo-card__icon{width:34px;height:34px}.health-todo-card b{font-size:14px}.plan-card{padding:14px}.plan-actions{flex-wrap:wrap}.medication-plan-tabs{gap:3px}.medication-plan-tabs button{padding-right:0;padding-left:0;font-size:15px}.notification-filter-tabs button{font-size:13px}.notification-card{padding:14px}.notification-card h3{font-size:16px}}
+.plan-page__patient-switch {
+  width: 100%;
+  padding: 17px;
+  border: 0;
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  box-shadow: 0 5px 15px rgba(58, 38, 30, 0.06);
+}
+.plan-page__patient-switch > div {
+  min-width: 0;
+  flex: 1;
+}
+.plan-page__patient-switch > svg:last-child {
+  color: #b33444;
+}
+/* “我的 > 通知消息”：顶部操作、已读筛选、消息卡和分页加载入口。 */
+.notification-page__intro > div {
+  min-width: 0;
+  flex: 1;
+}
+.notification-mark-all {
+  flex: 0 0 auto;
+  padding: 7px 9px;
+  border: 1px solid #e5c7cb;
+  border-radius: 7px;
+  background: #fff;
+  color: #b33444;
+  font-size: 13px;
+  font-weight: 700;
+}
+.notification-mark-all:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+.notification-read-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 10px;
+  border-bottom: 1px solid #e6dfde;
+}
+.notification-read-tabs button {
+  min-height: 38px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #756e73;
+  font-size: 14px;
+}
+.notification-read-tabs button.active {
+  border-bottom-color: #b33444;
+  color: #b33444;
+  font-weight: 800;
+}
+.notification-card {
+  display: block;
+  width: 100%;
+  margin: 10px 0;
+  padding: 16px;
+  border: 0;
+  border-radius: 10px;
+  background: #fff;
+  color: #1d293c;
+  text-align: left;
+  box-shadow: 0 5px 15px rgba(58, 38, 30, 0.06);
+}
+.notification-card.unread {
+  border-left: 4px solid #b33444;
+  background: #fffafa;
+}
+.notification-card__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.notification-card__top em {
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: #f7e8eb;
+  color: #b33444;
+  font-size: 12px;
+  font-style: normal;
+}
+.notification-card__top span {
+  flex: 1;
+  overflow: hidden;
+  color: #716c72;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notification-card__top i {
+  color: #b33444;
+  font-size: 12px;
+  font-style: normal;
+}
+.notification-card h3 {
+  margin: 11px 0 6px;
+  font-size: 18px;
+}
+.notification-card p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: #625e65;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.notification-card small {
+  display: block;
+  margin-top: 10px;
+  color: #89838a;
+}
+.load-more-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  margin: 16px 0;
+  border: 0;
+  background: transparent;
+  color: #b33444;
+  font-weight: 700;
+}
+/* 健康待办、用药计划和通知列表的 360px 窄屏适配。 */
+@media (max-width: 360px) {
+  .todo-actions {
+    gap: 5px;
+  }
+  .todo-count {
+    font-size: 12px;
+  }
+  .todo-complete-all {
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+  .health-todo-card {
+    padding: 13px 11px;
+    gap: 9px;
+  }
+  .health-todo-card__icon {
+    width: 34px;
+    height: 34px;
+  }
+  .health-todo-card b {
+    font-size: 14px;
+  }
+  .plan-card {
+    padding: 14px;
+  }
+  .plan-actions {
+    flex-wrap: wrap;
+  }
+  .medication-plan-tabs {
+    gap: 3px;
+  }
+  .medication-plan-tabs button {
+    padding-right: 0;
+    padding-left: 0;
+    font-size: 15px;
+  }
+  .notification-filter-tabs button {
+    font-size: 13px;
+  }
+  .notification-card {
+    padding: 14px;
+  }
+  .notification-card h3 {
+    font-size: 16px;
+  }
+}

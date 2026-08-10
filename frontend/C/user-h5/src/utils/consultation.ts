@@ -2,11 +2,14 @@
  * 构建在线问诊详情路径，并透传当前就诊人。
  * @param consultationId 问诊记录 ID
  * @param patientId 当前就诊人 ID
- * @returns 可恢复患者购药上下文的问诊详情路径
+ * @param returnPath 返回来源页面的受控路径，仅允许由页面内部传入
+ * @returns 可恢复患者购药和返回来源上下文的问诊详情路径
  */
-export function buildConsultationDetailPath(consultationId: number, patientId?: number): string {
+export function buildConsultationDetailPath(consultationId: number, patientId?: number, returnPath?: string): string {
   const query = new URLSearchParams();
   if (Number.isInteger(patientId) && patientId! > 0) query.set('patientId', String(patientId));
+  // 返回路径仅用于应用内页面回退，不接受外部地址以避免产生开放跳转入口。
+  if (returnPath?.startsWith('/')) query.set('returnTo', returnPath);
   const queryText = query.toString();
   return `/assistant/consultation/${consultationId}${queryText ? `?${queryText}` : ''}`;
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Search, Stethoscope } from 'lucide-react';
-import { useNavigate } from 'umi';
+import { useLocation, useNavigate } from 'umi';
 import { PageHeader } from '../../components/PageHeader';
 import { getSelection } from '../../models/selection';
 import { getDepartments, getDoctors } from '../../services/registration';
@@ -11,6 +11,7 @@ import { resolveInitialDepartment } from '../../utils/home-search';
 /** 展示当前医院的科室目录及选中科室医生。 */
 export default function DepartmentBrowserPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<number>();
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -37,7 +38,7 @@ export default function DepartmentBrowserPage() {
     }
   }
 
-  /** 初始化当前医院的科室目录，并默认展示第一个科室。 */
+  /** 初始化当前医院的科室目录，并优先恢复从医生主页返回时的科室选择。 */
   async function loadDepartments() {
     const hospitalId = getSelection().hospitalId;
     if (!hospitalId) {
@@ -47,7 +48,9 @@ export default function DepartmentBrowserPage() {
     try {
       const items = await getDepartments(hospitalId);
       setDepartments(items);
-      const initial = resolveInitialDepartment(items);
+      const preferredDepartmentId = Number(new URLSearchParams(location.search).get('departmentId'));
+      // 仅恢复当前医院真实存在的科室，旧链接或跨院科室参数仍安全回退至默认科室。
+      const initial = items.find((department) => department.id === preferredDepartmentId) || resolveInitialDepartment(items);
       if (initial) await chooseDepartment(initial, hospitalId);
     } catch (error: any) {
       setNotice(error.message || '科室列表加载失败');

@@ -99,8 +99,15 @@ public class OrderLogisticsServiceImpl implements OrderLogisticsService {
             throw new IllegalStateException("购药订单通知接收目标不存在");
         }
         // 通知事件在当前事务提交后才进入 RabbitMQ，避免回滚订单产生虚假送达提醒。
-        notificationEventProducer.publishNotification("DRUG_ORDER_TO_RECEIVE", target.drugOrderId(),
-                target.payerUserId(), target.patientId(), LOGISTICS, "药品已送达", "药品已送达，请及时确认收货。");
+        notificationEventProducer.publishNotification(
+                "DRUG_ORDER_TO_RECEIVE", // 通知类型
+                target.drugOrderId(), // 业务 ID
+                target.payerUserId(), // 接收者 ID
+                target.patientId(), // 患者 ID
+                LOGISTICS, // 通知类型
+                "药品已送达", // 通知标题
+                "药品已送达，请及时确认收货。" // 通知内容
+        );
         log.info("购药订单待收货通知发布 drugOrderId={}", drugOrderId);
     }
 }

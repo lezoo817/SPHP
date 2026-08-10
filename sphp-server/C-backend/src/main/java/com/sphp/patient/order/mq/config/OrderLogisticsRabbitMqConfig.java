@@ -24,17 +24,22 @@ public class OrderLogisticsRabbitMqConfig {
 
     /**
      * 创建物流延迟队列，消息到期后进入物流推进队列。
-     *
+     *<p>
+     * TTL + DLX 延时消息模式，是 RabbitMQ 官方文档中推荐的、用于实现延时投递的标准变通方案。
+     * 因为 RabbitMQ 内核没有原生的 x-delayed-message 支持，所以普遍用这个模式来“模拟”延时队列
+     * Producer → BusinessExchange → delay.queue（TTL=N秒，无消费者）→ TTL 到期，消息"死亡" → DLX → advance.queue → 消费者真正处理
+     *</p>
      * @param properties 物流推进间隔配置
      * @return 持久化物流延迟队列
      */
+
     @Bean
     public Queue drugOrderLogisticsDelayQueue(OrderLogisticsProperties properties) {
         return QueueBuilder.durable(DRUG_ORDER_LOGISTICS_DELAY_QUEUE)
                 // 使用固定延迟模拟药房处理和配送运输进度。
                 .ttl(Math.toIntExact(properties.getAdvanceIntervalSeconds() * 1000L))
-                .deadLetterExchange(DLX_EXCHANGE)
-                .deadLetterRoutingKey(DRUG_ORDER_LOGISTICS_ADVANCE_ROUTING_KEY)
+                .deadLetterExchange(DLX_EXCHANGE)// 死信交换机
+                .deadLetterRoutingKey(DRUG_ORDER_LOGISTICS_ADVANCE_ROUTING_KEY)// 死信路由键
                 .build();
     }
 
@@ -47,8 +52,8 @@ public class OrderLogisticsRabbitMqConfig {
     public Queue drugOrderLogisticsAdvanceQueue() {
         return QueueBuilder.durable(DRUG_ORDER_LOGISTICS_ADVANCE_QUEUE)
                 // 消费或消息转换失败后统一进入既有死信队列，避免物流事件静默丢失。
-                .deadLetterExchange(DLX_EXCHANGE)
-                .deadLetterRoutingKey(DEAD_LETTER_ROUTING_KEY)
+                .deadLetterExchange(DLX_EXCHANGE) // 死信交换机,  // 这个才是真正用于错误处理的DLX
+                .deadLetterRoutingKey(DEAD_LETTER_ROUTING_KEY) // 死信路由键
                 .build();
     }
 
