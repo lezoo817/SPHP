@@ -1,6 +1,8 @@
 import { defineConfig } from "umi";
 
 export default defineConfig({
+  // 浏览器标签页展示的 C 端产品名称。
+  title: '智愈医疗助手',
   routes: [
     { path: '/', redirect: '/login' },
     { path: '/login', component: 'login/index' },

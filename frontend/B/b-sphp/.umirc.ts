@@ -2,6 +2,8 @@ import { defineConfig } from '@umijs/max';
 import routes from './config/routes';
 
 export default defineConfig({
+  // 浏览器标签页展示的 B 端产品名称。
+  title: '智愈管理平台',
   // 生产环境部署到同一站点的 /b/ 路径，开发环境仍从根路径访问。
   base: process.env.NODE_ENV === 'production' ? '/b/' : '/',
   publicPath: process.env.NODE_ENV === 'production' ? '/b/' : '/',
