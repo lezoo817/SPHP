@@ -57,10 +57,11 @@ export function getConsultations(patientId?: number): Promise<PageData<Consultat
 /**
  * 查询问诊详情和文字消息。
  * @param id 问诊记录 ID
+ * @param forceRefresh 是否跳过读缓存并直接读取最新问诊消息
  * @returns 医生信息、预问诊、消息与处方关联详情
  */
-export function getConsultation(id: number): Promise<ConsultationDetail> {
-  return request(`/c/v1/consultations/${id}`, { method: 'GET' });
+export function getConsultation(id: number, forceRefresh = false): Promise<ConsultationDetail> {
+  return request(`/c/v1/consultations/${id}`, { method: 'GET', skipCache: forceRefresh });
 }
 
 /**

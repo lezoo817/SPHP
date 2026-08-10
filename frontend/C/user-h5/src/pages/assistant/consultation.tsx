@@ -25,10 +25,10 @@ export default function ConsultationPage() {
   const patientIdFromUrl = Number(new URLSearchParams(location.search).get('patientId')) || undefined;
   const returnToAgent = resolveConsultationAgentReturnState((location.state as { returnToAgent?: unknown } | null)?.returnToAgent);
 
-  /** 读取问诊详情，通知跳转后可直接看到医生最新回复。 */
-  async function load() {
+  /** 读取问诊详情；实时补偿请求必须绕过通用读缓存。 */
+  async function load(forceRefresh = false) {
     try {
-      const nextDetail = await getConsultation(Number(consultationId));
+      const nextDetail = await getConsultation(Number(consultationId), forceRefresh);
       setDetail(nextDetail);
       // 使用当前账号可见成员列表将问诊患者 ID 映射为姓名。
       const members = await getFamilyMembers();
@@ -42,10 +42,10 @@ export default function ConsultationPage() {
   useEffect(() => { void load(); }, [consultationId]);
 
   useEffect(() => {
-    // WebSocket 为主通道；短轮询补偿移动网络切换或代理升级失败，避免患者手动刷新查看医生消息。
+    // WebSocket 为主通道；补偿请求绕过 30 秒读缓存，避免患者手动刷新查看医生消息。
     const timer = window.setInterval(() => {
-      if (detail?.status === 'IN_PROGRESS') void load();
-    }, 3000);
+      if (detail?.status === 'IN_PROGRESS') void load(true);
+    }, 2000);
     return () => window.clearInterval(timer);
   }, [consultationId, detail?.status]);
 
