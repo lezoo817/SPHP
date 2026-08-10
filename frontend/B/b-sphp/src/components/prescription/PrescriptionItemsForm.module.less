@@ -1,0 +1,34 @@
+/**
+ * 处方药品明细编辑表单样式：模板带入区 + Form.List 两行式药品明细。
+ */
+@import '../../styles/variables.less';
+
+/** 模板带入下拉区 */
+.templateArea {
+  margin-bottom: @spacing-md;
+}
+
+/** 单行药品明细卡片 */
+.itemRow {
+  border: 1px solid @color-border-secondary;
+  border-radius: @radius-sm;
+  padding: @spacing-sm @spacing-md 0;
+  margin-bottom: @spacing-sm;
+}
+
+/** Form.Item 紧凑间距（多行药品明细内） */
+.formItem {
+  margin-bottom: @spacing-sm;
+}
+
+.itemLine {
+  display: flex;
+  margin-bottom: @spacing-sm;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+/** 单药规则预警行 */
+.rowWarnings {
+  margin-bottom: @spacing-sm;
+}
