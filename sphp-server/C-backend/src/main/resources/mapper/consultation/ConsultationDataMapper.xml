@@ -28,6 +28,14 @@
         )
     </select>
 
+    <select id="selectConsultationPatientUserIds" resultType="java.lang.Long">
+        SELECT user_id
+        FROM patient_user_relation
+        WHERE patient_id = #{patientId}
+          AND deleted_at IS NULL
+        ORDER BY user_id ASC
+    </select>
+
     <select id="lockConsultationUser" resultType="java.lang.Long">
         SELECT id
         FROM c_user

@@ -18,11 +18,11 @@ import com.sphp.admin.doctor.dto.ConsultHistoryDetailVO;
 import com.sphp.admin.doctor.dto.ConsultHistoryVO;
 import com.sphp.admin.doctor.dto.ConsultStartVO;
 import com.sphp.admin.doctor.dto.MessageVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationMessageSendRequest;
 import com.sphp.admin.doctor.dto.NoteSaveVO;
 import com.sphp.admin.doctor.dto.OnlineConsultationDetailVO;
 import com.sphp.admin.doctor.dto.OnlineConsultationItemVO;
-import com.sphp.admin.doctor.dto.OnlineConsultationReplyRequest;
-import com.sphp.admin.doctor.dto.OnlineConsultationReplyVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationMessagePageVO;
 import com.sphp.admin.doctor.dto.PatientDetailVO;
 import com.sphp.admin.doctor.dto.QueueItemVO;
 import com.sphp.admin.doctor.entity.ConsultRecord;
@@ -46,7 +46,7 @@ import com.sphp.admin.prescription.mapper.PrescriptionMapper;
 import com.sphp.admin.prescription.service.PrescriptionService;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import com.sphp.shared.exception.BusinessException;
-import com.sphp.shared.event.OnlineConsultationRepliedEvent;
+import com.sphp.shared.event.ConsultationMessageCreatedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -213,47 +213,108 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 .build();
     }
 
+    /**
+     * 发送在线问诊医生文字消息。
+     *
+     * @param consultId 问诊记录 ID
+     * @param request 消息请求
+     * @return 已保存消息
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public OnlineConsultationReplyVO replyOnlineConsult(Long consultId, OnlineConsultationReplyRequest request) {
-        ConsultRecord record = getOnlineConsultInScope(consultId);
+    public MessageVO sendOnlineConsultationMessage(Long consultId, OnlineConsultationMessageSendRequest request) {
+        ConsultRecord record = consultRecordMapper.lockOnlineConsult(consultId);
+        if (record == null) {
+            throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "在线问诊不存在");
+        }
         Long doctorId = requireAssignedDoctor(record);
+        if (!OnlineConsultationConstant.STATUS_IN_PROGRESS.equals(record.getStatus())) {
+            throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "在线问诊状态不是 IN_PROGRESS，禁止发送消息");
+        }
         String content = request.getContent().trim();
-        if (!StringUtils.hasText(content) || content.length() > OnlineConsultationConstant.MAX_REPLY_LENGTH) {
-            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "回复内容不能为空且不超过2000字符");
-        }
-        long existingReplies = consultationMessageMapper.selectCount(
-                Wrappers.<ConsultationMessage>lambdaQuery()
-                        .eq(ConsultationMessage::getConsultId, consultId)
-                        .eq(ConsultationMessage::getSenderType, OnlineConsultationConstant.SENDER_DOCTOR)
+        ConsultationMessage existing = consultationMessageMapper.selectOne(
+                Wrappers.<ConsultationMessage>lambdaQuery().eq(ConsultationMessage::getConsultId, consultId)
+                        .eq(ConsultationMessage::getClientMessageId, request.getClientMessageId())
                         .isNull(ConsultationMessage::getDeletedAt));
-        if (existingReplies > 0) {
-            throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "本次在线问诊已回复，不能重复发送");
+        if (existing != null) {
+            if (!OnlineConsultationConstant.SENDER_DOCTOR.equals(existing.getSenderType())
+                    || !content.equals(existing.getContent())) {
+                throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "clientMessageId 已用于其他消息");
+            }
+            return toMessageVO(existing);
         }
-
-        OffsetDateTime repliedAt = OffsetDateTime.now();
-        // 先抢占唯一完成状态；并发请求只有一个能够更新成功，后续写入失败会随事务回滚。
-        if (consultRecordMapper.completeOnlineConsult(consultId, doctorId, repliedAt) != 1) {
-            throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "在线问诊状态不可回复或已完成");
-        }
+        OffsetDateTime now = OffsetDateTime.now();
         ConsultationMessage message = new ConsultationMessage();
         message.setConsultId(consultId);
         message.setSenderType(OnlineConsultationConstant.SENDER_DOCTOR);
         message.setContent(content);
-        message.setCreatedAt(repliedAt);
+        message.setClientMessageId(request.getClientMessageId());
+        message.setMessageType("TEXT");
+        message.setCreatedAt(now);
         if (consultationMessageMapper.insert(message) != 1) {
-            throw new BusinessException(ErrorCodeEnum.SYSTEM_ERROR, "医生回复保存失败");
+            throw new BusinessException(ErrorCodeEnum.SYSTEM_ERROR, "医生消息保存失败");
         }
+        // 事务提交后触发 C 端实时推送和站内通知，事件不传递消息正文。
+        eventPublisher.publishEvent(ConsultationMessageCreatedEvent.of(message.getId(), consultId,
+                message.getSenderType(), doctorId, record.getPatientId(), now));
+        return toMessageVO(message);
+    }
 
-        // 事务提交后再由事件转发器投递 C 端通知，事件不携带回复原文。
-        eventPublisher.publishEvent(OnlineConsultationRepliedEvent.of(
-                consultId, record.getPatientId(), doctorId, repliedAt));
-        return OnlineConsultationReplyVO.builder()
-                .consultId(consultId)
-                .messageId(message.getId())
-                .status(OnlineConsultationConstant.STATUS_COMPLETED)
-                .repliedAt(repliedAt)
-                .build();
+    /**
+     * 结束在线问诊。
+     *
+     * @param consultId 问诊记录 ID
+     * @return 问诊结束结果
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ConsultEndVO endOnlineConsult(Long consultId) {
+        ConsultRecord record = consultRecordMapper.lockOnlineConsult(consultId);
+        if (record == null) {
+            throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "在线问诊不存在");
+        }
+        Long doctorId = requireAssignedDoctor(record);
+        if (!OnlineConsultationConstant.STATUS_IN_PROGRESS.equals(record.getStatus())) {
+            throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "在线问诊状态不可结束");
+        }
+        OffsetDateTime endedAt = OffsetDateTime.now();
+        if (consultRecordMapper.completeOnlineConsult(consultId, doctorId, endedAt) != 1) {
+            throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "在线问诊状态不可结束");
+        }
+        return ConsultEndVO.builder().consultId(consultId).status("COMPLETED").endedAt(endedAt).build();
+    }
+
+    /**
+     * 游标查询在线问诊消息。
+     *
+     * @param consultId 问诊记录 ID
+     * @param afterId 向后补拉游标
+     * @param beforeId 向前加载游标
+     * @param size 每页数量
+     * @return 消息游标分页结果
+     */
+    @Override
+    public OnlineConsultationMessagePageVO pageOnlineConsultationMessages(Long consultId, Long afterId,
+                                                                           Long beforeId, int size) {
+        getOnlineConsultInScope(consultId);
+        if (afterId != null && beforeId != null) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_PARAMETER, "afterId 与 beforeId 不能同时传递");
+        }
+        var query = Wrappers.<ConsultationMessage>lambdaQuery().eq(ConsultationMessage::getConsultId, consultId)
+                .isNull(ConsultationMessage::getDeletedAt);
+        if (afterId != null) {
+            query.gt(ConsultationMessage::getId, afterId).orderByAsc(ConsultationMessage::getId);
+            return buildOnlineMessagePage(consultationMessageMapper.selectList(query.last("LIMIT " + (size + 1))), size);
+        }
+        query.lt(beforeId != null, ConsultationMessage::getId, beforeId).orderByDesc(ConsultationMessage::getId);
+        List<ConsultationMessage> records = consultationMessageMapper.selectList(query.last("LIMIT " + (size + 1)));
+        boolean hasMore = records.size() > size;
+        if (hasMore) {
+            records = records.subList(0, size);
+        }
+        Collections.reverse(records);
+        return OnlineConsultationMessagePageVO.builder().messages(records.stream().map(this::toMessageVO).toList())
+                .hasMore(hasMore).build();
     }
 
     @Override
@@ -672,6 +733,33 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     }
 
     /**
+     * 将消息实体转换为 B 端响应对象。
+     *
+     * @param message 问诊消息实体
+     * @return 消息响应对象
+     */
+    private MessageVO toMessageVO(ConsultationMessage message) {
+        return MessageVO.builder().messageId(message.getId()).senderType(message.getSenderType())
+                .content(message.getContent()).createdAt(message.getCreatedAt()).build();
+    }
+
+    /**
+     * 从多取一条的正序消息计算游标分页状态。
+     *
+     * @param records 消息实体列表
+     * @param size 请求页大小
+     * @return 消息游标分页结果
+     */
+    private OnlineConsultationMessagePageVO buildOnlineMessagePage(List<ConsultationMessage> records, int size) {
+        boolean hasMore = records.size() > size;
+        if (hasMore) {
+            records = records.subList(0, size);
+        }
+        return OnlineConsultationMessagePageVO.builder().messages(records.stream().map(this::toMessageVO).toList())
+                .hasMore(hasMore).build();
+    }
+
+    /**
      * 校验写操作由问诊绑定医生本人执行。
      *
      * @param record 在线问诊记录
@@ -717,8 +805,7 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
                 .submittedAt(record.getPreConsultationSubmittedAt())
                 .doctorRepliedAt(record.getDoctorRepliedAt())
                 .canStart(OnlineConsultationConstant.STATUS_PENDING.equals(record.getStatus()))
-                .canReply(OnlineConsultationConstant.STATUS_IN_PROGRESS.equals(record.getStatus())
-                        && record.getDoctorRepliedAt() == null)
+                .canReply(OnlineConsultationConstant.STATUS_IN_PROGRESS.equals(record.getStatus()))
                 .build();
     }
 

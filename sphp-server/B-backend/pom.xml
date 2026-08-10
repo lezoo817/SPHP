@@ -59,6 +59,12 @@
             <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>
 
+        <!-- 在线问诊实时消息推送 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
         <!-- B端在线问诊状态机与并发防重单元测试 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

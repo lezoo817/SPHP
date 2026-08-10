@@ -12,6 +12,7 @@ import lombok.Data;
 @Schema(description = "发送问诊消息请求")
 public class MessageSendRequest {
 
+    /** 医生发送的文字内容 */
     @NotBlank(message = "消息内容不能为空")
     @Size(max = 2000, message = "消息内容不能超过2000字符")
     @Schema(description = "消息内容", maxLength = 2000)

@@ -6,6 +6,7 @@ import com.sphp.patient.consultation.dto.PreConsultationSaveRequest;
 import com.sphp.patient.consultation.service.ConsultationService;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
+import com.sphp.patient.consultation.vo.ConsultationMessagePageVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 import com.sphp.patient.support.idempotency.CIdempotencyService;
@@ -93,6 +94,25 @@ public class ConsultationController {
     public Result<ConsultationDetailVO> getConsultationDetail(
             @PathVariable @Positive(message = "consultationId 必须为正数") Long consultationId) {
         return Result.success("查询成功", consultationService.getConsultationDetail(consultationId));
+    }
+
+    /**
+     * 游标查询当前账号可访问问诊的文字消息。
+     *
+     * @param consultationId 问诊记录 ID
+     * @param afterId 向后补拉游标
+     * @param beforeId 向前加载游标
+     * @param size 每页数量
+     * @return 消息游标分页结果
+     */
+    @GetMapping("/consultations/{consultationId}/messages")
+    public Result<ConsultationMessagePageVO> listConsultationMessages(
+            @PathVariable @Positive(message = "consultationId 必须为正数") Long consultationId,
+            @RequestParam(required = false) @Positive(message = "afterId 必须为正数") Long afterId,
+            @RequestParam(required = false) @Positive(message = "beforeId 必须为正数") Long beforeId,
+            @RequestParam(required = false) @Positive(message = "size 必须为正数") Integer size) {
+        return Result.success("查询成功", consultationService.listConsultationMessages(
+                consultationId, afterId, beforeId, size));
     }
 
     /**

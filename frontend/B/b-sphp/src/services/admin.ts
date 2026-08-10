@@ -260,14 +260,30 @@ export function startOnlineConsultation(consultId: number): Promise<API.ConsultS
   );
 }
 
-/** 提交一次性医生回复并完成在线问诊。 */
-export function replyOnlineConsultation(
+/** 发送在线问诊医生文字消息。 */
+export function sendOnlineConsultationMessage(
   consultId: number,
   content: string,
-): Promise<API.OnlineConsultationReplyResult> {
-  return requestData<API.OnlineConsultationReplyResult>(
-    `/api/b/doctor/online-consultations/${consultId}/reply`,
-    { method: 'POST', data: { content } },
+  clientMessageId: string,
+): Promise<API.MessageVO> {
+  return requestData<API.MessageVO>(
+    `/api/b/doctor/online-consultations/${consultId}/messages`,
+    { method: 'POST', data: { content, clientMessageId } },
+  );
+}
+
+/** 结束在线问诊。 */
+export function endOnlineConsultation(consultId: number): Promise<API.ConsultEnd> {
+  return requestData<API.ConsultEnd>(`/api/b/doctor/online-consultations/${consultId}/end`, { method: 'POST' });
+}
+
+/** 游标查询在线问诊消息。 */
+export function getOnlineConsultationMessages(
+  consultId: number,
+  params: { afterId?: number; beforeId?: number; size?: number } = {},
+): Promise<API.OnlineConsultationMessagePage> {
+  return requestData<API.OnlineConsultationMessagePage>(
+    `/api/b/doctor/online-consultations/${consultId}/messages`, { params },
   );
 }
 
