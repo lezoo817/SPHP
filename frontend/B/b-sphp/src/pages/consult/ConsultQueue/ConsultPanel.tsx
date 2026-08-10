@@ -17,6 +17,7 @@ import NoteForm from './NoteForm';
 import PrescriptionPanel from './PrescriptionPanel';
 import MessageBoard from './MessageBoard';
 import HistoryDetailPanel from './HistoryDetailPanel';
+import { STATUS_COMPLETED, STATUS_IN_PROGRESS, STATUS_PENDING } from '@/constants/businessStatus';
 
 const { Title } = Typography;
 
@@ -106,7 +107,7 @@ export default function ConsultPanel({
           <MedicineBoxOutlined /> 接诊操作
         </Title>
         {/* 结束问诊：接诊中常驻在标题行右侧，随时可结束 */}
-        {selectedStatus === 'IN_PROGRESS' && (
+        {selectedStatus === STATUS_IN_PROGRESS && (
           <Button danger icon={<StopOutlined />} loading={endingConsult} onClick={handleEndConsult}>
             结束问诊
           </Button>
@@ -119,7 +120,7 @@ export default function ConsultPanel({
           selectedConsultId={selectedConsultId}
           detailLoading={detailLoading}
           patientDetail={patientDetail}
-          canEditAllergy={selectedStatus === 'IN_PROGRESS'}
+          canEditAllergy={selectedStatus === STATUS_IN_PROGRESS}
           onAddAllergy={handleAddAllergy}
         />
       </div>
@@ -127,17 +128,17 @@ export default function ConsultPanel({
       <div className={styles.consultContent}>
         {!selectedConsultId ? (
           <Empty description="请选择患者" />
-        ) : selectedStatus === 'COMPLETED' ? (
+        ) : selectedStatus === STATUS_COMPLETED ? (
           // 历史接诊详情
           <HistoryDetailPanel loading={historyDetailLoading} detail={historyDetail} />
-        ) : selectedStatus === 'PENDING' ? (
+        ) : selectedStatus === STATUS_PENDING ? (
           <StartConsultArea
             slotStartTime={pendingSelectedItem?.slotStartTime}
             slotEndTime={pendingSelectedItem?.slotEndTime}
             starting={startingConsult}
             onStart={handleStartConsult}
           />
-        ) : selectedStatus === 'IN_PROGRESS' ? (
+        ) : selectedStatus === STATUS_IN_PROGRESS ? (
           <div className={styles.inProgressArea}>
             {/* 主工作区：病历记录 + 已开处方 左右分栏 */}
             <div className={styles.workspaceRow}>

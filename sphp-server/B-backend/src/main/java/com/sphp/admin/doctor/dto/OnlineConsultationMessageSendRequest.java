@@ -9,6 +9,9 @@ import lombok.Setter;
 
 /**
  * 在线问诊医生文字消息请求。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Getter
 @Setter

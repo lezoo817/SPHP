@@ -1,5 +1,6 @@
 package com.sphp.admin.schedule.vo;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -52,6 +53,13 @@ public class SourcePoolVO {
     @Schema(description = "锁定中号源数（LOCKED 快照数）")
     private Long lockedSlots;
 
+    /**
+     * 是否已过期（PUBLISHED 且 schedule_date < today）。
+     *
+     * <p>字段名避开 {@code is} 前缀（CLAUDE.md 4.3 POJO 布尔命名红线）；JSON 属性经
+     * {@code @JsonProperty} 保持 {@code isExpired} 以维持前端既有读取契约。
+     */
     @Schema(description = "是否已过期（PUBLISHED 且 schedule_date < today）")
-    private Boolean isExpired;
+    @JsonProperty("isExpired")
+    private Boolean expired;
 }

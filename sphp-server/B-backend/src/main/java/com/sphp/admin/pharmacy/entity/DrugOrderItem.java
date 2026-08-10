@@ -7,7 +7,11 @@ import lombok.Data;
 
 import java.time.OffsetDateTime;
 
-/** 购药订单明细表实体（对应表 drug_order_item，仅 B 端预校验只读使用）。 */
+/** 购药订单明细表实体（对应表 drug_order_item，仅 B 端预校验只读使用）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
+ */
 @Data
 @TableName("drug_order_item")
 public class DrugOrderItem {

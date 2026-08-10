@@ -31,6 +31,8 @@ import {
   batchPublishSchedules,
 } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
+import { PAGE_SIZE_100, PAGE_SIZE_200, PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
+import { STATUS_ENABLED } from '@/constants/businessStatus';
 import {
   getShiftConfig,
   getBatchActionConfig,
@@ -137,7 +139,7 @@ export default function BatchScheduleModal({ open, onCancel, onCreated }: Props)
   /** 科室选项 */
   const fetchDepartments = async () => {
     try {
-      const res = await getDepartments({ page: 1, size: 200 });
+      const res = await getDepartments({ page: 1, size: PAGE_SIZE_200 });
       return (res.list ?? []).map((d) => ({ label: d.name, value: d.id }));
     } catch {
       return [];
@@ -150,9 +152,9 @@ export default function BatchScheduleModal({ open, onCancel, onCreated }: Props)
       const res = await getDoctors({
         deptId,
         name: keyword || undefined,
-        status: 'ENABLED',
+        status: STATUS_ENABLED,
         page: 1,
-        size: 100,
+        size: PAGE_SIZE_100,
       });
       return (res.list ?? []).map((d) => ({
         label: `${d.name}（${d.title}）`,
@@ -398,7 +400,7 @@ export default function BatchScheduleModal({ open, onCancel, onCreated }: Props)
         loading={previewing}
         dataSource={preview?.items ?? []}
         columns={columns}
-        pagination={{ pageSize: 10, showSizeChanger: false, size: 'small' }}
+        pagination={{ pageSize: PAGE_SIZE_DEFAULT, showSizeChanger: false, size: 'small' }}
         scroll={{ y: 280 }}
         locale={{ emptyText: previewing ? '加载中…' : '请完成上方表单以查看预览' }}
       />

@@ -30,7 +30,7 @@ import {
   SendOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import {
@@ -44,10 +44,13 @@ import {
   submitPrescription,
 } from '@/services/admin';
 import { createConsultationSocket } from '@/services/consultationSocket';
-import { QUERY_KEYS } from '@/constants/queryKeys';
+import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
+import { POLL_INTERVAL_CONSULT } from '@/constants/timing';
 import { getErrorMessage } from '@/utils/error';
 import { createIdempotencyKey } from '@/utils/idempotency';
 import styles from './index.module.less';
+import { PAGE_SIZE_100, PAGE_SIZE_50 } from '@/constants/pageSize';
+import { GENDER_FEMALE, GENDER_MALE, SENDER_DOCTOR, STATUS_APPROVED, STATUS_COMPLETED, STATUS_ENABLED, STATUS_IN_PROGRESS, STATUS_PENDING } from '@/constants/businessStatus';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -79,8 +82,8 @@ interface MedicalHistorySummaryItem {
 
 /** 将后端性别枚举转换为 B 端展示文案。 */
 function formatGender(gender?: string): string {
-  if (gender === 'MALE' || gender === '男') return '男';
-  if (gender === 'FEMALE' || gender === '女') return '女';
+  if (gender === GENDER_MALE || gender === '男') return '男';
+  if (gender === GENDER_FEMALE || gender === '女') return '女';
   return '未知';
 }
 
@@ -109,10 +112,13 @@ const STATUS_COLOR: Record<OnlineStatus, string> = {
   COMPLETED: 'green',
 };
 
+/** 医生回复消息最大长度（与后端 OnlineConsultationConstant.MAX_REPLY_LENGTH=2000 一致） */
+const CONSULT_MESSAGE_MAX = 2000;
+
 /** 在线问诊工作台页面。 */
 export default function OnlineConsultationPage() {
   const queryClient = useQueryClient();
-  const [status, setStatus] = useState<OnlineStatus>('PENDING');
+  const [status, setStatus] = useState<OnlineStatus>(STATUS_PENDING);
   const [selectedId, setSelectedId] = useState<number>();
   const [replyContent, setReplyContent] = useState('');
   const [starting, setStarting] = useState(false);
@@ -122,10 +128,14 @@ export default function OnlineConsultationPage() {
   const [drugKeyword, setDrugKeyword] = useState('');
   const [form] = Form.useForm<PrescriptionFormValues>();
 
+  // 保持最新选中问诊 ID 的 ref：WebSocket 回调读取它，选中切换时避免 socket 反复 teardown/reconnect
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+
   const listQuery = useQuery({
     queryKey: QUERY_KEYS.onlineConsultations(status),
-    queryFn: () => getOnlineConsultations({ status, page: 1, size: 50 }),
-    refetchInterval: 15_000,
+    queryFn: () => getOnlineConsultations({ status, page: 1, size: PAGE_SIZE_50 }),
+    refetchInterval: POLL_INTERVAL_CONSULT,
   });
   const detailQuery = useQuery({
     queryKey: QUERY_KEYS.onlineConsultationDetail(selectedId ?? -1),
@@ -136,27 +146,27 @@ export default function OnlineConsultationPage() {
 
   useEffect(() => {
     const socket = createConsultationSocket((event) => {
-      if (event.consultationId === selectedId) {
+      if (event.consultationId === selectedIdRef.current) {
         void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.onlineConsultationDetail(event.consultationId) });
       }
-      void queryClient.invalidateQueries({ queryKey: ['consult', 'online'] });
+      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.onlineConsultationsBase });
     });
     return () => { void socket?.deactivate(); };
-  }, [queryClient, selectedId]);
+  }, [queryClient]);
   const templatesQuery = useQuery({
     queryKey: ['prescription', 'templates', 'online-consultation'],
-    queryFn: () => getTemplates({ page: 1, size: 100 }),
+    queryFn: () => getTemplates({ page: 1, size: PAGE_SIZE_100 }),
   });
   const drugsQuery = useQuery({
     queryKey: ['drug', 'online-consultation-options', drugKeyword],
     queryFn: () => getDoctorDrugs({
       name: drugKeyword.trim() || undefined,
-      status: 'ENABLED',
+      status: STATUS_ENABLED,
       page: 1,
-      size: 100,
+      size: PAGE_SIZE_100,
     }),
-    enabled: detail?.status === 'IN_PROGRESS',
-    staleTime: 30_000,
+    enabled: detail?.status === STATUS_IN_PROGRESS,
+    staleTime: STALE_TIME.onlineConsultDrugs,
   });
 
   // 空数组兜底用 useMemo 固定引用，否则每次渲染生成新数组会让下方 useMemo 依赖失效
@@ -164,10 +174,15 @@ export default function OnlineConsultationPage() {
     () => templatesQuery.data?.list ?? [],
     [templatesQuery.data],
   );
-  const drugOptions = (drugsQuery.data?.list ?? []).map((drug) => ({
-    value: drug.id,
-    label: `${drug.name}${drug.specification ? `（${drug.specification}）` : ''}`,
-  }));
+  // 固定引用：避免每次 render 重建，破坏下方 Select 内部 memoization
+  const drugOptions = useMemo(
+    () =>
+      (drugsQuery.data?.list ?? []).map((drug) => ({
+        value: drug.id,
+        label: `${drug.name}${drug.specification ? `（${drug.specification}）` : ''}`,
+      })),
+    [drugsQuery.data],
+  );
   const patient = detail?.patientDetail.patient;
   const aiSummary = detail?.patientDetail.aiSummary;
   const allergyRows = readSummaryArray<AllergySummaryItem>(aiSummary, 'allergies');
@@ -180,7 +195,7 @@ export default function OnlineConsultationPage() {
   /** 刷新当前详情和三个状态列表。 */
   async function refreshAll() {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['consult', 'online'] }),
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.onlineConsultationsBase }),
       selectedId
         ? queryClient.invalidateQueries({ queryKey: QUERY_KEYS.onlineConsultationDetail(selectedId) })
         : Promise.resolve(),
@@ -202,7 +217,7 @@ export default function OnlineConsultationPage() {
       await startOnlineConsultation(selectedId);
       message.success('已进入回复状态');
       await refreshAll();
-    } catch (error) {
+    } catch (error: unknown) {
       message.error(getErrorMessage(error, '开始回复失败'));
     } finally {
       setStarting(false);
@@ -239,7 +254,7 @@ export default function OnlineConsultationPage() {
       }
       form.resetFields();
       await refreshAll();
-    } catch (error) {
+    } catch (error: unknown) {
       if (error && typeof error === 'object' && 'errorFields' in error) return;
       Modal.error({ title: '处方提交失败', content: getErrorMessage(error, '处方提交失败') });
     } finally {
@@ -255,7 +270,7 @@ export default function OnlineConsultationPage() {
       await sendOnlineConsultationMessage(selectedId, replyContent.trim(), createIdempotencyKey());
       setReplyContent('');
       await refreshAll();
-    } catch (error) {
+    } catch (error: unknown) {
       message.error(getErrorMessage(error, '发送消息失败'));
     } finally {
       setReplying(false);
@@ -274,9 +289,9 @@ export default function OnlineConsultationPage() {
         try {
           await endOnlineConsultation(selectedId);
           message.success('在线问诊已结束');
-          setStatus('COMPLETED');
+          setStatus(STATUS_COMPLETED);
           await refreshAll();
-        } catch (error) {
+        } catch (error: unknown) {
           message.error(getErrorMessage(error, '结束问诊失败'));
         } finally {
           setEnding(false);
@@ -408,7 +423,7 @@ export default function OnlineConsultationPage() {
               </div>
             </section>
 
-            {detail.status === 'PENDING' && (
+            {detail.status === STATUS_PENDING && (
               <section className={styles.actionSection}>
                 <Button type="primary" icon={<MessageOutlined />} loading={starting} onClick={startReply}>
                   回复
@@ -416,7 +431,7 @@ export default function OnlineConsultationPage() {
               </section>
             )}
 
-            {detail.status === 'IN_PROGRESS' && (
+            {detail.status === STATUS_IN_PROGRESS && (
               <>
                 <section className={styles.section}>
                   <div className={styles.sectionHeading}>
@@ -489,7 +504,7 @@ export default function OnlineConsultationPage() {
                     {detail.messages.length === 0 ? (
                       <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无消息" />
                     ) : detail.messages.map((item) => {
-                      const isDoctor = item.senderType === 'DOCTOR';
+                      const isDoctor = item.senderType === SENDER_DOCTOR;
                       return <article className={`${styles.chatMessage} ${isDoctor ? styles.doctorMessage : styles.patientMessage}`} key={item.messageId}>
                         <div className={styles.messageBubble}>
                           <small>{isDoctor ? '医生' : '患者'} · {item.createdAt ? dayjs(item.createdAt).format('YYYY/MM/DD HH:mm') : '-'}</small>
@@ -500,7 +515,7 @@ export default function OnlineConsultationPage() {
                   </div>
                   <TextArea
                     rows={5}
-                    maxLength={2000}
+                    maxLength={CONSULT_MESSAGE_MAX}
                     showCount
                     value={replyContent}
                     placeholder="输入发送给患者的文字消息"
@@ -519,7 +534,7 @@ export default function OnlineConsultationPage() {
                 <Title level={5}>已开处方</Title>
                 <Space wrap>
                   {detail.prescriptions.map((item) => (
-                    <Tag key={item.id} color={item.status === 'APPROVED' ? 'green' : 'gold'}>
+                    <Tag key={item.id} color={item.status === STATUS_APPROVED ? 'green' : 'gold'}>
                       #{item.id} · {item.status} · {item.itemCount} 项
                     </Tag>
                   ))}
@@ -527,12 +542,12 @@ export default function OnlineConsultationPage() {
               </section>
             )}
 
-            {detail.status === 'COMPLETED' && (
+            {detail.status === STATUS_COMPLETED && (
               <Alert
                 type="success"
                 showIcon
                 message="本次在线问诊已完成"
-                description={detail.messages.find((item) => item.senderType === 'DOCTOR')?.content || '医生已回复'}
+                description={detail.messages.find((item) => item.senderType === SENDER_DOCTOR)?.content || '医生已回复'}
               />
             )}
           </div>

@@ -4,6 +4,7 @@
 import { Modal } from 'antd';
 import { ProForm, ProFormText, ProFormSelect, ProFormDigit } from '@ant-design/pro-components';
 import { TITLE_OPTIONS, fetchDepartmentOptions } from './constants';
+import { STATUS_DISABLED, STATUS_ENABLED } from '@/constants/businessStatus';
 
 interface Props {
   open: boolean;
@@ -117,8 +118,8 @@ export default function AddDoctorModal({
           label="状态"
           rules={[{ required: true, message: '请选择状态' }]}
           options={[
-            { label: '启用', value: 'ENABLED' },
-            { label: '停用', value: 'DISABLED' },
+            { label: '启用', value: STATUS_ENABLED },
+            { label: '停用', value: STATUS_DISABLED },
           ]}
           initialValue="ENABLED"
         />

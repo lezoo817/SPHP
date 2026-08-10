@@ -18,6 +18,7 @@ import {
 import { getErrorMessage } from '@/utils/error';
 import { getColumns } from './columns';
 import PrescriptionDetailModal from './PrescriptionDetailModal';
+import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 
 export default function PrescriptionList() {
   const navigate = useNavigate();
@@ -140,7 +141,7 @@ export default function PrescriptionList() {
           span: 6,
           defaultFormItemsNumber: 4,
         }}
-        pagination={{ pageSize: 10, showSizeChanger: true }}
+        pagination={{ pageSize: PAGE_SIZE_DEFAULT, showSizeChanger: true }}
       />
 
       <PrescriptionDetailModal

@@ -6,6 +6,7 @@
  */
 import { Button, Badge, Switch, Select } from 'antd';
 import type { ProColumns } from '@ant-design/pro-components';
+import { STATUS_DISABLED, STATUS_ENABLED } from '@/constants/businessStatus';
 
 interface ColumnsDeps {
   isAdmin: boolean;
@@ -49,15 +50,15 @@ export function getColumns(deps: ColumnsDeps): ProColumns<API.Drug>[] {
           allowClear
           placeholder="全部"
           options={[
-            { label: '启用', value: 'ENABLED' },
-            { label: '停用', value: 'DISABLED' },
+            { label: '启用', value: STATUS_ENABLED },
+            { label: '停用', value: STATUS_DISABLED },
           ]}
         />
       ),
       render: (_, record) => (
         <Badge
-          status={record.status === 'ENABLED' ? 'success' : 'error'}
-          text={record.status === 'ENABLED' ? '启用' : '停用'}
+          status={record.status === STATUS_ENABLED ? 'success' : 'error'}
+          text={record.status === STATUS_ENABLED ? '启用' : '停用'}
         />
       ),
     },
@@ -74,7 +75,7 @@ export function getColumns(deps: ColumnsDeps): ProColumns<API.Drug>[] {
           )}
           {isAdmin && (
             <Switch
-              checked={record.status === 'ENABLED'}
+              checked={record.status === STATUS_ENABLED}
               checkedChildren="启用"
               unCheckedChildren="停用"
               size="small"

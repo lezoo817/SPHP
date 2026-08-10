@@ -7,6 +7,7 @@ import { Divider, Empty, List, Space, Spin, Tag, Typography } from 'antd';
 import { MedicineBoxOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import styles from './HistoryDetailPanel.module.less';
+import { STATUS_APPROVED } from '@/constants/businessStatus';
 
 const { Text } = Typography;
 
@@ -49,7 +50,7 @@ export default function HistoryDetailPanel({ loading, detail }: HistoryDetailPan
                       <Text type="secondary" className={styles.textSmall}>
                         处方 #{p.id}
                       </Text>
-                      <Tag>{p.status === 'APPROVED' ? '已通过' : p.status}</Tag>
+                      <Tag>{p.status === STATUS_APPROVED ? '已通过' : p.status}</Tag>
                       <Text type="secondary" className={styles.textSmall}>
                         {p.itemCount} 项
                       </Text>

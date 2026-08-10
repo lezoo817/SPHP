@@ -49,6 +49,9 @@ import java.util.List;
  * <p>退出登录说明：accessToken 为无状态 JWT，服务端无法主动失效；当前实现仅吊销该用户全部有效
  * refreshToken，accessToken 等待其剩余有效期自然过期。如需 accessToken 立即失效，
  * 需引入黑名单（建议 Redis），不在本模块范围内。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Slf4j
 @Service

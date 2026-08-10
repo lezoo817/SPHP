@@ -13,6 +13,7 @@ import { getInventoryAlerts, getPharmacies } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
 import { formatPrice } from '@/utils/price';
 import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
+import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 
 /** 预警状态展示配置（ALERT/LOW） */
 const STATUS_MAP: Record<'ALERT' | 'LOW', { color: string; label: string }> = {
@@ -114,7 +115,7 @@ export default function StockAlerts() {
       request={fetchAlerts}
       search={false}
       params={{ pharmacyId }}
-      pagination={{ pageSize: 10, showTotal: (total) => `共 ${total} 条预警` }}
+      pagination={{ pageSize: PAGE_SIZE_DEFAULT, showTotal: (total) => `共 ${total} 条预警` }}
       toolBarRender={() => [
         <Select
           key="pharmacy"

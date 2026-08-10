@@ -5,6 +5,9 @@ import com.sphp.admin.auth.entity.BRefreshToken;
 
 /**
  * B 端刷新令牌表 Mapper。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface BRefreshTokenMapper extends BaseMapper<BRefreshToken> {
 }

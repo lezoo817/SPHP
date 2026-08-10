@@ -3,6 +3,9 @@ import { request as umiRequest } from '@umijs/max';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ConfigProvider } from 'antd';
 import type { ReactNode } from 'react';
+import { RESULT_CODE_SUCCESS } from '@/constants/resultCode';
+import { REQUEST_TIMEOUT_MS } from '@/constants/timing';
+import { API_URLS } from '@/constants/urls';
 
 /**
  * 全局 React Query 客户端。
@@ -49,8 +52,8 @@ export const request = {
   responseInterceptors: [
     (response: ResponseLike) => {
       const { data } = response;
-      // 后端统一返回 Result<T>，code !== '00000' 为业务错误
-      if (data && data.code !== undefined && data.code !== '00000') {
+      // 后端统一返回 Result<T>，code !== RESULT_CODE_SUCCESS 为业务错误
+      if (data && data.code !== undefined && data.code !== RESULT_CODE_SUCCESS) {
         const err = new Error(data.message || '系统错误') as Error & {
           code?: string;
         };
@@ -91,8 +94,8 @@ export async function getInitialState(): Promise<{
 
   try {
     const res = await umiRequest<{ code: string; data: API.TokenParseVO }>(
-      '/api/b/auth/token/parse',
-      { timeout: 5000 },
+      API_URLS.AUTH_TOKEN_PARSE,
+      { timeout: REQUEST_TIMEOUT_MS },
     );
     const data = res?.data;
     if (!data) return { currentUser: undefined };

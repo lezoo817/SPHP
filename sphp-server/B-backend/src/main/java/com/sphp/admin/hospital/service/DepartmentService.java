@@ -9,6 +9,9 @@ import com.sphp.admin.hospital.vo.DepartmentListVO;
 
 /**
  * 科室管理服务。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface DepartmentService {
 

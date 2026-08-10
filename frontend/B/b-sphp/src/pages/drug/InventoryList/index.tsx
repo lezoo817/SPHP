@@ -22,9 +22,11 @@ import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 import { getColumns } from './columns';
 import UpdateInventoryModal from './UpdateInventoryModal';
 import UnlockInventoryModal from './UnlockInventoryModal';
+import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
+import { ROLE_ADMIN } from '@/constants/businessStatus';
 
 export default function InventoryList() {
-  const isAdmin = useHasRole('ADMIN');
+  const isAdmin = useHasRole(ROLE_ADMIN);
   const actionRef = useRef<ActionType>();
 
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
@@ -117,7 +119,7 @@ export default function InventoryList() {
           labelWidth: 'auto',
           defaultCollapsed: true,
         }}
-        pagination={{ pageSize: 10 }}
+        pagination={{ pageSize: PAGE_SIZE_DEFAULT }}
         toolBarRender={() => [
           <Select
             key="pharmacy"

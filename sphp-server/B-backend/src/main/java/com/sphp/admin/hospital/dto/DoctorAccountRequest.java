@@ -7,6 +7,9 @@ import lombok.Data;
 
 /**
  * 修改医生登录账号请求。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Schema(description = "修改医生登录账号请求")

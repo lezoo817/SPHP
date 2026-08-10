@@ -14,10 +14,12 @@ import {
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { request } from '@umijs/max';
-import { useState, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AgentFloatingButton } from '@/components/agent/AgentFloatingButton';
 import { AiPanel } from '@/components/agent/AiPanel';
 import { buildAgentContext } from '@/models/agent';
+import { ROLE_ADMIN, ROLE_DEPT_HEAD } from '@/constants/businessStatus';
+import { API_URLS } from '@/constants/urls';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -26,8 +28,8 @@ const { Text } = Typography;
  * 侧边栏菜单渲染 - 根据角色数组动态过滤
  */
 function buildMenuItems(roles: string[]): MenuProps['items'] {
-  const isAdmin = roles.includes('ADMIN');
-  const canAudit = isAdmin || roles.includes('DEPT_HEAD');
+  const isAdmin = roles.includes(ROLE_ADMIN);
+  const canAudit = isAdmin || roles.includes(ROLE_DEPT_HEAD);
 
   return [
     ...(isAdmin
@@ -155,7 +157,7 @@ export default function MainLayout() {
         return;
       }
       // ADMIN 无接诊台权限，登录后默认跳转排班列表
-      const isAdmin = roles.includes('ADMIN');
+      const isAdmin = roles.includes(ROLE_ADMIN);
       const path = location.pathname;
       if (isAdmin && (path === '/' || path.startsWith('/consult'))) {
         navigate('/schedule/list', { replace: true });
@@ -163,11 +165,8 @@ export default function MainLayout() {
     }
   }, [currentUser, authChecked, navigate, roles, location.pathname]);
 
-  if (!currentUser) {
-    return null; // 跳转前不渲染任何内容，避免闪烁
-  }
-
-  const menuItems = buildMenuItems(roles);
+  // 固定引用：避免每次 render 重建数组，破坏 Menu 子项 useMemo/useEffect 依赖稳定性
+  const menuItems = useMemo(() => buildMenuItems(roles), [roles]);
 
   /** 菜单点击跳转 */
   const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
@@ -179,24 +178,28 @@ export default function MainLayout() {
   const openKeys = ['/' + location.pathname.split('/').filter(Boolean)[0]];
 
   /** 退出登录 */
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
-      await request('/api/b/auth/logout', { method: 'POST' });
+      await request(API_URLS.AUTH_LOGOUT, { method: 'POST' });
     } catch {
       // 即使接口失败也清理本地状态
     }
     localStorage.removeItem('b_access_token');
     setInitialState({ currentUser: undefined });
     history.push('/login');
-  };
+  }, [setInitialState]);
 
-  /** 构建 Agent 上下文 */
-  const agentContext = buildAgentContext(location.pathname, {
-    hospitalId: currentUser?.hospitalId,
-    doctorId: currentUser?.id,
-    patientId,
-    consultationId,
-  });
+  /** 构建 Agent 上下文（固定引用，避免每次 render 重建对象破坏下方依赖） */
+  const agentContext = useMemo(
+    () =>
+      buildAgentContext(location.pathname, {
+        hospitalId: currentUser?.hospitalId,
+        doctorId: currentUser?.id,
+        patientId,
+        consultationId,
+      }),
+    [location.pathname, currentUser?.hospitalId, currentUser?.id, patientId, consultationId],
+  );
 
   /** 需要隐藏悬浮球的页面 */
   const hideAgentPages = ['/login', '/agent'];
@@ -204,21 +207,28 @@ export default function MainLayout() {
     location.pathname.startsWith(path),
   );
 
-  const userMenuItems: MenuProps['items'] = [
-    {
-      key: 'profile',
-      label: `${currentUser?.name ?? '未知用户'}`,
-      disabled: true,
-    },
-    { type: 'divider' },
-    {
-      key: 'logout',
-      label: '退出登录',
-      icon: <LogoutOutlined />,
-      danger: true,
-      onClick: handleLogout,
-    },
-  ];
+  const userMenuItems: MenuProps['items'] = useMemo(
+    () => [
+      {
+        key: 'profile',
+        label: `${currentUser?.name ?? '未知用户'}`,
+        disabled: true,
+      },
+      { type: 'divider' },
+      {
+        key: 'logout',
+        label: '退出登录',
+        icon: <LogoutOutlined />,
+        danger: true,
+        onClick: handleLogout,
+      },
+    ],
+    [currentUser?.name, handleLogout],
+  );
+
+  if (!currentUser) {
+    return null; // 跳转前不渲染任何内容，避免闪烁
+  }
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

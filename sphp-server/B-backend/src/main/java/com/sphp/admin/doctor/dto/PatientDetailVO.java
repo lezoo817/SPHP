@@ -15,6 +15,9 @@ import java.util.Map;
  * 患者详情 VO。
  *
  * <p>包含基本信息、过敏史、既往史、AI摘要、近期处方、历史就诊记录。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

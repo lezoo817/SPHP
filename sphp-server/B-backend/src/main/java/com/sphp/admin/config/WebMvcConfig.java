@@ -11,6 +11,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  *
  * <p>覆盖全部业务路径 {@code /b/**}（含 /b/auth、/b/admin、/b/doctor）。拦截器为被动式：
  * 仅当请求携带 X-User-Id 时加载上下文，不干扰 B 端 Web 的 Sa-Token Bearer 鉴权。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Configuration
 @RequiredArgsConstructor

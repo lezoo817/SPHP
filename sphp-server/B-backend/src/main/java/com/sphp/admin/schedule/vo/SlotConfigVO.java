@@ -11,6 +11,9 @@ import java.time.LocalTime;
 
 /**
  * 号源时段配置项响应。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

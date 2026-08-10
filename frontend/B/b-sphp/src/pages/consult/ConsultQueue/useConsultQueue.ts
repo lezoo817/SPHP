@@ -7,7 +7,7 @@
  * 患者详情 / 历史 / 消息 / 处方均经 React Query 拉取；
  * 开始/结束接诊、保存病历、发送消息、提交处方为写操作，成功后由查询键自动刷新或本地更新缓存。
  */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Modal, message } from 'antd';
 import { useModel } from '@umijs/max';
@@ -30,19 +30,24 @@ import {
 import { getErrorMessage } from '@/utils/error';
 import { useCurrentUser, useHasRole } from '@/hooks/useCurrentUser';
 import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
+import { POLL_INTERVAL_CONSULT } from '@/constants/timing';
 import dayjs from 'dayjs';
 import type { SelectedStatus } from './constants';
 import type { NoteField } from './NoteForm';
 import type { PrescriptionPrefillItem } from './PrescriptionFormModal';
+import { PAGE_SIZE_100, PAGE_SIZE_20 } from '@/constants/pageSize';
+import { ROLE_ADMIN, STATUS_COMPLETED, STATUS_IN_PROGRESS, STATUS_PENDING } from '@/constants/businessStatus';
 
 /** 待接诊 / 接诊中队列每页条数 */
 const QUEUE_PAGE_SIZE = 10;
 /** 接诊历史每页条数 */
 const HISTORY_PAGE_SIZE = 10;
+/** 稳定的空数组引用：避免 `?? []` 每次 render 新建引用，破坏子组件 useMemo/useEffect 依赖稳定性 */
+const EMPTY_ARRAY: never[] = [];
 
 export function useConsultQueue() {
   const currentUser = useCurrentUser();
-  const isAdmin = useHasRole('ADMIN');
+  const isAdmin = useHasRole(ROLE_ADMIN);
   const queryClient = useQueryClient();
   // 全局接诊上下文：选中患者时写入 patient_id，供 MainLayout 悬浮 AI 抽屉
   // 构建对话上下文携带，避免 AI 反问"患者是谁"（后端 5 个 B 端工具必填 patient_id）
@@ -52,24 +57,24 @@ export function useConsultQueue() {
 
   const [pendingPage, setPendingPage] = useState(1);
   const { data: pendingRes, isLoading: pendingLoading } = useQuery({
-    queryKey: [...QUERY_KEYS.consultQueue('PENDING'), pendingPage] as const,
+    queryKey: [...QUERY_KEYS.consultQueue(STATUS_PENDING), pendingPage] as const,
     queryFn: () =>
-      getQueue({ status: 'PENDING', page: pendingPage, size: QUEUE_PAGE_SIZE }),
-    refetchInterval: 15_000,
+      getQueue({ status: STATUS_PENDING, page: pendingPage, size: QUEUE_PAGE_SIZE }),
+    refetchInterval: POLL_INTERVAL_CONSULT,
   });
-  const pendingItems = pendingRes?.list ?? [];
+  const pendingItems = pendingRes?.list ?? EMPTY_ARRAY;
   const pendingTotal = pendingRes?.total ?? 0;
 
   // ==================== 接诊中队列（15s 轮询，独立分页） ====================
 
   const [inProgressPage, setInProgressPage] = useState(1);
   const { data: inProgressRes, isLoading: inProgressLoading } = useQuery({
-    queryKey: [...QUERY_KEYS.consultQueue('IN_PROGRESS'), inProgressPage] as const,
+    queryKey: [...QUERY_KEYS.consultQueue(STATUS_IN_PROGRESS), inProgressPage] as const,
     queryFn: () =>
-      getQueue({ status: 'IN_PROGRESS', page: inProgressPage, size: QUEUE_PAGE_SIZE }),
-    refetchInterval: 15_000,
+      getQueue({ status: STATUS_IN_PROGRESS, page: inProgressPage, size: QUEUE_PAGE_SIZE }),
+    refetchInterval: POLL_INTERVAL_CONSULT,
   });
-  const inProgressItems = inProgressRes?.list ?? [];
+  const inProgressItems = inProgressRes?.list ?? EMPTY_ARRAY;
   const inProgressTotal = inProgressRes?.total ?? 0;
 
   // ==================== 接诊历史（独立分页） ====================
@@ -80,7 +85,7 @@ export function useConsultQueue() {
     queryFn: () =>
       getConsultHistory({ page: historyPage, size: HISTORY_PAGE_SIZE }),
   });
-  const historyItems = historyRes?.list ?? [];
+  const historyItems = historyRes?.list ?? EMPTY_ARRAY;
   const historyTotal = historyRes?.total ?? 0;
 
   // ==================== 选中接诊 ====================
@@ -100,24 +105,24 @@ export function useConsultQueue() {
   const { data: historyDetail, isLoading: historyDetailLoading } = useQuery({
     queryKey: QUERY_KEYS.consultHistoryDetail(selectedConsultId ?? -1),
     queryFn: () => getConsultHistoryDetail(selectedConsultId as number),
-    enabled: Boolean(selectedConsultId) && selectedStatus === 'COMPLETED',
+    enabled: Boolean(selectedConsultId) && selectedStatus === STATUS_COMPLETED,
   });
 
   /** 留言板消息（仅接诊中加载） */
   const { data: messages, isLoading: messagesLoading } = useQuery({
     queryKey: QUERY_KEYS.consultMessages(selectedConsultId ?? -1),
     queryFn: () =>
-      getMessages(selectedConsultId as number, { page: 1, size: 100 }).then(
+      getMessages(selectedConsultId as number, { page: 1, size: PAGE_SIZE_100 }).then(
         (res) => res.list ?? [],
       ),
-    enabled: Boolean(selectedConsultId) && selectedStatus === 'IN_PROGRESS',
+    enabled: Boolean(selectedConsultId) && selectedStatus === STATUS_IN_PROGRESS,
   });
 
   /** 当前问诊的处方列表 */
   const { data: consultPrescriptions } = useQuery({
     queryKey: QUERY_KEYS.consultPrescriptions(selectedConsultId ?? -1),
     queryFn: () =>
-      getPrescriptions({ consultId: selectedConsultId as number, page: 1, size: 20 }).then(
+      getPrescriptions({ consultId: selectedConsultId as number, page: 1, size: PAGE_SIZE_20 }).then(
         (res) => res.list ?? [],
       ),
     enabled: Boolean(selectedConsultId),
@@ -173,16 +178,16 @@ export function useConsultQueue() {
   // ==================== 补录过敏史 ====================
 
   /** 接诊台补录患者过敏史：成功后失效患者详情缓存，过敏标签与拦截数据即时生效 */
-  const handleAddAllergy = async (data: API.AllergyCreateReq) => {
+  const handleAddAllergy = useCallback(async (data: API.AllergyCreateReq) => {
     if (!selectedConsultId) return;
     await addPatientAllergy(selectedConsultId, data);
     queryClient.invalidateQueries({
       queryKey: QUERY_KEYS.patientDetail(selectedConsultId),
     });
-  };
+  }, [selectedConsultId, queryClient]);
 
   /** 病历字段变更：标记未保存 + 写入对应字段 */
-  const handleFieldChange = (field: NoteField, value: string) => {
+  const handleFieldChange = useCallback((field: NoteField, value: string) => {
     setNoteChanged(true);
     switch (field) {
       case 'chiefComplaint':
@@ -201,7 +206,7 @@ export function useConsultQueue() {
         setReportTreatmentPlan(value);
         break;
     }
-  };
+  }, []);
 
   // ==================== 留言板 ====================
 
@@ -225,31 +230,31 @@ export function useConsultQueue() {
   // ==================== 选中患者 ====================
 
   /** 选择待接诊/接诊中患者 */
-  const handleSelectItem = (item: API.QueueItem) => {
+  const handleSelectItem = useCallback((item: API.QueueItem) => {
     setSelectedConsultId(item.consultId);
     setSelectedStatus(item.status);
     // 桥接当前接诊患者给全局 AI 助手上下文（MainLayout 悬浮抽屉消费）
     setCurrentConsult(item.patientId, item.consultId);
-  };
+  }, [setCurrentConsult]);
 
   /** 选择历史接诊记录 */
-  const handleSelectHistoryItem = (item: API.ConsultHistoryItem) => {
+  const handleSelectHistoryItem = useCallback((item: API.ConsultHistoryItem) => {
     setSelectedConsultId(item.consultId);
     setSelectedStatus(item.status as SelectedStatus);
     // 桥接当前接诊患者给全局 AI 助手上下文（MainLayout 悬浮抽屉消费）
     setCurrentConsult(item.patientId, item.consultId);
-  };
+  }, [setCurrentConsult]);
 
   // ==================== 开始/结束接诊 ====================
 
   /** 刷新三块队列（开始/结束接诊后患者状态迁移，列表需同步） */
-  const refreshQueues = () => {
-    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.consultQueue('PENDING') });
-    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.consultQueue('IN_PROGRESS') });
+  const refreshQueues = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.consultQueue(STATUS_PENDING) });
+    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.consultQueue(STATUS_IN_PROGRESS) });
     queryClient.invalidateQueries({ queryKey: QUERY_KEYS.consultHistory });
-  };
+  }, [queryClient]);
 
-  const handleStartConsult = async () => {
+  const handleStartConsult = useCallback(async () => {
     if (!selectedConsultId) return;
 
     // 前端时段校验：从待接诊队列中找到当前患者，检查当前时间是否在号源时段内
@@ -271,7 +276,7 @@ export function useConsultQueue() {
     try {
       await startConsult(selectedConsultId);
       message.success('开始接诊');
-      setSelectedStatus('IN_PROGRESS');
+      setSelectedStatus(STATUS_IN_PROGRESS);
       setSelectedConsultId(null);
       refreshQueues();
       // 开始接诊后重置选中，AI 上下文随之清除；医生从接诊中队列重新选中时再写入
@@ -281,9 +286,9 @@ export function useConsultQueue() {
     } finally {
       setStartingConsult(false);
     }
-  };
+  }, [selectedConsultId, pendingItems, refreshQueues, clearConsultContext]);
 
-  const handleEndConsult = () => {
+  const handleEndConsult = useCallback(() => {
     if (!selectedConsultId) return;
     Modal.confirm({
       title: '结束问诊',
@@ -295,7 +300,7 @@ export function useConsultQueue() {
         try {
           await endConsult(selectedConsultId);
           message.success('问诊已结束');
-          setSelectedStatus('COMPLETED');
+          setSelectedStatus(STATUS_COMPLETED);
           setSelectedConsultId(null);
           refreshQueues();
           // 结束问诊清除当前接诊上下文，AI 助手不再关联已结束的患者
@@ -307,11 +312,11 @@ export function useConsultQueue() {
         }
       },
     });
-  };
+  }, [selectedConsultId, refreshQueues, clearConsultContext]);
 
   // ==================== 病历保存 ====================
 
-  const handleSaveNote = async () => {
+  const handleSaveNote = useCallback(async () => {
     if (!selectedConsultId) return;
     if (!reportChiefComplaint.trim() && !reportDiagnosis.trim()) {
       message.warning('请至少填写主诉或诊断');
@@ -336,11 +341,18 @@ export function useConsultQueue() {
     } finally {
       setSavingNote(false);
     }
-  };
+  }, [
+    selectedConsultId,
+    reportChiefComplaint,
+    reportPresentIllness,
+    reportPhysicalExam,
+    reportDiagnosis,
+    reportTreatmentPlan,
+  ]);
 
   // ==================== 留言板操作 ====================
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = useCallback(async () => {
     if (!selectedConsultId || !messageInput.trim()) return;
     setSendingMessage(true);
     try {
@@ -358,14 +370,14 @@ export function useConsultQueue() {
     } finally {
       setSendingMessage(false);
     }
-  };
+  }, [selectedConsultId, messageInput, queryClient]);
 
-  const handleMessageKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleMessageKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
-  };
+  }, [handleSendMessage]);
 
   // ==================== 开处方 ====================
 
@@ -382,7 +394,7 @@ export function useConsultQueue() {
     useState<API.PrescriptionDetail | null>(null);
 
   /** 查看处方详情（含风险快照 / 驳回原因） */
-  const handleViewPrescription = async (id: number) => {
+  const handleViewPrescription = useCallback(async (id: number) => {
     setPrescriptionDetailLoading(true);
     setPrescriptionDetailOpen(true);
     setPrescriptionDetailData(null);
@@ -395,16 +407,16 @@ export function useConsultQueue() {
     } finally {
       setPrescriptionDetailLoading(false);
     }
-  };
+  }, []);
 
   /** 关闭处方详情弹窗 */
-  const handleClosePrescriptionDetail = () => {
+  const handleClosePrescriptionDetail = useCallback(() => {
     setPrescriptionDetailOpen(false);
     setPrescriptionDetailData(null);
-  };
+  }, []);
 
   /** 驳回重开：取被驳回处方明细预填进开方弹窗，医生修改后重新提交 */
-  const handleReopenPrescription = async (prescriptionId: number) => {
+  const handleReopenPrescription = useCallback(async (prescriptionId: number) => {
     try {
       const detail = await getPrescriptionDetail(prescriptionId);
       const items: PrescriptionPrefillItem[] = detail.items.map((it) => ({
@@ -421,32 +433,35 @@ export function useConsultQueue() {
     } catch (err: unknown) {
       message.error(getErrorMessage(err, '加载处方失败，无法重新开方'));
     }
-  };
+  }, []);
 
   /** 关闭开方弹窗（同时清除驳回重开预填，避免下次开方残留旧明细） */
-  const closePrescriptionModal = () => {
+  const closePrescriptionModal = useCallback(() => {
     setPrescriptionPrefill(null);
     setPrescriptionModalOpen(false);
-  };
+  }, []);
 
   /** 提交处方：成功后在弹窗内展示风险拦截结果，并刷新已开处方列表 */
-  const handleSubmitPrescription = async (
-    items: API.PrescriptionSubmitReq['items'],
-  ): Promise<API.PrescriptionSubmitResult> => {
-    if (!selectedConsultId) {
-      throw new Error('请先选择患者');
-    }
-    setSubmittingPrescription(true);
-    try {
-      const result = await submitPrescription({ consultId: selectedConsultId, items });
-      queryClient.invalidateQueries({
-        queryKey: QUERY_KEYS.consultPrescriptions(selectedConsultId),
-      });
-      return result;
-    } finally {
-      setSubmittingPrescription(false);
-    }
-  };
+  const handleSubmitPrescription = useCallback(
+    async (
+      items: API.PrescriptionSubmitReq['items'],
+    ): Promise<API.PrescriptionSubmitResult> => {
+      if (!selectedConsultId) {
+        throw new Error('请先选择患者');
+      }
+      setSubmittingPrescription(true);
+      try {
+        const result = await submitPrescription({ consultId: selectedConsultId, items });
+        queryClient.invalidateQueries({
+          queryKey: QUERY_KEYS.consultPrescriptions(selectedConsultId),
+        });
+        return result;
+      } finally {
+        setSubmittingPrescription(false);
+      }
+    },
+    [selectedConsultId, queryClient],
+  );
 
   return {
     currentUser,
@@ -497,7 +512,7 @@ export function useConsultQueue() {
     handleFieldChange,
     handleSaveNote,
     // 留言板
-    messages: messages ?? [],
+    messages: messages ?? EMPTY_ARRAY,
     messagesLoading,
     messageInput,
     sendingMessage,
@@ -506,7 +521,7 @@ export function useConsultQueue() {
     handleSendMessage,
     handleMessageKeyDown,
     // 处方
-    consultPrescriptions: consultPrescriptions ?? [],
+    consultPrescriptions: consultPrescriptions ?? EMPTY_ARRAY,
     /** 医生所属科室（模板列表过滤用） */
     doctorDeptId: currentUser?.deptId ?? null,
     prescriptionModalOpen,

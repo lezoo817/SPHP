@@ -15,9 +15,11 @@ import { getErrorMessage } from '@/utils/error';
 import { getShiftConfig } from '../constants';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
+import { PAGE_SIZE_100, PAGE_SIZE_200, PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
+import { ROLE_ADMIN, STATUS_ENABLED } from '@/constants/businessStatus';
 
 export default function SourcePool() {
-  const isAdmin = useHasRole('ADMIN');
+  const isAdmin = useHasRole(ROLE_ADMIN);
 
   /** 日期参数归一化：ProTable 可能传入 dayjs 或字符串 */
   const toDateParam = (v: unknown): string | undefined => {
@@ -29,7 +31,7 @@ export default function SourcePool() {
   /** 科室选项（供筛选，仅 ADMIN） */
   const fetchDepartments = async () => {
     try {
-      const res = await getDepartments({ page: 1, size: 200 });
+      const res = await getDepartments({ page: 1, size: PAGE_SIZE_200 });
       return (res.list ?? []).map((dept) => ({ label: dept.name, value: dept.id }));
     } catch {
       return [];
@@ -41,9 +43,9 @@ export default function SourcePool() {
     try {
       const res = await getDoctors({
         name: keyword || undefined,
-        status: 'ENABLED',
+        status: STATUS_ENABLED,
         page: 1,
-        size: 100,
+        size: PAGE_SIZE_100,
       });
       return (res.list ?? []).map((doc) => ({ label: doc.name, value: doc.id }));
     } catch {
@@ -179,7 +181,7 @@ export default function SourcePool() {
         span: 6,
         defaultFormItemsNumber: 4,
       }}
-      pagination={{ pageSize: 10, showSizeChanger: true }}
+      pagination={{ pageSize: PAGE_SIZE_DEFAULT, showSizeChanger: true }}
     />
   );
 }

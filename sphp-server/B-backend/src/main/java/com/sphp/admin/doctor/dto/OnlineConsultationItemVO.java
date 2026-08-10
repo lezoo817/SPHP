@@ -11,6 +11,9 @@ import java.util.Map;
 
 /**
  * B 端在线问诊列表项。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

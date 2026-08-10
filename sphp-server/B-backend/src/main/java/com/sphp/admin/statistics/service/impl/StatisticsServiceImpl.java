@@ -17,6 +17,9 @@ import java.util.List;
  * 统计报表服务实现。
  *
  * <p>所有统计基于当前登录管理员所属医院（{@code hospital_id}）做数据隔离。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Slf4j
 @Service

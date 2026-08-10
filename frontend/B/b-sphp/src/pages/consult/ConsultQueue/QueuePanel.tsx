@@ -14,6 +14,7 @@ import {
 import dayjs from 'dayjs';
 import styles from './QueuePanel.module.less';
 import { GENDER_MAP, STATUS_MAP } from './constants';
+import { STATUS_COMPLETED } from '@/constants/businessStatus';
 
 const { Text, Title } = Typography;
 
@@ -123,7 +124,7 @@ function HistoryItemView({
             </Text>
           )}
         </Space>
-        <Tag>{item.status === 'COMPLETED' ? '已完成' : item.status}</Tag>
+        <Tag>{item.status === STATUS_COMPLETED ? '已完成' : item.status}</Tag>
       </div>
       {item.chiefComplaint && (
         <div className={styles.aiSummary}>

@@ -17,6 +17,9 @@ import com.sphp.admin.doctor.dto.OnlineConsultationMessagePageVO;
 
 /**
  * 接诊台服务接口。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface DoctorConsultService {
 

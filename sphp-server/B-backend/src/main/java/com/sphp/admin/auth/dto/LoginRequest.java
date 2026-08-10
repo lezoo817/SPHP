@@ -8,6 +8,9 @@ import lombok.Data;
  * 登录请求参数。
  *
  * <p>账号命名遵循 {@code b_user.account}（全院唯一）；密码以明文传输，落库前由服务端 BCrypt 加盐哈希。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Schema(description = "登录请求")

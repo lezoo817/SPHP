@@ -6,6 +6,9 @@ import lombok.Data;
 
 /**
  * 编辑科室请求。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Schema(description = "编辑科室请求")

@@ -8,6 +8,9 @@ import java.util.List;
 
 /**
  * 在线问诊消息游标分页结果。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Getter
 @Builder

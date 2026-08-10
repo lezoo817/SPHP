@@ -19,6 +19,9 @@ import org.springframework.stereotype.Component;
  * 配合 {@code ScheduleServiceImpl.forceRelease}（LOCKED → AVAILABLE）形成完整闭环。
  * 与 {@code ScheduleMapper.countPaidFutureAppointments} 的有效状态推导互为兜底：
  * 即使本调度器短暂漏跑，unpublish 校验的 SQL 升级也能正确放行。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Slf4j
 @Component

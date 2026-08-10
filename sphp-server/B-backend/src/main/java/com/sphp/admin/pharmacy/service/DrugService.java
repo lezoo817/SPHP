@@ -11,6 +11,9 @@ import com.sphp.admin.pharmacy.dto.DrugUpdateRequest;
  * <p>按当前登录管理员所属医院（{@code hospital_id}）做数据隔离；
  * 药品状态字段使用 {@link com.sphp.admin.common.enums.BUserStatusEnum}，
  * 批准文号唯一性按医院维度校验。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface DrugService {
     /**

@@ -8,7 +8,11 @@ import org.apache.ibatis.annotations.Select;
 import java.util.List;
 import java.util.Map;
 
-/** 药房药品库存表 Mapper。 */
+/** 药房药品库存表 Mapper。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
+ */
 public interface PharmacyDrugStockMapper extends BaseMapper<PharmacyDrugStock> {
 
     /**

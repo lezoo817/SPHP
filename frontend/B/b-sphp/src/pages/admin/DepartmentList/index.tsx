@@ -17,9 +17,11 @@ import {
 import { useHasRole } from '@/hooks/useCurrentUser';
 import { getErrorMessage } from '@/utils/error';
 import DepartmentFormModal from './DepartmentFormModal';
+import { PAGE_SIZE_5 } from '@/constants/pageSize';
+import { ROLE_ADMIN, STATUS_DISABLED, STATUS_ENABLED } from '@/constants/businessStatus';
 
 export default function DepartmentList() {
-  const isAdmin = useHasRole('ADMIN');
+  const isAdmin = useHasRole(ROLE_ADMIN);
   const actionRef = useRef<ActionType>();
   const formRef = useRef<ProFormInstance>();
   const searchParamsRef = useRef<Partial<API.DepartmentListParams>>({});
@@ -62,13 +64,13 @@ export default function DepartmentList() {
 
   /** 切换科室状态 */
   const handleToggleStatus = async (record: API.Department) => {
-    const newStatus = record.status === 'ENABLED' ? 'DISABLED' : 'ENABLED';
-    const actionLabel = newStatus === 'ENABLED' ? '启用' : '停用';
+    const newStatus = record.status === STATUS_ENABLED ? STATUS_DISABLED : STATUS_ENABLED;
+    const actionLabel = newStatus === STATUS_ENABLED ? '启用' : '停用';
 
     Modal.confirm({
       title: `${actionLabel}科室`,
       content: `确定要${actionLabel}科室「${record.name}」吗？${
-        newStatus === 'DISABLED'
+        newStatus === STATUS_DISABLED
           ? '停用后，该科室下的医生将无法接诊，已发布的排班将受影响。'
           : ''
       }`,
@@ -116,14 +118,14 @@ export default function DepartmentList() {
           allowClear
           placeholder="全部"
           options={[
-            { label: '启用', value: 'ENABLED' },
-            { label: '停用', value: 'DISABLED' },
+            { label: '启用', value: STATUS_ENABLED },
+            { label: '停用', value: STATUS_DISABLED },
           ]}
         />
       ),
       render: (_, record) => (
-        <Tag color={record.status === 'ENABLED' ? 'green' : 'red'}>
-          {record.status === 'ENABLED' ? '启用' : '停用'}
+        <Tag color={record.status === STATUS_ENABLED ? 'green' : 'red'}>
+          {record.status === STATUS_ENABLED ? '启用' : '停用'}
         </Tag>
       ),
     },
@@ -144,7 +146,7 @@ export default function DepartmentList() {
           )}
           {isAdmin && (
             <Switch
-              checked={record.status === 'ENABLED'}
+              checked={record.status === STATUS_ENABLED}
               checkedChildren="启用"
               unCheckedChildren="停用"
               size="small"
@@ -220,7 +222,7 @@ export default function DepartmentList() {
               ]
             : []
         }
-        pagination={{ pageSize: 5 }}
+        pagination={{ pageSize: PAGE_SIZE_5 }}
       />
 
       <DepartmentFormModal

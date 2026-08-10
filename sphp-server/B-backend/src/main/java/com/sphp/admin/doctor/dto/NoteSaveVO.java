@@ -10,6 +10,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 保存病历响应 VO。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

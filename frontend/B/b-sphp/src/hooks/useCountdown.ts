@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { COUNTDOWN_TICK_MS } from '@/constants/timing';
 
 /**
  * 倒计时 Hook：每秒刷新，返回目标时刻（毫秒时间戳）距当前的剩余毫秒数。
@@ -19,7 +20,7 @@ export default function useCountdown(targetMs: number | null): number {
     // 先立即同步一次，再按秒 tick，保证渲染即准确
     const tick = () => setRemainMs(Math.max(0, targetMs - Date.now()));
     tick();
-    const timer = window.setInterval(tick, 1000);
+    const timer = window.setInterval(tick, COUNTDOWN_TICK_MS);
     return () => window.clearInterval(timer);
   }, [targetMs]);
 

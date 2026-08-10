@@ -10,6 +10,9 @@ import org.apache.ibatis.annotations.Select;
  *
  * <p>除 CRUD 外，提供医生停用前置校验所需的排班 / 问诊计数查询：使用 {@link Select}
  * 注解避免额外 XML 维护，单表 COUNT 无需结果映射。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface DoctorMapper extends BaseMapper<Doctor> {
 

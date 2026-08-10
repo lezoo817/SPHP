@@ -8,6 +8,9 @@ import java.util.List;
 
 /**
  * 统计报表服务接口。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface StatisticsService {
 

@@ -4,7 +4,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
-/** 释放锁定库存请求。 */
+/** 释放锁定库存请求。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
+ */
 @Data
 @Schema(description = "释放锁定库存请求")
 public class InventoryUnlockRequest {

@@ -6,10 +6,11 @@
  */
 import { request } from '@umijs/max';
 import { requestData } from './http';
+import { API_URLS } from '@/constants/urls';
 
 /** 查询医院信息 */
 export function getHospitalInfo(): Promise<API.HospitalInfo> {
-  return requestData<API.HospitalInfo>('/api/b/admin/hospitals');
+  return requestData<API.HospitalInfo>(API_URLS.ADMIN_HOSPITALS);
 }
 
 /** 编辑医院信息 */
@@ -27,7 +28,7 @@ export function updateHospital(
 export function getDepartments(
   params: API.DepartmentListParams,
 ): Promise<API.PageResult<API.Department>> {
-  return requestData<API.PageResult<API.Department>>('/api/b/admin/departments', {
+  return requestData<API.PageResult<API.Department>>(API_URLS.ADMIN_DEPARTMENTS, {
     params,
   });
 }
@@ -36,7 +37,7 @@ export function getDepartments(
 export function createDepartment(
   data: API.UpsertDepartmentReq,
 ): Promise<void> {
-  return request('/api/b/admin/departments', {
+  return request(API_URLS.ADMIN_DEPARTMENTS, {
     method: 'POST',
     data,
   });
@@ -68,7 +69,7 @@ export function updateDepartmentStatus(
 export function getDoctors(
   params: API.DoctorListParams,
 ): Promise<API.PageResult<API.Doctor>> {
-  return requestData<API.PageResult<API.Doctor>>('/api/b/admin/doctors', {
+  return requestData<API.PageResult<API.Doctor>>(API_URLS.ADMIN_DOCTORS, {
     params,
   });
 }
@@ -77,7 +78,7 @@ export function getDoctors(
 export function createDoctor(
   data: API.CreateDoctorReq,
 ): Promise<void> {
-  return request('/api/b/admin/doctors', {
+  return request(API_URLS.ADMIN_DOCTORS, {
     method: 'POST',
     data,
   });
@@ -133,14 +134,14 @@ export function updateDoctorStatus(
 export function getSchedules(
   params: API.ScheduleListParams,
 ): Promise<API.PageResult<API.Schedule>> {
-  return requestData<API.PageResult<API.Schedule>>('/api/b/admin/schedules', {
+  return requestData<API.PageResult<API.Schedule>>(API_URLS.ADMIN_SCHEDULES, {
     params,
   });
 }
 
 /** 创建排班（仅 ADMIN） */
 export function createSchedule(data: API.CreateScheduleReq): Promise<void> {
-  return request('/api/b/admin/schedules', { method: 'POST', data });
+  return request(API_URLS.ADMIN_SCHEDULES, { method: 'POST', data });
 }
 
 /** 查询排班号源时段配置 */
@@ -174,7 +175,7 @@ export function previewBatchSchedule(
   data: API.BatchScheduleReq,
 ): Promise<API.BatchPreviewResp> {
   return requestData<API.BatchPreviewResp>(
-    '/api/b/admin/schedules/batch/preview',
+    API_URLS.ADMIN_SCHEDULES_BATCH_PREVIEW,
     { method: 'POST', data },
   );
 }
@@ -183,7 +184,7 @@ export function previewBatchSchedule(
 export function createBatchSchedule(
   data: API.BatchScheduleReq,
 ): Promise<API.BatchCreateReport> {
-  return requestData<API.BatchCreateReport>('/api/b/admin/schedules/batch', {
+  return requestData<API.BatchCreateReport>(API_URLS.ADMIN_SCHEDULES_BATCH, {
     method: 'POST',
     data,
   });
@@ -194,7 +195,7 @@ export function batchPublishSchedules(
   data: API.BatchPublishReq,
 ): Promise<API.BatchPublishReport> {
   return requestData<API.BatchPublishReport>(
-    '/api/b/admin/schedules/batch-publish',
+    API_URLS.ADMIN_SCHEDULES_BATCH_PUBLISH,
     { method: 'POST', data },
   );
 }
@@ -203,7 +204,7 @@ export function batchPublishSchedules(
 export function getLockedSlots(
   params: API.LockedSlotsParams,
 ): Promise<API.PageResult<API.LockedSlot>> {
-  return requestData<API.PageResult<API.LockedSlot>>('/api/b/admin/slots/locked', {
+  return requestData<API.PageResult<API.LockedSlot>>(API_URLS.ADMIN_SLOTS_LOCKED, {
     params,
   });
 }
@@ -217,7 +218,7 @@ export function forceReleaseSlot(slotId: number): Promise<void> {
 export function getSourcePool(
   params: API.SourcePoolParams,
 ): Promise<API.PageResult<API.SourcePoolVO>> {
-  return requestData<API.PageResult<API.SourcePoolVO>>('/api/b/admin/source-pool', {
+  return requestData<API.PageResult<API.SourcePoolVO>>(API_URLS.ADMIN_SOURCE_POOL, {
     params,
   });
 }
@@ -228,7 +229,7 @@ export function getSourcePool(
 export function getQueue(
   params: API.QueueListParams,
 ): Promise<API.PageResult<API.QueueItem>> {
-  return requestData<API.PageResult<API.QueueItem>>('/api/b/doctor/queue', {
+  return requestData<API.PageResult<API.QueueItem>>(API_URLS.DOCTOR_QUEUE, {
     params,
   });
 }
@@ -238,7 +239,7 @@ export function getOnlineConsultations(
   params: { status: string; page?: number; size?: number },
 ): Promise<API.PageResult<API.OnlineConsultationItem>> {
   return requestData<API.PageResult<API.OnlineConsultationItem>>(
-    '/api/b/doctor/online-consultations',
+    API_URLS.DOCTOR_ONLINE_CONSULTATIONS,
     { params },
   );
 }
@@ -363,7 +364,7 @@ export function getConsultHistory(
   params?: { page?: number; size?: number },
 ): Promise<API.PageResult<API.ConsultHistoryItem>> {
   return requestData<API.PageResult<API.ConsultHistoryItem>>(
-    '/api/b/doctor/consult/history',
+    API_URLS.DOCTOR_CONSULT_HISTORY,
     { params },
   );
 }
@@ -383,7 +384,7 @@ export function getConsultHistoryDetail(
 export function getPrescriptions(
   params: API.PrescriptionListParams,
 ): Promise<API.PageResult<API.Prescription>> {
-  return requestData<API.PageResult<API.Prescription>>('/api/b/prescriptions', {
+  return requestData<API.PageResult<API.Prescription>>(API_URLS.PRESCRIPTIONS, {
     params,
   });
 }
@@ -399,7 +400,7 @@ export function getPrescriptionDetail(
 export function submitPrescription(
   data: API.PrescriptionSubmitReq,
 ): Promise<API.PrescriptionSubmitResult> {
-  return requestData<API.PrescriptionSubmitResult>('/api/b/prescriptions', {
+  return requestData<API.PrescriptionSubmitResult>(API_URLS.PRESCRIPTIONS, {
     method: 'POST',
     data,
   });
@@ -409,7 +410,7 @@ export function submitPrescription(
 export function precheckPrescription(
   data: API.PrescriptionPrecheckReq,
 ): Promise<API.PrescriptionPrecheckResult> {
-  return requestData<API.PrescriptionPrecheckResult>('/api/b/prescriptions/precheck', {
+  return requestData<API.PrescriptionPrecheckResult>(API_URLS.PRESCRIPTIONS_PRECHECK, {
     method: 'POST',
     data,
   });
@@ -420,7 +421,7 @@ export function getPendingAudits(
   params: API.PageParams,
 ): Promise<API.PageResult<API.PendingAuditItem>> {
   return requestData<API.PageResult<API.PendingAuditItem>>(
-    '/api/b/prescriptions/pending-audit',
+    API_URLS.PRESCRIPTIONS_PENDING_AUDIT,
     { params },
   );
 }
@@ -443,7 +444,7 @@ export function getTemplates(
   params: API.TemplateListParams,
 ): Promise<API.PageResult<API.PrescriptionTemplate>> {
   return requestData<API.PageResult<API.PrescriptionTemplate>>(
-    '/api/b/prescription-templates',
+    API_URLS.PRESCRIPTION_TEMPLATES,
     { params },
   );
 }
@@ -453,7 +454,7 @@ export function saveTemplate(
   data: API.SaveTemplateReq,
 ): Promise<API.PrescriptionTemplate> {
   return requestData<API.PrescriptionTemplate>(
-    '/api/b/prescription-templates',
+    API_URLS.PRESCRIPTION_TEMPLATES,
     { method: 'POST', data },
   );
 }
@@ -482,7 +483,7 @@ export function updateTemplate(
 export function getDrugs(
   params: API.DrugListParams,
 ): Promise<API.PageResult<API.Drug>> {
-  return requestData<API.PageResult<API.Drug>>('/api/b/admin/drugs', {
+  return requestData<API.PageResult<API.Drug>>(API_URLS.ADMIN_DRUGS, {
     params,
   });
 }
@@ -491,7 +492,7 @@ export function getDrugs(
 export function getDoctorDrugs(
   params: API.DrugListParams,
 ): Promise<API.PageResult<API.Drug>> {
-  return requestData<API.PageResult<API.Drug>>('/api/b/doctor/drugs', {
+  return requestData<API.PageResult<API.Drug>>(API_URLS.DOCTOR_DRUGS, {
     params,
   });
 }
@@ -503,7 +504,7 @@ export function getDrugById(id: number): Promise<API.Drug> {
 
 /** 新增药品 */
 export function createDrug(data: API.CreateDrugReq): Promise<void> {
-  return request('/api/b/admin/drugs', {
+  return request(API_URLS.ADMIN_DRUGS, {
     method: 'POST',
     data,
   });
@@ -535,7 +536,7 @@ export function updateDrugStatus(
 export function getInventoryList(
   params: API.InventoryListParams,
 ): Promise<API.PageResult<API.InventoryItem>> {
-  return requestData<API.PageResult<API.InventoryItem>>('/api/b/admin/inventory', {
+  return requestData<API.PageResult<API.InventoryItem>>(API_URLS.ADMIN_INVENTORY, {
     params,
   });
 }
@@ -555,14 +556,14 @@ export function updateInventory(
 export function getInventoryAlerts(
   params?: { pharmacyId?: number },
 ): Promise<API.InventoryItem[]> {
-  return requestData<API.InventoryItem[]>('/api/b/admin/inventory/alerts', {
+  return requestData<API.InventoryItem[]>(API_URLS.ADMIN_INVENTORY_ALERTS, {
     params,
   });
 }
 
 /** 查询药房列表（供下拉筛选） */
 export function getPharmacies(): Promise<API.PharmacyItem[]> {
-  return requestData<API.PharmacyItem[]>('/api/b/admin/pharmacies');
+  return requestData<API.PharmacyItem[]>(API_URLS.ADMIN_PHARMACIES);
 }
 
 /** 手动释放锁定库存（仅 ADMIN） */
@@ -582,7 +583,7 @@ export function unlockInventory(
 export function getPatientList(
   params: API.PatientListParams,
 ): Promise<API.PageResult<API.PatientListItem>> {
-  return requestData<API.PageResult<API.PatientListItem>>('/api/b/admin/patients', {
+  return requestData<API.PageResult<API.PatientListItem>>(API_URLS.ADMIN_PATIENTS, {
     params,
   });
 }
@@ -631,7 +632,7 @@ export function getPatientMedications(
 export function getStatisticsOverview(
   params?: API.StatisticsParams,
 ): Promise<API.StatisticsOverview> {
-  return requestData<API.StatisticsOverview>('/api/b/admin/statistics/overview', {
+  return requestData<API.StatisticsOverview>(API_URLS.ADMIN_STATISTICS_OVERVIEW, {
     params,
   });
 }
@@ -641,7 +642,7 @@ export function getDepartmentStats(
   params?: API.StatisticsParams,
 ): Promise<API.DepartmentStatItem[]> {
   return requestData<API.DepartmentStatItem[]>(
-    '/api/b/admin/statistics/department',
+    API_URLS.ADMIN_STATISTICS_DEPARTMENT,
     { params },
   );
 }
@@ -650,7 +651,7 @@ export function getDepartmentStats(
 export function getDailyStats(
   params: API.StatisticsParams,
 ): Promise<API.DailyStatItem[]> {
-  return requestData<API.DailyStatItem[]>('/api/b/admin/statistics/daily', {
+  return requestData<API.DailyStatItem[]>(API_URLS.ADMIN_STATISTICS_DAILY, {
     params,
   });
 }

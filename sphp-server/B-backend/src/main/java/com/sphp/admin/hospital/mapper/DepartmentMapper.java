@@ -9,6 +9,9 @@ import org.apache.ibatis.annotations.Select;
  * 科室表 Mapper。
  *
  * <p>除 CRUD 外，提供科室停用前置校验所需的排班 / 问诊计数查询（@Select 注解，无需 XML）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface DepartmentMapper extends BaseMapper<Department> {
 

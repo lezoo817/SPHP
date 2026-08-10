@@ -16,6 +16,9 @@ import java.util.List;
  *
  * <p>按当前登录管理员所属医院（{@code hospital_id}）做数据隔离过滤；
  * 药房状态字段与 {@link BUserStatusEnum} 复用（仅 ENABLED / DISABLED 两态）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Service
 @RequiredArgsConstructor

@@ -13,6 +13,9 @@ import java.util.List;
  *
  * <p>b_user 表无姓名 / 科室列，姓名与科室需经 doctor_id 联查 doctor 表补全；
  * 管理员（{@code doctorId == null}）姓名取登录账号。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

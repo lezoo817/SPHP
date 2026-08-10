@@ -19,6 +19,9 @@ import org.springframework.web.servlet.HandlerInterceptor;
  *     <li>头缺失：跳过（B 端 Web 请求走 Sa-Token Bearer 鉴权）</li>
  * </ul>
  * 请求结束后在 {@link #afterCompletion} 清理 ThreadLocal，防止内存泄漏。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Component
 @RequiredArgsConstructor

@@ -218,6 +218,13 @@ public class PatientServiceImpl implements PatientService {
         if (patient == null || patient.getDeletedAt() != null) {
             throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "患者不存在");
         }
+        // 数据隔离：仅允许访问本院存在就诊关联的患者，防止凭 ID 跨院水平越权；
+        // 与列表页（selectPatientPage 经 doctor.hospital_id 过滤）口径保持一致。
+        // 错误码与"不存在"相同，避免向跨院调用方泄漏患者存在性。
+        Long hospitalId = currentUserService.getCurrentDataScope().hospitalId();
+        if (!patientDataMapper.existsConsultInHospital(id, hospitalId)) {
+            throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "患者不存在");
+        }
         return patient;
     }
 

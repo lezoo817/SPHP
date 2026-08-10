@@ -9,6 +9,7 @@ import { ExclamationCircleOutlined, EyeOutlined, SendOutlined } from '@ant-desig
 import type { ProColumns } from '@ant-design/pro-components';
 import dayjs from 'dayjs';
 import { STATUS_MAP, STATUS_OPTIONS } from '../constants';
+import { STATUS_DRAFT } from '@/constants/businessStatus';
 
 const { Text } = Typography;
 
@@ -138,7 +139,7 @@ export function getColumns(deps: ColumnsDeps): ProColumns<API.Prescription>[] {
           >
             查看
           </Button>
-          {record.status === 'DRAFT' && (
+          {record.status === STATUS_DRAFT && (
             <Button
               type="link"
               size="small"

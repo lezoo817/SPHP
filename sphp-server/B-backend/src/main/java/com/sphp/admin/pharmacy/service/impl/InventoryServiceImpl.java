@@ -46,6 +46,9 @@ import java.util.stream.Collectors;
  *
  * <p>释放锁定采用"近似预校验"策略：仅校验订单存在、归属同药房、含该药品明细，
  * 不锁单条订单行；最终释放量取订单数量与 {@code locked_count} 较小者兜底。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Slf4j
 @Service

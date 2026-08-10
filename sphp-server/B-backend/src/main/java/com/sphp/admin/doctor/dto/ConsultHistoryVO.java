@@ -13,6 +13,9 @@ import java.time.OffsetDateTime;
  * 接诊历史项 VO。
  *
  * <p>当前医生已完成的历史接诊记录列表。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

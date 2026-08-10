@@ -16,6 +16,9 @@ import java.util.Map;
 
 /**
  * 患者消息提交后向绑定医生推送实时通知。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Component
 @RequiredArgsConstructor

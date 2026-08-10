@@ -1,3 +1,6 @@
+import { WS_HEARTBEAT_INTERVAL_MS, WS_RECONNECT_BASE_MS, WS_RECONNECT_MAX_MS } from '../constants/timing';
+import { API_URLS } from '@/constants/urls';
+
 /** 在线问诊实时消息载荷。 */
 export interface ConsultationSocketMessage {
   consultationId: number;
@@ -28,7 +31,7 @@ function parseMessage(raw: string): ConsultationSocketMessage | undefined {
 
 /** 获取统一后端 WebSocket 地址。 */
 function resolveSocketUrl(): string {
-  const url = new URL('/api/ws/consultation', window.location.origin);
+  const url = new URL(API_URLS.WS_CONSULTATION, window.location.origin);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   return url.toString();
 }
@@ -50,20 +53,20 @@ export function createConsultationSocket(onMessage: (message: ConsultationSocket
   const connect = () => {
     if (!active) return;
     socket = new WebSocket(resolveSocketUrl());
-    socket.onopen = () => socket?.send(frame('CONNECT', { Authorization: `Bearer ${token}`, 'X-Client-Type': 'B', 'heart-beat': '10000,10000' }));
+    socket.onopen = () => socket?.send(frame('CONNECT', { Authorization: `Bearer ${token}`, 'X-Client-Type': 'B', 'heart-beat': `${WS_HEARTBEAT_INTERVAL_MS},${WS_HEARTBEAT_INTERVAL_MS}` }));
     socket.onmessage = (event) => {
       const raw = String(event.data);
       if (raw.startsWith('CONNECTED')) {
         retry = 0;
         socket?.send(frame('SUBSCRIBE', { id: 'consultation-message', destination: '/user/queue/consultation-message', ack: 'auto' }));
-        heartbeatTimer = window.setInterval(() => socket?.readyState === WebSocket.OPEN && socket.send('\n'), 10000);
+        heartbeatTimer = window.setInterval(() => socket?.readyState === WebSocket.OPEN && socket.send('\n'), WS_HEARTBEAT_INTERVAL_MS);
       }
       raw.split('\0').map(parseMessage).filter((item): item is ConsultationSocketMessage => Boolean(item)).forEach(onMessage);
     };
     socket.onclose = () => {
       if (heartbeatTimer) window.clearInterval(heartbeatTimer);
       if (!active) return;
-      const delay = Math.min(1000 * 2 ** retry++, 30000);
+      const delay = Math.min(WS_RECONNECT_BASE_MS * 2 ** retry++, WS_RECONNECT_MAX_MS);
       reconnectTimer = window.setTimeout(connect, delay);
     };
   };

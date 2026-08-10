@@ -6,6 +6,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 锁定号源看板查询结果行（关联 slot_snapshot → slot → schedule → doctor/patient）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 public class LockedSlotRow {

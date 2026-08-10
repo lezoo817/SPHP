@@ -7,6 +7,9 @@ import org.apache.ibatis.annotations.Select;
 
 /**
  * 排班表 Mapper。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface ScheduleMapper extends BaseMapper<Schedule> {
 

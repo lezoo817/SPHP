@@ -10,6 +10,7 @@ import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { getDailyStats } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
 import dayjs from 'dayjs';
+import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 
 const { RangePicker } = DatePicker;
 
@@ -89,7 +90,7 @@ export default function DailyReport() {
           style={{ width: 240 }}
         />,
       ]}
-      pagination={{ pageSize: 10 }}
+      pagination={{ pageSize: PAGE_SIZE_DEFAULT }}
     />
   );
 }

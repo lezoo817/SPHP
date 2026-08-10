@@ -24,6 +24,9 @@ import java.util.List;
  *
  * <p>查询接口按当前登录用户数据权限过滤（ADMIN 全院 / DEPT_HEAD 本科室 / DOCTOR 本人）；
  * 写操作（创建/配置时段/发布/取消发布/手动释放）仅 ADMIN。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface ScheduleService {
 

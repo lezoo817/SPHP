@@ -11,6 +11,9 @@ import lombok.NoArgsConstructor;
  *
  * <p>仅表示 refreshToken 已吊销，accessToken 为无状态 JWT，等待自然过期（详见
  * {@link com.sphp.admin.auth.service.impl.AuthServiceImpl} 类注释）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

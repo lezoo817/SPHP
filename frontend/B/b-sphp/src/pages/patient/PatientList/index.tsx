@@ -11,6 +11,7 @@ import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { history } from '@umijs/max';
 import { getPatientList } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
+import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 
 /** 性别映射 */
 const genderMap: Record<API.PatientListItem['gender'], { text: string; color: string }> = {
@@ -86,7 +87,7 @@ export default function PatientList() {
         labelWidth: 'auto',
         defaultCollapsed: true,
       }}
-      pagination={{ pageSize: 10 }}
+      pagination={{ pageSize: PAGE_SIZE_DEFAULT }}
       onRow={(record) => ({
         onClick: () => history.push(`/patient/detail/${record.id}`),
         style: { cursor: 'pointer' },

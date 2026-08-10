@@ -26,10 +26,12 @@ import EditProfileModal from './EditProfileModal';
 import EditAccountModal from './EditAccountModal';
 import ResetPasswordModal from './ResetPasswordModal';
 import ChangeStatusModal from './ChangeStatusModal';
+import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
+import { ROLE_ADMIN, ROLE_DEPT_HEAD } from '@/constants/businessStatus';
 
 export default function DoctorList() {
-  const isAdmin = useHasRole('ADMIN');
-  const isDeptHead = useHasRole('DEPT_HEAD');
+  const isAdmin = useHasRole(ROLE_ADMIN);
+  const isDeptHead = useHasRole(ROLE_DEPT_HEAD);
   const actionRef = useRef<ActionType>();
 
   // 弹窗开关与当前选中医生
@@ -216,7 +218,7 @@ export default function DoctorList() {
               ]
             : []
         }
-        pagination={{ pageSize: 10 }}
+        pagination={{ pageSize: PAGE_SIZE_DEFAULT }}
       />
 
       <AddDoctorModal
