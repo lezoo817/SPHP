@@ -5,6 +5,9 @@ import lombok.Data;
 
 /**
  * 排班号源聚合统计（排班列表的 booked/remain/locked 计数来源）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Schema(description = "排班号源聚合统计")

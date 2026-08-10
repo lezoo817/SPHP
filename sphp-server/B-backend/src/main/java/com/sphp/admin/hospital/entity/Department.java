@@ -9,6 +9,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 科室表实体（对应表 department）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @TableName("department")

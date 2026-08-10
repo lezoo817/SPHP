@@ -11,6 +11,9 @@ import java.util.Map;
 
 /**
  * 待接诊列表项 VO。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

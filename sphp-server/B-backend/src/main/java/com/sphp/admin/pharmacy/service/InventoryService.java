@@ -20,6 +20,9 @@ import java.util.List;
  *   <li>LOW：{@code safety <= available < safety * 2}</li>
  *   <li>ALERT：{@code available < safety}</li>
  * </ul>
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface InventoryService {
     /**

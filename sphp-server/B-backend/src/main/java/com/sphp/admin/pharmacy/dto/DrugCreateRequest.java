@@ -4,7 +4,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
-/** 新增药品请求。 */
+/** 新增药品请求。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
+ */
 @Data
 @Schema(description = "新增药品请求")
 public class DrugCreateRequest {

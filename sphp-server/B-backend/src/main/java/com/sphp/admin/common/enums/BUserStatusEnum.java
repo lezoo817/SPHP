@@ -13,6 +13,9 @@ import lombok.RequiredArgsConstructor;
  * <pre>{@code
  * if (BUserStatusEnum.isEnabled(user.getStatus())) { ... }
  * }</pre>
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Getter
 @RequiredArgsConstructor

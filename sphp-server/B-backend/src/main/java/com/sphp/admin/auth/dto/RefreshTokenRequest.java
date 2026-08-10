@@ -9,6 +9,9 @@ import lombok.Data;
  *
  * <p>refreshToken 由 {@code /b/auth/login} 或 {@code /b/auth/token/refresh} 返回，
  * 一次性使用，刷新成功后旧令牌立即吊销。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Schema(description = "刷新令牌请求")

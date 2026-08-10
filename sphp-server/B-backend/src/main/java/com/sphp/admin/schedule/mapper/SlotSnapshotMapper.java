@@ -14,6 +14,9 @@ import java.time.LocalDate;
 
 /**
  * 号源快照表 Mapper。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface SlotSnapshotMapper extends BaseMapper<SlotSnapshot> {
 

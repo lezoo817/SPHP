@@ -10,6 +10,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 在线问诊医生回复结果。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

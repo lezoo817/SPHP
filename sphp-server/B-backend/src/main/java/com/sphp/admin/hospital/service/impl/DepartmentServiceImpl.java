@@ -32,6 +32,9 @@ import java.util.stream.Collectors;
  * 科室管理服务实现。
  *
  * <p>全部操作按当前登录管理员所属医院（{@code hospital_id}）做数据隔离过滤。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Slf4j
 @Service

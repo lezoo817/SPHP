@@ -12,6 +12,9 @@ import java.util.List;
  * 分页响应封装：{@code total / list / page / size}。
  *
  * @param <T> 列表元素类型
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

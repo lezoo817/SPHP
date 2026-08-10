@@ -41,6 +41,9 @@ import org.springframework.web.bind.annotation.RestController;
  * 数据隔离边界：所有读操作在 Service 层基于当前用户的医院 / 科室 / 医生维度过滤；
  * 写操作（开始 / 结束接诊、保存病历、发送消息）必须先校验归属与状态机。
  * 包含待接诊队列、患者详情、开始/结束接诊、病历保存、消息查询与发送。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @RestController
 @RequestMapping("/b/doctor")

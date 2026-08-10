@@ -10,6 +10,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 手动释放锁定号源响应。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

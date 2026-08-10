@@ -13,6 +13,9 @@ import java.util.List;
  * 接诊历史详情 VO。
  *
  * <p>查看历史接诊记录时，展示该次问诊的病历全文和关联处方。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

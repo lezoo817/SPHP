@@ -14,6 +14,9 @@ import java.util.List;
 
 /**
  * 问诊记录表 Mapper。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface ConsultRecordMapper extends BaseMapper<ConsultRecord> {
 

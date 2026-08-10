@@ -11,6 +11,9 @@ import lombok.NoArgsConstructor;
  *
  * <p>字段说明：{@code hasAccount} 是否存在登录账号；{@code account} 登录账号，
  * 仅当 {@code hasAccount=true} 时有效，否则为 {@code null}。前端展示账号时应先判读 {@code hasAccount}。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

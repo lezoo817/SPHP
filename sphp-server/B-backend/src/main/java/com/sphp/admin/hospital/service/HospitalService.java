@@ -5,6 +5,9 @@ import com.sphp.admin.hospital.vo.HospitalVO;
 
 /**
  * 医院信息服务。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface HospitalService {
 

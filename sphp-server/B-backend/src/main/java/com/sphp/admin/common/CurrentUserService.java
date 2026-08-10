@@ -19,6 +19,9 @@ import org.springframework.stereotype.Service;
  * <p><b>双通道鉴权：</b>Agent 调用经 {@link UserContextInterceptor} 按 X-User-Id 建立上下文后，
  * 优先读取 {@link UserContextHolder}；B 端 Web 沿用 Sa-Token，Service 层通过 {@link StpUtil}
  * 取当前登录 b_user。管理员接口统一要求 ADMIN 角色，并以 ADMIN 所属 {@code hospital_id} 作为数据隔离范围。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Service
 @RequiredArgsConstructor

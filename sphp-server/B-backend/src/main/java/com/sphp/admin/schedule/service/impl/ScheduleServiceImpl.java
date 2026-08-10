@@ -72,6 +72,9 @@ import java.util.stream.Collectors;
  * </ul>
  * 写操作经 {@link CurrentUserService#getCurrentHospitalId()} 校验本院归属，
  * DEPT_HEAD / DOCTOR 无写权限。号源缓存 Key 格式 {@code cend:slot:remain:{slotId}}。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Slf4j
 @Service

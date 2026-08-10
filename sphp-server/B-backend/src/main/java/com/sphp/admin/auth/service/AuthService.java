@@ -13,6 +13,9 @@ import com.sphp.admin.auth.vo.TokenParseVO;
  * <p>负责账号密码登录、refreshToken 轮换、Agent 通道的 Token 解析，以及 logout 时的
  * refreshToken 全量吊销。accessToken 由 Sa-Token 签发，详见
  * {@link com.sphp.admin.auth.service.impl.AuthServiceImpl} 类注释。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface AuthService {
 

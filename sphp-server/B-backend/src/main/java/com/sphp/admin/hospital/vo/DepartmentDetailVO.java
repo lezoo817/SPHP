@@ -10,6 +10,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 科室详情响应。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

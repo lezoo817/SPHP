@@ -46,6 +46,9 @@ import java.util.stream.Collectors;
  *   <li>{@code b_user.status}：{@code ENABLED} / {@code DISABLED}
  *       （{@code SUSPENDED} 业务层映射为 {@code DISABLED}）</li>
  * </ul>
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Slf4j
 @Service

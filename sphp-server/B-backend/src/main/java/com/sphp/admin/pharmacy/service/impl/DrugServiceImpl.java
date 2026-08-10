@@ -37,6 +37,9 @@ import java.util.List;
  *   <li>删除：先软删（{@code deleted_at}），再将 status 同步置为 {@link BUserStatusEnum#DISABLED}，
  *       避免历史关联出现"幽灵启用"药品</li>
  * </ul>
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Slf4j
 @Service

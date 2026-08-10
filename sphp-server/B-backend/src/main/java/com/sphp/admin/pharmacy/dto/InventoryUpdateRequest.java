@@ -3,7 +3,11 @@ package com.sphp.admin.pharmacy.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-/** 更新库存请求（所有字段均可选）。 */
+/** 更新库存请求（所有字段均可选）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
+ */
 @Data
 @Schema(description = "更新库存请求")
 public class InventoryUpdateRequest {

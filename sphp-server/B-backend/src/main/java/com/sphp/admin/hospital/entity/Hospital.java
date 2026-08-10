@@ -9,6 +9,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 医院表实体（对应表 hospital）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @TableName("hospital")

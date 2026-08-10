@@ -13,6 +13,9 @@ import java.util.List;
 
 /**
  * 配置号源时段请求。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Schema(description = "配置号源时段请求")

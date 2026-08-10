@@ -9,6 +9,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 问诊记录表实体（对应表 consult_record）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @TableName("consult_record")

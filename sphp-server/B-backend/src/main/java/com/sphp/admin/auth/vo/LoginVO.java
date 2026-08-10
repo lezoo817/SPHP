@@ -10,6 +10,9 @@ import lombok.NoArgsConstructor;
  * 登录响应。
  *
  * <p>accessToken 由 Sa-Token 签发的无状态 JWT；refreshToken 仅本次返回原文，客户端需持久化用于续期。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

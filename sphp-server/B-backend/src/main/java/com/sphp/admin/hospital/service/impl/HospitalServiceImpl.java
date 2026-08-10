@@ -15,6 +15,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 医院信息服务实现。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Service
 @RequiredArgsConstructor

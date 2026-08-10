@@ -9,6 +9,9 @@ import lombok.Data;
  * 重置医生登录密码请求。
  *
  * <p>管理员直接重置，不校验旧密码，不要求短信/MFA。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Schema(description = "重置医生登录密码请求")

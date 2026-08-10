@@ -7,6 +7,9 @@ import lombok.Data;
 
 /**
  * 启用/停用/暂停医生请求。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Schema(description = "启用/停用/暂停医生请求")

@@ -29,6 +29,9 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>外部完整 URL 前缀为 {@code /api/b/admin/doctors}。所有接口按当前登录管理员
  * 所属医院（{@code hospital_id}）做数据隔离；医生状态与关联 {@code b_user} 状态联动
  * （以 {@code b_user.status} 为权威来源）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @RestController
 @RequestMapping("/b/admin/doctors")

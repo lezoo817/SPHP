@@ -7,6 +7,9 @@ import lombok.Data;
 
 /**
  * 发送问诊消息请求体。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Schema(description = "发送问诊消息请求")

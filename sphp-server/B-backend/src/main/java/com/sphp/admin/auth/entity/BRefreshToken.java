@@ -12,6 +12,9 @@ import java.time.OffsetDateTime;
  *
  * <p>仅存储 token 的 SHA-256 哈希，原文仅在签发瞬间返回给客户端一次；
  * {@code revokedAt} 非空表示已吊销（含主动退出 / 轮换 / 管理员吊销）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @TableName("b_refresh_token")

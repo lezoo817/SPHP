@@ -9,6 +9,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 号源快照表实体（对应表 slot_snapshot），每个号源独立记录。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @TableName("slot_snapshot")

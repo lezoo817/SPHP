@@ -10,6 +10,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 患者表实体（对应表 patient）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @TableName("patient")

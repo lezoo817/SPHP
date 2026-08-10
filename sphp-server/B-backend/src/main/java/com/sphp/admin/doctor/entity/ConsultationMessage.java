@@ -11,6 +11,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 问诊消息表实体（对应表 consultation_message）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Getter
 @Setter

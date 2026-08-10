@@ -13,6 +13,9 @@ import static com.sphp.admin.common.constant.OnlineConsultationConstant.SENDER_D
 
 /**
  * 在线问诊医生消息通知事件转发器。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Component
 @RequiredArgsConstructor

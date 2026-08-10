@@ -9,6 +9,9 @@ import java.util.List;
 
 /**
  * 统计报表 Mapper，使用原生 SQL 进行复杂聚合查询。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface StatisticsMapper {
 

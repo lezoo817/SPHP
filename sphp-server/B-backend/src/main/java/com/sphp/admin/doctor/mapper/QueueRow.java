@@ -8,6 +8,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 待接诊列表自定义查询结果行。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 public class QueueRow {

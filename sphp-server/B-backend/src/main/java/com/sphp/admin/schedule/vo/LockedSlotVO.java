@@ -10,6 +10,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 锁定号源看板项响应。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

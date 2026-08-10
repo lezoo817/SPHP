@@ -12,6 +12,9 @@ import java.util.List;
 
 /**
  * B 端在线问诊详情。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

@@ -8,6 +8,9 @@ import lombok.Data;
  * 新增科室请求。
  *
  * <p>医院归属由后端根据当前管理员所属医院自动填充。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Schema(description = "新增科室请求")

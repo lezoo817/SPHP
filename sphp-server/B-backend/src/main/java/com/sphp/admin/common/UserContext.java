@@ -11,6 +11,9 @@ import com.sphp.admin.auth.entity.BUser;
  *
  * @param user   b_user 实体（含 role / hospitalId / doctorId）
  * @param deptId 数据权限科室 ID（ADMIN 为 null；DEPT_HEAD 为管辖科室；DOCTOR 为本人科室）
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public record UserContext(BUser user, Long deptId) {
 

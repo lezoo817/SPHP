@@ -9,7 +9,11 @@ import lombok.Data;
 
 import java.time.OffsetDateTime;
 
-/** 药房表实体（对应表 pharmacy）。 */
+/** 药房表实体（对应表 pharmacy）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
+ */
 @Data
 @TableName("pharmacy")
 public class Pharmacy {

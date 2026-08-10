@@ -8,6 +8,9 @@ import com.sphp.admin.auth.entity.BUser;
  * <p>Agent 调用经 {@link UserContextInterceptor} 解析 X-User-Id 后写入；
  * 业务层通过 {@link #getContext()} 获取完整用户上下文。请求结束后由拦截器
  * {@code afterCompletion} 调用 {@link #clear()} 清理，防止线程复用串扰与内存泄漏。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public final class UserContextHolder {
 
