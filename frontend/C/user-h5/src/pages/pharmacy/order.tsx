@@ -111,6 +111,7 @@ export default function DrugOrderPage() {
     }
   }
 
+  /** 订单是否待支付。 */
   const pendingPayment = isPendingDrugOrder(detail?.status);
   return <main className="subpage pharmacy-order-page"><PageHeader title="购药订单" backPath={backPath} showHome={false} /><section className="subpage-content">
     {loading && <p className="empty-state">正在读取订单...</p>}
