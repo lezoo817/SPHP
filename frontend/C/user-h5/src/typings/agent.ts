@@ -430,13 +430,14 @@ export interface AgentHistoryMessage {
 /** 历史卡片条目：后端持久化的卡片事件，payload 结构与 SSE 实时事件一致。
  *
  * ``anchor`` 为该卡片产生轮次结束时可见消息（user/assistant）总数，前端据此
- * 把卡片插回对话中对应消息之后（而非全部堆到末尾）。
+ * 把卡片插回对话中对应消息之后（而非全部堆到末尾）；``confirmed`` 标识 L2
+ * 确认卡是否已被用户确认成功（历史重放据此渲染"已完成"态）。
  */
 export type AgentHistoryCard =
-  | { event: 'card'; payload: AgentCardEvent; anchor: number }
-  | { event: 'action_card'; payload: AgentActionCardEvent; anchor: number }
-  | { event: 'record_picker'; payload: AgentRecordPickerEvent; anchor: number }
-  | { event: 'options'; payload: AgentOptionsEvent; anchor: number };
+  | { event: 'card'; payload: AgentCardEvent; anchor: number; confirmed: boolean }
+  | { event: 'action_card'; payload: AgentActionCardEvent; anchor: number; confirmed: boolean }
+  | { event: 'record_picker'; payload: AgentRecordPickerEvent; anchor: number; confirmed: boolean }
+  | { event: 'options'; payload: AgentOptionsEvent; anchor: number; confirmed: boolean };
 
 /** 历史会话消息响应（GET /api/chat/sessions/{id}/messages）。 */
 export interface AgentSessionHistory {

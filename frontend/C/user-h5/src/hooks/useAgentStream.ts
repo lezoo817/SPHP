@@ -68,7 +68,10 @@ function buildHistoryCardEntries(cards: AgentHistoryCard[]): AgentEntry[] {
   for (const card of cards) {
     if (card.event === 'card') {
       const p = card.payload;
-      const expired = !!p.expires_at && Date.parse(p.expires_at) <= Date.now();
+      // 已确认（后端 confirm 成功后置 confirmed）优先渲染为"已完成"；
+      // 仅未确认且令牌过期才置"已过期"（确认成功的不因时间流逝变过期）。
+      const confirmed = card.confirmed === true;
+      const expired = !confirmed && !!p.expires_at && Date.parse(p.expires_at) <= Date.now();
       entries.push({
         kind: 'card',
         data: {
@@ -80,7 +83,8 @@ function buildHistoryCardEntries(cards: AgentHistoryCard[]): AgentEntry[] {
           summary: p.summary,
           details: p.details,
           expiresAt: p.expires_at,
-          status: expired ? 'expired' : 'pending',
+          status: confirmed ? 'done' : expired ? 'expired' : 'pending',
+          ...(confirmed ? { resultMessage: '已完成' } : {}),
           ...(expired
             ? { errorCode: 'CONFIRM_EXPIRED', errorMessage: '确认已超时，请重新发起操作' }
             : {}),
