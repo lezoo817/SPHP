@@ -23,6 +23,7 @@ export default function ConsultationPage() {
   const [content, setContent] = useState('');
   const [sending, setSending] = useState(false);
   const patientIdFromUrl = Number(new URLSearchParams(location.search).get('patientId')) || undefined;
+  const returnPath = new URLSearchParams(location.search).get('returnTo');
   const returnToAgent = resolveConsultationAgentReturnState((location.state as { returnToAgent?: unknown } | null)?.returnToAgent);
 
   /** 读取问诊详情；实时补偿请求必须绕过通用读缓存。 */
@@ -87,8 +88,13 @@ export default function ConsultationPage() {
 
   const statusText = detail?.status === 'PENDING' ? '等待医生回复' : detail?.status === 'IN_PROGRESS' ? '医生接诊中' : detail?.status === 'COMPLETED' ? '问诊已完成' : '问诊已结束';
   const patientId = detail?.patientId || patientIdFromUrl || getSelection().patientId;
-  /** 从 AI 入口进入时恢复原会话，其余入口仍返回问诊记录页。 */
+  /** 根据受控入口恢复通知页、AI 会话或就诊助手，避免跨页面返回错位。 */
   function returnFromConsultation() {
+    // 通知消息入口优先返回通知页，避免落到无关的就诊助手一级页面。
+    if (returnPath === '/mine/notifications') {
+      navigate(returnPath);
+      return;
+    }
     if (!returnToAgent) {
       navigate('/assistant');
       return;

@@ -75,7 +75,7 @@ export default function NotificationsPage() {
   async function readNotification(notification: NotificationItem) {
     if (readingId || markingAll) return;
     if (notification.read) {
-      if (notification.type === 'CONSULTATION' && notification.consultationId) navigate(buildConsultationDetailPath(notification.consultationId, notification.patientId));
+      if (notification.type === 'CONSULTATION' && notification.consultationId) navigate(buildConsultationDetailPath(notification.consultationId, notification.patientId, '/mine/notifications'));
       return;
     }
     setReadingId(notification.id);
@@ -85,7 +85,7 @@ export default function NotificationsPage() {
       delete readKeys.current[notification.id];
       setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, read: true } : item));
       // 医生回复通知必须在已读成功后跳转，避免详情返回后仍显示未读。
-      if (notification.type === 'CONSULTATION' && notification.consultationId) navigate(buildConsultationDetailPath(notification.consultationId, notification.patientId));
+      if (notification.type === 'CONSULTATION' && notification.consultationId) navigate(buildConsultationDetailPath(notification.consultationId, notification.patientId, '/mine/notifications'));
     } catch (requestError) {
       setNotice(getApiErrorMessage(requestError));
     } finally {
