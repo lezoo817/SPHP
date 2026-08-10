@@ -77,23 +77,23 @@ import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
 @Service
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
-    // 数据访问
+    // 药房库存、处方与订单的联表查询接口
     private final OrderDataMapper orderDataMapper;
-    // 数据操作
+    // 购药订单主表写入接口
     private final DrugOrderMapper drugOrderMapper;
-    // 数据操作
+    // 购药订单明细写入接口
     private final DrugOrderItemMapper drugOrderItemMapper;
-    // 数据操作
+    // 购药支付单写入接口
     private final DrugOrderPaymentMapper drugOrderPaymentMapper;
-    // 库存锁
+    // Redis 药品库存预扣协调服务
     private final OrderStockLockService stockLockService;
-    // 挂号配置
+    // 订单支付超时时间配置
     private final RegistrationProperties registrationProperties;
-    // 事件发布
+    // 事务后订单事件发布器
     private final ApplicationEventPublisher eventPublisher;
-    // 通知事件发布
+    // 事务后站内通知事件生产器
     private final NotificationEventProducer notificationEventProducer;
-    // 配送服务
+    // 地址快照与模拟配送时效服务
     private final DeliveryService deliveryService;
 
     /**
@@ -104,8 +104,9 @@ public class OrderServiceImpl implements OrderService {
      */
     @Override
     public List<PharmacyInventoryVO> listPharmacyInventory(Long patientId, Long prescriptionId) {
+        // 处方归属和 APPROVED 状态是库存展示的前置条件，避免越权读取药品价格与库存。
         OrderPrescriptionRecord prescription = requireAccessibleApprovedPrescription(patientId, prescriptionId);
-        // 查询
+        // 仅查询处方所属医院内已启用且能满足全部处方药数量的院内药房。
         return toPharmacyInventory(
                 orderDataMapper.selectOrderPharmacyInventory(prescriptionId, prescription.hospitalId())
         );
@@ -121,26 +122,26 @@ public class OrderServiceImpl implements OrderService {
     public DrugOrderCreateVO createDrugOrder(DrugOrderCreateRequest request) {
         // 校验当前账号可访问的已批准处方
         OrderPrescriptionRecord prescription = requireAccessibleApprovedPrescription(request.getPatientId(), request.getPrescriptionId());
-        // 下单只接受地址簿快照或旧版文本，避免客户端伪造已保存地址的归属。
+        // 解析地址簿归属并冻结配送地址与模拟时效，避免客户端伪造地址或后续配置变更影响订单。
         DeliveryOrderSnapshot deliverySnapshot = deliveryService.deliveryResolveOrderSnapshot(request.getAddressId(),
                 request.getDeliveryAddress(), prescription.hospitalId(), request.getPharmacyId());
+        // 分别读取药房库存与处方明细，后续以数量一致性校验药房是否能完整配药。
         List<OrderStockRecord> stocks = orderDataMapper.selectOrderStocks(request.getPharmacyId(), request.getPrescriptionId());
         List<OrderPrescriptionItemRecord> prescriptionItems = orderDataMapper.selectOrderPrescriptionItems(request.getPrescriptionId());
         if (stocks.size() != prescriptionItems.size() || stocks.isEmpty()) {
             throw outOfStock("药房库存不足或不支持该处方药品");
         }
-        // 检查药房
+        // 复用库存展示口径验证药房启用状态、医院归属和全部药品的可售数量。
         boolean pharmacyEligible = orderDataMapper.selectOrderPharmacyInventory(request.getPrescriptionId(), prescription.hospitalId())
                 .stream()
-                .anyMatch(item -> request.getPharmacyId() // 只要流中任意一个元素满足给定条件就立即返回
-                        .equals(item.pharmacyId()) // 只要找到一个匹配项就立刻返回 true
-                );
+                .anyMatch(item -> request.getPharmacyId().equals(item.pharmacyId()));
         if (!pharmacyEligible) {
             throw notFound("药房不存在、已停用或库存不足");
         }
+        // Redis 预扣与数据库行锁组合执行，业务失败时由库存锁服务负责补偿预扣。
         return stockLockService.executeWithStockLocks(
                 stocks,
-                () -> createLockedDrugOrder(request, prescription, stocks, deliverySnapshot) //创建订单
+                () -> createLockedDrugOrder(request, prescription, stocks, deliverySnapshot)
         );
     }
 
@@ -156,11 +157,10 @@ public class OrderServiceImpl implements OrderService {
      */
     @Override
     public DrugOrderPageVO listDrugOrders(Long patientId, String status, String logisticsStatus, String keyword, Integer pageNo, Integer pageSize) {
-        // 检查权限
+        // 将可选就诊人解析为当前账号可访问的患者，后续查询只使用该受信任 ID。
         Long targetPatientId = resolveAccessiblePatient(CUserContext.getRequired().userId(), patientId);
-        // 检查参数
+        // 订单与物流状态均为白名单枚举，避免未经约束的筛选条件进入 SQL。
         validateEnum(status, DrugOrderStatusEnum.values(), "订单状态不在允许范围内");
-        // 检查物流状态
         validateEnum(logisticsStatus, DrugOrderLogisticsStatusEnum.values(), "物流状态不在允许范围内");
         int resolvedPageNo = pageNo == null ? DEFAULT_PAGE_NO : pageNo;
         int resolvedPageSize = pageSize == null ? DEFAULT_PAGE_SIZE : pageSize;
@@ -184,7 +184,7 @@ public class OrderServiceImpl implements OrderService {
      */
     @Override
     public DrugOrderDetailVO getDrugOrderDetail(Long drugOrderId) {
-        // 检查权限
+        // 订单详情必须沿订单反查就诊人归属，不能信任客户端携带的患者信息。
         OrderDetailRecord detail = requireOwnedOrder(drugOrderId);
         return toOrderDetail(detail);
     }
@@ -197,13 +197,13 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public DrugOrderCancelVO cancelDrugOrder(Long drugOrderId) {
-        // 检查权限
+        // 先校验订单归属并保留药房信息，供后续按原药房归还锁定库存。
         OrderDetailRecord detail = requireOwnedOrder(drugOrderId);
         OffsetDateTime now = OffsetDateTime.now();
         if (orderDataMapper.cancelPendingDrugOrder(drugOrderId, now) != 1) throw statusConflict("当前购药订单不可取消");
-        // 取消支付
+        // 只有订单条件取消成功后才关闭待支付单，避免误关闭已成功或已结束支付单。
         orderDataMapper.closePendingDrugOrderPayment(drugOrderId, now);
-        // 释放库存
+        // 订单取消后逐项释放数据库 LOCKED 库存，Redis 预扣已由超时或取消流程协调恢复。
         releaseOrderStocks(detail, now);
         return DrugOrderCancelVO.builder()
                 .drugOrderId(drugOrderId)
@@ -220,7 +220,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public DrugOrderReceiptVO confirmDrugOrderReceipt(Long drugOrderId) {
-        // 检查权限
+        // 锁定订单并校验归属，避免确认收货与提醒授权发生并发竞态。
         requireOwnedReminderOrderForUpdate(drugOrderId);
         OffsetDateTime now = OffsetDateTime.now();
         if (orderDataMapper.confirmOrderReceipt(drugOrderId, now) != 1) throw statusConflict("当前物流状态不可确认收货");
@@ -286,6 +286,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public RegisteringPaymentSuccessVO simulateDrugOrderPayment(Long paymentId, RegisteringPaymentSimulateRequest request) {
+        // 支付单查询同时取得付款账号、订单状态、库存快照和密码哈希，避免支付过程二次拼接数据。
         DrugOrderPaymentRecord payment = orderDataMapper.selectDrugOrderPayment(paymentId);
 
         if (payment == null) throw notFound("支付单不存在");
@@ -294,26 +295,28 @@ public class OrderServiceImpl implements OrderService {
 
         if (!userId.equals(payment.payerUserId())) throw forbidden("无权访问该支付单");
 
-        // 检查权限
+        // 支付账号通过后仍需确认订单患者属于当前账号，防止失效的家庭成员关系继续付款。
         resolveAccessiblePatient(userId, payment.patientId());
 
         OffsetDateTime now = OffsetDateTime.now();
-        // 检查支付单状态
+        // 仅允许待支付单驱动待付款订单进入成功状态。
         if (!PENDING.name().equals(payment.paymentStatus())
                 || !PENDING_PAYMENT.name().equals(payment.orderStatus())) throw statusConflict("支付单状态不允许付款");
 
-        // 检查支付单是否已超时
+        // 支付入口自行兜底到期判断，不能依赖异步超时消息准时到达。
         if (!payment.expireAt().isAfter(now)) {
             throw new CAuthException(PAYMENT_TIMEOUT, HttpStatus.CONFLICT, "支付单已过期");
         }
-        // 检查支付密码
+        // BCrypt 只在内存校验当前登录密码，禁止记录或传递明文密码。
         if (!BCrypt.checkpw(request.getLoginPassword(), payment.passwordHash())) {
             throw new CAuthException(PASSWORD_VALIDATION_FAILED, HttpStatus.BAD_REQUEST, "支付密码校验失败");
         }
-        // 更新支付单状态
+        // 支付单与订单均以条件更新流转，重复支付或超时竞争时只能有一个请求成功。
         if (orderDataMapper.markDrugOrderPaymentSuccess(paymentId, now) != 1
                 || orderDataMapper.markDrugOrderPaid(payment.drugOrderId(), now) != 1) throw statusConflict("支付单状态已变化");
+        // 重新按订单归属读取药房信息，用于将所有 LOCKED 库存转为最终已售库存。
         OrderDetailRecord detail = requireOwnedOrder(payment.drugOrderId());
+        // 每个订单明细都必须完成一次条件扣减，任一失败均回滚支付事务。
         for (OrderItemRecord item : orderDataMapper.selectOrderItems(payment.drugOrderId())) {
             if (orderDataMapper.consumeOrderLockedStock(detail.pharmacyId(), item.drugId(), item.quantity(), now) != 1) {
                 throw systemError("锁定药品库存状态异常");
@@ -327,7 +330,7 @@ public class OrderServiceImpl implements OrderService {
             throw systemError("购药订单待发货轨迹写入失败");
         }
         eventPublisher.publishEvent(DrugOrderLogisticsAdvanceEvent.toInTransit(payment.drugOrderId()));
-        // 发送通知
+        // 通知由事务后事件发布，避免数据库回滚后仍向用户发送支付成功消息。
         notificationEventProducer.publishNotification(
                 "DRUG_ORDER_PAYMENT_SUCCESS",  // 事件类型
                 payment.drugOrderId(),
@@ -351,18 +354,18 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void expireDrugOrder(Long drugOrderId) {
-
+        // 超时投递只携带订单 ID，先查询付款人与就诊人以便在条件取消成功后发送准确通知。
         DrugOrderTimeoutRecord timeout = orderDataMapper.selectDrugOrderTimeout(drugOrderId);
 
         if (timeout == null) return;
 
         OffsetDateTime now = OffsetDateTime.now();
-        // 检查权限
+        // 条件更新是超时消息的幂等边界，只有待付款订单会真正执行后续补偿。
         if (orderDataMapper.expirePendingDrugOrder(drugOrderId, now) == 1) {
-            // 取消支付
+            // 关闭仍处于待支付状态的支付单，防止超时订单后续被再次付款。
             orderDataMapper.closePendingDrugOrderPayment(drugOrderId, now);
             OrderDetailRecord detail = orderDataMapper.selectOrderDetail(drugOrderId);
-            // 释放库存
+            // 订单明细仍保持 LOCKED 时才归还库存；查询缺失时不伪造库存补偿。
             if (detail != null) releaseOrderStocks(detail, now);
             // 仅在待支付订单确实超时后创建通知，重复超时消息不会重复通知。
             notificationEventProducer.publishNotification(
@@ -387,6 +390,7 @@ public class OrderServiceImpl implements OrderService {
     private DrugOrderCreateVO createLockedDrugOrder(DrugOrderCreateRequest request, OrderPrescriptionRecord prescription,
                                                      List<OrderStockRecord> stocks, DeliveryOrderSnapshot deliverySnapshot) {
         OffsetDateTime now = OffsetDateTime.now();
+        // Redis 已预扣总余量后，再逐药品执行数据库条件锁定，PostgreSQL 作为库存最终事实来源。
         for (OrderStockRecord stock : stocks) {
             if (orderDataMapper.lockOrderStock(stock.pharmacyId(), stock.drugId(), stock.quantity(), now) != 1) {
                 throw outOfStock("药品库存不足");
@@ -397,6 +401,7 @@ public class OrderServiceImpl implements OrderService {
                 .sum();
 
         OffsetDateTime expireAt = now.plusSeconds(Math.max(registrationProperties.getPaymentTimeout(), 1));
+        // 订单主表保存药房名称、收货地址和配送时效快照，后续基础数据变化不得影响历史订单。
         DrugOrder order = new DrugOrder();
 
         order.setPatientId(prescription.patientId());
@@ -414,6 +419,7 @@ public class OrderServiceImpl implements OrderService {
 
         if (drugOrderMapper.insert(order) != 1) throw systemError("购药订单创建失败");
 
+        // 将实际锁定的库存行复制为订单明细，单价和药品名称均使用下单时快照。
         for (OrderStockRecord stock : stocks) {
             DrugOrderItem item = new DrugOrderItem();
             item.setDrugOrderId(order.getId());
@@ -426,25 +432,26 @@ public class OrderServiceImpl implements OrderService {
         DrugOrderPayment payment = new DrugOrderPayment();
         payment.setDrugOrderId(order.getId());
         payment.setPayerUserId(CUserContext.getRequired().userId());
-        payment.setAmountCent(amountCent); payment.setStatus(PENDING.name());
+        payment.setAmountCent(amountCent);
+        payment.setStatus(PENDING.name());
         payment.setExpireAt(expireAt);
 
         if (drugOrderPaymentMapper.insert(payment) != 1) throw systemError("购药支付单创建失败");
 
-        // 发送待支付事件
+        // 发布领域事件，由事务提交后监听器投递支付超时消息，避免未提交订单提前超时。
         eventPublisher.publishEvent(
                 DrugOrderPendingEvent.of(
                         order.getId(),
                         order.getPatientId(),
                         payment.getPayerUserId())
         );
-        // 发送通知
+        // 发布事务后站内通知，通知失败不应破坏订单与库存的一致性。
         notificationEventProducer.publishNotification(
-                "DRUG_ORDER_PENDING",  //
+                "DRUG_ORDER_PENDING",
                 order.getId(),
                 payment.getPayerUserId(),
                 order.getPatientId(),
-                DRUG_ORDER,  // 通知类型
+                DRUG_ORDER,
                 "购药订单待支付",
                 "请在规定时间内完成支付。"
         );
@@ -452,13 +459,13 @@ public class OrderServiceImpl implements OrderService {
                 .drugOrderId(order.getId())
                 .status(order.getStatus())
                 .deliveryMethod(order.getDeliveryMethod())
-                .amountCent(amountCent) // 金额
-                .expireAt(expireAt) // 过期时间
+                .amountCent(amountCent)
+                .expireAt(expireAt)
                 .paymentId(payment.getId())
                 .items(stocks.stream().map(stock -> DrugOrderCreateVO.Item.builder()
-                        .drugId(stock.drugId()).
-                        drugName(stock.drugName()).
-                        quantity(stock.quantity())
+                        .drugId(stock.drugId())
+                        .drugName(stock.drugName())
+                        .quantity(stock.quantity())
                         .build())
                         .toList())
                 .build();
@@ -470,6 +477,7 @@ public class OrderServiceImpl implements OrderService {
      * @param now 当前时间
      */
     private void releaseOrderStocks(OrderDetailRecord detail, OffsetDateTime now) {
+        // 以订单明细数量回补原药房库存，条件更新失败表示库存锁状态已被其他流程处理。
         for (OrderItemRecord item : orderDataMapper.selectOrderItems(detail.id())) {
             if (orderDataMapper.releaseOrderStock(detail.pharmacyId(), item.drugId(), item.quantity(), now) != 1)
                 throw systemError("锁定药品库存释放失败");
@@ -478,15 +486,15 @@ public class OrderServiceImpl implements OrderService {
 
     /**
      * 获取可访问的处方。
-     * @param requestedPatientId 访问者
-     * @param prescriptionId 处方
-     * @return 处方
+     * @param requestedPatientId 请求选择的就诊人 ID
+     * @param prescriptionId 处方 ID
+     * @return 已校验归属且状态为 APPROVED 的处方
      */
     private OrderPrescriptionRecord requireAccessibleApprovedPrescription(Long requestedPatientId, Long prescriptionId) {
 
         OrderPrescriptionRecord prescription = orderDataMapper.selectOrderPrescription(prescriptionId);
         if (prescription == null) throw notFound("处方不存在");
-        // 检查权限
+        // 将请求患者解析为当前账号可访问患者，再与处方患者比对防止跨患者购买。
         Long targetPatientId = resolveAccessiblePatient(CUserContext.getRequired().userId(), requestedPatientId);
         if (!targetPatientId.equals(prescription.patientId())) throw forbidden("无权访问该处方");
         if (!"APPROVED".equals(prescription.status())) throw notFound("处方不存在");
@@ -495,13 +503,13 @@ public class OrderServiceImpl implements OrderService {
 
     /**
      * 获取可访问的购药订单。
-     * @param drugOrderId 购药订单
-     * @return 购药订单
+     * @param drugOrderId 购药订单 ID
+     * @return 已校验当前账号患者归属的购药订单
      */
     private OrderDetailRecord requireOwnedOrder(Long drugOrderId) {
         OrderDetailRecord detail = orderDataMapper.selectOrderDetail(drugOrderId);
         if (detail == null) throw notFound("购药订单不存在");
-        // 检查权限
+        // 订单资源始终通过 patient_id 反查当前账号关系，避免只凭订单 ID 访问详情。
         resolveAccessiblePatient(CUserContext.getRequired().userId(), detail.patientId());
         return detail;
     }
@@ -551,12 +559,12 @@ public class OrderServiceImpl implements OrderService {
 
     /**
      * 获取可访问的就诊人。
-     * @param userId  用户
-     * @param requestedPatientId 就诊人
-     * @return 就诊人
+     * @param userId 当前登录用户 ID
+     * @param requestedPatientId 请求选择的就诊人 ID
+     * @return 已授权且有效的就诊人 ID
      */
     private Long resolveAccessiblePatient(Long userId, Long requestedPatientId) {
-        // 获取本人或显式就诊人并校验当前用户有效归属
+        // 未传患者时使用本人；传入患者必须同时有效且与当前账号保持有效关系。
         Long patientId = requestedPatientId == null ? orderDataMapper.selectOrderSelfPatientId(userId) : requestedPatientId;
 
         if (patientId == null || !orderDataMapper.existsOrderActivePatient(patientId))
@@ -570,12 +578,12 @@ public class OrderServiceImpl implements OrderService {
 
     /**
      * 转换药房库存。
-     * @param rows // 药房库存
-     * @return 列表
+     * @param rows 药房库存联表结果
+     * @return 按药房聚合后的库存展示列表
      */
     private List<PharmacyInventoryVO> toPharmacyInventory(List<OrderPharmacyStockRecord> rows) {
         Map<Long, List<OrderPharmacyStockRecord>> grouped = new LinkedHashMap<>();
-        // 分组
+        // 同一药房的多条药品库存聚合为一个药房卡片，保持接口展示层次稳定。
         rows.forEach(row -> grouped.computeIfAbsent(row.pharmacyId(),
                 ignored -> new java.util.ArrayList<>()).
                 add(row));
@@ -583,18 +591,18 @@ public class OrderServiceImpl implements OrderService {
                 .map(group -> {
                     OrderPharmacyStockRecord first = group.getFirst();
                     return PharmacyInventoryVO.builder()
-                           .pharmacyId(first.pharmacyId())
+                            .pharmacyId(first.pharmacyId())
                             .name(first.pharmacyName())
                             .hospitalId(first.hospitalId())
                             .isDefault(first.isDefault())
                             .deliveryMethod("COURIER")
-                             .items(group.stream()
-                                     .map(row -> PharmacyInventoryVO.Item.builder()
-                                             .drugId(row.drugId())
-                                             .availableCount(row.availableCount())
-                                             .unitPriceCent(row.unitPriceCent())
-                                             .build())
-                                     .toList())
+                            .items(group.stream()
+                                    .map(row -> PharmacyInventoryVO.Item.builder()
+                                            .drugId(row.drugId())
+                                            .availableCount(row.availableCount())
+                                            .unitPriceCent(row.unitPriceCent())
+                                            .build())
+                                    .toList())
                             .build();
                 })
                 .toList();
@@ -608,15 +616,15 @@ public class OrderServiceImpl implements OrderService {
     private DrugOrderPageVO.Item toOrderListItem(OrderListRecord record) {
         return DrugOrderPageVO.Item.builder()
                 .id(record.id())
-                .prescriptionId(record.prescriptionId()) // 关联处方，用于购药页展示购买状态
+                .prescriptionId(record.prescriptionId())
                 .orderName(record.orderName())
                 .pharmacyName(record.pharmacyName())
                 .status(record.status())
-                .logisticsStatus(record.logisticsStatus()) // 物流状态
-                .latestLogisticsNode(record.latestLogisticsNode()) // 物流状态
+                .logisticsStatus(record.logisticsStatus())
+                .latestLogisticsNode(record.latestLogisticsNode())
                 .amountCent(record.amountCent())
                 .expireAt(record.expireAt())
-                .patientName(record.patientName()) // 列表展示当前处方就诊人
+                .patientName(record.patientName())
                 .build();
     }
 
@@ -628,10 +636,10 @@ public class OrderServiceImpl implements OrderService {
     private DrugOrderDetailVO toOrderDetail(OrderDetailRecord record) {
         return DrugOrderDetailVO.builder()
                 .id(record.id())
-                .prescriptionId(record.prescriptionId()) // 保留订单与处方的准确关联
+                .prescriptionId(record.prescriptionId())
                 .status(record.status())
                 .patientName(record.patientName())
-                .patientPhone(maskPhone(record.patientPhone())) // 详情仅返回脱敏手机号
+                .patientPhone(maskPhone(record.patientPhone()))
                 .pharmacy(DrugOrderDetailVO.Pharmacy.builder()
                         .id(record.pharmacyId())
                         .name(record.pharmacyName())
@@ -639,13 +647,13 @@ public class OrderServiceImpl implements OrderService {
                 .delivery(DrugOrderDetailVO.Delivery.builder()
                         .method(record.deliveryMethod())
                         .address(record.deliveryAddress())
-                        .company(record.logisticsCompany()) // 物流公司
-                        .trackingNo(record.trackingNo()) // 物流单号
+                        .company(record.logisticsCompany())
+                        .trackingNo(record.trackingNo())
                         .logisticsStatus(record.logisticsStatus())
-                        .expectedDeliveryAt(record.expectedDeliveryAt()) // 后端模拟物流的预计送达时间
+                        .expectedDeliveryAt(record.expectedDeliveryAt())
                         .traces(orderDataMapper.selectOrderTraces(record.id()).stream()
                                 .map(trace -> DrugOrderDetailVO.Trace.builder()
-                                        .node(trace.node()) // 物流节点
+                                        .node(trace.node())
                                         .occurredAt(trace.occurredAt())
                                         .build())
                                 .toList())
@@ -655,7 +663,7 @@ public class OrderServiceImpl implements OrderService {
                                 .drugId(item.drugId())
                                 .drugName(item.drugName())
                                 .quantity(item.quantity())
-                                .unitPriceCent(item.unitPriceCent()) // 单价
+                                .unitPriceCent(item.unitPriceCent())
                                 .build())
                         .toList())
                 .amountCent(record.amountCent()).payment(DrugOrderDetailVO.Payment.builder()
@@ -678,7 +686,15 @@ public class OrderServiceImpl implements OrderService {
         }
         return phone.substring(0, 3) + "****" + phone.substring(7);
     }
-    /** 校验可选枚举筛选值。 */
+    /**
+     * 校验可选枚举筛选值。
+     *
+     * @param value 客户端传入的筛选值
+     * @param values 允许的枚举集合
+     * @param message 参数不合法时的错误消息
+     * @param <T> 枚举类型
+     * @throws CAuthException 筛选值不属于允许枚举时抛出
+     */
     private <T extends Enum<T>> void validateEnum(String value, T[] values, String message) {
         if (value != null && !value.isBlank() && Arrays.stream(values)
                 .noneMatch(item -> item.name().equals(value)))
