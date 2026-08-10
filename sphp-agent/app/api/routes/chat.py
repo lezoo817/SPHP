@@ -22,6 +22,7 @@ from app.infrastructure.cache.redis_client import (
     get_confirm_token_by_token,
     set_confirm_done,
 )
+from app.orchestrator.card_store import CardRecord, get_card_store
 from app.orchestrator.graphs.main_graph import build_main_graph
 from app.orchestrator.nodes.preset import (
     PRESET_AUTHORIZE_DRUG_ORDER_REMINDER_AFTER_RECEIPT,
@@ -637,6 +638,15 @@ async def _sse_generator(
             except Exception:
                 logger.exception("会话元数据落库失败, session_id=%s", session_id)
 
+            # 交互卡片落库（2026-08-10 卡片持久化）：deferred 只含本轮四类卡片
+            # 事件（options/card/action_card/record_picker，M8-6 时序缓冲），写时
+            # 会话锁仍持有（finally 才释放），同会话串行、seq 无竞争。失败仅 log，
+            # 不阻塞 done（与 _record_session 同降级口径）。
+            try:
+                await _record_cards(initial_state, session_id, deferred)
+            except Exception:
+                logger.exception("会话卡片落库失败, session_id=%s", session_id)
+
         except GeneratorExit:
             # P1-3 客户端断开：记录后直接结束，不补推 done（无人接收）。
             # 必须 return 而非 raise + finally 中 yield —— 生成器关闭（GeneratorExit
@@ -745,6 +755,12 @@ async def delete_session(session_id: str, request: Request) -> JSONResponse:
         await _get_graph().checkpointer.adelete_thread(f"{user_id}:{session_id}")
     except Exception:
         logger.warning("删除 checkpoint 失败, session_id=%s", session_id)
+    # 删卡片历史（2026-08-10 卡片持久化联动清理）：随会话删除一并清理 agent_cards，
+    # 按 user_id 隔离；失败仅 log，不阻塞删除主流程（残留卡片不再对外可见）。
+    try:
+        await get_card_store().delete(user_id, session_id)
+    except Exception:
+        logger.warning("删除会话卡片失败, session_id=%s", session_id)
     if not deleted:
         return error_response("SESSION_NOT_FOUND", "会话不存在", trace_id, 404)
     return success_response({"session_id": session_id}, trace_id)
@@ -758,15 +774,20 @@ async def get_session_messages(session_id: str, request: Request) -> JSONRespons
     checkpointer 读取 thread_id 对应的最新 state（含完整 messages 历史），
     按 user_id 隔离（thread_key 含 user_id，跨用户读不到他人会话）。
 
+    **卡片持久化（2026-08-10）**：随消息一并返回该会话持久化的四类交互卡片
+    （``cards``，payload 与 SSE 实时推送一致，前端复用同一渲染组件），修复
+    历史回看/支付返回后卡片丢失。卡片读取失败降级为空列表（不 500）。
+
     依赖 ``checkpointer_backend=postgres``（生产持久化）；memory 后端进程
-    重启即失，重启后历史消息为空（开发已知限制）。
+    重启即失，重启后历史消息/卡片为空（开发已知限制）。
 
     Args:
         session_id: 路径参数，历史会话 ID。
         request: 请求（JWT 中间件注入 user_id；匿名时未注入）。
 
     Returns:
-        统一信封 {code, message, data: {messages: [{role, content}]}}；未登录 401。
+        统一信封 {code, message, data: {messages: [{role, content}],
+        cards: [{seq, event, payload, created_at}]}}；未登录 401。
     """
     user_id = getattr(request.state, "user_id", None)
     trace_id = getattr(request.state, "trace_id", "")
@@ -780,8 +801,16 @@ async def get_session_messages(session_id: str, request: Request) -> JSONRespons
         logger.exception("历史消息读取失败, session_id=%s", session_id)
         return error_response("SERVER_ERROR", "服务异常，请稍后重试", trace_id, 500)
     messages = (snapshot.values or {}).get("messages", [])
+    cards: list[CardRecord] = []
+    try:
+        cards = await get_card_store().list_by_session(user_id, session_id)
+    except Exception:
+        logger.warning("历史卡片读取失败, session_id=%s", session_id)
     return success_response(
-        {"messages": _serialize_session_messages(messages)},
+        {
+            "messages": _serialize_session_messages(messages),
+            "cards": cards,
+        },
         trace_id,
     )
 
@@ -916,6 +945,31 @@ async def _record_session(
         last_message=_truncate_title(reply_text) if reply_text else None,
         message_count=1,
     )
+
+
+async def _record_cards(
+    initial_state: AgentState,
+    session_id: str | None,
+    cards: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """落库本轮四类交互卡片（2026-08-10 卡片持久化）。
+
+    与 ``_record_session`` 同生命周期：仅正常完成路径调用，失败仅 log 不阻塞。
+    ``cards`` 即 ``_sse_generator`` 的 deferred 缓冲内容（options / card /
+    action_card / record_picker，M8-6 先回复再弹卡的完整一轮），payload 与
+    SSE 实时推送完全一致，前端历史重放可复用同一渲染组件。
+
+    Args:
+        initial_state: ``_build_initial_state`` 构造的初始状态（取 user_id）。
+        session_id: 本轮会话 ID（原始，非内部 thread_key）；None 时跳过落库。
+        cards: 本轮产生的卡片事件列表，顺序即前端展示顺序。
+
+    Raises:
+        Exception: 存储层失败时上抛，由调用方 try/except 包裹（不阻塞 done）。
+    """
+    if not session_id or not cards:
+        return
+    await get_card_store().append_batch(initial_state.get("user_id"), session_id, cards)
 
 
 def _build_action(result: dict[str, Any], *, from_call: bool = False) -> dict[str, Any]:

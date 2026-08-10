@@ -89,6 +89,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await get_session_store().setup()
 
+    # 步骤 3.8：初始化交互卡片历史存储（2026-08-10 卡片持久化）。
+    # postgres 后端建 agent_cards 表；memory 后端无操作（与卡片 checkpointer 同生命周期）。
+    from app.orchestrator.card_store import get_card_store
+
+    await get_card_store().setup()
+
     # 步骤 4：注册工具 Schema
     from app.engine.tools.b_schemas import register_b_tools
     from app.engine.tools.c_schemas import register_c_tools
