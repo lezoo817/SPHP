@@ -30,7 +30,7 @@ import {
   SendOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import {
@@ -44,7 +44,7 @@ import {
   submitPrescription,
 } from '@/services/admin';
 import { createConsultationSocket } from '@/services/consultationSocket';
-import { QUERY_KEYS } from '@/constants/queryKeys';
+import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 import { getErrorMessage } from '@/utils/error';
 import styles from './index.module.less';
 
@@ -108,6 +108,9 @@ const STATUS_COLOR: Record<OnlineStatus, string> = {
   COMPLETED: 'green',
 };
 
+/** 医生回复消息最大长度（与后端 OnlineConsultationConstant.MAX_REPLY_LENGTH=2000 一致） */
+const CONSULT_MESSAGE_MAX = 2000;
+
 /** 在线问诊工作台页面。 */
 export default function OnlineConsultationPage() {
   const queryClient = useQueryClient();
@@ -120,6 +123,10 @@ export default function OnlineConsultationPage() {
   const [submittingPrescription, setSubmittingPrescription] = useState(false);
   const [drugKeyword, setDrugKeyword] = useState('');
   const [form] = Form.useForm<PrescriptionFormValues>();
+
+  // 保持最新选中问诊 ID 的 ref：WebSocket 回调读取它，选中切换时避免 socket 反复 teardown/reconnect
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
 
   const listQuery = useQuery({
     queryKey: QUERY_KEYS.onlineConsultations(status),
@@ -135,13 +142,13 @@ export default function OnlineConsultationPage() {
 
   useEffect(() => {
     const socket = createConsultationSocket((event) => {
-      if (event.consultationId === selectedId) {
+      if (event.consultationId === selectedIdRef.current) {
         void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.onlineConsultationDetail(event.consultationId) });
       }
-      void queryClient.invalidateQueries({ queryKey: ['consult', 'online'] });
+      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.onlineConsultationsBase });
     });
     return () => { void socket?.deactivate(); };
-  }, [queryClient, selectedId]);
+  }, [queryClient]);
   const templatesQuery = useQuery({
     queryKey: ['prescription', 'templates', 'online-consultation'],
     queryFn: () => getTemplates({ page: 1, size: 100 }),
@@ -155,7 +162,7 @@ export default function OnlineConsultationPage() {
       size: 100,
     }),
     enabled: detail?.status === 'IN_PROGRESS',
-    staleTime: 30_000,
+    staleTime: STALE_TIME.onlineConsultDrugs,
   });
 
   // 空数组兜底用 useMemo 固定引用，否则每次渲染生成新数组会让下方 useMemo 依赖失效
@@ -163,10 +170,15 @@ export default function OnlineConsultationPage() {
     () => templatesQuery.data?.list ?? [],
     [templatesQuery.data],
   );
-  const drugOptions = (drugsQuery.data?.list ?? []).map((drug) => ({
-    value: drug.id,
-    label: `${drug.name}${drug.specification ? `（${drug.specification}）` : ''}`,
-  }));
+  // 固定引用：避免每次 render 重建，破坏下方 Select 内部 memoization
+  const drugOptions = useMemo(
+    () =>
+      (drugsQuery.data?.list ?? []).map((drug) => ({
+        value: drug.id,
+        label: `${drug.name}${drug.specification ? `（${drug.specification}）` : ''}`,
+      })),
+    [drugsQuery.data],
+  );
   const patient = detail?.patientDetail.patient;
   const aiSummary = detail?.patientDetail.aiSummary;
   const allergyRows = readSummaryArray<AllergySummaryItem>(aiSummary, 'allergies');
@@ -179,7 +191,7 @@ export default function OnlineConsultationPage() {
   /** 刷新当前详情和三个状态列表。 */
   async function refreshAll() {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['consult', 'online'] }),
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.onlineConsultationsBase }),
       selectedId
         ? queryClient.invalidateQueries({ queryKey: QUERY_KEYS.onlineConsultationDetail(selectedId) })
         : Promise.resolve(),
@@ -201,7 +213,7 @@ export default function OnlineConsultationPage() {
       await startOnlineConsultation(selectedId);
       message.success('已进入回复状态');
       await refreshAll();
-    } catch (error) {
+    } catch (error: unknown) {
       message.error(getErrorMessage(error, '开始回复失败'));
     } finally {
       setStarting(false);
@@ -238,7 +250,7 @@ export default function OnlineConsultationPage() {
       }
       form.resetFields();
       await refreshAll();
-    } catch (error) {
+    } catch (error: unknown) {
       if (error && typeof error === 'object' && 'errorFields' in error) return;
       Modal.error({ title: '处方提交失败', content: getErrorMessage(error, '处方提交失败') });
     } finally {
@@ -254,7 +266,7 @@ export default function OnlineConsultationPage() {
       await sendOnlineConsultationMessage(selectedId, replyContent.trim(), crypto.randomUUID());
       setReplyContent('');
       await refreshAll();
-    } catch (error) {
+    } catch (error: unknown) {
       message.error(getErrorMessage(error, '发送消息失败'));
     } finally {
       setReplying(false);
@@ -275,7 +287,7 @@ export default function OnlineConsultationPage() {
           message.success('在线问诊已结束');
           setStatus('COMPLETED');
           await refreshAll();
-        } catch (error) {
+        } catch (error: unknown) {
           message.error(getErrorMessage(error, '结束问诊失败'));
         } finally {
           setEnding(false);
@@ -492,7 +504,7 @@ export default function OnlineConsultationPage() {
                   />
                   <TextArea
                     rows={5}
-                    maxLength={2000}
+                    maxLength={CONSULT_MESSAGE_MAX}
                     showCount
                     value={replyContent}
                     placeholder="输入发送给患者的文字消息"

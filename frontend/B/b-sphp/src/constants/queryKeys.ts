@@ -11,6 +11,8 @@ export const QUERY_KEYS = {
   consultQueue: (status: string) => ['consult', 'queue', status] as const,
   /** 无挂号在线问诊列表（15s，按状态区分） */
   onlineConsultations: (status: string) => ['consult', 'online', status] as const,
+  /** 无挂号在线问诊列表公共前缀（WebSocket 事件时失效全部状态 Tab） */
+  onlineConsultationsBase: ['consult', 'online'] as const,
   /** 无挂号在线问诊详情 */
   onlineConsultationDetail: (consultId: number) =>
     ['consult', 'online-detail', consultId] as const,
@@ -78,6 +80,8 @@ export const STALE_TIME = {
   patients: 30_000,
   patientInfo: 60_000,
   patientMedications: 60_000,
+  /** 在线问诊药品下拉（开方时按关键词查询） */
+  onlineConsultDrugs: 30_000,
   statisticsOverview: 5 * 60_000,
   statistics: 5 * 60_000,
 } as const;
