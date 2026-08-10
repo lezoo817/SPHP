@@ -71,7 +71,7 @@ import java.util.stream.Collectors;
  *     <li>DOCTOR：强制 scope.doctorId() = 本人医生</li>
  * </ul>
  * 写操作经 {@link CurrentUserService#getCurrentHospitalId()} 校验本院归属，
- * DEPT_HEAD / DOCTOR 无写权限。号源缓存 Key 格式 {@code slot:remain:{slotId}}。
+ * DEPT_HEAD / DOCTOR 无写权限。号源缓存 Key 格式 {@code cend:slot:remain:{slotId}}。
  */
 @Slf4j
 @Service
@@ -98,7 +98,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private static final String SNAP_RELEASED = "RELEASED";
 
     /** 号源缓存 Key 前缀（与 C 端约定） */
-    private static final String SLOT_REMAIN_KEY = "slot:remain:%d";
+    private static final String SLOT_REMAIN_KEY = "cend:slot:remain:%d";
 
     /** 锁定号源展示的过期时长（分钟），与任务契约一致 */
     private static final int LOCK_EXPIRE_MINUTES = 15;
@@ -1241,7 +1241,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     /**
-     * 拼接号源 Redis 缓存 Key（与 C 端约定 {@code slot:remain:{slotId}}）。
+     * 拼接号源 Redis 缓存 Key（与 C 端约定 {@code cend:slot:remain:{slotId}}）。
      *
      * @param slotId 时段 ID
      * @return Redis Key 字符串

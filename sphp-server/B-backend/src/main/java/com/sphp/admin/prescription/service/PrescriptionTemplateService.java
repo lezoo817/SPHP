@@ -8,6 +8,9 @@ import com.sphp.admin.prescription.dto.TemplateListVO;
 
 /**
  * 处方模板服务接口。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 public interface PrescriptionTemplateService {
 

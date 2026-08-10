@@ -5,6 +5,9 @@ import lombok.Data;
 
 /**
  * 模板药品项 DTO（对应 prescription_template.items JSONB 结构）。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @Schema(description = "模板药品项")

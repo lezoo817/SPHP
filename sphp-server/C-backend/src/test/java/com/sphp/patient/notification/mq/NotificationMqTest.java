@@ -111,7 +111,7 @@ class NotificationMqTest {
     }
 
     /**
-     * 验证在线问诊回复正文从数据库读取，并使用共享事件 ID 幂等写入。
+     * 验证在线问诊通知不保存医疗正文，并使用共享事件 ID 幂等写入。
      */
     @Test
     void onlineConsultationReplyCreatesConsultationNotificationFromDatabase() {
@@ -134,7 +134,7 @@ class NotificationMqTest {
                 "CONSULTATION".equals(notification.getType())
                         && event.eventId().equals(notification.getEventId())
                         && notification.getPayload().contains("\"consultationId\":11001")
-                        && "请按处方用药并注意休息".equals(notification.getContent())));
+                        && "请进入在线问诊查看医生消息".equals(notification.getContent())));
     }
 
     /**

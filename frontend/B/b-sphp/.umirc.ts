@@ -21,6 +21,12 @@ export default defineConfig({
       target: 'http://localhost:8080',
       changeOrigin: true,
     },
+    // 在线问诊 STOMP WebSocket，开发环境转发至统一 Java 后端。
+    '/api/ws': {
+      target: 'ws://localhost:8080',
+      changeOrigin: true,
+      ws: true,
+    },
     // Agent 服务（:8081）—— AI 辅助面板流式对话与 L2 确认回调
     '/api/chat': {
       target: 'http://localhost:8081',

@@ -6,6 +6,9 @@ import lombok.Data;
 
 /**
  * 应用处方模板请求体。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @Schema(description = "应用处方模板请求")

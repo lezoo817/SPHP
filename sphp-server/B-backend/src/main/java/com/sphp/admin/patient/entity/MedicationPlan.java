@@ -10,6 +10,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 用药计划表实体（对应表 medication_plan）。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @TableName("medication_plan")
@@ -48,9 +51,12 @@ public class MedicationPlan {
     /** 状态：ACTIVE / PAUSED / COMPLETED */
     private String status;
 
+    /** 创建时间 */
     private OffsetDateTime createdAt;
 
+    /** 更新时间 */
     private OffsetDateTime updatedAt;
 
+    /** 逻辑删除时间（软删除标志，null 表示未删除） */
     private OffsetDateTime deletedAt;
 }

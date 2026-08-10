@@ -23,7 +23,16 @@ export function getConsultations(patientId?: number): Promise<PageData<Consultat
 /** 查询问诊详情和文字消息。 */
 export function getConsultation(id: number): Promise<ConsultationDetail> { return request(`/c/v1/consultations/${id}`, { method: 'GET' }); }
 /** 发送患者文字消息。 */
-export function sendConsultationMessage(id: number, content: string, key: string): Promise<{ messageId: number; content: string; createdAt: string }> { return request(`/c/v1/consultations/${id}/messages`, { method: 'POST', body: { content }, headers: { 'X-Idempotency-Key': key } }); }
+export function sendConsultationMessage(id: number, content: string, clientMessageId: string): Promise<{ messageId: number; content: string; createdAt: string }> { return request(`/c/v1/consultations/${id}/messages`, { method: 'POST', body: { content, clientMessageId }, headers: { 'X-Idempotency-Key': clientMessageId } }); }
+
+/** 游标查询问诊消息，用于断线重连后的可靠补拉。 */
+export function getConsultationMessages(id: number, params: { afterId?: number; beforeId?: number; size?: number } = {}): Promise<{ messages: ConsultationDetail['messages']; hasMore: boolean }> {
+  const query = new URLSearchParams();
+  if (params.afterId) query.set('afterId', String(params.afterId));
+  if (params.beforeId) query.set('beforeId', String(params.beforeId));
+  if (params.size) query.set('size', String(params.size));
+  return request(`/c/v1/consultations/${id}/messages${query.size ? `?${query.toString()}` : ''}`, { method: 'GET' });
+}
 /**
  * 构建已批准处方列表请求路径。
  * @param params 就诊人与分页参数

@@ -260,14 +260,30 @@ export function startOnlineConsultation(consultId: number): Promise<API.ConsultS
   );
 }
 
-/** 提交一次性医生回复并完成在线问诊。 */
-export function replyOnlineConsultation(
+/** 发送在线问诊医生文字消息。 */
+export function sendOnlineConsultationMessage(
   consultId: number,
   content: string,
-): Promise<API.OnlineConsultationReplyResult> {
-  return requestData<API.OnlineConsultationReplyResult>(
-    `/api/b/doctor/online-consultations/${consultId}/reply`,
-    { method: 'POST', data: { content } },
+  clientMessageId: string,
+): Promise<API.MessageVO> {
+  return requestData<API.MessageVO>(
+    `/api/b/doctor/online-consultations/${consultId}/messages`,
+    { method: 'POST', data: { content, clientMessageId } },
+  );
+}
+
+/** 结束在线问诊。 */
+export function endOnlineConsultation(consultId: number): Promise<API.ConsultEnd> {
+  return requestData<API.ConsultEnd>(`/api/b/doctor/online-consultations/${consultId}/end`, { method: 'POST' });
+}
+
+/** 游标查询在线问诊消息。 */
+export function getOnlineConsultationMessages(
+  consultId: number,
+  params: { afterId?: number; beforeId?: number; size?: number } = {},
+): Promise<API.OnlineConsultationMessagePage> {
+  return requestData<API.OnlineConsultationMessagePage>(
+    `/api/b/doctor/online-consultations/${consultId}/messages`, { params },
   );
 }
 
@@ -276,6 +292,17 @@ export function getPatientDetail(
   consultId: number,
 ): Promise<API.PatientDetail> {
   return requestData<API.PatientDetail>(`/api/b/doctor/queue/${consultId}`);
+}
+
+/** 接诊台补录患者过敏史 */
+export function addPatientAllergy(
+  consultId: number,
+  data: API.AllergyCreateReq,
+): Promise<number> {
+  return requestData<number>(`/api/b/doctor/consult/${consultId}/allergy`, {
+    method: 'POST',
+    data,
+  });
 }
 
 /** 开始接诊 */
@@ -373,6 +400,16 @@ export function submitPrescription(
   data: API.PrescriptionSubmitReq,
 ): Promise<API.PrescriptionSubmitResult> {
   return requestData<API.PrescriptionSubmitResult>('/api/b/prescriptions', {
+    method: 'POST',
+    data,
+  });
+}
+
+/** 处方风险预检（开方过程中实时预警，只读不落库） */
+export function precheckPrescription(
+  data: API.PrescriptionPrecheckReq,
+): Promise<API.PrescriptionPrecheckResult> {
+  return requestData<API.PrescriptionPrecheckResult>('/api/b/prescriptions/precheck', {
     method: 'POST',
     data,
   });

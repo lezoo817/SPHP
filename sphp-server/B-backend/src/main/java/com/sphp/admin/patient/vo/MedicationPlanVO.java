@@ -10,6 +10,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 用药计划 VO。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @Builder

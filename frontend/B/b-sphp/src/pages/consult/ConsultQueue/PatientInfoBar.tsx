@@ -12,13 +12,31 @@ import {
   HistoryOutlined,
   MedicineBoxOutlined,
   PhoneOutlined,
+  PlusOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Descriptions, Drawer, Empty, List, Space, Spin, Tag, Typography } from 'antd';
+import {
+  Button,
+  Card,
+  Descriptions,
+  Drawer,
+  Empty,
+  Form,
+  Input,
+  List,
+  Modal,
+  Select,
+  Space,
+  Spin,
+  Tag,
+  Typography,
+  message,
+} from 'antd';
 import { useState } from 'react';
 import dayjs from 'dayjs';
 import styles from './index.module.less';
 import { STATUS_MAP } from './constants';
+import { getErrorMessage } from '@/utils/error';
 
 const { Text } = Typography;
 
@@ -26,6 +44,24 @@ interface PatientInfoBarProps {
   selectedConsultId: number | null;
   detailLoading: boolean;
   patientDetail: API.PatientDetail | undefined;
+  /** 是否允许补录过敏史（仅接诊中 IN_PROGRESS 为 true，历史只读） */
+  canEditAllergy: boolean;
+  /** 补录过敏史（父层负责刷新患者详情缓存） */
+  onAddAllergy: (data: API.AllergyCreateReq) => Promise<void>;
+}
+
+/** 严重程度选项 */
+const SEVERITY_OPTIONS = [
+  { value: 'MILD', label: '轻度' },
+  { value: 'MODERATE', label: '中度' },
+  { value: 'SEVERE', label: '重度' },
+];
+
+/** 过敏史补录表单值（对齐 API.AllergyCreateReq） */
+interface AllergyFormValue {
+  allergen: string;
+  reaction?: string;
+  severity: 'MILD' | 'MODERATE' | 'SEVERE';
 }
 
 /** 根据出生日期计算年龄（岁） */
@@ -45,8 +81,39 @@ export default function PatientInfoBar({
   selectedConsultId,
   detailLoading,
   patientDetail,
+  canEditAllergy,
+  onAddAllergy,
 }: PatientInfoBarProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [allergyModalOpen, setAllergyModalOpen] = useState(false);
+  const [allergySubmitting, setAllergySubmitting] = useState(false);
+  const [allergyForm] = Form.useForm<AllergyFormValue>();
+
+  /** 打开补录过敏弹窗（每次重置表单，避免残留上次输入） */
+  const openAllergyModal = () => {
+    allergyForm.resetFields();
+    setAllergyModalOpen(true);
+  };
+
+  /** 提交补录过敏史：成功后关闭弹窗，父层刷新患者详情（过敏标签即时更新） */
+  const handleAllergySubmit = async () => {
+    try {
+      const values = await allergyForm.validateFields();
+      setAllergySubmitting(true);
+      await onAddAllergy({
+        allergen: values.allergen.trim(),
+        reaction: values.reaction?.trim() || undefined,
+        severity: values.severity,
+      });
+      message.success('过敏史已保存');
+      setAllergyModalOpen(false);
+    } catch (err: unknown) {
+      const errMsg = getErrorMessage(err, '');
+      if (errMsg) message.error(errMsg);
+    } finally {
+      setAllergySubmitting(false);
+    }
+  };
 
   if (!selectedConsultId) {
     return (
@@ -94,6 +161,18 @@ export default function PatientInfoBar({
             </Tag>
           ) : (
             <Tag style={{ marginInlineEnd: 0 }}>无过敏</Tag>
+          )}
+          {/* 仅接诊中可补录：医生发现患者过敏可立即录入，下次开方即参与拦截；历史/待接诊只读 */}
+          {canEditAllergy && (
+            <Button
+              type="link"
+              size="small"
+              icon={<PlusOutlined />}
+              style={{ paddingInline: 4 }}
+              onClick={openAllergyModal}
+            >
+              过敏
+            </Button>
           )}
         </Space>
         <Button
@@ -145,17 +224,29 @@ export default function PatientInfoBar({
             </Card>
           )}
 
-          {/* 过敏史 */}
-          {allergies.length > 0 && (
-            <Card
-              size="small"
-              className={styles.sectionCard}
-              title={
-                <>
-                  <AlertOutlined /> 过敏史
-                </>
-              }
-            >
+          {/* 过敏史（常驻展示；空记录时显示空态，标题提供补录入口） */}
+          <Card
+            size="small"
+            className={styles.sectionCard}
+            title={
+              <>
+                <AlertOutlined /> 过敏史
+              </>
+            }
+            extra={
+              canEditAllergy ? (
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<PlusOutlined />}
+                  onClick={openAllergyModal}
+                >
+                  添加
+                </Button>
+              ) : null
+            }
+          >
+            {allergies.length > 0 ? (
               <div>
                 {allergies.map((a) => (
                   <Tag key={a.id} color="red">
@@ -165,8 +256,10 @@ export default function PatientInfoBar({
                   </Tag>
                 ))}
               </div>
-            </Card>
-          )}
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无过敏史" />
+            )}
+          </Card>
 
           {/* 既往史 */}
           {patientDetail.medicalHistories.length > 0 && (
@@ -287,6 +380,46 @@ export default function PatientInfoBar({
             )}
         </Spin>
       </Drawer>
+
+      {/* 补录过敏史弹窗 */}
+      <Modal
+        title="补录过敏史"
+        open={allergyModalOpen}
+        onCancel={() => setAllergyModalOpen(false)}
+        onOk={handleAllergySubmit}
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={allergySubmitting}
+        width={420}
+        destroyOnHidden
+      >
+        <Form form={allergyForm} layout="vertical">
+          <Form.Item
+            name="allergen"
+            label="过敏原"
+            rules={[
+              { required: true, message: '请输入过敏原' },
+              { max: 200, message: '最多 200 个字符' },
+            ]}
+          >
+            <Input placeholder="如：青霉素、布洛芬" />
+          </Form.Item>
+          <Form.Item
+            name="reaction"
+            label="反应描述"
+            rules={[{ max: 500, message: '最多 500 个字符' }]}
+          >
+            <Input placeholder="如：皮疹伴瘙痒（选填）" />
+          </Form.Item>
+          <Form.Item
+            name="severity"
+            label="严重程度"
+            rules={[{ required: true, message: '请选择严重程度' }]}
+          >
+            <Select options={SEVERITY_OPTIONS} placeholder="请选择" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </>
   );
 }

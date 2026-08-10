@@ -14,8 +14,6 @@ import com.sphp.patient.registration.vo.DoctorPageVO;
 import com.sphp.patient.registration.vo.AppointmentSlotVO;
 import com.sphp.patient.auth.exception.CAuthException;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -40,8 +38,7 @@ class RegistrationServiceImplTest {
     @Test
     void listHospitalsReturnsAvailableHospitalFields() {
         RegistrationResourceMapper resourceMapper = mock(RegistrationResourceMapper.class);
-        RegistrationServiceImpl registrationService = newRegistrationService(resourceMapper,
-                mock(StringRedisTemplate.class), 7);
+        RegistrationServiceImpl registrationService = newRegistrationService(resourceMapper, 7);
         when(resourceMapper.selectAvailableHospitals()).thenReturn(List.of(
                 new HospitalRecord(101L, "智愈先锋第一医院", "三级甲等", "北京市东城区示例路1号", "010-12345678")
         ));
@@ -61,8 +58,7 @@ class RegistrationServiceImplTest {
     @Test
     void listDepartmentsValidatesHospitalAndReturnsDepartmentFields() {
         RegistrationResourceMapper resourceMapper = mock(RegistrationResourceMapper.class);
-        RegistrationServiceImpl registrationService = newRegistrationService(resourceMapper,
-                mock(StringRedisTemplate.class), 7);
+        RegistrationServiceImpl registrationService = newRegistrationService(resourceMapper, 7);
         when(resourceMapper.selectAvailableHospital(101L)).thenReturn(
                 new HospitalRecord(101L, "智愈先锋第一医院", "三级甲等", "北京市东城区示例路1号", "010-12345678"));
         when(resourceMapper.selectAvailableDepartments(101L, "呼吸")).thenReturn(List.of(
@@ -83,8 +79,7 @@ class RegistrationServiceImplTest {
     @Test
     void listDoctorsValidatesResourceChainAndReturnsPagedDoctors() {
         RegistrationResourceMapper resourceMapper = mock(RegistrationResourceMapper.class);
-        RegistrationServiceImpl registrationService = newRegistrationService(resourceMapper,
-                mock(StringRedisTemplate.class), 7);
+        RegistrationServiceImpl registrationService = newRegistrationService(resourceMapper, 7);
         LocalDate date = LocalDate.of(2026, 8, 3);
         when(resourceMapper.selectAvailableHospital(101L)).thenReturn(
                 new HospitalRecord(101L, "智慧先锋第一医院", "三级甲等", "北京市东城区示例路1号", "010-12345678"));
@@ -109,8 +104,7 @@ class RegistrationServiceImplTest {
     @Test
     void listDoctorsRejectsDepartmentFromAnotherHospital() {
         RegistrationResourceMapper resourceMapper = mock(RegistrationResourceMapper.class);
-        RegistrationServiceImpl registrationService = newRegistrationService(resourceMapper,
-                mock(StringRedisTemplate.class), 7);
+        RegistrationServiceImpl registrationService = newRegistrationService(resourceMapper, 7);
         when(resourceMapper.selectAvailableHospital(101L)).thenReturn(
                 new HospitalRecord(101L, "智慧先锋第一医院", "三级甲等", "北京市东城区示例路1号", "010-12345678"));
         when(resourceMapper.selectAvailableDepartmentLink(301L)).thenReturn(new DepartmentLinkRecord(301L, 102L));
@@ -122,47 +116,40 @@ class RegistrationServiceImplTest {
     }
 
     /**
-     * 验证已发布排班优先采用 Redis 实时余量，并将时段时间转换为东八区偏移时间。
+     * 验证已发布排班使用 PostgreSQL 快照余量，并将时段时间转换为东八区偏移时间。
      */
     @Test
-    void listDoctorSlotsUsesRedisRemainingCountAndBuildsShanghaiOffsetTime() {
+    void listDoctorSlotsUsesSnapshotRemainingCountAndBuildsShanghaiOffsetTime() {
         RegistrationResourceMapper resourceMapper = mock(RegistrationResourceMapper.class);
-        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
-        @SuppressWarnings("unchecked")
-        ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
         LocalDate date = LocalDate.now(com.sphp.patient.common.constant.RegistrationConstant.BUSINESS_ZONE_ID);
         when(resourceMapper.selectAvailableDoctorLink(501L)).thenReturn(new DoctorLinkRecord(501L, 101L));
         when(resourceMapper.hasPublishedSchedule(501L, date)).thenReturn(true);
         when(resourceMapper.selectPublishedSlots(eq(501L), eq(date), any(OffsetDateTime.class))).thenReturn(List.of(
                 new SlotRecord(1001L, LocalTime.of(8, 0), LocalTime.of(8, 30), 5000, 5L, "PUBLISHED")
         ));
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("cend:slot:remain:1001")).thenReturn("3");
-        RegistrationServiceImpl registrationService = newRegistrationService(resourceMapper, redisTemplate, 7);
+        RegistrationServiceImpl registrationService = newRegistrationService(resourceMapper, 7);
 
         List<AppointmentSlotVO> result = registrationService.listDoctorSlots(101L, 501L, date);
 
         assertEquals(1, result.size());
-        assertEquals(3L, result.getFirst().getAvailableCount());
+        assertEquals(5L, result.getFirst().getAvailableCount());
         assertEquals("+08:00", result.getFirst().getStartTime().getOffset().toString());
         assertEquals(LocalTime.of(8, 0), result.getFirst().getStartTime().toLocalTime());
     }
 
     /**
-     * 验证 Redis 查询异常时回退 PostgreSQL 号源快照，避免缓存故障导致已发布时段不可见。
+     * 验证 Redis 不可用时，号源展示仍直接使用 PostgreSQL 快照。
      */
     @Test
-    void listDoctorSlotsFallsBackToSnapshotWhenRedisFails() {
+    void listDoctorSlotsUsesSnapshotWhenRedisFails() {
         RegistrationResourceMapper resourceMapper = mock(RegistrationResourceMapper.class);
-        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
         LocalDate date = LocalDate.now(com.sphp.patient.common.constant.RegistrationConstant.BUSINESS_ZONE_ID);
         when(resourceMapper.selectAvailableDoctorLink(501L)).thenReturn(new DoctorLinkRecord(501L, 101L));
         when(resourceMapper.hasPublishedSchedule(501L, date)).thenReturn(true);
         when(resourceMapper.selectPublishedSlots(eq(501L), eq(date), any(OffsetDateTime.class))).thenReturn(List.of(
                 new SlotRecord(1001L, LocalTime.of(8, 0), LocalTime.of(8, 30), 5000, 5L, "PUBLISHED")
         ));
-        when(redisTemplate.opsForValue()).thenThrow(new RuntimeException("Redis 不可用"));
-        RegistrationServiceImpl registrationService = newRegistrationService(resourceMapper, redisTemplate, 7);
+        RegistrationServiceImpl registrationService = newRegistrationService(resourceMapper, 7);
 
         List<AppointmentSlotVO> result = registrationService.listDoctorSlots(101L, 501L, date);
 
@@ -175,8 +162,7 @@ class RegistrationServiceImplTest {
     @Test
     void listDoctorSlotsRejectsDateOutsideReleaseWindow() {
         RegistrationResourceMapper resourceMapper = mock(RegistrationResourceMapper.class);
-        RegistrationServiceImpl registrationService = newRegistrationService(resourceMapper,
-                mock(StringRedisTemplate.class), 7);
+        RegistrationServiceImpl registrationService = newRegistrationService(resourceMapper, 7);
         LocalDate invalidDate = LocalDate.now(com.sphp.patient.common.constant.RegistrationConstant.BUSINESS_ZONE_ID)
                 .plusDays(7);
 
@@ -190,14 +176,12 @@ class RegistrationServiceImplTest {
      * 创建带放号窗口配置的挂号查询服务，隔离各测试中的 Redis 依赖。
      *
      * @param resourceMapper 挂号资源 Mapper
-     * @param redisTemplate Redis 操作模板
      * @param slotReleaseDays 放号天数
      * @return 挂号资源查询服务
      */
-    private RegistrationServiceImpl newRegistrationService(RegistrationResourceMapper resourceMapper,
-                                                            StringRedisTemplate redisTemplate, int slotReleaseDays) {
+    private RegistrationServiceImpl newRegistrationService(RegistrationResourceMapper resourceMapper, int slotReleaseDays) {
         RegistrationProperties properties = new RegistrationProperties();
         properties.setSlotReleaseDays(slotReleaseDays);
-        return new RegistrationServiceImpl(resourceMapper, redisTemplate, properties);
+        return new RegistrationServiceImpl(resourceMapper, properties);
     }
 }

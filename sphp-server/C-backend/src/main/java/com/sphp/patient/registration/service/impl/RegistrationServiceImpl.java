@@ -1,6 +1,5 @@
 package com.sphp.patient.registration.service.impl;
 
-import com.sphp.patient.common.constant.RegistrationConstant;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.registration.mapper.DepartmentLinkRecord;
 import com.sphp.patient.registration.mapper.DepartmentRecord;
@@ -19,7 +18,6 @@ import com.sphp.patient.registration.vo.HospitalListVO;
 import com.sphp.shared.common.enums.ErrorCodeEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -38,8 +36,6 @@ public class RegistrationServiceImpl implements RegistrationService {
 
     // 资源查询
     private final RegistrationResourceMapper resourceMapper;
-    // 缓存
-    private final StringRedisTemplate redisTemplate;
     // 挂号配置
     private final RegistrationProperties registrationProperties;
 
@@ -263,25 +259,16 @@ public class RegistrationServiceImpl implements RegistrationService {
     }
 
     /**
-     * 读取 Redis 中的实时号源余量，异常或非法缓存值时使用数据库快照兜底。
+     * 读取 PostgreSQL 快照中的可约号源数量。
+     *
+     * <p>Redis 仅用于创建挂号时的原子预扣，不作为 C 端展示事实来源；避免排班调整、
+     * 缓存遗留或恢复失败时展示与号源池不一致的余量。
      *
      * @param record 时段查询记录
-     * @return 实时余量或 PostgreSQL 快照余量
+     * @return PostgreSQL 快照中的可约号源数量
      */
     private long resolveAvailableCount(SlotRecord record) {
-        long snapshotCount = record.availableCount() == null ? 0L : record.availableCount();
-        try {
-            String value = redisTemplate.opsForValue().get(RegistrationConstant.SLOT_REMAIN_KEY_PREFIX + record.slotId());
-            if (value == null) {
-                return snapshotCount;
-            }
-            long remainingCount = Long.parseLong(value);
-            // 负数属于损坏缓存，不向客户端输出异常余量。
-            return remainingCount >= 0 ? remainingCount : snapshotCount;
-        } catch (RuntimeException exception) {
-            // Redis 仅保存实时余量缓存，读取失败时 PostgreSQL 快照仍是可用事实来源。
-            return snapshotCount;
-        }
+        return record.availableCount() == null ? 0L : record.availableCount();
     }
 
     /**

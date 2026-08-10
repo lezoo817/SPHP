@@ -414,6 +414,13 @@ declare global {
       historyRecords: HistoryRecord[];
     }
 
+    /** 接诊台补录过敏史请求 */
+    interface AllergyCreateReq {
+      allergen: string;
+      reaction?: string;
+      severity: 'MILD' | 'MODERATE' | 'SEVERE';
+    }
+
     /** 在线问诊列表项 */
     interface OnlineConsultationItem {
       consultId: number;
@@ -451,6 +458,12 @@ declare global {
       messageId: number;
       status: 'COMPLETED';
       repliedAt: string;
+    }
+
+    /** 在线问诊消息游标分页结果 */
+    interface OnlineConsultationMessagePage {
+      messages: MessageVO[];
+      hasMore: boolean;
     }
 
     /** 过敏史 */
@@ -602,11 +615,28 @@ declare global {
       riskWarnings: RiskWarning[];
     }
 
-    /** 风险预警 */
+    /** 风险预警（预检返回带 drugId/source；跨药品规则如重复用药 drugId 为空） */
     interface RiskWarning {
       level: 'WARNING' | 'ERROR' | 'AUDIT';
       rule: string;
       message: string;
+      /** 命中药品 ID（重复用药等跨药品规则为空） */
+      drugId?: number;
+      /** 命中药品名称 */
+      drugName?: string;
+      /** 命中来源（如：患者过敏史「青霉素」/ 既往史「糖尿病」） */
+      source?: string;
+    }
+
+    /** 处方风险预检请求（复用提交明细结构） */
+    interface PrescriptionPrecheckReq {
+      consultId: number;
+      items: PrescriptionSubmitReq['items'];
+    }
+
+    /** 处方风险预检结果 */
+    interface PrescriptionPrecheckResult {
+      warnings: RiskWarning[];
     }
 
     /** 审核请求 */
@@ -684,6 +714,8 @@ declare global {
       specification: string;
       unit: string;
       indication?: string;
+      /** 禁忌症（供处方风险拦截器做禁忌匹配） */
+      contraindication?: string;
       manufacturer?: string;
       approvalNumber?: string;
       status: 'ENABLED' | 'DISABLED';
@@ -703,6 +735,8 @@ declare global {
       specification: string;
       unit: string;
       indication?: string;
+      /** 禁忌症（供处方风险拦截器做禁忌匹配） */
+      contraindication?: string;
       manufacturer?: string;
       approvalNumber?: string;
       status: 'ENABLED' | 'DISABLED';

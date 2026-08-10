@@ -35,6 +35,7 @@ export function getColumns(deps: ColumnsDeps): ProColumns<API.Drug>[] {
       hideInSearch: true,
     },
     { title: '适应症', dataIndex: 'indication', ellipsis: true, hideInSearch: true },
+    { title: '禁忌症', dataIndex: 'contraindication', ellipsis: true, hideInSearch: true },
     {
       title: '状态',
       dataIndex: 'status',

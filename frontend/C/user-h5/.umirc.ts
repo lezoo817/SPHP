@@ -47,6 +47,8 @@ export default defineConfig({
     '/api': {
       target: 'http://localhost:8080',
       changeOrigin: true,
+      // 同时转发在线问诊 STOMP WebSocket 握手。
+      ws: true,
     },
   },
   // 多个异步页面共用压缩帮助函数时隔离 IIFE，避免生产构建产物命名冲突。

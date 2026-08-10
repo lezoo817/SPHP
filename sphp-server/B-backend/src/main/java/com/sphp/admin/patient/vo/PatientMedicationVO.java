@@ -10,6 +10,9 @@ import java.util.List;
 
 /**
  * 患者当前用药与随访 VO。
+ *
+ * @author lezoo17
+ * @since 2026-08-09
  */
 @Data
 @Builder

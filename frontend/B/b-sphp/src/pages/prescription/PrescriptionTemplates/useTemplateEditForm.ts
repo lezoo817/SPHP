@@ -41,6 +41,27 @@ export function useTemplateEditForm({ open, record, onSuccess }: Options) {
   /** 监听 items 数组变化，用于实时计算库存超限提示 */
   const itemsWatch = Form.useWatch<TemplateItemFormValue[]>('items', form);
 
+  /** 从用量字符串解析数值，如 "2粒" → 2，无法解析返回 undefined */
+  const parseDosageNum = (dosage?: string): number | undefined => {
+    if (!dosage) return undefined;
+    const m = /^(\d+(?:\.\d+)?)/.exec(dosage);
+    return m ? Number(m[1]) : undefined;
+  };
+
+  /** 从用量字符串解析单位，如 "2粒" → "粒"，无法解析返回 undefined */
+  const parseDosageUnit = (dosage?: string): string | undefined => {
+    if (!dosage) return undefined;
+    const m = /^\d+(?:\.\d+)?(.+)$/.exec(dosage);
+    return m ? m[1] : undefined;
+  };
+
+  /** 从频次解析每日次数，如 "每日3次" → 3 */
+  const parseFrequencyNum = (frequency?: string): number | undefined => {
+    if (!frequency) return undefined;
+    const m = /(\d+)/.exec(frequency);
+    return m ? Number(m[1]) : undefined;
+  };
+
   /** 打开弹窗时预填表单数据 */
   useEffect(() => {
     if (open && record) {
@@ -77,27 +98,6 @@ export function useTemplateEditForm({ open, record, onSuccess }: Options) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
-
-  /** 从用量字符串解析数值，如 "2粒" → 2，无法解析返回 undefined */
-  const parseDosageNum = (dosage?: string): number | undefined => {
-    if (!dosage) return undefined;
-    const m = /^(\d+(?:\.\d+)?)/.exec(dosage);
-    return m ? Number(m[1]) : undefined;
-  };
-
-  /** 从用量字符串解析单位，如 "2粒" → "粒"，无法解析返回 undefined */
-  const parseDosageUnit = (dosage?: string): string | undefined => {
-    if (!dosage) return undefined;
-    const m = /^\d+(?:\.\d+)?(.+)$/.exec(dosage);
-    return m ? m[1] : undefined;
-  };
-
-  /** 从频次解析每日次数，如 "每日3次" → 3 */
-  const parseFrequencyNum = (frequency?: string): number | undefined => {
-    if (!frequency) return undefined;
-    const m = /(\d+)/.exec(frequency);
-    return m ? Number(m[1]) : undefined;
-  };
 
   /** 写入/删除药品信息缓存 */
   const setDrugInfo = (value: number, drug?: API.Drug) => {

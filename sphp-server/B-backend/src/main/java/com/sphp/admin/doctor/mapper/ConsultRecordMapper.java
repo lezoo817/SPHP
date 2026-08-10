@@ -9,8 +9,6 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -34,7 +32,17 @@ public interface ConsultRecordMapper extends BaseMapper<ConsultRecord> {
                            @Param("startedAt") OffsetDateTime startedAt);
 
     /**
-     * 将在线问诊原子切换为已完成并记录医生回复时间。
+     * 锁定在线问诊记录，串行化发送消息与结束问诊。
+     *
+     * @param consultId 问诊记录 ID
+     * @return 已锁定记录，不存在时返回 null
+     */
+    @Select("SELECT * FROM consult_record WHERE id = #{consultId} AND appointment_id IS NULL "
+            + "AND deleted_at IS NULL FOR UPDATE")
+    ConsultRecord lockOnlineConsult(@Param("consultId") Long consultId);
+
+    /**
+     * 将在线问诊原子切换为已完成。
      *
      * @param consultId 问诊记录 ID
      * @param doctorId 当前医生 ID

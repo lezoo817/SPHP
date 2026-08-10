@@ -6,6 +6,7 @@ import com.sphp.patient.notification.mapper.NotificationMapper;
 import com.sphp.patient.notification.mapper.OnlineConsultationNotificationRecord;
 import com.sphp.patient.notification.mq.event.NotificationCreateEvent;
 import com.sphp.shared.event.OnlineConsultationRepliedEvent;
+import com.sphp.shared.event.ConsultationMessageCreatedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
@@ -59,6 +60,10 @@ public class NotificationCreateConsumer {
             persistOnlineConsultationNotifications(repliedEvent);
             return;
         }
+        if (event instanceof ConsultationMessageCreatedEvent messageEvent && "DOCTOR".equals(messageEvent.senderType())) {
+            persistOnlineConsultationMessageNotifications(messageEvent);
+            return;
+        }
         throw new IllegalArgumentException("不支持的通知事件类型");
     }
 
@@ -82,9 +87,38 @@ public class NotificationCreateConsumer {
             notification.setPatientId(record.getPatientId());
             notification.setPatientNameSnapshot(record.getPatientName());
             notification.setType(CONSULTATION.name());
-            notification.setTitle("医生已回复在线问诊");
-            notification.setContent(record.getContent());
+            notification.setTitle("医生发来在线问诊消息");
+            notification.setContent("请进入在线问诊查看医生消息");
             notification.setPayload("{\"consultationId\":" + event.consultationId() + "}");
+            notification.setEventId(event.eventId());
+            inserted += notificationMapper.insertNotificationIfAbsent(notification);
+        }
+        return inserted;
+    }
+
+    /**
+     * 根据医生实时消息为患者账号创建不包含医疗原文的问诊通知。
+     *
+     * @param event 已持久化医生消息事件
+     * @return 实际插入通知数量
+     */
+    public int persistOnlineConsultationMessageNotifications(ConsultationMessageCreatedEvent event) {
+        if (event.eventId() == null || event.messageId() == null || event.consultationId() == null
+                || event.patientId() == null) {
+            throw new IllegalArgumentException("在线问诊消息事件字段不完整");
+        }
+        int inserted = 0;
+        for (OnlineConsultationNotificationRecord record
+                : notificationMapper.selectOnlineConsultationNotifications(event.consultationId())) {
+            Notification notification = new Notification();
+            notification.setUserId(record.getUserId());
+            notification.setPatientId(record.getPatientId());
+            notification.setPatientNameSnapshot(record.getPatientName());
+            notification.setType(CONSULTATION.name());
+            notification.setTitle("医生发来在线问诊消息");
+            notification.setContent("请进入在线问诊查看医生消息");
+            notification.setPayload("{\"consultationId\":" + event.consultationId()
+                    + ",\"messageId\":" + event.messageId() + "}");
             notification.setEventId(event.eventId());
             inserted += notificationMapper.insertNotificationIfAbsent(notification);
         }

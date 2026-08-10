@@ -1,6 +1,7 @@
 package com.sphp.admin.doctor.controller;
 
 import com.sphp.admin.common.vo.PageResult;
+import com.sphp.admin.doctor.dto.AllergyCreateRequest;
 import com.sphp.admin.doctor.dto.ConsultEndVO;
 import com.sphp.admin.doctor.dto.ConsultHistoryDetailVO;
 import com.sphp.admin.doctor.dto.ConsultHistoryVO;
@@ -13,8 +14,8 @@ import com.sphp.admin.doctor.dto.PatientDetailVO;
 import com.sphp.admin.doctor.dto.QueueItemVO;
 import com.sphp.admin.doctor.dto.OnlineConsultationDetailVO;
 import com.sphp.admin.doctor.dto.OnlineConsultationItemVO;
-import com.sphp.admin.doctor.dto.OnlineConsultationReplyRequest;
-import com.sphp.admin.doctor.dto.OnlineConsultationReplyVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationMessagePageVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationMessageSendRequest;
 import com.sphp.admin.doctor.service.DoctorConsultService;
 import com.sphp.admin.pharmacy.dto.DrugListVO;
 import com.sphp.admin.pharmacy.service.DrugService;
@@ -107,7 +108,7 @@ public class DoctorConsultController {
     }
 
     /**
-     * 开始编辑在线问诊回复。
+     * 开始在线问诊。
      *
      * @param id 问诊记录 ID
      * @return 状态变更结果
@@ -119,17 +120,47 @@ public class DoctorConsultController {
     }
 
     /**
-     * 提交医生一次性回复并完成在线问诊。
+     * 发送在线问诊医生文字消息。
      *
      * @param id 问诊记录 ID
-     * @param request 回复内容
-     * @return 回复结果
+     * @param request 消息内容和幂等标识
+     * @return 已保存消息
      */
-    @PostMapping("/online-consultations/{id}/reply")
-    @Operation(summary = "回复在线问诊", description = "写入一条医生消息并完成在线问诊")
-    public Result<OnlineConsultationReplyVO> replyOnlineConsult(
-            @PathVariable Long id, @Valid @RequestBody OnlineConsultationReplyRequest request) {
-        return Result.success("回复已发送", doctorConsultService.replyOnlineConsult(id, request));
+    @PostMapping("/online-consultations/{id}/messages")
+    @Operation(summary = "发送在线问诊消息", description = "仅 IN_PROGRESS 状态可发送医生文字消息")
+    public Result<MessageVO> sendOnlineConsultationMessage(
+            @PathVariable Long id, @Valid @RequestBody OnlineConsultationMessageSendRequest request) {
+        return Result.success("消息已发送", doctorConsultService.sendOnlineConsultationMessage(id, request));
+    }
+
+    /**
+     * 结束在线问诊。
+     *
+     * @param id 问诊记录 ID
+     * @return 问诊结束结果
+     */
+    @PostMapping("/online-consultations/{id}/end")
+    @Operation(summary = "结束在线问诊", description = "仅接诊医生可将 IN_PROGRESS 状态结束为 COMPLETED")
+    public Result<ConsultEndVO> endOnlineConsult(@PathVariable Long id) {
+        return Result.success("问诊已结束", doctorConsultService.endOnlineConsult(id));
+    }
+
+    /**
+     * 游标查询在线问诊消息。
+     *
+     * @param id 问诊记录 ID
+     * @param afterId 向后补拉游标
+     * @param beforeId 向前加载游标
+     * @param size 每页数量
+     * @return 消息列表
+     */
+    @GetMapping("/online-consultations/{id}/messages")
+    @Operation(summary = "查询在线问诊消息", description = "afterId 与 beforeId 最多传一个")
+    public Result<OnlineConsultationMessagePageVO> pageOnlineConsultationMessages(
+            @PathVariable Long id, @RequestParam(required = false) Long afterId,
+            @RequestParam(required = false) Long beforeId, @RequestParam(defaultValue = "50") int size) {
+        return Result.success("查询成功", doctorConsultService.pageOnlineConsultationMessages(
+                id, afterId, beforeId, clampSize(size)));
     }
 
     @GetMapping("/queue")
@@ -147,6 +178,13 @@ public class DoctorConsultController {
     @Operation(summary = "患者详情", description = "查询患者基本信息、过敏史、既往史、AI摘要、近期处方、历史就诊记录")
     public Result<PatientDetailVO> getPatientDetail(@PathVariable Long id) {
         return Result.success("查询成功", doctorConsultService.getPatientDetail(id));
+    }
+
+    @PostMapping("/consult/{id}/allergy")
+    @Operation(summary = "补录患者过敏史", description = "接诊台补充患者过敏原；保存后立即参与处方风险拦截（需问诊归属校验）")
+    public Result<Long> addPatientAllergy(@PathVariable Long id,
+                                          @Valid @RequestBody AllergyCreateRequest request) {
+        return Result.success("过敏史已保存", doctorConsultService.addPatientAllergy(id, request));
     }
 
     @PostMapping("/consult/{id}/start")

@@ -4,6 +4,7 @@ import com.sphp.patient.consultation.dto.ConsultationMessageSendRequest;
 import com.sphp.patient.consultation.dto.PreConsultationSaveRequest;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
+import com.sphp.patient.consultation.vo.ConsultationMessagePageVO;
 import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.PreConsultationSaveVO;
 
@@ -47,4 +48,15 @@ public interface ConsultationService {
      * @return 已发送消息信息
      */
     ConsultationMessageSendVO sendConsultationMessage(Long consultationId, ConsultationMessageSendRequest request);
+
+    /**
+     * 游标查询当前账号有权查看的问诊文字消息。
+     *
+     * @param consultationId 问诊记录 ID
+     * @param afterId 向后补拉游标
+     * @param beforeId 向前加载游标
+     * @param size 每页数量
+     * @return 消息游标分页结果
+     */
+    ConsultationMessagePageVO listConsultationMessages(Long consultationId, Long afterId, Long beforeId, Integer size);
 }

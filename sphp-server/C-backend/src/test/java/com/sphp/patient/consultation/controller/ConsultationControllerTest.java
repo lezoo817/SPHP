@@ -183,7 +183,7 @@ class ConsultationControllerTest {
                 .perform(post("/c/v1/consultations/11001/messages")
                         .header("X-Idempotency-Key", "consultation-message-001")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"content\":\"最高体温38.5度\"}"))
+                        .content("{\"content\":\"最高体温38.5度\",\"clientMessageId\":\"patient-message-001\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("消息已发送"))
                 .andExpect(jsonPath("$.data.messageId").value(12001))
