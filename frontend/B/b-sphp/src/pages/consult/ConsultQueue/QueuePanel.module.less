@@ -1,0 +1,112 @@
+/**
+ * 接诊台左栏 - 队列三块面板样式（待接诊 / 接诊中 / 接诊历史）。
+ */
+@import '../../../styles/variables.less';
+
+.panel {
+  .panel-chrome();
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: @spacing-md @spacing-lg 0;
+  flex-shrink: 0;
+}
+
+.queueBlocks {
+  flex: 1;
+  overflow-y: auto;
+  padding: @spacing-sm;
+  display: flex;
+  flex-direction: column;
+  gap: @spacing-sm;
+}
+
+.queueBlock {
+  border: 1px solid @color-border-secondary;
+  border-radius: @radius-md;
+  padding: @spacing-sm;
+  flex-shrink: 0;
+}
+
+.queueBlockTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: @spacing-sm;
+  color: @color-text;
+}
+
+.queueBlockList {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.historyCollapse {
+  border: 1px solid @color-border-secondary;
+  border-radius: @radius-md;
+}
+
+.historyCollapse :global(.ant-collapse-header) {
+  padding: @spacing-sm !important;
+}
+
+/** 队列项（待接诊 / 接诊中 / 历史共用） */
+.queueItem {
+  cursor: pointer;
+  padding: @spacing-sm @spacing-md !important;
+  border-radius: @radius-md;
+  margin-bottom: @spacing-xs;
+  transition: background-color 0.2s;
+  border: 1px solid transparent;
+}
+
+.queueItem:hover {
+  background-color: @color-fill-hover;
+}
+
+.queueItemSelected {
+  background-color: @color-primary-bg !important;
+  border-color: @color-primary-border !important;
+}
+
+.queueItemHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: @spacing-xs;
+}
+
+.queueItemMeta {
+  display: flex;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.aiSummary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/** 辅助小字（年龄 / 队列号 / 时段 / 主诉） */
+.textSmall {
+  font-size: 12px;
+}
+
+/** 历史项接诊时间小字 */
+.textMini {
+  font-size: 11px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/** 姓名防换行（避免窄栏内换行撑高行） */
+.nameKeep {
+  word-break: keep-all;
+  overflow-wrap: normal;
+}

@@ -1,0 +1,91 @@
+/**
+ * 接诊台右栏顶部 - 患者信息条。
+ * 常驻一行展示核心信息（姓名/性别/年龄/过敏原），详细信息通过 Drawer 展开。
+ */
+@import '../../../styles/variables.less';
+
+/** 信息条容器：一行，白底轻边框，与工作区隔开 */
+.patientInfoBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: @spacing-sm;
+  background: @color-bg-container;
+  border: 1px solid @color-border-secondary;
+  border-radius: @radius-md;
+  padding: @spacing-sm @spacing-md;
+  min-height: 36px;
+}
+
+/** 核心信息分组：姓名/性别/年龄/过敏标签，可横向溢出 */
+.infoPrimary {
+  display: flex;
+  align-items: center;
+  gap: @spacing-sm;
+  min-width: 0;
+}
+
+/** 次要信息（电话/紧急联系人） */
+.infoSecondary {
+  display: flex;
+  align-items: center;
+  gap: @spacing-md;
+  color: @color-text-secondary;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.infoSecondaryItem {
+  display: flex;
+  align-items: center;
+  gap: @spacing-xs;
+  white-space: nowrap;
+}
+
+/** 过敏标签：红色醒目，右侧无多余 margin */
+.allergyTag {
+  margin-inline-end: 0;
+}
+
+/** 姓名防换行 */
+.nameKeep {
+  word-break: keep-all;
+}
+
+/** 患者图标（主题色） */
+.infoIcon {
+  color: @color-primary;
+}
+
+/** 辅助小字 */
+.textSmall {
+  font-size: 12px;
+}
+
+/** 历史就诊记录行内占满宽度 */
+.fullWidth {
+  width: 100%;
+}
+
+/** 信息条内的文字型操作按钮（补录过敏 / 详情） */
+.linkBtn {
+  padding-inline: @spacing-xs;
+}
+
+/** 详情抽屉内的区块卡片间距 */
+.sectionCard {
+  margin-bottom: @spacing-sm;
+}
+
+/** AI 摘要预格式化文本块 */
+.aiSummaryContent {
+  background: @color-bg-layout;
+  border: 1px solid @color-border-secondary;
+  border-radius: @radius-sm;
+  padding: @spacing-sm;
+  font-size: 12px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

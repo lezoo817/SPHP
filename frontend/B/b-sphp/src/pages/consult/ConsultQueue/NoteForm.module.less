@@ -1,0 +1,40 @@
+/**
+ * 病历记录表单样式：结构化字段 + 保存栏。
+ */
+@import '../../../styles/variables.less';
+
+.noteSection {
+  display: flex;
+  flex-direction: column;
+}
+
+.sectionTitle {
+  .section-title();
+}
+
+/** 字段标签 */
+.fieldLabel {
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: @spacing-xs;
+  color: @color-text;
+}
+
+/** 字段输入框间距 */
+.fieldItem {
+  margin-bottom: @spacing-sm;
+}
+
+/** 保存栏（保存按钮 + 开处方 + 生成时间） */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: @spacing-sm;
+  margin-bottom: @spacing-sm;
+  flex-wrap: wrap;
+}
+
+/** 生成时间小字 */
+.textSmall {
+  font-size: 12px;
+}

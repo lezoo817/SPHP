@@ -2,17 +2,19 @@
  * 接诊台右栏 - 接诊操作区。
  *
  * 顶部患者信息条（姓名/性别/年龄/过敏预警，点详情展开 Drawer）；
- * 按选中状态分支渲染：待接诊（开始接诊）/ 接诊中（病历编辑+开处方+留言板）/ 历史（详情）。
+ * 接诊中主工作区：病历记录（左）与已开处方（右）左右分栏，留言板折叠在底部；
+ * 按选中状态分支渲染：待接诊（开始接诊）/ 接诊中（病历+处方+留言板）/ 历史（详情）。
  */
 import type { KeyboardEvent } from 'react';
-import { Button, Divider, Empty, Typography } from 'antd';
+import { Button, Empty, Typography } from 'antd';
 import { MedicineBoxOutlined, StopOutlined } from '@ant-design/icons';
-import styles from './index.module.less';
+import styles from './ConsultPanel.module.less';
 import type { SelectedStatus } from './constants';
 import type { NoteField } from './NoteForm';
 import PatientInfoBar from './PatientInfoBar';
 import StartConsultArea from './StartConsultArea';
 import NoteForm from './NoteForm';
+import PrescriptionPanel from './PrescriptionPanel';
 import MessageBoard from './MessageBoard';
 import HistoryDetailPanel from './HistoryDetailPanel';
 
@@ -103,6 +105,12 @@ export default function ConsultPanel({
         <Title level={5} style={{ margin: 0 }}>
           <MedicineBoxOutlined /> 接诊操作
         </Title>
+        {/* 结束问诊：接诊中常驻在标题行右侧，随时可结束 */}
+        {selectedStatus === 'IN_PROGRESS' && (
+          <Button danger icon={<StopOutlined />} loading={endingConsult} onClick={handleEndConsult}>
+            结束问诊
+          </Button>
+        )}
       </div>
 
       {/* 患者信息条：一行展示核心信息 + 详情 Drawer，不占用操作区版面 */}
@@ -131,41 +139,35 @@ export default function ConsultPanel({
           />
         ) : selectedStatus === 'IN_PROGRESS' ? (
           <div className={styles.inProgressArea}>
-            {/* 结束问诊按钮 */}
-            <Button
-              danger
-              icon={<StopOutlined />}
-              loading={endingConsult}
-              onClick={handleEndConsult}
-              block
-              style={{ marginBottom: 12 }}
-            >
-              结束问诊
-            </Button>
+            {/* 主工作区：病历记录 + 已开处方 左右分栏 */}
+            <div className={styles.workspaceRow}>
+              <div className={styles.noteColumn}>
+                <NoteForm
+                  values={{
+                    chiefComplaint: reportChiefComplaint,
+                    presentIllness: reportPresentIllness,
+                    physicalExam: reportPhysicalExam,
+                    diagnosis: reportDiagnosis,
+                    treatmentPlan: reportTreatmentPlan,
+                  }}
+                  noteChanged={noteChanged}
+                  savingNote={savingNote}
+                  generatedAt={reportGeneratedAt}
+                  onFieldChange={handleFieldChange}
+                  onSave={handleSaveNote}
+                />
+              </div>
+              <div className={styles.prescriptionColumn}>
+                <PrescriptionPanel
+                  consultPrescriptions={consultPrescriptions}
+                  onOpenPrescription={onOpenPrescription}
+                  onViewPrescription={onViewPrescription}
+                  onReopenPrescription={onReopenPrescription}
+                />
+              </div>
+            </div>
 
-            {/* 病历记录 + 开处方 + 已开处方 */}
-            <NoteForm
-              values={{
-                chiefComplaint: reportChiefComplaint,
-                presentIllness: reportPresentIllness,
-                physicalExam: reportPhysicalExam,
-                diagnosis: reportDiagnosis,
-                treatmentPlan: reportTreatmentPlan,
-              }}
-              noteChanged={noteChanged}
-              savingNote={savingNote}
-              generatedAt={reportGeneratedAt}
-              consultPrescriptions={consultPrescriptions}
-              onFieldChange={handleFieldChange}
-              onSave={handleSaveNote}
-              onOpenPrescription={onOpenPrescription}
-              onViewPrescription={onViewPrescription}
-              onReopenPrescription={onReopenPrescription}
-            />
-
-            <Divider style={{ margin: '12px 0' }} />
-
-            {/* 留言板 */}
+            {/* 留言板：底部薄条，可折叠 */}
             <MessageBoard
               messages={messages}
               loading={messagesLoading}

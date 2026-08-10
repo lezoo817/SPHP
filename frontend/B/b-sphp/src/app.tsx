@@ -1,6 +1,7 @@
 // 运行时配置
 import { request as umiRequest } from '@umijs/max';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ConfigProvider } from 'antd';
 import type { ReactNode } from 'react';
 
 /**
@@ -61,10 +62,23 @@ export const request = {
   ],
 };
 
-/** 全局 Provider：为所有页面提供 React Query 上下文。 */
+/** 全局 AntD 主题令牌（与 src/styles/variables.less 色板对齐，统一全站视觉基调） */
+const antdTheme = {
+  token: {
+    colorPrimary: '#1677ff',
+    colorSuccess: '#52c41a',
+    colorWarning: '#faad14',
+    colorError: '#ff4d4f',
+    borderRadius: 6,
+  },
+};
+
+/** 全局 Provider：为所有页面提供 React Query 上下文 + AntD 主题。 */
 export function rootContainer(container: ReactNode): ReactNode {
   return (
-    <QueryClientProvider client={queryClient}>{container}</QueryClientProvider>
+    <ConfigProvider theme={antdTheme}>
+      <QueryClientProvider client={queryClient}>{container}</QueryClientProvider>
+    </ConfigProvider>
   );
 }
 

@@ -1,0 +1,70 @@
+/**
+ * 开处方弹窗样式：模板带入区 + Form.List 药品明细 + 风险预警。
+ */
+@import '../../../styles/variables.less';
+
+/** 模板带入下拉区 */
+.templateArea {
+  margin-bottom: @spacing-md;
+}
+
+/** 跨药品风险汇总（重复用药置顶） */
+.summaryAlert {
+  margin-bottom: @spacing-md;
+}
+
+.summaryList {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.summaryItem {
+  font-size: 12px;
+}
+
+/** 单行药品明细卡片 */
+.itemRow {
+  border: 1px solid @color-border-secondary;
+  border-radius: @radius-sm;
+  padding: @spacing-sm @spacing-md 0;
+  margin-bottom: @spacing-sm;
+}
+
+/** Form.Item 紧凑间距（多行药品明细内） */
+.formItem {
+  margin-bottom: @spacing-sm;
+}
+
+.itemLine {
+  display: flex;
+  margin-bottom: @spacing-sm;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+/** 单药规则预警行 */
+.rowWarnings {
+  margin-bottom: @spacing-sm;
+}
+
+.rowWarning {
+  margin-top: @spacing-xs;
+  padding: @spacing-xs @spacing-md;
+}
+
+.warningMessage {
+  font-size: 12px;
+}
+
+.warningSource {
+  color: @color-text-tertiary;
+}
+
+/** 提交结果区块 */
+.resultAlert {
+  margin-top: @spacing-md;
+}
+
+.resultItem {
+  font-size: 12px;
+}
