@@ -269,7 +269,7 @@ public class DoctorServiceImpl implements DoctorService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        return departmentMapper.selectBatchIds(ids).stream()
+        return departmentMapper.selectByIds(ids).stream()
                 .filter(d -> d.getDeletedAt() == null)
                 .collect(Collectors.toMap(Department::getId, Department::getName, (a, b) -> a));
     }
@@ -289,7 +289,7 @@ public class DoctorServiceImpl implements DoctorService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        return bUserMapper.selectBatchIds(ids).stream()
+        return bUserMapper.selectByIds(ids).stream()
                 .filter(u -> u.getDeletedAt() == null)
                 .collect(Collectors.toMap(BUser::getId, u -> u, (a, b) -> a));
     }

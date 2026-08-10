@@ -145,7 +145,7 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
                 .map(SaveTemplateRequest.ItemDTO::getDrugId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<Long, Drug> drugMap = drugMapper.selectBatchIds(drugIds).stream()
+        Map<Long, Drug> drugMap = drugMapper.selectByIds(drugIds).stream()
                 .filter(d -> d.getDeletedAt() == null)
                 .collect(Collectors.toMap(Drug::getId, d -> d, (a, b) -> a));
 
@@ -243,7 +243,7 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
                 .map(SaveTemplateRequest.ItemDTO::getDrugId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<Long, Drug> drugMap = drugMapper.selectBatchIds(drugIds).stream()
+        Map<Long, Drug> drugMap = drugMapper.selectByIds(drugIds).stream()
                 .filter(d -> d.getDeletedAt() == null)
                 .collect(Collectors.toMap(Drug::getId, d -> d, (a, b) -> a));
 

@@ -249,7 +249,7 @@ public class DepartmentServiceImpl implements DepartmentService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        return doctorMapper.selectBatchIds(ids).stream()
+        return doctorMapper.selectByIds(ids).stream()
                 .filter(d -> d.getDeletedAt() == null)
                 .collect(Collectors.toMap(Doctor::getId, Doctor::getName, (a, b) -> a));
     }
