@@ -15,6 +15,7 @@ import { getErrorMessage } from '@/utils/error';
 import { getShiftConfig } from '../constants';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
+import { PAGE_SIZE_100, PAGE_SIZE_200, PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 
 export default function SourcePool() {
   const isAdmin = useHasRole('ADMIN');
@@ -29,7 +30,7 @@ export default function SourcePool() {
   /** 科室选项（供筛选，仅 ADMIN） */
   const fetchDepartments = async () => {
     try {
-      const res = await getDepartments({ page: 1, size: 200 });
+      const res = await getDepartments({ page: 1, size: PAGE_SIZE_200 });
       return (res.list ?? []).map((dept) => ({ label: dept.name, value: dept.id }));
     } catch {
       return [];
@@ -43,7 +44,7 @@ export default function SourcePool() {
         name: keyword || undefined,
         status: 'ENABLED',
         page: 1,
-        size: 100,
+        size: PAGE_SIZE_100,
       });
       return (res.list ?? []).map((doc) => ({ label: doc.name, value: doc.id }));
     } catch {
@@ -179,7 +180,7 @@ export default function SourcePool() {
         span: 6,
         defaultFormItemsNumber: 4,
       }}
-      pagination={{ pageSize: 10, showSizeChanger: true }}
+      pagination={{ pageSize: PAGE_SIZE_DEFAULT, showSizeChanger: true }}
     />
   );
 }

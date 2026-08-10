@@ -30,6 +30,7 @@ import { useState } from 'react';
 import { deleteKnowledge, ingestKnowledge, listKnowledge } from '@/services/agent';
 import { useHasRole } from '@/hooks/useCurrentUser';
 import { getErrorMessage } from '@/utils/error';
+import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 import type {
   KnowledgeCategory,
   KnowledgeDocument,
@@ -278,7 +279,7 @@ export default function KnowledgePage() {
         pagination={{
           total: listData?.total,
           current: page,
-          pageSize: 10,
+          pageSize: PAGE_SIZE_DEFAULT,
           onChange: (p) => setPage(p),
           showTotal: (total) => `共 ${total} 篇`,
         }}

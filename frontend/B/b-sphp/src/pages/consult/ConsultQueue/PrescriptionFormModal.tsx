@@ -26,6 +26,7 @@ import { getDrugs, getTemplates, precheckPrescription } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
 import { DEBOUNCE_PRECheck_MS } from '@/constants/timing';
 import styles from './PrescriptionFormModal.module.less';
+import { PAGE_SIZE_50 } from '@/constants/pageSize';
 
 /** 单行药品明细表单值（对齐 PrescriptionSubmitRequest.ItemDTO） */
 interface PrescriptionItemFormValue {
@@ -189,7 +190,7 @@ export default function PrescriptionFormModal({
     try {
       const res = await getTemplates({
         page: 1,
-        size: 50,
+        size: PAGE_SIZE_50,
         deptId: doctorDeptId ?? undefined,
       });
       setTemplates(res.list ?? []);
@@ -210,7 +211,7 @@ export default function PrescriptionFormModal({
       setSummaryWarnings([]);
       // 预拉一页启用药品供下拉首屏使用
       if (drugOptions.length === 0) {
-        getDrugs({ page: 1, size: 50, status: 'ENABLED' })
+        getDrugs({ page: 1, size: PAGE_SIZE_50, status: 'ENABLED' })
           .then((res) => setDrugOptions(toDrugOptions(res.list ?? [])))
           .catch(() => {});
       }
@@ -241,7 +242,7 @@ export default function PrescriptionFormModal({
     try {
       const res = await getDrugs({
         page: 1,
-        size: 50,
+        size: PAGE_SIZE_50,
         status: 'ENABLED',
         name: keyword || undefined,
       });

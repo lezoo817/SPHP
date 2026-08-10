@@ -22,6 +22,7 @@ import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 import { getColumns } from './columns';
 import UpdateInventoryModal from './UpdateInventoryModal';
 import UnlockInventoryModal from './UnlockInventoryModal';
+import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 
 export default function InventoryList() {
   const isAdmin = useHasRole('ADMIN');
@@ -117,7 +118,7 @@ export default function InventoryList() {
           labelWidth: 'auto',
           defaultCollapsed: true,
         }}
-        pagination={{ pageSize: 10 }}
+        pagination={{ pageSize: PAGE_SIZE_DEFAULT }}
         toolBarRender={() => [
           <Select
             key="pharmacy"

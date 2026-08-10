@@ -18,6 +18,7 @@ import { getErrorMessage } from '@/utils/error';
 import { getColumns } from './columns';
 import AuditDetailModal from './AuditDetailModal';
 import RejectModal from './RejectModal';
+import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 
 export default function PendingAudit() {
   const actionRef = useRef<ActionType>();
@@ -115,7 +116,7 @@ export default function PendingAudit() {
           }
         }}
         search={false}
-        pagination={{ pageSize: 10, showSizeChanger: true }}
+        pagination={{ pageSize: PAGE_SIZE_DEFAULT, showSizeChanger: true }}
         toolBarRender={() => [
           <Button key="refresh" onClick={() => actionRef.current?.reload()}>
             刷新

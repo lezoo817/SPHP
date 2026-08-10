@@ -35,6 +35,7 @@ import {
 } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
 import { getShiftConfig, getStatusConfig } from '../constants';
+import { PAGE_SIZE_100, PAGE_SIZE_200, PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 
 interface FilterValues {
   dateRange?: [Dayjs, Dayjs];
@@ -77,7 +78,7 @@ export default function BatchPublishModal({ open, onCancel, onPublished }: Props
   /** 科室选项 */
   const fetchDepartments = async () => {
     try {
-      const res = await getDepartments({ page: 1, size: 200 });
+      const res = await getDepartments({ page: 1, size: PAGE_SIZE_200 });
       return (res.list ?? []).map((d) => ({ label: d.name, value: d.id }));
     } catch {
       return [];
@@ -92,7 +93,7 @@ export default function BatchPublishModal({ open, onCancel, onPublished }: Props
         name: keyword || undefined,
         status: 'ENABLED',
         page: 1,
-        size: 100,
+        size: PAGE_SIZE_100,
       });
       return (res.list ?? []).map((d) => ({
         label: `${d.name}（${d.title}）`,
@@ -110,7 +111,7 @@ export default function BatchPublishModal({ open, onCancel, onPublished }: Props
     try {
       const res = await getSchedules({
         page: 1,
-        size: 100,
+        size: PAGE_SIZE_100,
         // 后端 date 只支持单值；范围过滤在客户端按 [start, end] 二次过滤
         date: v.dateRange?.[0]?.format('YYYY-MM-DD'),
         deptId: v.deptId,
@@ -330,7 +331,7 @@ export default function BatchPublishModal({ open, onCancel, onPublished }: Props
           },
           ...columns,
         ]}
-        pagination={{ pageSize: 10, showSizeChanger: false, size: 'small' }}
+        pagination={{ pageSize: PAGE_SIZE_DEFAULT, showSizeChanger: false, size: 'small' }}
         scroll={{ y: 320 }}
         locale={{ emptyText: '请设置筛选条件后点击「查找 DRAFT 排班」' }}
       />

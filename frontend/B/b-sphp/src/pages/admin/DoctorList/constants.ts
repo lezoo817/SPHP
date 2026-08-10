@@ -2,6 +2,7 @@
  * 医生管理页的常量与选项配置（状态映射 / 职称选项 / 状态选项）。
  */
 import { getDepartments } from '@/services/admin';
+import { PAGE_SIZE_200 } from '@/constants/pageSize';
 
 /** 医生状态联合类型（与 API.Doctor.status 保持一致）。 */
 export type DoctorStatus = API.Doctor['status'];
@@ -34,7 +35,7 @@ export async function fetchDepartmentOptions(): Promise<
   { label: string; value: number }[]
 > {
   try {
-    const res = await getDepartments({ page: 1, size: 200 });
+    const res = await getDepartments({ page: 1, size: PAGE_SIZE_200 });
     return (res.list ?? []).map((dept) => ({
       label: dept.name,
       value: dept.id,

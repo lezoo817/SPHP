@@ -17,6 +17,7 @@ import {
 import { useHasRole } from '@/hooks/useCurrentUser';
 import { getErrorMessage } from '@/utils/error';
 import DepartmentFormModal from './DepartmentFormModal';
+import { PAGE_SIZE_5 } from '@/constants/pageSize';
 
 export default function DepartmentList() {
   const isAdmin = useHasRole('ADMIN');
@@ -220,7 +221,7 @@ export default function DepartmentList() {
               ]
             : []
         }
-        pagination={{ pageSize: 5 }}
+        pagination={{ pageSize: PAGE_SIZE_5 }}
       />
 
       <DepartmentFormModal

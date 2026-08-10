@@ -13,6 +13,7 @@ import { useHasRole } from '@/hooks/useCurrentUser';
 import { getErrorMessage } from '@/utils/error';
 import { getColumns } from './columns';
 import DrugFormModal from './DrugFormModal';
+import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 
 export default function DrugCatalog() {
   const isAdmin = useHasRole('ADMIN');
@@ -138,7 +139,7 @@ export default function DrugCatalog() {
               ]
             : []
         }
-        pagination={{ pageSize: 10 }}
+        pagination={{ pageSize: PAGE_SIZE_DEFAULT }}
       />
 
       <DrugFormModal

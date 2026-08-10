@@ -35,6 +35,7 @@ import dayjs from 'dayjs';
 import type { SelectedStatus } from './constants';
 import type { NoteField } from './NoteForm';
 import type { PrescriptionPrefillItem } from './PrescriptionFormModal';
+import { PAGE_SIZE_100, PAGE_SIZE_20 } from '@/constants/pageSize';
 
 /** 待接诊 / 接诊中队列每页条数 */
 const QUEUE_PAGE_SIZE = 10;
@@ -110,7 +111,7 @@ export function useConsultQueue() {
   const { data: messages, isLoading: messagesLoading } = useQuery({
     queryKey: QUERY_KEYS.consultMessages(selectedConsultId ?? -1),
     queryFn: () =>
-      getMessages(selectedConsultId as number, { page: 1, size: 100 }).then(
+      getMessages(selectedConsultId as number, { page: 1, size: PAGE_SIZE_100 }).then(
         (res) => res.list ?? [],
       ),
     enabled: Boolean(selectedConsultId) && selectedStatus === 'IN_PROGRESS',
@@ -120,7 +121,7 @@ export function useConsultQueue() {
   const { data: consultPrescriptions } = useQuery({
     queryKey: QUERY_KEYS.consultPrescriptions(selectedConsultId ?? -1),
     queryFn: () =>
-      getPrescriptions({ consultId: selectedConsultId as number, page: 1, size: 20 }).then(
+      getPrescriptions({ consultId: selectedConsultId as number, page: 1, size: PAGE_SIZE_20 }).then(
         (res) => res.list ?? [],
       ),
     enabled: Boolean(selectedConsultId),

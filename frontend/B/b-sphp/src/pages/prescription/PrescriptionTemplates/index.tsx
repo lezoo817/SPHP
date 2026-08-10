@@ -19,6 +19,7 @@ import { getColumns } from './columns';
 import TemplateDetailModal from './TemplateDetailModal';
 import TemplateCreateModal from './TemplateCreateModal';
 import TemplateEditModal from './TemplateEditModal';
+import { PAGE_SIZE_200, PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 
 export default function PrescriptionTemplates() {
   const currentUser = useCurrentUser();
@@ -38,7 +39,7 @@ export default function PrescriptionTemplates() {
   /** 科室选项（供筛选下拉与新建弹窗），由 React Query 拉取 */
   const { data: deptRes } = useQuery({
     queryKey: QUERY_KEYS.departments,
-    queryFn: () => getDepartments({ page: 1, size: 200 }),
+    queryFn: () => getDepartments({ page: 1, size: PAGE_SIZE_200 }),
     staleTime: STALE_TIME.departments,
   });
   const deptOptions = useMemo(
@@ -135,7 +136,7 @@ export default function PrescriptionTemplates() {
             新建模板
           </Button>,
         ]}
-        pagination={{ pageSize: 10, showSizeChanger: true }}
+        pagination={{ pageSize: PAGE_SIZE_DEFAULT, showSizeChanger: true }}
       />
 
       <TemplateDetailModal

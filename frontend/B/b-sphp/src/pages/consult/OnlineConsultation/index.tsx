@@ -48,6 +48,7 @@ import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 import { POLL_INTERVAL_CONSULT } from '@/constants/timing';
 import { getErrorMessage } from '@/utils/error';
 import styles from './index.module.less';
+import { PAGE_SIZE_100, PAGE_SIZE_50 } from '@/constants/pageSize';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -131,7 +132,7 @@ export default function OnlineConsultationPage() {
 
   const listQuery = useQuery({
     queryKey: QUERY_KEYS.onlineConsultations(status),
-    queryFn: () => getOnlineConsultations({ status, page: 1, size: 50 }),
+    queryFn: () => getOnlineConsultations({ status, page: 1, size: PAGE_SIZE_50 }),
     refetchInterval: POLL_INTERVAL_CONSULT,
   });
   const detailQuery = useQuery({
@@ -152,7 +153,7 @@ export default function OnlineConsultationPage() {
   }, [queryClient]);
   const templatesQuery = useQuery({
     queryKey: ['prescription', 'templates', 'online-consultation'],
-    queryFn: () => getTemplates({ page: 1, size: 100 }),
+    queryFn: () => getTemplates({ page: 1, size: PAGE_SIZE_100 }),
   });
   const drugsQuery = useQuery({
     queryKey: ['drug', 'online-consultation-options', drugKeyword],
@@ -160,7 +161,7 @@ export default function OnlineConsultationPage() {
       name: drugKeyword.trim() || undefined,
       status: 'ENABLED',
       page: 1,
-      size: 100,
+      size: PAGE_SIZE_100,
     }),
     enabled: detail?.status === 'IN_PROGRESS',
     staleTime: STALE_TIME.onlineConsultDrugs,

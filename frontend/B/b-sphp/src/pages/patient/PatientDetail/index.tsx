@@ -19,6 +19,7 @@ import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 import { getVisitColumns, getPrescriptionColumns } from './columns';
 import BasicInfoTab from './BasicInfoTab';
 import MedicationsTab from './MedicationsTab';
+import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 
 export default function PatientDetail() {
   const { id } = useParams<{ id: string }>();
@@ -64,7 +65,7 @@ export default function PatientDetail() {
             }
           }}
           search={false}
-          pagination={{ pageSize: 10 }}
+          pagination={{ pageSize: PAGE_SIZE_DEFAULT }}
           toolBarRender={false}
         />
       ),
@@ -91,7 +92,7 @@ export default function PatientDetail() {
             }
           }}
           search={false}
-          pagination={{ pageSize: 10 }}
+          pagination={{ pageSize: PAGE_SIZE_DEFAULT }}
           toolBarRender={false}
         />
       ),

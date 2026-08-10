@@ -26,6 +26,7 @@ import EditProfileModal from './EditProfileModal';
 import EditAccountModal from './EditAccountModal';
 import ResetPasswordModal from './ResetPasswordModal';
 import ChangeStatusModal from './ChangeStatusModal';
+import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 
 export default function DoctorList() {
   const isAdmin = useHasRole('ADMIN');
@@ -216,7 +217,7 @@ export default function DoctorList() {
               ]
             : []
         }
-        pagination={{ pageSize: 10 }}
+        pagination={{ pageSize: PAGE_SIZE_DEFAULT }}
       />
 
       <AddDoctorModal

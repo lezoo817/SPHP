@@ -15,6 +15,7 @@ import { getErrorMessage } from '@/utils/error';
 import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 import useCountdown from '@/hooks/useCountdown';
 import dayjs from 'dayjs';
+import { PAGE_SIZE_200, PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 
 /** 锁定剩余时间倒计时组件 */
 function RemainCountdown({ expireAt }: { expireAt?: string }) {
@@ -47,7 +48,7 @@ export default function LockedSlotsBoard() {
   /** 科室选项：React Query 缓存，仅 ADMIN 拉取（筛选按钮仅 ADMIN 展示） */
   const { data: deptResult } = useQuery({
     queryKey: QUERY_KEYS.departments,
-    queryFn: () => getDepartments({ page: 1, size: 200 }),
+    queryFn: () => getDepartments({ page: 1, size: PAGE_SIZE_200 }),
     enabled: isAdmin,
     staleTime: STALE_TIME.departments,
   });
@@ -166,7 +167,7 @@ export default function LockedSlotsBoard() {
           />
         ) : null,
       ]}
-      pagination={{ pageSize: 10, showSizeChanger: true }}
+      pagination={{ pageSize: PAGE_SIZE_DEFAULT, showSizeChanger: true }}
     />
   );
 }
