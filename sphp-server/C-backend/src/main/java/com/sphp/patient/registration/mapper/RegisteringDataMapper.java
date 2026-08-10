@@ -38,22 +38,22 @@ public interface RegisteringDataMapper {
     boolean hasActivePatientRelation(@Param("userId") Long userId, @Param("patientId") Long patientId);
 
     /**
-     * 锁定当前有效 C 端用户，串行化同一账号的挂号和支付限约判断。
+     * 锁定有效就诊人，串行化同一就诊人的挂号和支付限约判断。
      *
-     * @param userId C 端用户 ID
-     * @return 锁定成功的用户 ID，用户不存在或已删除时返回 null
+     * @param patientId 就诊人 ID
+     * @return 锁定成功的就诊人 ID，就诊人不存在或已删除时返回 null
      */
-    Long registeringLockActiveUser(@Param("userId") Long userId);
+    Long registeringLockActivePatient(@Param("patientId") Long patientId);
 
     /**
-     * 判断当前登录账号是否存在指定医生的有效待就诊挂号。
+     * 判断指定就诊人是否存在指定医生的有效待就诊挂号。
      *
-     * @param userId C 端用户 ID
+     * @param patientId 就诊人 ID
      * @param doctorId 医生 ID
      * @return 存在未完成、未失效的已支付挂号时返回 true
      */
-    boolean existsRegisteringActiveDoctorAppointment(@Param("userId") Long userId,
-                                                      @Param("doctorId") Long doctorId);
+    boolean existsRegisteringActivePatientDoctorAppointment(@Param("patientId") Long patientId,
+                                                             @Param("doctorId") Long doctorId);
 
     /**
      * 查询挂号锁号需要的时段、排班、医生和医院链路。
