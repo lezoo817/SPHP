@@ -12,15 +12,12 @@ import type {
   AgentChatRequest,
   AgentConfirmData,
   AgentConfirmRequest,
+  AgentHistoryCard,
+  AgentHistoryMessage,
   AgentSession,
+  AgentSessionHistory,
   AgentSseEvent,
 } from '../typings/agent';
-
-/** 历史消息条目 */
-export interface AgentHistoryMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
 import type { ApiResponse } from '../typings/api';
 
 /** SSE 解析回调：每解析出一条事件触发一次。 */
@@ -315,9 +312,9 @@ export async function deleteSession(sessionId: string): Promise<void> {
 /**
  * 获取指定会话的历史消息（GET /api/chat/sessions/{session_id}/messages）。
  * @param sessionId 会话 ID
- * @returns 消息列表（role + content）
+ * @returns 历史会话内容：纯文本消息 + 持久化的交互卡片（payload 与 SSE 实时事件一致）
  */
-export async function getSessionMessages(sessionId: string): Promise<AgentHistoryMessage[]> {
+export async function getSessionMessages(sessionId: string): Promise<AgentSessionHistory> {
   const token = await ensureAccessToken();
   if (!token) {
     redirectToLogin();
@@ -339,15 +336,19 @@ export async function getSessionMessages(sessionId: string): Promise<AgentHistor
     throw new Error('登录已失效，请重新登录');
   }
 
-  let payload: ApiResponse<{ messages: AgentHistoryMessage[] }>;
+  let payload: ApiResponse<{ messages: AgentHistoryMessage[]; cards?: AgentHistoryCard[] }>;
   try {
-    payload = (await response.json()) as ApiResponse<{ messages: AgentHistoryMessage[] }>;
+    payload = (await response.json()) as ApiResponse<{
+      messages: AgentHistoryMessage[];
+      cards?: AgentHistoryCard[];
+    }>;
   } catch {
     throw new Error('获取历史消息失败，请稍后重试');
   }
 
   if (payload.code === '00000' && payload.data?.messages) {
-    return payload.data.messages;
+    // cards 缺省（旧后端）兜底为空数组，保证前端渲染兼容
+    return { messages: payload.data.messages, cards: payload.data.cards ?? [] };
   }
 
   throw new Error(payload.message || '获取历史消息失败');

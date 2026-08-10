@@ -411,3 +411,26 @@ export interface AgentSession {
 export interface AgentSessionList {
   sessions: AgentSession[];
 }
+
+/** 历史消息条目（GET /api/chat/sessions/{id}/messages 的 messages）。 */
+export interface AgentHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/** 历史卡片条目：后端持久化的卡片事件，payload 结构与 SSE 实时事件一致。
+ *
+ * 前端可据此复用实时渲染组件还原历史会话中的交互卡片（L2 确认卡 /
+ * 受控交互卡 / 记录选择卡 / 选医生选项卡）。
+ */
+export type AgentHistoryCard =
+  | { event: 'card'; payload: AgentCardEvent }
+  | { event: 'action_card'; payload: AgentActionCardEvent }
+  | { event: 'record_picker'; payload: AgentRecordPickerEvent }
+  | { event: 'options'; payload: AgentOptionsEvent };
+
+/** 历史会话消息响应（GET /api/chat/sessions/{id}/messages）。 */
+export interface AgentSessionHistory {
+  messages: AgentHistoryMessage[];
+  cards: AgentHistoryCard[];
+}
