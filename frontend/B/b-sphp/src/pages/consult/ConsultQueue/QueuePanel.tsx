@@ -12,7 +12,7 @@ import {
   OrderedListOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import styles from './index.module.less';
+import styles from './QueuePanel.module.less';
 import { GENDER_MAP, STATUS_MAP } from './constants';
 
 const { Text, Title } = Typography;
@@ -63,7 +63,7 @@ function QueueItemView({
         <Space>
           <span style={{ color: gender.color }}>{gender.icon}</span>
           <Text strong>{item.patientName}</Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>
+          <Text type="secondary" className={styles.textSmall}>
             {item.patientAge}岁
           </Text>
         </Space>
@@ -71,10 +71,10 @@ function QueueItemView({
       </div>
       <div className={styles.queueItemMeta}>
         <Space size={12}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
+          <Text type="secondary" className={styles.textSmall}>
             <ClockCircleOutlined /> #{item.queueNumber}
           </Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>
+          <Text type="secondary" className={styles.textSmall}>
             {item.slotStartTime && item.slotEndTime
               ? `${item.slotStartTime} - ${item.slotEndTime}`
               : '-'}
@@ -83,7 +83,7 @@ function QueueItemView({
       </div>
       {item.aiSummary?.chiefComplaint && (
         <div className={styles.aiSummary}>
-          <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
+          <Text type="secondary" className={styles.textSmall} ellipsis>
             主诉：{item.aiSummary.chiefComplaint}
           </Text>
         </div>
@@ -114,14 +114,11 @@ function HistoryItemView({
       <div className={styles.queueItemHeader}>
         <Space style={{ minWidth: 0, flexShrink: 1 }}>
           <span style={{ color: gender.color }}>{gender.icon}</span>
-          <Text strong style={{ wordBreak: 'keep-all', overflowWrap: 'normal' }}>
+          <Text strong className={styles.nameKeep}>
             {item.patientName}
           </Text>
           {age !== null && (
-            <Text
-              type="secondary"
-              style={{ fontSize: 12, wordBreak: 'keep-all', overflowWrap: 'normal' }}
-            >
+            <Text type="secondary" className={styles.textSmall}>
               {age}岁
             </Text>
           )}
@@ -130,20 +127,13 @@ function HistoryItemView({
       </div>
       {item.chiefComplaint && (
         <div className={styles.aiSummary}>
-          <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
+          <Text type="secondary" className={styles.textSmall} ellipsis>
             主诉：{item.chiefComplaint}
           </Text>
         </div>
       )}
       <div style={{ marginTop: 2 }}>
-        <Text
-          type="secondary"
-          style={{
-            fontSize: 11,
-            wordBreak: 'break-word',
-            overflowWrap: 'anywhere',
-          }}
-        >
+        <Text type="secondary" className={styles.textMini}>
           {item.endedAt
             ? dayjs(item.endedAt).format('MM-DD HH:mm')
             : dayjs(item.createdAt).format('MM-DD HH:mm')}

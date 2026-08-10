@@ -214,6 +214,10 @@ public class PrescriptionServiceImpl implements PrescriptionService {
     @Override
     public PageResult<PrescriptionListVO> page(Long consultId, Long patientId, String status, int page, int size) {
         DataScope scope = currentUserService.getCurrentDataScope();
+        // 数据权限标识缺失（DEPT_HEAD 无科室）时按空数据返回，避免越权（与排班模块写法一致）
+        if (BRoleEnum.DEPT_HEAD.equalsCode(scope.role()) && scope.deptId() == null) {
+            return PageResult.of(0L, List.of(), page, size);
+        }
         LambdaQueryWrapper<Prescription> wrapper = Wrappers.<Prescription>lambdaQuery()
                 .eq(consultId != null, Prescription::getConsultId, consultId)
                 .eq(patientId != null, Prescription::getPatientId, patientId)
@@ -222,6 +226,10 @@ public class PrescriptionServiceImpl implements PrescriptionService {
                         scope.hospitalId());
         if (BRoleEnum.DOCTOR.equalsCode(scope.role())) {
             wrapper.eq(Prescription::getDoctorId, scope.doctorId());
+        } else if (BRoleEnum.DEPT_HEAD.equalsCode(scope.role())) {
+            // 科室主任：收窄到本科室医生开具的处方（与待审核列表的可见范围保持一致）
+            wrapper.apply("doctor_id IN (SELECT id FROM doctor WHERE dept_id = {0} AND deleted_at IS NULL)",
+                    scope.deptId());
         }
         if (StringUtils.hasText(status)) {
             wrapper.in(Prescription::getStatus, (Object[]) status.split(","));
@@ -347,13 +355,17 @@ public class PrescriptionServiceImpl implements PrescriptionService {
         if (!BRoleEnum.ADMIN.equalsCode(role) && !BRoleEnum.DEPT_HEAD.equalsCode(role)) {
             throw new BusinessException(ERR_NO_PERMISSION, "无审核权限");
         }
+        // 数据权限标识缺失（DEPT_HEAD 无科室）时按空数据返回，避免越权（与排班模块写法一致）
+        if (BRoleEnum.DEPT_HEAD.equalsCode(role) && scope.deptId() == null) {
+            return PageResult.of(0L, List.of(), page, size);
+        }
 
         LambdaQueryWrapper<Prescription> wrapper = Wrappers.<Prescription>lambdaQuery()
                 .eq(Prescription::getStatus, STATUS_SUBMITTED)
                 .isNull(Prescription::getDeletedAt)
                 .apply("doctor_id IN (SELECT id FROM doctor WHERE hospital_id = {0} AND deleted_at IS NULL)",
                         scope.hospitalId());
-        if (BRoleEnum.DEPT_HEAD.equalsCode(role) && scope.deptId() != null) {
+        if (BRoleEnum.DEPT_HEAD.equalsCode(role)) {
             wrapper.apply("doctor_id IN (SELECT id FROM doctor WHERE dept_id = {0} AND deleted_at IS NULL)",
                     scope.deptId());
         }

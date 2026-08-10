@@ -151,6 +151,8 @@ export interface UseAgentStream {
   selectRecordPicker: (cardId: string, recordId: number) => void;
   /** 更新记录选择卡确认或取消状态。 */
   updateRecordPicker: (cardId: string, status: AgentRecordPickerCard['status']) => void;
+  /** 追加仅由前端本地触发的受控业务交互卡。 */
+  appendActionCard: (card: AgentActionCardEvent) => void;
   /** 中断当前流式请求 */
   cancel: () => void;
   /** 重试上一条消息 */
@@ -784,6 +786,7 @@ export function useAgentStream(): UseAgentStream {
     selectOption,
     selectRecordPicker,
     updateRecordPicker,
+    appendActionCard,
     cancel,
     retry,
     reset,

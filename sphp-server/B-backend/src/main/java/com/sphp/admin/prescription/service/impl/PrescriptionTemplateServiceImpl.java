@@ -7,6 +7,7 @@ import com.sphp.admin.auth.entity.Doctor;
 import com.sphp.admin.auth.mapper.DoctorMapper;
 import com.sphp.admin.common.CurrentUserService;
 import com.sphp.admin.common.DataScope;
+import com.sphp.admin.common.enums.BRoleEnum;
 import com.sphp.admin.common.enums.BUserStatusEnum;
 import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.hospital.entity.Department;
@@ -44,7 +45,8 @@ import java.util.stream.Collectors;
  * 处方模板服务实现（管理员视角）。
  *
  * <p>按当前登录用户所属医院（{@code hospital_id}）做数据隔离过滤；
- * 仅创建/更新/删除需医生身份，查询不限角色。
+ * 查询范围按角色收窄：ADMIN 全院（可按科室筛选），DEPT_HEAD/DOCTOR 强制本科室 + 全院通用。
+ * 新建/编辑/删除需医生身份，科室范围受角色约束（DOCTOR 仅本科室；DEPT_HEAD 本科室或全院通用；ADMIN 不限）。
  * 模板状态字段与 {@link BUserStatusEnum} 复用（仅 ENABLED / DISABLED 两态）。
  *
  * @author lezoo17
@@ -91,11 +93,21 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
                 .eq(PrescriptionTemplate::getHospitalId, scope.hospitalId())
                 .eq(PrescriptionTemplate::getStatus, BUserStatusEnum.ENABLED.getCode())
                 .isNull(PrescriptionTemplate::getDeletedAt)
-                .like(StringUtils.hasText(name), PrescriptionTemplate::getName, name)
-                // deptId 为空时返回全部（包括全院通用模板），指定时返回该科室模板 + 全院通用模板
-                .and(deptId != null, w ->
-                        w.eq(PrescriptionTemplate::getDeptId, deptId)
-                                .or().isNull(PrescriptionTemplate::getDeptId));
+                .like(StringUtils.hasText(name), PrescriptionTemplate::getName, name);
+        if (BRoleEnum.ADMIN.equalsCode(scope.role())) {
+            // ADMIN：deptId 为空返回全部；指定时返回该科室模板 + 全院通用模板
+            if (deptId != null) {
+                wrapper.and(w -> w.eq(PrescriptionTemplate::getDeptId, deptId)
+                        .or().isNull(PrescriptionTemplate::getDeptId));
+            }
+        } else if (scope.deptId() != null) {
+            // DEPT_HEAD / DOCTOR：本科室模板 + 全院通用模板（忽略客户端 deptId，强制数据权限科室）
+            wrapper.and(w -> w.eq(PrescriptionTemplate::getDeptId, scope.deptId())
+                    .or().isNull(PrescriptionTemplate::getDeptId));
+        } else {
+            // DEPT_HEAD / DOCTOR 数据权限标识缺失：按空数据返回，避免越权（与排班模块写法一致）
+            return PageResult.of(0L, List.of(), page, size);
+        }
         wrapper.orderByDesc(PrescriptionTemplate::getCreatedAt);
 
         Page<PrescriptionTemplate> result = templateMapper.selectPage(new Page<>(page, size), wrapper);
@@ -129,6 +141,8 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
                 throw new BusinessException(ERR_BUSINESS_CONFLICT, "科室不存在或不属于当前医院");
             }
         }
+        // 按角色限制可选科室范围：DOCTOR 仅本科室；DEPT_HEAD 本科室或全院通用；ADMIN 不限
+        assertManageableDept(scope, request.getDeptId());
 
         // 防同名模板重复（同医院、未删除）
         Long duplicate = templateMapper.selectCount(
@@ -223,6 +237,8 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         if (!template.getHospitalId().equals(scope.hospitalId())) {
             throw new BusinessException(ERR_FORBIDDEN, "无权修改该模板");
         }
+        // 仅可编辑可管理范围内的模板：ADMIN 本院任意；DEPT_HEAD 本科室+全院通用；DOCTOR 仅本科室
+        assertTemplateManageable(scope, template);
 
         // 校验药品明细非空
         if (request.getItems() == null || request.getItems().isEmpty()) {
@@ -237,6 +253,8 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
                 throw new BusinessException(ERR_BUSINESS_CONFLICT, "科室不存在或不属于当前医院");
             }
         }
+        // 按角色限制可选科室范围（与新建一致）
+        assertManageableDept(scope, request.getDeptId());
 
         // 批量查询药品，校验存在且启用，并回填药品名称
         Set<Long> drugIds = request.getItems().stream()
@@ -289,6 +307,8 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         if (!template.getHospitalId().equals(scope.hospitalId())) {
             throw new BusinessException(ERR_FORBIDDEN, "无权删除该模板");
         }
+        // 仅可删除可管理范围内的模板：ADMIN 本院任意；DEPT_HEAD 本科室+全院通用；DOCTOR 仅本科室
+        assertTemplateManageable(scope, template);
         // 软删除
         template.setDeletedAt(OffsetDateTime.now());
         template.setStatus(BUserStatusEnum.DISABLED.getCode());
@@ -312,6 +332,12 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         if (!template.getHospitalId().equals(scope.hospitalId())) {
             throw new BusinessException(ERR_FORBIDDEN, "无权使用该模板");
         }
+        // 模板须在查看范围内：非 ADMIN 仅本科室或全院通用
+        if (!BRoleEnum.ADMIN.equalsCode(scope.role())
+                && template.getDeptId() != null
+                && !Objects.equals(template.getDeptId(), scope.deptId())) {
+            throw new BusinessException(ERR_FORBIDDEN, "无权使用该模板");
+        }
         if (template.getItems() == null || template.getItems().isEmpty()) {
             throw new BusinessException(ERR_BUSINESS_CONFLICT, "模板药品明细为空，无法开方");
         }
@@ -333,6 +359,48 @@ public class PrescriptionTemplateServiceImpl implements PrescriptionTemplateServ
         // 3. 复用共享开方方法（含风险拦截）
         log.info("应用处方模板 templateId={}, consultId={}", templateId, consultId);
         return prescriptionService.createFromItems(consultId, items);
+    }
+
+    /**
+     * 校验目标科室 ID 落在当前角色的可管理范围内。
+     *
+     * <p>ADMIN：任意科室 / 全院通用；DEPT_HEAD：本科室 / 全院通用；DOCTOR：仅本科室。
+     *
+     * @param scope  当前数据权限
+     * @param deptId 目标科室 ID（null 表示全院通用）
+     * @throws BusinessException 越界时抛 ERR_NO_PERMISSION
+     */
+    private void assertManageableDept(DataScope scope, Long deptId) {
+        if (BRoleEnum.DOCTOR.equalsCode(scope.role())) {
+            if (scope.deptId() == null || !Objects.equals(deptId, scope.deptId())) {
+                throw new BusinessException(ERR_NO_PERMISSION, "医生仅可维护本科室模板");
+            }
+        } else if (BRoleEnum.DEPT_HEAD.equalsCode(scope.role())) {
+            if (deptId != null && !Objects.equals(deptId, scope.deptId())) {
+                throw new BusinessException(ERR_NO_PERMISSION, "科室主任仅可维护本科室或全院通用模板");
+            }
+        }
+    }
+
+    /**
+     * 校验目标模板落在当前角色的可管理范围内（编辑/删除）。
+     *
+     * <p>ADMIN：本院任意；DEPT_HEAD：本科室或全院通用；DOCTOR：仅本科室。
+     *
+     * @param scope    当前数据权限
+     * @param template 目标模板
+     * @throws BusinessException 越界时抛 ERR_FORBIDDEN
+     */
+    private void assertTemplateManageable(DataScope scope, PrescriptionTemplate template) {
+        if (BRoleEnum.DOCTOR.equalsCode(scope.role())) {
+            if (scope.deptId() == null || !Objects.equals(template.getDeptId(), scope.deptId())) {
+                throw new BusinessException(ERR_FORBIDDEN, "无权维护该模板");
+            }
+        } else if (BRoleEnum.DEPT_HEAD.equalsCode(scope.role())) {
+            if (template.getDeptId() != null && !Objects.equals(template.getDeptId(), scope.deptId())) {
+                throw new BusinessException(ERR_FORBIDDEN, "无权维护该模板");
+            }
+        }
     }
 
     /**

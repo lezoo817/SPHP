@@ -1,0 +1,135 @@
+/**
+ * 接诊台右栏 - 接诊操作区面板。
+ * 从上到下：面板头（标题 + 结束问诊）→ 患者信息条 → 主工作区
+ * （病历与已开处方左右分栏）→ 留言板（底部，占比小）。
+ */
+@import '../../../styles/variables.less';
+
+.panel {
+  .panel-chrome();
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: @spacing-md @spacing-lg 0;
+  flex-shrink: 0;
+}
+
+.patientInfoBarWrap {
+  flex-shrink: 0;
+  padding: @spacing-sm @spacing-lg 0;
+}
+
+.consultContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: @spacing-md;
+}
+
+/** 接诊中主工作区：纵向 = 左右分栏 + 留言板 */
+.inProgressArea {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/** 病历 + 已开处方 左右分栏 */
+.workspaceRow {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: @spacing-md;
+}
+
+.noteColumn {
+  flex: 3;
+  min-width: 0;
+  overflow-y: auto;
+  border: 1px solid @color-border-secondary;
+  border-radius: @radius-md;
+  padding: @spacing-md;
+  background: @color-bg-container;
+}
+
+.prescriptionColumn {
+  flex: 2;
+  min-width: 0;
+  overflow-y: auto;
+  border: 1px solid @color-border-secondary;
+  border-radius: @radius-md;
+  padding: @spacing-md;
+  background: @color-bg-container;
+}
+
+/** 已开处方面板整体 */
+.prescriptionSection {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/** 已开处方标题 + 开处方按钮行 */
+.prescriptionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: @spacing-sm;
+}
+
+.sectionTitle {
+  .section-title();
+  margin-bottom: 0;
+}
+
+/** 已开处方空态 */
+.prescriptionEmpty {
+  margin: @spacing-xl 0;
+}
+
+/** 已开处方列表项 */
+.prescriptionItem {
+  width: 100%;
+}
+
+/** 列表项内文字型操作（查看 / 重新开方） */
+.linkBtn {
+  padding: 0;
+}
+
+/** 辅助小字（处方号 / 项数 / 时间） */
+.textSmall {
+  font-size: 12px;
+}
+
+/** Tag 紧凑排布 */
+.tagInline {
+  margin-right: 0;
+}
+
+/** 风险 Tag（可点击查看明细） */
+.tagRisk {
+  margin-right: 0;
+  cursor: pointer;
+}
+
+.prescriptionItemMain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: @spacing-sm;
+}
+
+.prescriptionItemTags {
+  display: flex;
+  align-items: center;
+  gap: @spacing-xs;
+  flex-wrap: wrap;
+}
+
+.prescriptionItemMeta {
+  display: flex;
+  gap: @spacing-md;
+  margin-top: 2px;
+}

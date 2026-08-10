@@ -10,6 +10,7 @@ import {
   DownOutlined,
   FileTextOutlined,
   HistoryOutlined,
+  HomeOutlined,
   MedicineBoxOutlined,
   PhoneOutlined,
   PlusOutlined,
@@ -34,7 +35,7 @@ import {
 } from 'antd';
 import { useState } from 'react';
 import dayjs from 'dayjs';
-import styles from './index.module.less';
+import styles from './PatientInfoBar.module.less';
 import { STATUS_MAP } from './constants';
 import { getErrorMessage } from '@/utils/error';
 
@@ -147,20 +148,20 @@ export default function PatientInfoBar({
   return (
     <>
       <div className={styles.patientInfoBar}>
-        <Space size={10} align="center" style={{ minWidth: 0 }}>
-          <UserOutlined style={{ color: '#1890ff' }} />
-          <Text strong style={{ wordBreak: 'keep-all' }}>
+        <div className={styles.infoPrimary}>
+          <UserOutlined className={styles.infoIcon} />
+          <Text strong className={styles.nameKeep}>
             {patient.name}
           </Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {genderText(patient.gender)} {age !== null ? `${age}岁` : '年龄未知'}
+          <Text type="secondary" className={styles.textSmall}>
+            {genderText(patient.gender)} · {age !== null ? `${age}岁` : '年龄未知'}
           </Text>
           {hasAllergy ? (
-            <Tag color="red" icon={<AlertOutlined />} style={{ marginInlineEnd: 0 }}>
+            <Tag color="red" icon={<AlertOutlined />} className={styles.allergyTag}>
               过敏 {allergies.length}
             </Tag>
           ) : (
-            <Tag style={{ marginInlineEnd: 0 }}>无过敏</Tag>
+            <Tag className={styles.allergyTag}>无过敏</Tag>
           )}
           {/* 仅接诊中可补录：医生发现患者过敏可立即录入，下次开方即参与拦截；历史/待接诊只读 */}
           {canEditAllergy && (
@@ -168,21 +169,33 @@ export default function PatientInfoBar({
               type="link"
               size="small"
               icon={<PlusOutlined />}
-              style={{ paddingInline: 4 }}
+              className={styles.linkBtn}
               onClick={openAllergyModal}
             >
               过敏
             </Button>
           )}
-        </Space>
-        <Button
-          type="link"
-          size="small"
-          icon={<DownOutlined />}
-          onClick={() => setDrawerOpen(true)}
-        >
-          详情
-        </Button>
+        </div>
+        <div className={styles.infoSecondary}>
+          {patient.phone && (
+            <span className={styles.infoSecondaryItem}>
+              <PhoneOutlined /> {patient.phone}
+            </span>
+          )}
+          {patient.emergencyContact && (
+            <span className={styles.infoSecondaryItem}>
+              <HomeOutlined /> 紧急联系：{patient.emergencyContact}
+            </span>
+          )}
+          <Button
+            type="link"
+            size="small"
+            icon={<DownOutlined />}
+            onClick={() => setDrawerOpen(true)}
+          >
+            详情
+          </Button>
+        </div>
       </div>
 
       <Drawer
@@ -281,7 +294,7 @@ export default function PatientInfoBar({
                       <Text>{h.content}</Text>
                       {h.occurredAt && (
                         <div>
-                          <Text type="secondary" style={{ fontSize: 12 }}>
+                          <Text type="secondary" className={styles.textSmall}>
                             {h.occurredAt}
                           </Text>
                         </div>
@@ -309,14 +322,14 @@ export default function PatientInfoBar({
                 dataSource={patientDetail.historyRecords}
                 renderItem={(r) => (
                   <List.Item>
-                    <div style={{ width: '100%' }}>
+                    <div className={styles.fullWidth}>
                       <Space>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
+                        <Text type="secondary" className={styles.textSmall}>
                           {r.date}
                         </Text>
                         <Tag>{r.type}</Tag>
                         {r.doctorName && (
-                          <Text type="secondary" style={{ fontSize: 12 }}>
+                          <Text type="secondary" className={styles.textSmall}>
                             医生：{r.doctorName}
                           </Text>
                         )}
@@ -326,7 +339,7 @@ export default function PatientInfoBar({
                       </Space>
                       {r.summary && (
                         <div>
-                          <Text type="secondary" style={{ fontSize: 12 }}>
+                          <Text type="secondary" className={styles.textSmall}>
                             {r.summary}
                           </Text>
                         </div>
@@ -355,12 +368,12 @@ export default function PatientInfoBar({
                 renderItem={(p) => (
                   <List.Item>
                     <Space>
-                      <Text type="secondary" style={{ fontSize: 12 }}>
+                      <Text type="secondary" className={styles.textSmall}>
                         处方 #{p.id}
                       </Text>
                       <Tag>{p.status}</Tag>
                       {p.issuedAt && (
-                        <Text type="secondary" style={{ fontSize: 12 }}>
+                        <Text type="secondary" className={styles.textSmall}>
                           {dayjs(p.issuedAt).format('YYYY-MM-DD HH:mm')}
                         </Text>
                       )}

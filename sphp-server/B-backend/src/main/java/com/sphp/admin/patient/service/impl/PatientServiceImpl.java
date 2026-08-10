@@ -187,6 +187,7 @@ public class PatientServiceImpl implements PatientService {
                                 .dosage(m.getDosage())
                                 .frequency(m.getFrequency())
                                 .usageMethod(m.getUsageMethod())
+                                .durationDays(m.getDurationDays())
                                 .status(m.getStatus())
                                 .nextRemindAt(m.getNextRemindAt())
                                 .createdAt(m.getCreatedAt())

@@ -4,6 +4,7 @@ import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
 import { HOME_CONSULTATION_MESSAGE, HOME_TRIAGE_MESSAGE } from '../../constants/agent';
+import { completeAllHealthTodos, getCompletedHealthTodoIds, isHealthTodoCompleted } from '../../models/completed-health-todo';
 import { dismissExpiredHealthTodo, getDismissedExpiredHealthTodoIds, isExpiredHealthTodoDismissed } from '../../models/expired-health-todo';
 import { dismissCompletedConsultationTodo, getDismissedCompletedConsultationTodoIds, isCompletedConsultationTodoDismissed } from '../../models/completed-consultation-health-todo';
 import { dismissMedicationHealthTodo, getMedicationHealthTodoState, getMedicationHealthTodoStates, isMedicationHealthTodoDismissed, markMedicationHealthTodoTaken, type MedicationHealthTodoState } from '../../models/medication-health-todo';
@@ -84,11 +85,14 @@ export default function HomePage() {
       const dismissedTodoIds = getDismissedExpiredHealthTodoIds();
       const nextMedicationTodoStates = getMedicationHealthTodoStates();
       const nextDismissedConsultationTodoIds = getDismissedCompletedConsultationTodoIds();
+      const nextCompletedTodoIds = getCompletedHealthTodoIds();
       setMedicationTodoStates(nextMedicationTodoStates);
       setTodos(nextTodos.filter((todo) => (!todo.isExpired || !isExpiredHealthTodoDismissed(todo, dismissedTodoIds))
         // 仅已开启提醒的用药待办支持本地关闭，其他用药卡片保持原跳转行为。
         && !(todo.type === 'MEDICATION' && todo.reminderEnabled && isMedicationHealthTodoDismissed(todo, nextMedicationTodoStates))
-        && !(todo.type === 'CONSULTATION' && isCompletedConsultationTodoDismissed(todo, nextDismissedConsultationTodoIds))));
+        && !(todo.type === 'CONSULTATION' && isCompletedConsultationTodoDismissed(todo, nextDismissedConsultationTodoIds))
+        // 一键完成只影响当前会话中的首页提示，刷新数据时继续过滤已完成卡片。
+        && !isHealthTodoCompleted(todo, nextCompletedTodoIds)));
       if (healthResults.some((item) => item.status === 'rejected')) setNotice('部分健康待办加载失败，请稍后重试');
     } catch (error: unknown) {
       setNotice(error instanceof Error ? error.message : '首页数据加载失败');
@@ -158,6 +162,18 @@ export default function HomePage() {
     if (todo.type === 'APPOINTMENT') navigate('/assistant');
     else if (todo.type === 'MEDICATION') navigate(`/mine/medication-plans?patientId=${todo.patientId}&source=home`);
     else navigate('/mine/follow-ups');
+  }
+
+  /**
+   * 将当前展示的全部健康待办标记为已完成。
+   * @returns 无返回值
+   */
+  function completeAllTodos() {
+    if (!todos.length) return;
+    // 使用当前已渲染集合写入会话存储，避免切换页面后服务端相同待办再次显示。
+    completeAllHealthTodos(todos);
+    setTodos([]);
+    setNotice('已完成全部健康待办');
   }
 
   /** 沿滑动方向切换宣传窗页码，首尾页通过克隆卡片保持连续运动。 */
@@ -274,7 +290,7 @@ export default function HomePage() {
       <section className="patient-switch-card"><div><b>当前就诊人 · {currentPatient?.name || '未选择'}</b><p>{currentPatient?.phone || '资料待完善'}</p></div><button type="button" className="text-button" onClick={() => setPatientOpen(true)}>切换 <ChevronRight size={19} /></button></section>
       <h2>快捷服务</h2>
       <section className="quick-grid">{services.map(({ label, icon: Icon, action }) => <button key={label} type="button" onClick={action || (() => setNotice(`${label}暂未开放`))}><Icon size={29} /><span>{label}</span></button>)}</section>
-      <section className="todo-section"><div className="section-title"><h2>健康待办</h2>{todos.length > 0 && <span className="todo-count">{todos.length} 项待处理</span>}</div>
+      <section className="todo-section"><div className="section-title"><h2>健康待办</h2>{todos.length > 0 && <span className="todo-actions"><span className="todo-count">{todos.length} 项待处理</span><button className="todo-complete-all" type="button" onClick={completeAllTodos}>一键完成</button></span>}</div>
         {todos.map((todo) => {
           const medicationTaken = todo.type === 'MEDICATION' && todo.reminderEnabled && getMedicationHealthTodoState(todo, medicationTodoStates) === 'TAKEN';
           return <button className={`${todo.type === 'APPOINTMENT' ? 'health-todo-card has-location' : 'health-todo-card'}${todo.isExpired ? ' is-expired' : ''}${medicationTaken ? ' is-medication-taken' : ''}`} type="button" key={`${todo.type}-${todo.id}-${todo.patientId}-${todo.occurredAt || ''}`} onClick={() => openTodo(todo)}><div className={`health-todo-card__icon ${todo.type.toLowerCase()}`}>{todo.type === 'APPOINTMENT' ? '挂' : todo.type === 'MEDICATION' ? '药' : todo.type === 'CONSULTATION' ? '诊' : '访'}</div><div><b>{todo.occurredAt ? formatMedicalTime(todo.occurredAt) : '时间待确认'} · {todo.title}</b><span>{todo.patientName} · {todo.detail}</span>{todo.type === 'APPOINTMENT' && <small>科室位置：{todo.departmentLocation || '科室位置待确认'}</small>}</div>{medicationTaken ? <em className="health-todo-card__taken">已服用</em> : <ChevronRight size={18} />}</button>;

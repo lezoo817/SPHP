@@ -27,6 +27,8 @@ import { AgentRecordPickerCardView } from './AgentRecordPickerCard';
 import type { AgentActionCard, AgentChatContext, AgentConfirmCard, AgentPresetAction, AgentRecordPickerCard, AgentSession } from '../../typings/agent';
 import { resolveAppointmentPaymentResult, resolveDrugOrderPaymentResult } from '../../utils/agent-purchase';
 import { resolveAgentActionRequest } from '../../utils/agent-action';
+import { resolveConsultationId } from '../../utils/agent-consultation';
+import { buildConsultationDetailPath } from '../../utils/consultation';
 
 /**
  * 格式化会话时间：今天显示时分，昨天显示"昨天"，更早显示日期。
@@ -74,6 +76,7 @@ export function AgentChat({
     selectOption,
     selectRecordPicker,
     updateRecordPicker,
+    appendActionCard,
     cancel,
     retry,
     reset,
@@ -276,6 +279,19 @@ export function AgentChat({
   async function handleConfirm(card: AgentConfirmCard, password?: string) {
     const result = await confirm(card, password);
     if (!result) return;
+    if (card.cardType === 'confirm_pre_consultation' || card.cardType === 'confirm_send_message') {
+      // 新建问诊从确认结果取 ID，既有问诊消息则复用确认卡中的受控 ID。
+      const consultationId = resolveConsultationId(result.action_result, card.details?.consultation_id);
+      if (!consultationId) return;
+      appendActionCard({
+        action_type: 'open_consultation_chat',
+        title: '前往在线问诊',
+        summary: '消息已发送给医生，是否跳转到聊天界面？',
+        button_text: '确认跳转',
+        arguments: { consultation_id: consultationId, session_id: card.sessionId },
+      });
+      return;
+    }
     if (card.cardType === 'confirm_appointment') {
       // 挂号确认后跳转挂号支付页（仿照购药下单跳转订单详情页逻辑）。
       const paymentResult = resolveAppointmentPaymentResult(result.action_result);
@@ -295,6 +311,16 @@ export function AgentChat({
 
   /** 业务交互卡只允许发送固定预设，不接受模型或用户文本拼装的参数。 */
   function handleAction(card: AgentActionCard) {
+    if (card.actionType === 'open_consultation_chat') {
+      const consultationId = Number(card.arguments.consultation_id);
+      const sessionId = typeof card.arguments.session_id === 'string' ? card.arguments.session_id.trim() : '';
+      if (!Number.isInteger(consultationId) || consultationId <= 0 || !sessionId) return;
+      // 路由 state 仅保存会话恢复所需的最小标识，禁止把问诊内容写入 URL 或 state。
+      navigate(buildConsultationDetailPath(consultationId, context?.patient_id), {
+        state: { returnToAgent: { sessionId, from: returnPath } },
+      });
+      return;
+    }
     const request = resolveAgentActionRequest(card, context);
     if (!request) return;
     // 固定业务 ID 仅用于生成受控预设，不会在当前会话外创建新对话。

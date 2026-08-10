@@ -1,0 +1,61 @@
+/**
+ * 全局样式变量与混合宏（与 app.tsx ConfigProvider theme token 对齐）。
+ *
+ * 唯一颜色真源：所有组件 .module.less 只允许引用本文件变量，
+ * 禁止在业务样式里出现散落的十六进制 / rgba 色值。
+ * 间距、圆角同理，统一走刻度变量，避免魔数。
+ */
+
+// ==================== 色板（AntD 5 令牌语义对齐） ====================
+@color-primary: #1677ff; // colorPrimary
+@color-primary-bg: #e6f4ff; // colorPrimaryBg
+@color-primary-border: #91caff; // colorPrimaryBorder
+@color-success: #52c41a; // colorSuccess
+@color-warning: #faad14; // colorWarning
+@color-error: #ff4d4f; // colorError
+@color-error-bg: #fff2f0; // colorErrorBg
+
+// 文字层级（colorText 系列）
+@color-text: rgba(0, 0, 0, 0.88); // colorText
+@color-text-secondary: rgba(0, 0, 0, 0.65); // colorTextSecondary
+@color-text-tertiary: rgba(0, 0, 0, 0.45); // colorTextTertiary
+
+// 边框 / 背景
+@color-border: #d9d9d9; // colorBorder
+@color-border-secondary: #f0f0f0; // colorBorderSecondary
+@color-bg-container: #ffffff; // colorBgContainer
+@color-bg-layout: #f5f5f5; // colorBgLayout
+@color-fill-hover: #f5f5f5; // colorFillTertiary（悬停底色）
+
+// ==================== 间距刻度 ====================
+@spacing-xs: 4px;
+@spacing-sm: 8px;
+@spacing-md: 12px;
+@spacing-lg: 16px;
+@spacing-xl: 24px;
+
+// ==================== 圆角 ====================
+@radius-sm: 4px;
+@radius-md: 6px;
+@radius-lg: 8px;
+
+// ==================== 混合宏 ====================
+
+/** 左右两栏共享的面板 chrome（白底卡片 + 轻阴影 + 隐藏溢出） */
+.panel-chrome() {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: @color-bg-container;
+  border-radius: @radius-md;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+/** 区块标题（右栏各功能块共用） */
+.section-title() {
+  font-weight: 600;
+  font-size: 14px;
+  color: @color-text;
+  margin-bottom: @spacing-sm;
+}

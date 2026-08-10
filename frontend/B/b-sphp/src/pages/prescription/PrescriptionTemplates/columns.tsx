@@ -11,13 +11,26 @@ import dayjs from 'dayjs';
 
 interface ColumnsDeps {
   deptOptions: { label: string; value: number }[];
+  /** 是否显示科室搜索筛选（仅 ADMIN 可见；DEPT_HEAD/DOCTOR 后端强制本科室+全院通用，筛选无意义） */
+  showDeptFilter: boolean;
+  /** 当前用户是否可管理该模板（编辑/删除按钮显隐：ADMIN 全部；DEPT_HEAD 本科室+全院通用；DOCTOR 本科室） */
+  canManageRecord: (record: API.PrescriptionTemplate) => boolean;
   onViewDetail: (record: API.PrescriptionTemplate) => void;
   onEdit: (record: API.PrescriptionTemplate) => void;
   onDelete: (id: number) => void;
 }
 
 export function getColumns(deps: ColumnsDeps): ProColumns<API.PrescriptionTemplate>[] {
-  const { deptOptions, onViewDetail, onEdit, onDelete } = deps;
+  const { deptOptions, showDeptFilter, canManageRecord, onViewDetail, onEdit, onDelete } = deps;
+
+  // 科室搜索筛选（仅 ADMIN 可见）：DEPT_HEAD/DOCTOR 后端强制本科室+全院通用，筛选无意义
+  const deptSearchColumn: ProColumns<API.PrescriptionTemplate> = {
+    title: '科室',
+    dataIndex: 'deptId',
+    valueType: 'select',
+    hideInTable: true,
+    fieldProps: { allowClear: true, placeholder: '全部科室', options: deptOptions },
+  };
 
   return [
     // 搜索项：模板名称、科室（隐藏于表格，仅用于筛选）
@@ -28,13 +41,7 @@ export function getColumns(deps: ColumnsDeps): ProColumns<API.PrescriptionTempla
       hideInTable: true,
       fieldProps: { placeholder: '输入模板名称搜索' },
     },
-    {
-      title: '科室',
-      dataIndex: 'deptId',
-      valueType: 'select',
-      hideInTable: true,
-      fieldProps: { allowClear: true, placeholder: '全部科室', options: deptOptions },
-    },
+    ...(showDeptFilter ? [deptSearchColumn] : []),
     {
       title: '模板名称',
       dataIndex: 'name',
@@ -76,37 +83,45 @@ export function getColumns(deps: ColumnsDeps): ProColumns<API.PrescriptionTempla
       title: '操作',
       width: 160,
       hideInSearch: true,
-      render: (_: unknown, record: API.PrescriptionTemplate) => (
-        <Space size={0}>
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => onViewDetail(record)}
-          >
-            查看
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => onEdit(record)}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="确认删除"
-            description="删除后不可恢复，确定删除该模板吗？"
-            onConfirm={() => onDelete(record.id)}
-            okText="确认删除"
-            cancelText="取消"
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
+      render: (_: unknown, record: API.PrescriptionTemplate) => {
+        // 仅可管理范围内的模板显示编辑/删除（ADMIN 全部；DEPT_HEAD 本科室+全院通用；DOCTOR 仅本科室）
+        const manageable = canManageRecord(record);
+        return (
+          <Space size={0}>
+            <Button
+              type="link"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => onViewDetail(record)}
+            >
+              查看
             </Button>
-          </Popconfirm>
-        </Space>
-      ),
+            {manageable && (
+              <Button
+                type="link"
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => onEdit(record)}
+              >
+                编辑
+              </Button>
+            )}
+            {manageable && (
+              <Popconfirm
+                title="确认删除"
+                description="删除后不可恢复，确定删除该模板吗？"
+                onConfirm={() => onDelete(record.id)}
+                okText="确认删除"
+                cancelText="取消"
+              >
+                <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                  删除
+                </Button>
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 }

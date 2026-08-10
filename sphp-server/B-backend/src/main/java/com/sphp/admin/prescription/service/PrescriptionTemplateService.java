@@ -18,9 +18,11 @@ public interface PrescriptionTemplateService {
      * 分页查询处方模板列表。
      *
      * <p>仅返回当前医院启用状态模板；按名称模糊、科室过滤。
+     * 科室范围按角色收窄：ADMIN 可按 deptId 筛选（空=全部）；DEPT_HEAD/DOCTOR 忽略 deptId，
+     * 强制返回本科室 + 全院通用模板。
      *
      * @param name   模板名称模糊搜索（可选）
-     * @param deptId 科室 ID 过滤（空返回全部可用模板，含全院通用）
+     * @param deptId 科室 ID 过滤（仅 ADMIN 生效；空表示全部可用模板，含全院通用）
      * @param page   页码（从 1 开始）
      * @param size   每页大小
      * @return 模板分页结果
@@ -31,6 +33,7 @@ public interface PrescriptionTemplateService {
      * 保存处方模板。
      *
      * <p>需医生身份；同医院防同名；模板默认启用状态。
+     * 科室范围受角色约束：DOCTOR 仅本科室；DEPT_HEAD 本科室或全院通用；ADMIN 任意科室。
      *
      * @param request 模板保存请求（名称、科室、药品明细）
      * @return 创建后的模板信息

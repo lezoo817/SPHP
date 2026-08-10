@@ -1,6 +1,6 @@
 /**
  * 患者详情页
- * - 多 Tab 展示：基本信息、就诊记录、历史处方、当前用药与随访
+ * - 多 Tab 展示：基本信息、就诊记录、历史处方、当前用药
  * - 从路由参数获取患者ID；详情与用药数据经 React Query 拉取
  */
 import { Card, Space, Tabs, Empty, message } from 'antd';
@@ -98,7 +98,7 @@ export default function PatientDetail() {
     },
     {
       key: 'medications',
-      label: '当前用药与随访',
+      label: '当前用药',
       children: <MedicationsTab patientId={patientId} />,
     },
   ];

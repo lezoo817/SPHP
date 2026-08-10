@@ -46,6 +46,21 @@ export default function PrescriptionTemplates() {
     [deptRes],
   );
 
+  // 角色与数据权限：非 ADMIN 收敛到本人科室（后端同时强制，前端仅收敛可选项与筛选，避免误导）
+  const isAdmin = useMemo(() => currentUser?.roles?.includes('ADMIN') ?? false, [currentUser]);
+  const isDeptHead = useMemo(
+    () => currentUser?.roles?.includes('DEPT_HEAD') ?? false,
+    [currentUser],
+  );
+  const ownDeptId = currentUser?.deptId;
+  // 可选科室下拉：ADMIN 全部；DEPT_HEAD/DOCTOR 仅本人科室（是否可选「全院通用」由 allowHospitalWide 控制）
+  const manageableDeptOptions = useMemo(() => {
+    if (isAdmin) return deptOptions;
+    return deptOptions.filter((d) => d.value === ownDeptId);
+  }, [deptOptions, isAdmin, ownDeptId]);
+  // 可选「全院通用」（清空科室）：ADMIN / DEPT_HEAD 可；DOCTOR 固定本科室
+  const allowHospitalWide = isAdmin || isDeptHead;
+
   /** 查看详情 */
   const handleViewDetail = (record: API.PrescriptionTemplate) => {
     setDetailData(record);
@@ -71,6 +86,14 @@ export default function PrescriptionTemplates() {
 
   const columns = getColumns({
     deptOptions,
+    showDeptFilter: isAdmin,
+    canManageRecord: (record) => {
+      if (isAdmin) return true;
+      // DEPT_HEAD：本科室或全院通用（deptId 空即全院通用）
+      if (isDeptHead) return !record.deptId || record.deptId === ownDeptId;
+      // DOCTOR：仅本科室
+      return record.deptId === ownDeptId;
+    },
     onViewDetail: handleViewDetail,
     onEdit: handleEdit,
     onDelete: handleDelete,
@@ -124,7 +147,8 @@ export default function PrescriptionTemplates() {
       <TemplateCreateModal
         open={createOpen}
         defaultDeptId={currentUser?.deptId}
-        deptOptions={deptOptions}
+        deptOptions={manageableDeptOptions}
+        allowHospitalWide={allowHospitalWide}
         onCancel={() => setCreateOpen(false)}
         onSuccess={() => {
           setCreateOpen(false);
@@ -135,7 +159,8 @@ export default function PrescriptionTemplates() {
       <TemplateEditModal
         open={editOpen}
         record={editData}
-        deptOptions={deptOptions}
+        deptOptions={manageableDeptOptions}
+        allowHospitalWide={allowHospitalWide}
         onCancel={() => setEditOpen(false)}
         onSuccess={() => {
           setEditOpen(false);

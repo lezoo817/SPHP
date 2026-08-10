@@ -6,7 +6,7 @@
 import { Divider, Empty, List, Space, Spin, Tag, Typography } from 'antd';
 import { MedicineBoxOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import styles from './index.module.less';
+import styles from './HistoryDetailPanel.module.less';
 
 const { Text } = Typography;
 
@@ -30,19 +30,9 @@ export default function HistoryDetailPanel({ loading, detail }: HistoryDetailPan
   return (
     <Spin spinning={loading}>
       {detail ? (
-        <div style={{ padding: '4px 0' }}>
+        <div className={styles.wrapper}>
           {/* 病历全文：纯文本（按"字段名：值"换行），wordBreak 防止窄容器字符级竖排 */}
-          <div
-            style={{
-              fontSize: 13,
-              whiteSpace: 'pre-wrap',
-              lineHeight: 1.7,
-              wordBreak: 'break-word',
-              overflowWrap: 'break-word',
-            }}
-          >
-            {doctorNote || '无病历记录'}
-          </div>
+          <div className={styles.noteText}>{doctorNote || '无病历记录'}</div>
 
           {detail.prescriptions.length > 0 && (
             <>
@@ -56,15 +46,15 @@ export default function HistoryDetailPanel({ loading, detail }: HistoryDetailPan
                 renderItem={(p) => (
                   <List.Item>
                     <Space>
-                      <Text type="secondary" style={{ fontSize: 12 }}>
+                      <Text type="secondary" className={styles.textSmall}>
                         处方 #{p.id}
                       </Text>
                       <Tag>{p.status === 'APPROVED' ? '已通过' : p.status}</Tag>
-                      <Text type="secondary" style={{ fontSize: 12 }}>
+                      <Text type="secondary" className={styles.textSmall}>
                         {p.itemCount} 项
                       </Text>
                       {p.issuedAt && (
-                        <Text type="secondary" style={{ fontSize: 12 }}>
+                        <Text type="secondary" className={styles.textSmall}>
                           {dayjs(p.issuedAt).format('MM-DD HH:mm')}
                         </Text>
                       )}
@@ -76,16 +66,16 @@ export default function HistoryDetailPanel({ loading, detail }: HistoryDetailPan
           )}
 
           <Divider style={{ margin: '12px 0' }} />
-          <Space size={16} wrap style={{ fontSize: 12, color: '#999', width: '100%' }}>
+          <div className={styles.meta}>
             {doctorName && (
-              <span style={{ whiteSpace: 'nowrap' }}>接诊医生：{doctorName}</span>
+              <span className={styles.metaItem}>接诊医生：{doctorName}</span>
             )}
-            <span style={{ whiteSpace: 'nowrap' }}>
+            <span className={styles.metaItem}>
               {detail.endedAt
                 ? `接诊时间：${dayjs(detail.endedAt).format('YYYY-MM-DD HH:mm')}`
                 : `创建时间：${dayjs(detail.createdAt).format('YYYY-MM-DD HH:mm')}`}
             </span>
-          </Space>
+          </div>
         </div>
       ) : (
         <Empty description="加载中..." />

@@ -1,0 +1,40 @@
+/**
+ * 接诊历史详情面板样式。
+ */
+@import '../../../styles/variables.less';
+
+.wrapper {
+  padding: @spacing-xs 0;
+}
+
+/** 病历全文 */
+.noteText {
+  font-size: 13px;
+  white-space: pre-wrap;
+  line-height: 1.7;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.sectionTitle {
+  .section-title();
+}
+
+/** 关联处方元信息 */
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: @spacing-lg;
+  font-size: 12px;
+  color: @color-text-tertiary;
+  width: 100%;
+}
+
+.metaItem {
+  white-space: nowrap;
+}
+
+/** 辅助小字 */
+.textSmall {
+  font-size: 12px;
+}
