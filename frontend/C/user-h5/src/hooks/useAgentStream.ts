@@ -32,6 +32,7 @@ import type {
   AgentConfirmData,
   AgentConnectionState,
   AgentEntry,
+  AgentHistoryCard,
   AgentMessage,
   AgentOptionsEvent,
   AgentRecordPickerCard,
@@ -51,6 +52,81 @@ function genId(prefix: string): string {
 /** 按 tool 英文名推导中文标签。 */
 function labelOf(tool: string): string {
   return AGENT_TOOL_LABELS[tool] || tool || '工具调用';
+}
+
+/** 将后端持久化的历史卡片还原为可渲染的会话条目（2026-08-10 卡片持久化）。
+ *
+ * payload 结构与 SSE 实时事件一致，还原逻辑与 handleSseEvent 的 append* 函数
+ * 对齐；但不触发 resolveL2ToolCard（历史恢复无 loading 工具卡，避免空转），
+ * 并按 expires_at 把已过期的 L2 确认卡置为 expired 只读态。
+ *
+ * @param cards 历史接口返回的持久化卡片列表（后端按 seq 升序）
+ * @returns 可直接渲染的会话条目数组
+ */
+function buildHistoryCardEntries(cards: AgentHistoryCard[]): AgentEntry[] {
+  const entries: AgentEntry[] = [];
+  for (const card of cards) {
+    if (card.event === 'card') {
+      const p = card.payload;
+      const expired = !!p.expires_at && Date.parse(p.expires_at) <= Date.now();
+      entries.push({
+        kind: 'card',
+        data: {
+          id: genId('card'),
+          cardType: p.card_type,
+          confirmToken: p.confirm_token,
+          sessionId: p.session_id,
+          title: p.title,
+          summary: p.summary,
+          details: p.details,
+          expiresAt: p.expires_at,
+          status: expired ? 'expired' : 'pending',
+          ...(expired
+            ? { errorCode: 'CONFIRM_EXPIRED', errorMessage: '确认已超时，请重新发起操作' }
+            : {}),
+          createdAt: Date.now(),
+        },
+      });
+    } else if (card.event === 'action_card') {
+      const p = card.payload;
+      entries.push({
+        kind: 'action',
+        data: {
+          id: genId('action'),
+          actionType: p.action_type,
+          title: p.title,
+          summary: p.summary,
+          buttonText: p.button_text,
+          arguments: p.arguments || {},
+          createdAt: Date.now(),
+        },
+      });
+    } else if (card.event === 'record_picker') {
+      entries.push({
+        kind: 'record_picker',
+        data: {
+          ...card.payload,
+          id: genId('record-picker'),
+          status: 'pending' as const,
+          createdAt: Date.now(),
+        },
+      });
+    } else if (card.event === 'options') {
+      const p = card.payload;
+      entries.push({
+        kind: 'select',
+        data: {
+          id: genId('sel'),
+          selectType: p.type,
+          items: p.items,
+          prompt: p.prompt,
+          replyTemplate: p.reply_template || '我选择{label}',
+          createdAt: Date.now(),
+        },
+      });
+    }
+  }
+  return entries;
 }
 
 /** Hook 返回值。 */
@@ -672,11 +748,11 @@ export function useAgentStream(): UseAgentStream {
       setSessionId(targetSessionId);
 
       try {
-        // 获取历史消息
-        const messages = await getSessionMessages(targetSessionId);
+        // 获取历史消息与持久化的交互卡片（2026-08-10 卡片持久化）
+        const { messages, cards } = await getSessionMessages(targetSessionId);
 
-        // 将历史消息转换为 AgentEntry 格式
-        const historyEntries: AgentEntry[] = messages.map((msg) => ({
+        // 历史消息映射为纯文本气泡
+        const messageEntries: AgentEntry[] = messages.map((msg) => ({
           kind: 'message' as const,
           data: {
             id: genId(msg.role === 'user' ? 'u' : 'a'),
@@ -686,7 +762,10 @@ export function useAgentStream(): UseAgentStream {
           },
         }));
 
-        setEntries(historyEntries);
+        // 历史卡片按类型还原（消息在前、卡片在后），复用实时渲染组件
+        const cardEntries = buildHistoryCardEntries(cards);
+
+        setEntries([...messageEntries, ...cardEntries]);
         setConnection('idle');
       } catch (err) {
         setConnection('error');
