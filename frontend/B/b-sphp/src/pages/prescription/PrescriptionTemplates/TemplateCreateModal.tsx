@@ -15,6 +15,8 @@ interface Props {
   open: boolean;
   defaultDeptId?: number;
   deptOptions: { label: string; value: number }[];
+  /** 是否可选「全院通用」（清空科室）：ADMIN/DEPT_HEAD 可；DOCTOR 固定本科室 */
+  allowHospitalWide: boolean;
   onCancel: () => void;
   onSuccess: () => void;
 }
@@ -23,6 +25,7 @@ export default function TemplateCreateModal({
   open,
   defaultDeptId,
   deptOptions,
+  allowHospitalWide,
   onCancel,
   onSuccess,
 }: Props) {
@@ -60,7 +63,12 @@ export default function TemplateCreateModal({
             <Input placeholder="如：高血压常规用药" />
           </Form.Item>
           <Form.Item name="deptId" label="所属科室" style={{ width: 240 }}>
-            <Select allowClear placeholder="全院通用（空）" options={deptOptions} />
+            <Select
+              allowClear={allowHospitalWide}
+              disabled={!allowHospitalWide}
+              placeholder={allowHospitalWide ? '全院通用（空）' : undefined}
+              options={deptOptions}
+            />
           </Form.Item>
         </Space>
 
