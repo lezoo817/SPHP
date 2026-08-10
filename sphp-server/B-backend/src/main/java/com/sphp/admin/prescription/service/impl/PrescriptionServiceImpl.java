@@ -19,8 +19,10 @@ import com.sphp.admin.hospital.mapper.DepartmentMapper;
 import com.sphp.admin.prescription.dto.AuditRequest;
 import com.sphp.admin.prescription.dto.PrescriptionDetailVO;
 import com.sphp.admin.prescription.dto.PrescriptionListVO;
+import com.sphp.admin.prescription.dto.PrescriptionPrecheckVO;
 import com.sphp.admin.prescription.dto.PrescriptionSubmitRequest;
 import com.sphp.admin.prescription.dto.PrescriptionSubmitVO;
+import com.sphp.admin.prescription.dto.RiskWarningVO;
 import com.sphp.admin.prescription.entity.Drug;
 import com.sphp.admin.prescription.entity.Prescription;
 import com.sphp.admin.prescription.entity.PrescriptionItem;
@@ -177,6 +179,36 @@ public class PrescriptionServiceImpl implements PrescriptionService {
                 .auditRequired(auditRequired)
                 .riskWarnings(risk.getWarnings())
                 .build();
+    }
+
+    @Override
+    public PrescriptionPrecheckVO precheck(Long consultId, List<PrescriptionSubmitRequest.ItemDTO> items) {
+        DataScope scope = currentUserService.getCurrentDataScope();
+        Long doctorId = scope.doctorId();
+        if (doctorId == null) {
+            throw new BusinessException(ERR_NO_PERMISSION, "当前用户无医生身份，无法开方");
+        }
+
+        // 1. 校验问诊记录（只读预检：仅校验存在与归属，不要求 IN_PROGRESS）
+        ConsultRecord consult = consultRecordMapper.selectById(consultId);
+        if (consult == null || consult.getDeletedAt() != null) {
+            throw new BusinessException(ERR_CONSULT_INVALID, "问诊记录不存在或不可开方");
+        }
+        if (!consult.getDoctorId().equals(doctorId)) {
+            throw new BusinessException(ERR_FORBIDDEN, "无权查看该问诊记录");
+        }
+
+        // 2. 载入药品（过滤已删除）
+        Set<Long> drugIds = items.stream()
+                .map(PrescriptionSubmitRequest.ItemDTO::getDrugId)
+                .collect(Collectors.toSet());
+        Map<Long, Drug> drugMap = drugMapper.selectBatchIds(drugIds).stream()
+                .filter(d -> d.getDeletedAt() == null)
+                .collect(Collectors.toMap(Drug::getId, d -> d, (a, b) -> a));
+
+        // 3. 风险预检（只读，不落库、不拦截）
+        List<RiskWarningVO> warnings = riskChecker.precheck(consult, drugMap, items);
+        return new PrescriptionPrecheckVO(warnings);
     }
 
     @Override

@@ -81,6 +81,7 @@ export default function ConsultQueuePage() {
         submitting={consult.submittingPrescription}
         initialItems={consult.prescriptionPrefill ?? undefined}
         doctorDeptId={consult.doctorDeptId}
+        consultId={consult.selectedConsultId}
         onCancel={consult.closePrescriptionModal}
         onSubmit={consult.handleSubmitPrescription}
       />

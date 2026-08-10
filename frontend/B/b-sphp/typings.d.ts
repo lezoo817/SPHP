@@ -609,11 +609,28 @@ declare global {
       riskWarnings: RiskWarning[];
     }
 
-    /** 风险预警 */
+    /** 风险预警（预检返回带 drugId/source；跨药品规则如重复用药 drugId 为空） */
     interface RiskWarning {
       level: 'WARNING' | 'ERROR' | 'AUDIT';
       rule: string;
       message: string;
+      /** 命中药品 ID（重复用药等跨药品规则为空） */
+      drugId?: number;
+      /** 命中药品名称 */
+      drugName?: string;
+      /** 命中来源（如：患者过敏史「青霉素」/ 既往史「糖尿病」） */
+      source?: string;
+    }
+
+    /** 处方风险预检请求（复用提交明细结构） */
+    interface PrescriptionPrecheckReq {
+      consultId: number;
+      items: PrescriptionSubmitReq['items'];
+    }
+
+    /** 处方风险预检结果 */
+    interface PrescriptionPrecheckResult {
+      warnings: RiskWarning[];
     }
 
     /** 审核请求 */

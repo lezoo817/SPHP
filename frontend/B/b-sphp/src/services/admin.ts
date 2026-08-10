@@ -389,6 +389,16 @@ export function submitPrescription(
   });
 }
 
+/** 处方风险预检（开方过程中实时预警，只读不落库） */
+export function precheckPrescription(
+  data: API.PrescriptionPrecheckReq,
+): Promise<API.PrescriptionPrecheckResult> {
+  return requestData<API.PrescriptionPrecheckResult>('/api/b/prescriptions/precheck', {
+    method: 'POST',
+    data,
+  });
+}
+
 /** 查询待审核处方列表（分页） */
 export function getPendingAudits(
   params: API.PageParams,
