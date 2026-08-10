@@ -44,6 +44,11 @@ class CardRecord(TypedDict):
     # L2 确认卡是否已被用户确认成功（2026-08-10）：confirm 端点成功回调后置 True，
     # 历史重放据此把确认过的卡片渲染为"已完成"而非"待确认"。
     confirmed: bool
+    # 选医生卡（options）与记录选择卡（record_picker）是否已被用户选择（2026-08-10）：
+    # tool_caller 匹配点选 / preset 确认记录时置 True 并记录 selection（选中内容快照），
+    # 历史重放据此把已选过的卡片渲染为"已选"态而非"未选择"。
+    selected: bool
+    selection: dict[str, Any] | None
 
 
 class CardStore(Protocol):
@@ -102,6 +107,25 @@ class CardStore(Protocol):
             bool: 是否命中并更新了卡片（未命中/非 L2 卡返回 False，不阻塞）。
         """
 
+    async def mark_selected(
+        self,
+        user_id: int | None,
+        session_id: str | None,
+        event: str,
+        selection: dict[str, Any],
+    ) -> bool:
+        """把指定事件类型最新一条未标记的卡片标记为已选（用户点选/确认后调用）。
+
+        Args:
+            user_id: 用户 ID（按 user_id 隔离；匿名为 None，PG 下匹配不到无副作用）。
+            session_id: 会话 ID（None 时跳过，无会话无可标记）。
+            event: 卡片事件类型（"options" 选医生卡 / "record_picker" 记录选择卡）。
+            selection: 选中内容快照（options 含 doctor_id/name；record_picker 含 record_id）。
+
+        Returns:
+            bool: 是否命中并更新了卡片（该类型无未标记卡片返回 False，不阻塞）。
+        """
+
     async def delete(self, user_id: int, session_id: str) -> bool:
         """删除某会话全部卡片（按 user_id 隔离，随会话删除联动清理）。
 
@@ -147,6 +171,8 @@ class MemoryCardStore:
                     "created_at": now,
                     "anchor": anchor,
                     "confirmed": False,
+                    "selected": False,
+                    "selection": None,
                 }
             )
 
@@ -162,6 +188,8 @@ class MemoryCardStore:
                 "created_at": r["created_at"],
                 "anchor": r["anchor"],
                 "confirmed": r.get("confirmed", False),
+                "selected": r.get("selected", False),
+                "selection": r.get("selection"),
             }
             for r in records
         ]
@@ -183,6 +211,34 @@ class MemoryCardStore:
             payload = r.get("payload") or {}
             if payload.get("confirm_token") == confirm_token:
                 r["confirmed"] = True
+                return True
+        return False
+
+    async def mark_selected(
+        self,
+        user_id: int | None,
+        session_id: str | None,
+        event: str,
+        selection: dict[str, Any],
+    ) -> bool:
+        """把指定事件类型最新一条未标记的卡片标记为已选（内存实现，开发/测试）。
+
+        Args:
+            user_id: 用户 ID（按 user_id 隔离）。
+            session_id: 会话 ID（None 时跳过）。
+            event: 卡片事件类型（options / record_picker）。
+            selection: 选中内容快照。
+
+        Returns:
+            bool: 是否命中并更新了卡片。
+        """
+        if session_id is None:
+            return False
+        records = self._records.get((user_id, session_id), [])
+        for r in reversed(records):
+            if r.get("event") == event and not r.get("selected"):
+                r["selected"] = True
+                r["selection"] = selection
                 return True
         return False
 
@@ -216,6 +272,8 @@ class PostgresCardStore:
             payload     JSONB        NOT NULL,
             anchor      INTEGER      NOT NULL DEFAULT 0,
             confirmed   BOOLEAN      NOT NULL DEFAULT false,
+            selected    BOOLEAN      NOT NULL DEFAULT false,
+            selection   JSONB,
             created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
             PRIMARY KEY (user_id, session_id, seq)
         )
@@ -239,6 +297,13 @@ class PostgresCardStore:
             await conn.execute(
                 "ALTER TABLE agent_cards "
                 "ADD COLUMN IF NOT EXISTS confirmed BOOLEAN NOT NULL DEFAULT false"
+            )
+            await conn.execute(
+                "ALTER TABLE agent_cards "
+                "ADD COLUMN IF NOT EXISTS selected BOOLEAN NOT NULL DEFAULT false"
+            )
+            await conn.execute(
+                "ALTER TABLE agent_cards ADD COLUMN IF NOT EXISTS selection JSONB"
             )
         logger.info("PG 卡片历史表 agent_cards 已就绪")
 
@@ -276,7 +341,8 @@ class PostgresCardStore:
             return []
         async with self._pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT seq, event, payload, anchor, confirmed, created_at FROM agent_cards "
+                "SELECT seq, event, payload, anchor, confirmed, selected, selection, created_at "
+                "FROM agent_cards "
                 "WHERE user_id = %s AND session_id = %s ORDER BY seq ASC",
                 (user_id, session_id),
             )
@@ -288,6 +354,8 @@ class PostgresCardStore:
                 "payload": r["payload"],
                 "anchor": r["anchor"],
                 "confirmed": r["confirmed"],
+                "selected": r["selected"],
+                "selection": r["selection"],
                 "created_at": (r["created_at"].isoformat() if r["created_at"] is not None else ""),
             }
             for r in rows
@@ -314,6 +382,43 @@ class PostgresCardStore:
                 "WHERE user_id = %s AND session_id = %s "
                 "AND payload->>'confirm_token' = %s",
                 (user_id, session_id, confirm_token),
+            )
+            return cur.rowcount > 0
+
+    async def mark_selected(
+        self,
+        user_id: int | None,
+        session_id: str | None,
+        event: str,
+        selection: dict[str, Any],
+    ) -> bool:
+        """把指定事件类型最新一条未标记的卡片标记为已选（PG 持久化，生产）。
+
+        按 ``seq`` 倒序取最新一条同 event 且未标记的卡片更新；多张同类型卡
+        （多轮多次选择）时，最新一轮的卡片被标记。
+
+        Args:
+            user_id: 用户 ID（WHERE 过滤，跨用户不可改他人会话；None 匹配不到）。
+            session_id: 会话 ID（None 时跳过）。
+            event: 卡片事件类型（options / record_picker）。
+            selection: 选中内容快照。
+
+        Returns:
+            bool: 是否命中并更新了卡片（rowcount > 0）。
+        """
+        if self._pool is None or session_id is None:
+            return False
+        from psycopg.types.json import Jsonb
+
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "UPDATE agent_cards SET selected = true, selection = %s "
+                "WHERE user_id = %s AND session_id = %s "
+                "AND event = %s AND selected = false "
+                "AND seq = (SELECT MAX(seq) FROM agent_cards "
+                "           WHERE user_id = %s AND session_id = %s "
+                "           AND event = %s AND selected = false)",
+                (Jsonb(selection), user_id, session_id, event, user_id, session_id, event),
             )
             return cur.rowcount > 0
 

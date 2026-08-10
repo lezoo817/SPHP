@@ -3,9 +3,13 @@
 用于承接前端明确发起的低风险查询，避免由 LLM 决定是否调用指定工具。
 """
 
+import logging
 from typing import Any
 
+from app.orchestrator.card_store import get_card_store
 from app.orchestrator.state import AgentState
+
+logger = logging.getLogger(__name__)
 
 PRESET_INTERPRET_PRESCRIPTION = "interpret_prescription"
 PRESET_INTERPRET_MEDICAL_RECORD = "interpret_medical_record"
@@ -136,6 +140,29 @@ def resolve_preset_drug_order_reminder_authorization(
     return drug_order_id if drug_order_id > 0 else None
 
 
+async def _mark_record_picker_selected(state: AgentState, record_id: int) -> None:
+    """标记最近一张未选择的记录选择卡为已选（2026-08-10 增强）。
+
+    用户从 record_picker 卡确认选择后，前端以 ``interpret_prescription`` /
+    ``interpret_medical_record`` 预设请求回传 record_id。此处按事件类型把最新
+    未标记的 record_picker 卡标记为已选，历史重放时显示"已选择"态而非初始态。
+    未命中（无未标记记录选择卡，如详情页直接发起解读）返回 False，无副作用。
+
+    Args:
+        state: 当前 Agent 状态（含 user_id / session_id）。
+        record_id: 用户选中的处方或病历记录 ID。
+    """
+    try:
+        await get_card_store().mark_selected(
+            state.get("user_id"),
+            state.get("session_id"),
+            "record_picker",
+            {"record_id": record_id},
+        )
+    except Exception:
+        logger.warning("标记记录选择卡已选失败: record_id=%s", record_id)
+
+
 async def preset_action_node(state: AgentState) -> dict[str, Any]:
     """构造受控处方/病历解读、药店推荐、支付通知或提醒授权工具调用。
 
@@ -178,6 +205,8 @@ async def preset_action_node(state: AgentState) -> dict[str, Any]:
             return {"tool_calls": [], "preset_error": "处方编号无效，请返回处方详情后重试。"}
 
         if action == PRESET_INTERPRET_PRESCRIPTION:
+            # 2026-08-10：用户从记录选择卡确认处方 -> 标记该卡为已选（历史重放已选态）
+            await _mark_record_picker_selected(state, prescription_id)
             # 受控入口只允许读取既有解读，不开放任何创建、修改或处方操作。
             return {
                 "tool_calls": [
@@ -211,6 +240,8 @@ async def preset_action_node(state: AgentState) -> dict[str, Any]:
         consult_id = state.get("preset_medical_record_id")
         if isinstance(consult_id, bool) or not isinstance(consult_id, int) or consult_id <= 0:
             return {"tool_calls": [], "preset_error": "病历编号无效，请返回病历详情后重试。"}
+        # 2026-08-10：用户从记录选择卡确认病历 -> 标记该卡为已选（历史重放已选态）
+        await _mark_record_picker_selected(state, consult_id)
         # 受控入口仅读取病历和病历所属患者的健康档案，不开放任何病历修改操作。
         return {
             "tool_calls": [
