@@ -489,6 +489,11 @@ describe('我的处方查询规则', () => {
     expect(buildAssistantPrescriptionDetailPath(1001, 2001, '2026-08-05T10:00:00+08:00', 801)).toBe('/assistant/prescription/1001?source=consultation&patientId=2001&issuedAt=2026-08-05T10%3A00%3A00%2B08%3A00&consultationId=801');
   });
 
+  it('从购药进入我的处方时保留逐级返回来源', () => {
+    const path = buildMinePrescriptionDetailPath(1001, 2001, { startDate: '2026-07-01', endDate: '2026-08-05' }, '2026-08-05T10:00:00+08:00', 'pharmacy');
+    expect(buildMinePrescriptionListPath(new URLSearchParams(path.split('?')[1]))).toBe('/mine/prescriptions?patientId=2001&startDate=2026-07-01&endDate=2026-08-05&entrySource=pharmacy');
+  });
+
   it('处方展示编号使用开具时间戳和四位随机尾号', () => {
     expect(createPrescriptionDisplayNumber('2026-08-05T10:00:00+08:00', 7)).toBe(`${Date.parse('2026-08-05T10:00:00+08:00')}0007`);
     expect(createPrescriptionDisplayNumber('2026-08-05T10:00:00+08:00', 12345)).toBe(`${Date.parse('2026-08-05T10:00:00+08:00')}9999`);
