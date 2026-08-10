@@ -43,6 +43,7 @@ public class FamilyServiceImpl implements FamilyService {
 
     private final FamilyMemberMapper familyMemberMapper;
     private final PatientMapper patientMapper;
+    // 用户家庭关系Mapper
     private final PatientUserRelationMapper relationMapper;
 
     /**
@@ -90,8 +91,8 @@ public class FamilyServiceImpl implements FamilyService {
         patient.setGender(request.getGender());
         patient.setDateOfBirth(request.getBirthday());
         patient.setPhoneCiphertext(request.getPhone());
-        patient.setIdCardCiphertext(idCardNo);
-        patient.setEmergencyContact(request.getEmergencyContact());
+        patient.setIdCardCiphertext(idCardNo); // 设置身份证号
+        patient.setEmergencyContact(request.getEmergencyContact()); // 设置紧急联系人
         patient.setCreatedAt(now);
         patient.setUpdatedAt(now);
         patientMapper.insert(patient);

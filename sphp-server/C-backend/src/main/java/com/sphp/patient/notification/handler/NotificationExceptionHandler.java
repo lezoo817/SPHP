@@ -16,6 +16,10 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import static com.sphp.shared.common.constant.CommonConstant.DEFAULT_SYSTEM_ERROR_MESSAGE;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.INVALID_PARAMETER;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.SYSTEM_ERROR;
+
 /**
  * C端站内通知控制器异常处理器。
  */
@@ -44,7 +48,7 @@ public class NotificationExceptionHandler {
      */
     @ExceptionHandler(MissingRequestHeaderException.class)
     public ResponseEntity<Result<Void>> handleMissingHeaderException(MissingRequestHeaderException exception) {
-        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER,
+        return ResponseEntity.badRequest().body(Result.error(INVALID_PARAMETER,
                 "请求头" + exception.getHeaderName() + "不能为空"));
     }
 
@@ -56,9 +60,10 @@ public class NotificationExceptionHandler {
      */
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<Result<Void>> handleConstraintViolationException(ConstraintViolationException exception) {
-        String message = exception.getConstraintViolations().stream().map(ConstraintViolation::getMessage)
+        String message = exception.getConstraintViolations().stream()
+                .map(ConstraintViolation::getMessage) // 获取每个参数校验失败的提示信息
                 .findFirst().orElse("参数校验失败");
-        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, message));
+        return ResponseEntity.badRequest().body(Result.error(INVALID_PARAMETER, message));
     }
 
     /**
@@ -71,6 +76,6 @@ public class NotificationExceptionHandler {
     public ResponseEntity<Result<Void>> handleException(Exception exception) {
         log.error("C端通知系统异常", exception);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Result.error(ErrorCodeEnum.SYSTEM_ERROR, CommonConstant.DEFAULT_SYSTEM_ERROR_MESSAGE));
+                .body(Result.error(SYSTEM_ERROR, DEFAULT_SYSTEM_ERROR_MESSAGE));
     }
 }

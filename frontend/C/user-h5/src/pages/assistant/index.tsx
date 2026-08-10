@@ -3,7 +3,7 @@ import { ChevronRight, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
-import { resolveSelfPatientId } from '../../models/selection';
+import { getSelection, resolveSelectedPatientId, saveSelection } from '../../models/selection';
 import { getConsultations, getPrescriptions } from '../../services/consultation';
 import { getFamilyMembers } from '../../services/family';
 import { cancelAppointment, getAppointment, getAppointments } from '../../services/registration';
@@ -69,9 +69,11 @@ export default function AssistantPage() {
     try {
       const nextMembers = await getFamilyMembers();
       setMembers(nextMembers);
-      const targetPatientId = patientId || resolveSelfPatientId(nextMembers);
+      // 助手始终读取项目全局就诊人，避免页面局部状态覆盖首页、购药或“我的”的最新选择。
+      const targetPatientId = resolveSelectedPatientId(nextMembers, getSelection().patientId);
       if (!targetPatientId) return;
-      if (!patientId) setPatientId(targetPatientId);
+      saveSelection({ patientId: targetPatientId });
+      if (patientId !== targetPatientId) setPatientId(targetPatientId);
       // 三类列表均使用同一就诊人，切换家属后不会混合展示他人的数据。
       const [appointmentPage, consultationPage, prescriptionPage] = await Promise.all([
         getAppointments(targetPatientId),
@@ -150,8 +152,10 @@ export default function AssistantPage() {
     }
   }
 
-  /** 选择就诊人后关闭弹层，由 patientId 变化重新读取该患者的数据。 */
+  /** 选择项目全局就诊人后关闭弹层，由 patientId 变化重新读取该患者的数据。 */
   function selectPatient(nextPatientId: number) {
+    // 切换结果写入全局会话，其他一级页面重新进入时会读取同一患者。
+    saveSelection({ patientId: nextPatientId });
     setPatientId(nextPatientId);
     setOpen(false);
   }

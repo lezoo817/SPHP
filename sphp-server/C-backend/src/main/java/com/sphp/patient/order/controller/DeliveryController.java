@@ -31,6 +31,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+import static com.sphp.shared.common.constant.HeaderConstant.IDEMPOTENCY_KEY;
+
 /**
  * C端收货地址与模拟配送接口。
  */
@@ -85,11 +87,15 @@ public class DeliveryController {
     @PostMapping("/delivery-addresses")
     @Operation(summary = "新增收货地址")
     public Result<DeliveryAddressVO> deliveryCreateAddress(
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody DeliveryAddressCreateRequest request) {
         Long userId = CUserContext.getRequired().userId();
-        IdempotencyPayload<DeliveryAddressVO> payload = idempotencyService.execute(userId, "/c/v1/delivery-addresses",
-                idempotencyKey, request, DeliveryAddressVO.class,
+        IdempotencyPayload<DeliveryAddressVO> payload = idempotencyService.execute(
+                userId,
+                "/c/v1/delivery-addresses",
+                idempotencyKey,
+                request,
+                DeliveryAddressVO.class,
                 () -> new IdempotencyPayload<>("收货地址已新增", deliveryService.deliveryCreateAddress(request)));
         return Result.success(payload.message(), payload.data());
     }
@@ -105,11 +111,15 @@ public class DeliveryController {
     @PutMapping("/delivery-addresses/{addressId}")
     @Operation(summary = "更新收货地址")
     public Result<DeliveryAddressVO> deliveryUpdateAddress(@PathVariable @Positive Long addressId,
-                                                            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+                                                            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
                                                             @Valid @RequestBody DeliveryAddressUpdateRequest request) {
         Long userId = CUserContext.getRequired().userId();
-        IdempotencyPayload<DeliveryAddressVO> payload = idempotencyService.execute(userId, "/c/v1/delivery-addresses/" + addressId,
-                idempotencyKey, request, DeliveryAddressVO.class,
+        IdempotencyPayload<DeliveryAddressVO> payload = idempotencyService.execute(
+                userId,
+                "/c/v1/delivery-addresses/" + addressId,
+                idempotencyKey,
+                request,
+                DeliveryAddressVO.class,
                 () -> new IdempotencyPayload<>("收货地址已更新", deliveryService.deliveryUpdateAddress(addressId, request)));
         return Result.success(payload.message(), payload.data());
     }
@@ -124,10 +134,14 @@ public class DeliveryController {
     @DeleteMapping("/delivery-addresses/{addressId}")
     @Operation(summary = "删除收货地址")
     public Result<DeliveryAddressDeleteVO> deliveryDeleteAddress(@PathVariable @Positive Long addressId,
-                                                                  @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
+                                                                  @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
         Long userId = CUserContext.getRequired().userId();
-        IdempotencyPayload<DeliveryAddressDeleteVO> payload = idempotencyService.execute(userId, "/c/v1/delivery-addresses/" + addressId,
-                idempotencyKey, addressId, DeliveryAddressDeleteVO.class,
+        IdempotencyPayload<DeliveryAddressDeleteVO> payload = idempotencyService.execute(
+                userId,
+                "/c/v1/delivery-addresses/" + addressId,
+                idempotencyKey,
+                addressId,
+                DeliveryAddressDeleteVO.class,
                 () -> new IdempotencyPayload<>("收货地址已删除", deliveryService.deliveryDeleteAddress(addressId)));
         return Result.success(payload.message(), payload.data());
     }
@@ -142,10 +156,14 @@ public class DeliveryController {
     @PostMapping("/delivery-addresses/{addressId}/default")
     @Operation(summary = "设置默认收货地址")
     public Result<DeliveryAddressVO> deliverySetDefaultAddress(@PathVariable @Positive Long addressId,
-                                                                @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
+                                                                @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
         Long userId = CUserContext.getRequired().userId();
-        IdempotencyPayload<DeliveryAddressVO> payload = idempotencyService.execute(userId,
-                "/c/v1/delivery-addresses/" + addressId + "/default", idempotencyKey, addressId, DeliveryAddressVO.class,
+        IdempotencyPayload<DeliveryAddressVO> payload = idempotencyService.execute(
+                userId,
+                "/c/v1/delivery-addresses/" + addressId + "/default",
+                idempotencyKey,
+                addressId,
+                DeliveryAddressVO.class,
                 () -> new IdempotencyPayload<>("默认收货地址已设置", deliveryService.deliverySetDefaultAddress(addressId)));
         return Result.success(payload.message(), payload.data());
     }

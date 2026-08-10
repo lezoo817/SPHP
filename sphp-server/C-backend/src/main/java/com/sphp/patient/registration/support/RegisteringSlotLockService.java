@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.util.List;
 
+import static com.sphp.patient.common.constant.RegisteringConstant.*;
 import static com.sphp.shared.common.enums.ErrorCodeEnum.SYSTEM_ERROR;
 
 /**
@@ -21,15 +22,7 @@ import static com.sphp.shared.common.enums.ErrorCodeEnum.SYSTEM_ERROR;
 @RequiredArgsConstructor
 public class RegisteringSlotLockService {
 
-    /** 余量充足时原子扣减的 Lua 脚本 */
-    private static final DefaultRedisScript<Long> LOCK_SCRIPT = new DefaultRedisScript<>(
-            "local current = redis.call('GET', KEYS[1]); "
-                    + "if (not current) then return -1; end; "
-                    + "if (tonumber(current) <= 0) then return 0; end; "
-                    + "redis.call('DECR', KEYS[1]); return 1;", Long.class);
-    /** 仅在补偿时归还一个已预扣余量的 Lua 脚本 */
-    private static final DefaultRedisScript<Long> UNLOCK_SCRIPT = new DefaultRedisScript<>(
-            "return redis.call('INCR', KEYS[1]);", Long.class);
+
 
     private final StringRedisTemplate redisTemplate;
 
@@ -43,10 +36,11 @@ public class RegisteringSlotLockService {
      * @throws CAuthException Redis 不可用或脚本执行失败时抛出
      */
     public boolean registeringLock(Long slotId, long databaseAvailableCount, Duration ttl) {
-        String key = RegisteringConstant.SLOT_REMAIN_KEY_PREFIX + slotId;
+        String key = SLOT_REMAIN_KEY_PREFIX + slotId;
         try {
             // 缓存缺失时仅由首个请求基于数据库快照回填，避免覆盖并发扣减后的余量。
             redisTemplate.opsForValue().setIfAbsent(key, Long.toString(databaseAvailableCount), ttl);
+            // 基于 Lua 脚本原子预扣号源，避免脚本执行期间并发请求覆盖已扣减的余量。
             Long result = redisTemplate.execute(LOCK_SCRIPT, List.of(key));
             if (result == null) {
                 throw systemError("号源预扣脚本未返回结果");
@@ -66,7 +60,7 @@ public class RegisteringSlotLockService {
      * @throws CAuthException Redis 补偿失败时抛出
      */
     public void registeringUnlock(Long slotId) {
-        String key = RegisteringConstant.SLOT_REMAIN_KEY_PREFIX + slotId;
+        String key = SLOT_REMAIN_KEY_PREFIX + slotId;
         try {
             Long result = redisTemplate.execute(UNLOCK_SCRIPT, List.of(key));
             if (result == null) {

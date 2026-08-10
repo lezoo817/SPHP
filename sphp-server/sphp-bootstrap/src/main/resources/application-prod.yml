@@ -116,7 +116,7 @@ dev:
       scan-interval-millis: ${SPHP_NOTIFICATION_SCAN_INTERVAL_MILLIS:60000}
     order:
       logistics:
-        advance-interval-seconds: ${SPHP_LOGISTICS_ADVANCE_INTERVAL_SECONDS:30}
+        advance-interval-seconds: ${SPHP_LOGISTICS_ADVANCE_INTERVAL_SECONDS:15}
     delivery:
       province-coefficients:
         beijing-guangdong: 3.5

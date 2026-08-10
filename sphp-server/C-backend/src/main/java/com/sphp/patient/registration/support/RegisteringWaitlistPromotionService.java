@@ -12,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 
+import static com.sphp.patient.common.enums.NotificationTypeEnum.APPOINTMENT;
+
 /**
  * C端挂号候补通知与过期处理服务。
  */
@@ -37,6 +39,7 @@ public class RegisteringWaitlistPromotionService {
         if (dataMapper.registeringLockWaitlistPromotionSlot(slotId, now) == null) {
             return;
         }
+        // 尝试通知下一位候补
         registeringNotifyNextWaitlist(slotId, now);
     }
 
@@ -79,12 +82,15 @@ public class RegisteringWaitlistPromotionService {
      * @param now 当前时间
      */
     private void registeringNotifyNextWaitlist(Long slotId, OffsetDateTime now) {
+        // 计算可预约快照数量与已通知候补数量
         long rebookableCount = dataMapper.countRegisteringRebookableSnapshots(slotId);
+        // 计算已通知候补数量
         long notifiedCount = dataMapper.countRegisteringNotifiedWaitlists(slotId);
         // 通知数量不超过可预约快照，避免向多个候补发出无法兑现的提醒。
         if (rebookableCount <= notifiedCount) {
             return;
         }
+        //锁定当前时段排队最靠前的待通知候补
         RegisteringWaitlistCandidateRecord waitlist = dataMapper.registeringLockNextWaitingWaitlist(slotId);
         if (waitlist == null || dataMapper.registeringNotifyWaitlist(waitlist.id(), now) != 1) {
             return;
@@ -95,7 +101,7 @@ public class RegisteringWaitlistPromotionService {
                 waitlist.id(),
                 waitlist.userId(),
                 waitlist.patientId(),
-                NotificationTypeEnum.APPOINTMENT,
+                APPOINTMENT,
                 "候补号源可预约",
                 "已有可用号源，请在当前时段结束前完成预约。号源不保留，建议尽快操作。"
         );

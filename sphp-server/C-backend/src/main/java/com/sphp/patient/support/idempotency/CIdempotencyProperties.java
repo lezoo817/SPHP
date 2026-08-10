@@ -16,6 +16,7 @@ public class CIdempotencyProperties {
 
     /** 成功结果缓存时间，单位为秒 */
     private long successTtlSeconds;
+
     /** 请求处理中占位时间，单位为秒 */
     private long processingTtlSeconds;
 }

@@ -112,7 +112,9 @@ public class OrderController {
         IdempotencyPayload<DrugOrderCancelVO> payload=idempotencyService
                 .execute(userId,
                         "/c/v1/drug-orders/"+drugOrderId+"/cancel",
-                        idempotencyKey,drugOrderId,DrugOrderCancelVO.class,
+                        idempotencyKey,
+                        drugOrderId,
+                        DrugOrderCancelVO.class,
                         ()->new IdempotencyPayload<>("购药订单已取消",
                                 orderService.cancelDrugOrder(drugOrderId)));  // 执行取消购药订单
         return Result.success(payload.message(),payload.data());

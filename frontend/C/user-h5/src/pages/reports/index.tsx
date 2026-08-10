@@ -3,8 +3,7 @@ import { CalendarDays, ChevronRight, FileSearch, RefreshCw } from 'lucide-react'
 import { useLocation, useNavigate } from 'umi';
 import { Dialog } from '../../components/Dialog';
 import { PageHeader } from '../../components/PageHeader';
-import { getMinePatientId } from '../../models/mine-patient';
-import { getSelection, resolveSelfPatientId } from '../../models/selection';
+import { getMinePatientId, resolveMinePatientId, saveMinePatientId } from '../../models/mine-patient';
 import { getFamilyMembers } from '../../services/family';
 import { getMedicalRecords } from '../../services/medical-record';
 import type { FamilyMember, MedicalRecordItem } from '../../typings/api';
@@ -49,23 +48,21 @@ export default function MedicalRecordsPage() {
     }
   }
 
-  /** 根据来源恢复初始就诊人；病历页的临时切换不写回来源页面状态。 */
+  /** 恢复项目全局就诊人；来源只决定返回页面，不再维护独立患者选择。 */
   async function initializeMedicalRecords() {
     setLoading(true);
     try {
       const nextMembers = await getFamilyMembers();
       setMembers(nextMembers);
-      // 从详情页返回时优先恢复 URL 中的当前病历就诊人，再回退到入口页选择。
+      // 地址栏患者参数只用于首次深链接；已设置全局选择时不能覆盖最近切换。
       const patientIdFromUrl = Number(query.get('patientId')) || undefined;
-      const preferredPatientId = patientIdFromUrl || (source === 'home' ? getSelection().patientId : getMinePatientId());
-      const nextPatientId = nextMembers.some((member) => member.patientId === preferredPatientId)
-        ? preferredPatientId
-        : resolveSelfPatientId(nextMembers);
+      const nextPatientId = resolveMinePatientId(nextMembers, getMinePatientId() || patientIdFromUrl);
       if (!nextPatientId) {
         setNotice('暂无可查询的就诊人');
         setLoading(false);
         return;
       }
+      saveMinePatientId(nextPatientId);
       setPatientId(nextPatientId);
       await loadMedicalRecords(nextPatientId);
     } catch (requestError) {
@@ -88,8 +85,9 @@ export default function MedicalRecordsPage() {
     setRangeNotice(isMedicalRecordDateRangeValid(nextRange) ? '' : '开始日期不能晚于结束日期');
   }
 
-  /** 切换病历页内就诊人并重新从第一页读取其病历，避免混合不同患者数据。 */
+  /** 切换项目全局就诊人并重新从第一页读取其病历，避免混合不同患者数据。 */
   function selectPatient(nextPatientId: number) {
+    saveMinePatientId(nextPatientId);
     setPatientId(nextPatientId);
     setPatientOpen(false);
     setMedicalRecords([]);

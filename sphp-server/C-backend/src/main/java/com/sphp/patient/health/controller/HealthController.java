@@ -45,7 +45,7 @@ import static com.sphp.shared.common.constant.HeaderConstant.IDEMPOTENCY_KEY;
 @Tag(name = "C端健康档案", description = "查询健康档案并维护过敏史、既往史")
 @RequiredArgsConstructor
 public class HealthController {
-
+    // 健康服务
     private final HealthService healthService;
     // 幂等性服务
     private final CIdempotencyService idempotencyService;
@@ -76,6 +76,7 @@ public class HealthController {
             @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody AllergyCreateRequest request) {
         Long userId = CUserContext.getRequired().userId();
+        // 执行幂等性控制
         IdempotencyPayload<AllergyCreateVO> payload = idempotencyService.execute(
                 userId,
                 "/c/v1/health-record/allergies",
@@ -102,6 +103,7 @@ public class HealthController {
             @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody AllergyUpdateRequest request) {
         Long userId = CUserContext.getRequired().userId();
+        // 执行幂等性控制
         IdempotencyPayload<AllergyUpdateVO> payload = idempotencyService.execute(
                 userId,
                 "/c/v1/health-record/allergies/" + allergyId,
@@ -126,6 +128,7 @@ public class HealthController {
             @PathVariable @Positive(message = "过敏史ID必须为正整数") Long allergyId,
             @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
         Long userId = CUserContext.getRequired().userId();
+        // 执行幂等性控制
         IdempotencyPayload<HealthRecordDeleteVO> payload = idempotencyService.execute(
                 userId,
                 "/c/v1/health-record/allergies/" + allergyId,
@@ -149,6 +152,7 @@ public class HealthController {
             @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody MedicalHistoryCreateRequest request) {
         Long userId = CUserContext.getRequired().userId();
+        // 执行幂等性控制
         IdempotencyPayload<MedicalHistoryCreateVO> payload = idempotencyService.execute(
                 userId,
                 "/c/v1/health-record/histories",
@@ -175,6 +179,7 @@ public class HealthController {
             @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody MedicalHistoryUpdateRequest request) {
         Long userId = CUserContext.getRequired().userId();
+        // 执行幂等性控制
         IdempotencyPayload<MedicalHistoryUpdateVO> payload = idempotencyService.execute(
                 userId,
                 "/c/v1/health-record/histories/" + historyId,
@@ -199,6 +204,7 @@ public class HealthController {
             @PathVariable @Positive(message = "既往史ID必须为正整数") Long historyId,
             @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey) {
         Long userId = CUserContext.getRequired().userId();
+        // 执行幂等性控制
         IdempotencyPayload<HealthRecordDeleteVO> payload = idempotencyService.execute(
                 userId,
                 "/c/v1/health-record/histories/" + historyId,

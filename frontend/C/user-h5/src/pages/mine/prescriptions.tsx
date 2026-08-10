@@ -3,8 +3,7 @@ import { CalendarDays, ChevronRight, FileSearch, RefreshCw } from 'lucide-react'
 import { useLocation, useNavigate } from 'umi';
 import { Dialog } from '../../components/Dialog';
 import { PageHeader } from '../../components/PageHeader';
-import { getMinePatientId } from '../../models/mine-patient';
-import { resolveSelfPatientId } from '../../models/selection';
+import { getMinePatientId, resolveMinePatientId, saveMinePatientId } from '../../models/mine-patient';
 import { getPrescriptions } from '../../services/consultation';
 import { getFamilyMembers } from '../../services/family';
 import type { FamilyMember, Prescription } from '../../typings/api';
@@ -48,23 +47,21 @@ export default function MinePrescriptionsPage() {
     }
   }
 
-  /** 恢复“我的”当前就诊人；该页内手动切换不会写回其他页面状态。 */
+  /** 恢复项目全局当前就诊人；地址栏患者参数仅作为无全局选择时的回退。 */
   async function initializePrescriptions() {
     setLoading(true);
     try {
       const nextMembers = await getFamilyMembers();
       setMembers(nextMembers);
-      // 从详情页返回时优先恢复 URL 就诊人，再回退到“我的”页面独立选择。
+      // 全局选择已存在时优先使用，避免详情页旧地址栏参数覆盖用户最近的切换。
       const patientIdFromUrl = Number(query.get('patientId')) || undefined;
-      const preferredPatientId = patientIdFromUrl || getMinePatientId();
-      const nextPatientId = nextMembers.some((member) => member.patientId === preferredPatientId)
-        ? preferredPatientId
-        : resolveSelfPatientId(nextMembers);
+      const nextPatientId = resolveMinePatientId(nextMembers, getMinePatientId() || patientIdFromUrl);
       if (!nextPatientId) {
         setNotice('暂无可查询的就诊人');
         setLoading(false);
         return;
       }
+      saveMinePatientId(nextPatientId);
       setPatientId(nextPatientId);
       await loadPrescriptions(nextPatientId);
     } catch (requestError) {
@@ -87,8 +84,9 @@ export default function MinePrescriptionsPage() {
     setRangeNotice(isPrescriptionDateRangeValid(nextRange) ? '' : '开始日期不能晚于结束日期');
   }
 
-  /** 切换当前页就诊人并从第一页重新查询，防止混合不同患者处方。 */
+  /** 切换全局就诊人并从第一页重新查询，防止混合不同患者处方。 */
   function selectPatient(nextPatientId: number) {
+    saveMinePatientId(nextPatientId);
     setPatientId(nextPatientId);
     setPatientOpen(false);
     setPrescriptions([]);

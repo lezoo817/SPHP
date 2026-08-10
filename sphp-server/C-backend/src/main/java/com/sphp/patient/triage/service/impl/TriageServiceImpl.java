@@ -22,6 +22,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.sphp.patient.common.constant.TriageConstant.DISCLAIMER;
+import static com.sphp.patient.common.enums.TriageUrgencyEnum.LOW;
 import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
 
 /**
@@ -65,7 +67,7 @@ public class TriageServiceImpl implements TriageService {
                     .build());
         }
         // 获取最高紧急程度
-        String urgency = matchedRules.isEmpty() ? TriageUrgencyEnum.LOW.name() : matchedRules.getFirst().urgency();
+        String urgency = matchedRules.isEmpty() ? LOW.name() : matchedRules.getFirst().urgency();
         List<TriageAssessmentVO.RecommendedDepartment> recommendedDepartments = List.copyOf(departmentMap.values());
 
         TriageAssessment assessment = new TriageAssessment();
@@ -79,9 +81,9 @@ public class TriageServiceImpl implements TriageService {
         }
         return TriageAssessmentVO.builder()
                 .assessmentId(assessment.getId())
-                .urgency(urgency)
-                .recommendedDepartments(recommendedDepartments)
-                .disclaimer(TriageConstant.DISCLAIMER)
+                .urgency(urgency) // 紧急程度
+                .recommendedDepartments(recommendedDepartments) // 推荐科室
+                .disclaimer(DISCLAIMER) // 声明
                 .build();
     }
 

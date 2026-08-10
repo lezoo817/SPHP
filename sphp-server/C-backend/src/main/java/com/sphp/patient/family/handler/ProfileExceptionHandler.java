@@ -91,7 +91,7 @@ public class ProfileExceptionHandler {
     public ResponseEntity<Result<Void>> handleConstraintViolationException(ConstraintViolationException exception) {
         String message = exception.getConstraintViolations().stream()
                 .map(ConstraintViolation::getMessage)
-                .findFirst()
+                .findFirst() // 获取第一个校验失败的提示信息
                 .orElse("参数校验失败");
         return ResponseEntity.badRequest().body(Result.error(INVALID_PARAMETER, message));
     }

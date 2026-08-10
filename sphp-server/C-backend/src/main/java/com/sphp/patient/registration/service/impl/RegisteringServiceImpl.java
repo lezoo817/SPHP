@@ -499,7 +499,7 @@ public class RegisteringServiceImpl implements RegisteringService {
         // 支付单不存在
         if (payment == null)
             throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "支付单不存在");
-
+        // 解析当前 C 端用户 ID
         Long userId = CUserContext.getRequired().userId();
         // 无权访问该支付单
         if (!userId.equals(payment.payerUserId()))

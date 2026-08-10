@@ -18,6 +18,10 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import static com.sphp.shared.common.constant.CommonConstant.DEFAULT_SYSTEM_ERROR_MESSAGE;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.INVALID_PARAMETER;
+import static com.sphp.shared.common.enums.ErrorCodeEnum.SYSTEM_ERROR;
+
 /**
  * C端挂号订单与支付异常处理器。
  */
@@ -49,7 +53,7 @@ public class RegisteringExceptionHandler {
     public ResponseEntity<Result<Void>> registeringHandleValidationException(MethodArgumentNotValidException exception) {
         FieldError error = exception.getBindingResult().getFieldError();
         String message = error == null ? "请求参数校验失败" : error.getDefaultMessage();
-        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, message));
+        return ResponseEntity.badRequest().body(Result.error(INVALID_PARAMETER, message));
     }
 
     /**
@@ -62,7 +66,7 @@ public class RegisteringExceptionHandler {
     public ResponseEntity<Result<Void>> registeringHandleConstraintException(ConstraintViolationException exception) {
         String message = exception.getConstraintViolations().stream().map(ConstraintViolation::getMessage)
                 .findFirst().orElse("请求参数校验失败");
-        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER, message));
+        return ResponseEntity.badRequest().body(Result.error(INVALID_PARAMETER, message));
     }
 
     /**
@@ -73,7 +77,7 @@ public class RegisteringExceptionHandler {
      */
     @ExceptionHandler(MissingRequestHeaderException.class)
     public ResponseEntity<Result<Void>> registeringHandleMissingHeaderException(MissingRequestHeaderException exception) {
-        return ResponseEntity.badRequest().body(Result.error(ErrorCodeEnum.INVALID_PARAMETER,
+        return ResponseEntity.badRequest().body(Result.error(INVALID_PARAMETER,
                 "请求头" + exception.getHeaderName() + "不能为空"));
     }
 
@@ -87,7 +91,7 @@ public class RegisteringExceptionHandler {
     public ResponseEntity<Result<Void>> registeringHandleException(Exception exception) {
         log.error("C端挂号支付系统异常", exception);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Result.error(ErrorCodeEnum.SYSTEM_ERROR, CommonConstant.DEFAULT_SYSTEM_ERROR_MESSAGE));
+                .body(Result.error(SYSTEM_ERROR, DEFAULT_SYSTEM_ERROR_MESSAGE));
     }
 
     /**

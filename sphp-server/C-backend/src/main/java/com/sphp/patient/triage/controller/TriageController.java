@@ -19,6 +19,9 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import static com.sphp.patient.common.constant.TriageConstant.ASSESSMENT_PATH;
+import static com.sphp.shared.common.constant.HeaderConstant.IDEMPOTENCY_KEY;
+
 /**
  * C端症状导诊接口。
  */
@@ -27,8 +30,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/c/v1")
 @RequiredArgsConstructor
 public class TriageController {
-
+    // 症状导诊服务
     private final TriageService triageService;
+    // 幂等性服务
     private final CIdempotencyService idempotencyService;
 
     /**
@@ -40,13 +44,13 @@ public class TriageController {
      */
     @PostMapping("/triage/assessments")
     public Result<TriageAssessmentVO> triageCreateAssessment(
-            @RequestHeader(HeaderConstant.IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody TriageAssessmentCreateRequest request) {
         Long userId = CUserContext.getRequired().userId();
         // 导诊评估会写入医疗相关快照，使用幂等键防止重复提交产生多条评估记录。
         IdempotencyPayload<TriageAssessmentVO> payload = idempotencyService.execute(
                 userId,
-                TriageConstant.ASSESSMENT_PATH,
+                ASSESSMENT_PATH, // 症状导诊路径
                 idempotencyKey,
                 request,
                 TriageAssessmentVO.class,
