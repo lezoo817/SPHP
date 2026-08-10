@@ -13,6 +13,9 @@ import java.util.List;
  * <p>appointment 表由 C 端维护，B 端只在结束接诊时同步状态，
  * 以及过期未就诊时标记为 EXPIRED。
  * 不创建完整实体，直接通过 SQL 更新，避免与 C 端 {@code RegisteringAppointment} 耦合。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Mapper
 public interface BAppointmentMapper {

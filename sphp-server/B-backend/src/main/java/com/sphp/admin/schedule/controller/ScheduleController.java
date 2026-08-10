@@ -42,6 +42,9 @@ import java.util.List;
  * <p><b>数据隔离边界：</b>查询按当前用户数据权限过滤（ADMIN/DEPT_HEAD/DOCTOR）；
  * 写操作（创建/配置时段/发布/取消发布/手动释放）仅 ADMIN，Service 层校验本院归属。
  * 外部完整 URL 前缀为 {@code /api/b/admin/...}。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @RestController
 @RequestMapping("/b/admin")

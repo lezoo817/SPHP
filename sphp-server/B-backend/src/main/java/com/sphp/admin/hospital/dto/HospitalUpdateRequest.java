@@ -7,6 +7,9 @@ import lombok.Data;
  * 编辑医院信息请求。
  *
  * <p>字段均可空，仅更新传入的非空值。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Schema(description = "编辑医院信息请求")

@@ -7,6 +7,7 @@
  * 认证方式：使用 B 端 Sa-Token JWT（存储在 localStorage 的 b_access_token）。
  */
 import { AGENT_BASE_URL, AGENT_SCOPE } from '../constants/agent';
+import { RESULT_CODE_SUCCESS } from '../constants/resultCode';
 import type {
   AgentApiEnvelope,
   AgentChatContext,
@@ -108,7 +109,7 @@ export function chatStream(
         body: JSON.stringify(body),
         signal: controller.signal,
       });
-    } catch (err) {
+    } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError') return;
       onError('网络连接失败，请稍后重试', 'NETWORK_ERROR');
       return;
@@ -129,7 +130,7 @@ export function chatStream(
 
     try {
       await readSseStream(response.body, onEvent);
-    } catch (err) {
+    } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError') return;
       onError('对话连接中断，请重试', 'STREAM_ERROR');
     }
@@ -271,7 +272,7 @@ export async function getSessions(): Promise<AgentSession[]> {
     throw new Error('获取会话列表失败，请稍后重试');
   }
 
-  if (payload.code === '00000' && payload.data?.sessions) {
+  if (payload.code === RESULT_CODE_SUCCESS && payload.data?.sessions) {
     return payload.data.sessions;
   }
 
@@ -314,7 +315,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
     throw new Error('删除会话失败，请稍后重试');
   }
 
-  if (payload.code !== '00000') {
+  if (payload.code !== RESULT_CODE_SUCCESS) {
     throw new Error(payload.message || '删除会话失败');
   }
 }
@@ -356,7 +357,7 @@ export async function getSessionMessages(sessionId: string): Promise<AgentHistor
     throw new Error('获取历史消息失败，请稍后重试');
   }
 
-  if (payload.code === '00000' && payload.data?.messages) {
+  if (payload.code === RESULT_CODE_SUCCESS && payload.data?.messages) {
     return payload.data.messages;
   }
 
@@ -407,7 +408,7 @@ export async function confirmCard(payload: AgentConfirmRequest): Promise<AgentCo
     throw new Error('确认请求响应异常，请稍后重试');
   }
 
-  if (payloadJson.code === '00000') {
+  if (payloadJson.code === RESULT_CODE_SUCCESS) {
     return payloadJson.data || { message: '操作成功' };
   }
 
@@ -486,7 +487,7 @@ export async function ingestKnowledge(
     throw new Error('入库响应异常，请稍后重试');
   }
 
-  if (payload.code === '00000' && payload.data) {
+  if (payload.code === RESULT_CODE_SUCCESS && payload.data) {
     return payload.data;
   }
 
@@ -549,7 +550,7 @@ export async function listKnowledge(params?: {
     throw new Error('获取文档列表响应异常，请稍后重试');
   }
 
-  if (payload.code === '00000' && payload.data) {
+  if (payload.code === RESULT_CODE_SUCCESS && payload.data) {
     return payload.data;
   }
 
@@ -606,7 +607,7 @@ export async function deleteKnowledge(documentId: string): Promise<KnowledgeDele
     throw new Error('删除响应异常，请稍后重试');
   }
 
-  if (payload.code === '00000' && payload.data) {
+  if (payload.code === RESULT_CODE_SUCCESS && payload.data) {
     return payload.data;
   }
 

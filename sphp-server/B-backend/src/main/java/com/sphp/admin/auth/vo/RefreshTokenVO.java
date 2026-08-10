@@ -10,6 +10,9 @@ import lombok.NoArgsConstructor;
  * 刷新令牌响应。
  *
  * <p>旧 refreshToken 在签发新令牌后立即吊销，保证一次性使用。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

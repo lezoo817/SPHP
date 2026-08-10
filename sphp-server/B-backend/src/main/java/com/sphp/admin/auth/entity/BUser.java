@@ -16,6 +16,9 @@ import java.time.OffsetDateTime;
  *   <li>role — {@link com.sphp.admin.common.enums.BRoleEnum}</li>
  *   <li>status — {@link com.sphp.admin.common.enums.BUserStatusEnum}</li>
  * </ul>
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @TableName("b_user")

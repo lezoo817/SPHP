@@ -14,6 +14,9 @@ import org.springframework.context.annotation.Configuration;
  * {@link com.sphp.admin.auth.service.impl.AuthServiceImpl}）。accessToken 解析出的
  * 角色与权限码由 {@link StpInterfaceImpl} 动态加载（角色取自 {@code b_user.role}，
  * 字段值由 {@link com.sphp.admin.common.enums.BRoleEnum} 约束）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Configuration
 public class SaTokenConfigure {

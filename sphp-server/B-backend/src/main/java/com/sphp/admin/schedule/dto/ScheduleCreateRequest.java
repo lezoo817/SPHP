@@ -10,6 +10,9 @@ import lombok.Data;
 
 /**
  * 创建排班请求。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Schema(description = "创建排班请求")

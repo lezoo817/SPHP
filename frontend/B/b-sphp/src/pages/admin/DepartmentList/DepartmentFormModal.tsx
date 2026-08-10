@@ -8,6 +8,7 @@
 import { Modal } from 'antd';
 import { ProForm, ProFormText, ProFormSelect } from '@ant-design/pro-components';
 import { getDoctors } from '@/services/admin';
+import { PAGE_SIZE_100 } from '@/constants/pageSize';
 
 interface Props {
   open: boolean;
@@ -20,7 +21,7 @@ interface Props {
 /** 远程搜索医生（按姓名/科室过滤），用于科室主任下拉 */
 async function fetchDoctors(name?: string, deptId?: number) {
   try {
-    const res = await getDoctors({ name, deptId, page: 1, size: 100 });
+    const res = await getDoctors({ name, deptId, page: 1, size: PAGE_SIZE_100 });
     return (res.list ?? []).map((doc) => ({
       label: `${doc.name}（${doc.title}）`,
       value: doc.id,

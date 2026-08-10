@@ -11,6 +11,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  * B端鉴权异常处理：Sa-Token 未登录 / Token 无效统一映射为 UNAUTHORIZED(A0301)。
  *
  * <p>与共享层 {@code GlobalExceptionHandler} 并存，各自处理自己的异常类型。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Slf4j
 @RestControllerAdvice

@@ -72,6 +72,9 @@ import java.util.stream.Collectors;
  * </ul>
  * 写操作经 {@link CurrentUserService#getCurrentHospitalId()} 校验本院归属，
  * DEPT_HEAD / DOCTOR 无写权限。号源缓存 Key 格式 {@code cend:slot:remain:{slotId}}。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Slf4j
 @Service
@@ -82,6 +85,8 @@ public class ScheduleServiceImpl implements ScheduleService {
     private static final String STATUS_DRAFT = "DRAFT";
     private static final String STATUS_PUBLISHED = "PUBLISHED";
     private static final String STATUS_CANCELLED = "CANCELLED";
+    /** 排班状态：已过期（虚拟状态，由 status=PUBLISHED AND schedule_date<today 派生，不入库） */
+    private static final String STATUS_EXPIRED = "EXPIRED";
 
     /**
      * 排班列表一级排序的状态优先级（数值越小越靠前）：已发布（未过期）> 草稿 > 已过期 > 已作废。
@@ -188,7 +193,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             wrapper.eq(Schedule::getDoctorId, scope.doctorId());
         }
         // 特殊值"EXPIRED"：展开为 status=PUBLISHED AND schedule_date<today（虚拟状态，不入库）
-        boolean expired = "EXPIRED".equals(status);
+        boolean expired = STATUS_EXPIRED.equals(status);
         wrapper.eq(!expired && StringUtils.hasText(status), Schedule::getStatus, status)
                 .eq(expired, Schedule::getStatus, STATUS_PUBLISHED)
                 .lt(expired, Schedule::getScheduleDate, LocalDate.now())

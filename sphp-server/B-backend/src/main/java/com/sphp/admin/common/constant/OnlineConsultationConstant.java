@@ -2,6 +2,9 @@ package com.sphp.admin.common.constant;
 
 /**
  * B 端在线问诊常量。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public final class OnlineConsultationConstant {
 

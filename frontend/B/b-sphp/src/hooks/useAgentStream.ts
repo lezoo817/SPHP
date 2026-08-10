@@ -578,7 +578,7 @@ export function useAgentStream(): UseAgentStream {
             },
           },
         ]);
-      } catch (error) {
+      } catch (error: unknown) {
         const code = (error as Error & { code?: string }).code;
         // 鉴权失败：清理登录态由服务层完成，这里仅更新卡片
         const text =
@@ -642,7 +642,7 @@ export function useAgentStream(): UseAgentStream {
     try {
       const list = await getSessions();
       setSessions(list);
-    } catch (err) {
+    } catch (err: unknown) {
       // 静默处理，仅记录
       console.warn('获取会话列表失败：', (err as Error).message);
     } finally {
@@ -655,7 +655,7 @@ export function useAgentStream(): UseAgentStream {
     try {
       await deleteSession(targetSessionId);
       setSessions((prev) => prev.filter((s) => s.session_id !== targetSessionId));
-    } catch (err) {
+    } catch (err: unknown) {
       // 静默处理，仅记录
       console.warn('删除会话失败：', (err as Error).message);
     }
@@ -693,7 +693,7 @@ export function useAgentStream(): UseAgentStream {
 
         setEntries(historyEntries);
         setConnection('idle');
-      } catch (err) {
+      } catch (err: unknown) {
         setConnection('error');
         setErrorMessage((err as Error).message || '加载历史消息失败');
       }

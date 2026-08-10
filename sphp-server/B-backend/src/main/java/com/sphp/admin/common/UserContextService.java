@@ -15,6 +15,9 @@ import org.springframework.stereotype.Service;
  * <p>供 {@link UserContextInterceptor} 按 X-User-Id 查询 b_user 表，补全
  * 角色 / 医院 / 科室 / 医生信息后缓存至 {@link UserContextHolder}。
  * 用户不存在或已停用统一抛 UNAUTHORIZED。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Service
 @RequiredArgsConstructor

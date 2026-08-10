@@ -5,6 +5,9 @@ import com.sphp.admin.auth.entity.BUser;
 
 /**
  * B 端用户表 Mapper。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 public interface BUserMapper extends BaseMapper<BUser> {
 }

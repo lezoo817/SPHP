@@ -8,6 +8,9 @@ import lombok.NoArgsConstructor;
 
 /**
  * 运营总览 VO。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

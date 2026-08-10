@@ -18,6 +18,8 @@ import { getErrorMessage } from '@/utils/error';
 import { getColumns } from './columns';
 import AuditDetailModal from './AuditDetailModal';
 import RejectModal from './RejectModal';
+import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
+import { STATUS_APPROVED, STATUS_REJECTED } from '@/constants/businessStatus';
 
 export default function PendingAudit() {
   const actionRef = useRef<ActionType>();
@@ -57,7 +59,7 @@ export default function PendingAudit() {
       okText: '确认通过',
       onOk: async () => {
         try {
-          await auditPrescription(id, { action: 'APPROVED' });
+          await auditPrescription(id, { action: STATUS_APPROVED });
           message.success('处方审核已通过');
           actionRef.current?.reload();
         } catch (err: unknown) {
@@ -79,7 +81,7 @@ export default function PendingAudit() {
     setRejecting(true);
     try {
       await auditPrescription(rejectTargetId, {
-        action: 'REJECTED',
+        action: STATUS_REJECTED,
         rejectReason: reason,
       });
       message.success('处方已驳回');
@@ -115,7 +117,7 @@ export default function PendingAudit() {
           }
         }}
         search={false}
-        pagination={{ pageSize: 10, showSizeChanger: true }}
+        pagination={{ pageSize: PAGE_SIZE_DEFAULT, showSizeChanger: true }}
         toolBarRender={() => [
           <Button key="refresh" onClick={() => actionRef.current?.reload()}>
             刷新

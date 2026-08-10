@@ -4,6 +4,7 @@
 import { Modal } from 'antd';
 import { ProForm, ProFormText, ProFormSelect } from '@ant-design/pro-components';
 import { STATUS_OPTIONS } from './constants';
+import { STATUS_ENABLED } from '@/constants/businessStatus';
 
 interface Props {
   open: boolean;
@@ -42,7 +43,7 @@ export default function DrugFormModal({
                 approvalNumber: editingDrug.approvalNumber,
                 status: editingDrug.status,
               }
-            : { status: 'ENABLED' }
+            : { status: STATUS_ENABLED }
         }
         onFinish={onSubmit}
         submitter={{

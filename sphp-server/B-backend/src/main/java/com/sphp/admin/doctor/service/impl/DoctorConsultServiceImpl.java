@@ -70,6 +70,9 @@ import java.util.stream.Collectors;
  * <p>面向 B 端医生 / 科室主任 / 医院管理员，处理待接诊队列、患者详情、开始/结束接诊、病历保存、问诊消息。
  * 数据隔离边界：所有读操作通过当前用户的 {@link DataScope}（医院 / 科室 / 医生）显式过滤可见问诊记录；
  * 写操作（开始 / 结束 / 病历 / 消息）必须先校验当前用户对目标问诊的归属与状态机合法性。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Slf4j
 @Service
@@ -281,7 +284,10 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
         if (consultRecordMapper.completeOnlineConsult(consultId, doctorId, endedAt) != 1) {
             throw new BusinessException(ERR_CONSULT_STATUS_INVALID, "在线问诊状态不可结束");
         }
-        return ConsultEndVO.builder().consultId(consultId).status("COMPLETED").endedAt(endedAt).build();
+        return ConsultEndVO.builder().consultId(consultId)
+                .status(OnlineConsultationConstant.STATUS_COMPLETED)
+                .endedAt(endedAt)
+                .build();
     }
 
     /**
@@ -832,26 +838,30 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
      * @return 医生 ID 列表（空列表表示无可见数据）
      */
     private List<Long> resolveDoctorIds(DataScope scope, Long deptId) {
-        return switch (scope.role()) {
-            // case label 必须为常量 String 字面量，故此处与 BRoleEnum code 保持一致
-            case "ADMIN" -> doctorMapper.selectList(Wrappers.<Doctor>lambdaQuery()
+        // 用枚举 equalsCode 分支（null-safe），替代 switch 字面量 case：角色值只保留 BRoleEnum 单一来源
+        if (BRoleEnum.ADMIN.equalsCode(scope.role())) {
+            return doctorMapper.selectList(Wrappers.<Doctor>lambdaQuery()
                             .eq(Doctor::getHospitalId, scope.hospitalId())
                             .eq(deptId != null, Doctor::getDeptId, deptId)
                             .isNull(Doctor::getDeletedAt))
                     .stream()
                     .map(Doctor::getId)
                     .toList();
-            case "DEPT_HEAD" -> doctorMapper.selectList(Wrappers.<Doctor>lambdaQuery()
+        }
+        if (BRoleEnum.DEPT_HEAD.equalsCode(scope.role())) {
+            return doctorMapper.selectList(Wrappers.<Doctor>lambdaQuery()
                             .eq(Doctor::getDeptId, scope.deptId())
                             .isNull(Doctor::getDeletedAt))
                     .stream()
                     .map(Doctor::getId)
                     .toList();
-            case "DOCTOR" -> scope.doctorId() != null
+        }
+        if (BRoleEnum.DOCTOR.equalsCode(scope.role())) {
+            return scope.doctorId() != null
                     ? List.of(scope.doctorId())
                     : List.of();
-            default -> List.of();
-        };
+        }
+        return List.of();
     }
 
     /**

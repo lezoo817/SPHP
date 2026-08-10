@@ -7,7 +7,11 @@ import lombok.Data;
 
 import java.time.OffsetDateTime;
 
-/** 药房药品库存表实体（对应表 pharmacy_drug_stock）。 */
+/** 药房药品库存表实体（对应表 pharmacy_drug_stock）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
+ */
 @Data
 @TableName("pharmacy_drug_stock")
 public class PharmacyDrugStock {

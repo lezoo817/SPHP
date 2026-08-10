@@ -156,7 +156,7 @@ export function AiPanel({ context, embedded = false, consultationId, onNavigate 
       e.stopPropagation();
       try {
         await removeSession(targetSessionId);
-      } catch (err) {
+      } catch (err: unknown) {
         // 静默处理，仅记录
         // eslint-disable-next-line no-console
         console.warn('删除会话失败：', (err as Error).message);

@@ -7,6 +7,8 @@
 import { Tag, Button, Tooltip, Space, Select } from 'antd';
 import type { ProColumns } from '@ant-design/pro-components';
 import { getDepartments, getDoctors } from '@/services/admin';
+import { PAGE_SIZE_100, PAGE_SIZE_200 } from '@/constants/pageSize';
+import { STATUS_DRAFT, STATUS_ENABLED, STATUS_PUBLISHED } from '@/constants/businessStatus';
 import {
   STATUS_OPTIONS,
   PUBLISHED_LOCK_TOOLTIP,
@@ -26,7 +28,7 @@ interface ColumnsDeps {
 /** 科室选项（供筛选，仅 ADMIN） */
 async function fetchDepartments() {
   try {
-    const res = await getDepartments({ page: 1, size: 200 });
+    const res = await getDepartments({ page: 1, size: PAGE_SIZE_200 });
     return (res.list ?? []).map((dept) => ({ label: dept.name, value: dept.id }));
   } catch {
     return [];
@@ -38,9 +40,9 @@ async function fetchDoctors(keyword?: string) {
   try {
     const res = await getDoctors({
       name: keyword || undefined,
-      status: 'ENABLED',
+      status: STATUS_ENABLED,
       page: 1,
-      size: 100,
+      size: PAGE_SIZE_100,
     });
     return (res.list ?? []).map((doc) => ({ label: doc.name, value: doc.id }));
   } catch {
@@ -148,8 +150,8 @@ export function getColumns(deps: ColumnsDeps): ProColumns<API.Schedule>[] {
       width: 280,
       hideInSearch: true,
       render: (_, record) => {
-        const published = record.status === 'PUBLISHED';
-        const draft = record.status === 'DRAFT';
+        const published = record.status === STATUS_PUBLISHED;
+        const draft = record.status === STATUS_DRAFT;
         return (
           <Space size={0} wrap>
             <Button type="link" size="small" onClick={() => onGoDetail(record)}>

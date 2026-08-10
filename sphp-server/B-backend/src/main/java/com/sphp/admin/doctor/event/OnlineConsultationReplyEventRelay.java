@@ -9,9 +9,13 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import static com.sphp.admin.common.constant.OnlineConsultationConstant.BUSINESS_EXCHANGE;
 import static com.sphp.admin.common.constant.OnlineConsultationConstant.NOTIFICATION_CREATE_ROUTING_KEY;
+import static com.sphp.admin.common.constant.OnlineConsultationConstant.SENDER_DOCTOR;
 
 /**
  * 在线问诊医生消息通知事件转发器。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Component
 @RequiredArgsConstructor
@@ -26,7 +30,7 @@ public class OnlineConsultationReplyEventRelay {
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void relay(ConsultationMessageCreatedEvent event) {
-        if (!"DOCTOR".equals(event.senderType())) {
+        if (!SENDER_DOCTOR.equals(event.senderType())) {
             return;
         }
         // 复用既有通知路由，避免新增同义交换机或队列。

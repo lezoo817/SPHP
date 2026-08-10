@@ -11,9 +11,7 @@ import com.sphp.admin.doctor.mapper.BPatientAllergyMapper;
 import com.sphp.admin.doctor.mapper.BPatientMapper;
 import com.sphp.admin.doctor.mapper.BPatientMedicalHistoryMapper;
 import com.sphp.admin.patient.entity.FollowUpPlan;
-import com.sphp.admin.patient.entity.MedicationPlan;
 import com.sphp.admin.patient.mapper.FollowUpPlanMapper;
-import com.sphp.admin.patient.mapper.MedicationPlanMapper;
 import com.sphp.admin.patient.mapper.PatientDataMapper;
 import com.sphp.admin.patient.service.PatientService;
 import com.sphp.admin.patient.vo.AllergyVO;
@@ -41,7 +39,7 @@ import java.util.List;
  * <p>患者列表范围：通过 consult_record → doctor.hospital_id 关联，
  * 仅返回在本院就诊过的患者；所有操作基于当前登录用户所属医院（{@code hospital_id}）
  * 做数据隔离。详情页附加过敏史（{@code patient_allergy}）与既往史（{@code patient_medical_history}），
- * 当前用药页附加 ACTIVE/PAUSED 状态的用药计划与未完成的随访计划。
+ * 当前用药页按已审核处方的时间窗派生用药明细，另附未完成的随访计划。
  *
  * @author lezoo17
  * @since 2026-08-09
@@ -53,11 +51,6 @@ public class PatientServiceImpl implements PatientService {
 
     /** 资源不存在 / 已软删（A0402） */
     private static final String ERR_RESOURCE_NOT_FOUND = "A0402";
-
-    /** 用药计划状态：进行中（计入当前用药列表） */
-    private static final String MEDICATION_STATUS_ACTIVE = "ACTIVE";
-    /** 用药计划状态：暂停中（计入当前用药列表，等待医生恢复） */
-    private static final String MEDICATION_STATUS_PAUSED = "PAUSED";
 
     /** 随访计划状态：已完成（从当前随访列表排除） */
     private static final String FOLLOWUP_STATUS_COMPLETED = "COMPLETED";
@@ -75,7 +68,6 @@ public class PatientServiceImpl implements PatientService {
     private final BPatientMapper patientMapper;
     private final BPatientAllergyMapper allergyMapper;
     private final BPatientMedicalHistoryMapper medicalHistoryMapper;
-    private final MedicationPlanMapper medicationPlanMapper;
     private final FollowUpPlanMapper followUpPlanMapper;
 
     @Override
@@ -161,14 +153,9 @@ public class PatientServiceImpl implements PatientService {
     public PatientMedicationVO medications(Long patientId) {
         getPatient(patientId);
 
-        // 当前用药：进行中 + 暂停中
-        List<MedicationPlan> plans = medicationPlanMapper.selectList(
-                Wrappers.<MedicationPlan>lambdaQuery()
-                        .eq(MedicationPlan::getPatientId, patientId)
-                        .in(MedicationPlan::getStatus,
-                                MEDICATION_STATUS_ACTIVE, MEDICATION_STATUS_PAUSED)
-                        .isNull(MedicationPlan::getDeletedAt)
-                        .orderByDesc(MedicationPlan::getCreatedAt));
+        // 当前用药：从已审核处方明细派生，按「处方生成时间 + 疗程天数」时间窗过滤；
+        // 不依赖 C 端购药（medication_plan 仅在购药订单支付后写入，未购药患者会为空）
+        List<MedicationPlanVO> plans = patientDataMapper.selectCurrentMedications(patientId);
 
         // 当前随访：排除已完成、已取消
         List<FollowUpPlan> followUps = followUpPlanMapper.selectList(
@@ -180,19 +167,7 @@ public class PatientServiceImpl implements PatientService {
                         .orderByDesc(FollowUpPlan::getCreatedAt));
 
         return PatientMedicationVO.builder()
-                .medicationPlans(plans.stream()
-                        .map(m -> MedicationPlanVO.builder()
-                                .id(m.getId())
-                                .drugName(m.getDrugNameSnapshot())
-                                .dosage(m.getDosage())
-                                .frequency(m.getFrequency())
-                                .usageMethod(m.getUsageMethod())
-                                .durationDays(m.getDurationDays())
-                                .status(m.getStatus())
-                                .nextRemindAt(m.getNextRemindAt())
-                                .createdAt(m.getCreatedAt())
-                                .build())
-                        .toList())
+                .medicationPlans(plans)
                 .followUpPlans(followUps.stream()
                         .map(f -> FollowUpPlanVO.builder()
                                 .id(f.getId())
@@ -216,6 +191,13 @@ public class PatientServiceImpl implements PatientService {
     private Patient getPatient(Long id) {
         Patient patient = patientMapper.selectById(id);
         if (patient == null || patient.getDeletedAt() != null) {
+            throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "患者不存在");
+        }
+        // 数据隔离：仅允许访问本院存在就诊关联的患者，防止凭 ID 跨院水平越权；
+        // 与列表页（selectPatientPage 经 doctor.hospital_id 过滤）口径保持一致。
+        // 错误码与"不存在"相同，避免向跨院调用方泄漏患者存在性。
+        Long hospitalId = currentUserService.getCurrentDataScope().hospitalId();
+        if (!patientDataMapper.existsConsultInHospital(id, hospitalId)) {
             throw new BusinessException(ERR_RESOURCE_NOT_FOUND, "患者不存在");
         }
         return patient;

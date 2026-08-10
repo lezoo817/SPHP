@@ -11,6 +11,9 @@ import lombok.Data;
  * 新增医生请求。
  *
  * <p>同步开通 {@code DOCTOR} 角色的登录账号，回填 {@code doctor.b_user_id}。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Schema(description = "新增医生请求")

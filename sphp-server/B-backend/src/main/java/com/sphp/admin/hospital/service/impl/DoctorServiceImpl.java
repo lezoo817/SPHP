@@ -46,6 +46,9 @@ import java.util.stream.Collectors;
  *   <li>{@code b_user.status}：{@code ENABLED} / {@code DISABLED}
  *       （{@code SUSPENDED} 业务层映射为 {@code DISABLED}）</li>
  * </ul>
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Slf4j
 @Service
@@ -196,7 +199,9 @@ public class DoctorServiceImpl implements DoctorService {
         // 账号联动：关联 b_user 状态同步（b_user 无 SUSPENDED，映射为 DISABLED）
         if (doctor.getBUserId() != null) {
             // SUSPENDED 是 doctor 状态机扩展项，b_user 端需降级为 DISABLED
-            String userStatus = "SUSPENDED".equals(status) ? BUserStatusEnum.DISABLED.getCode() : status;
+            String userStatus = BUserStatusEnum.SUSPENDED.equalsCode(status)
+                    ? BUserStatusEnum.DISABLED.getCode()
+                    : status;
             BUser user = new BUser();
             user.setId(doctor.getBUserId());
             user.setStatus(userStatus);

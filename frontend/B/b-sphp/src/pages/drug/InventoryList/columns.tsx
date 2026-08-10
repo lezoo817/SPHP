@@ -11,6 +11,7 @@ import type { ProColumns } from '@ant-design/pro-components';
 import { getDrugs } from '@/services/admin';
 import { formatPrice } from '@/utils/price';
 import { calcStatus } from './constants';
+import { PAGE_SIZE_200 } from '@/constants/pageSize';
 
 interface ColumnsDeps {
   isAdmin: boolean;
@@ -21,7 +22,7 @@ interface ColumnsDeps {
 /** 拉取药品选项（供搜索筛选下拉） */
 async function fetchDrugOptions() {
   try {
-    const res = await getDrugs({ page: 1, size: 200 });
+    const res = await getDrugs({ page: 1, size: PAGE_SIZE_200 });
     return (res.list ?? []).map((d) => ({ label: d.name, value: d.id }));
   } catch {
     return [];

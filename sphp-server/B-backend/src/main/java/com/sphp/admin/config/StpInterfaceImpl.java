@@ -15,6 +15,9 @@ import java.util.List;
  * 角色，供 {@code StpUtil.getRoleList()} 与 {@code @SaCheckRole} 权限注解使用。
  * 角色字段值由 {@link com.sphp.admin.common.enums.BRoleEnum} 约束（ADMIN /
  * DEPT_HEAD / DOCTOR），业务代码严禁直接比较字面量。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Component
 @RequiredArgsConstructor

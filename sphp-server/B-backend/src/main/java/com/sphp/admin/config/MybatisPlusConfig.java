@@ -12,6 +12,9 @@ import org.springframework.context.annotation.Configuration;
  * <p>所有分页查询（{@code Page<T>}、{@code IPage<T>}）经本拦截器翻译为
  * {@code LIMIT ... OFFSET ...} SQL；DbType 必须与实际数据库一致，否则分页 SQL
  * 语法会因方言差异而报错（B 端 PostgreSQL，C 端 MySQL，二者不可混用）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Configuration
 public class MybatisPlusConfig {

@@ -10,6 +10,9 @@ import java.time.OffsetDateTime;
 
 /**
  * 发布/取消发布排班响应。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

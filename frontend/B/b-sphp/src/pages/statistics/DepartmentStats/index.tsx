@@ -12,6 +12,7 @@ import { getDepartmentStats, getDepartments } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
 import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 import dayjs from 'dayjs';
+import { PAGE_SIZE_200, PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
 
 const { RangePicker } = DatePicker;
 
@@ -31,7 +32,7 @@ export default function DepartmentStats() {
   /** 科室选项（React Query 缓存 5min） */
   const { data: deptRes } = useQuery({
     queryKey: QUERY_KEYS.departments,
-    queryFn: () => getDepartments({ page: 1, size: 200 }),
+    queryFn: () => getDepartments({ page: 1, size: PAGE_SIZE_200 }),
     staleTime: STALE_TIME.departments,
   });
   const deptOptions = useMemo(
@@ -118,7 +119,7 @@ export default function DepartmentStats() {
           onChange={(v) => setDeptId(v)}
         />,
       ]}
-      pagination={{ pageSize: 10 }}
+      pagination={{ pageSize: PAGE_SIZE_DEFAULT }}
     />
   );
 }

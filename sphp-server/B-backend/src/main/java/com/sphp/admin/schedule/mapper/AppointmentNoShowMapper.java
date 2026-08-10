@@ -6,6 +6,9 @@ import org.apache.ibatis.annotations.Update;
 
 /**
  * 过期 PAID 自动 NO_SHOW 标记 Mapper。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Mapper
 public interface AppointmentNoShowMapper {

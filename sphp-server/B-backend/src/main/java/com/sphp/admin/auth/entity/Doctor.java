@@ -15,6 +15,9 @@ import java.time.OffsetDateTime;
  * <ul>
  *   <li>status — {@link com.sphp.admin.common.enums.BUserStatusEnum}（与 b_user 状态机一致）</li>
  * </ul>
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @TableName("doctor")

@@ -38,6 +38,7 @@ import dayjs from 'dayjs';
 import styles from './PatientInfoBar.module.less';
 import { STATUS_MAP } from './constants';
 import { getErrorMessage } from '@/utils/error';
+import { GENDER_FEMALE, GENDER_MALE } from '@/constants/businessStatus';
 
 const { Text } = Typography;
 
@@ -73,8 +74,8 @@ function calcAge(dateOfBirth?: string): number | null {
 
 /** 性别文本 */
 function genderText(gender: string): string {
-  if (gender === 'MALE') return '男';
-  if (gender === 'FEMALE') return '女';
+  if (gender === GENDER_MALE) return '男';
+  if (gender === GENDER_FEMALE) return '女';
   return '未知';
 }
 

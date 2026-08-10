@@ -6,7 +6,11 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/** 低库存预警项。 */
+/** 低库存预警项。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
+ */
 @Data
 @Builder
 @NoArgsConstructor

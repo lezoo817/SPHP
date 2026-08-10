@@ -7,6 +7,9 @@ import lombok.Data;
 
 /**
  * 保存病历请求体。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Schema(description = "保存病历请求")

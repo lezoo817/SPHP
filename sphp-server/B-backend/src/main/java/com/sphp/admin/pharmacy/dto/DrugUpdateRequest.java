@@ -3,7 +3,11 @@ package com.sphp.admin.pharmacy.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-/** 编辑药品请求（所有字段均可选）。 */
+/** 编辑药品请求（所有字段均可选）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
+ */
 @Data
 @Schema(description = "编辑药品请求")
 public class DrugUpdateRequest {

@@ -24,7 +24,10 @@ import {
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { getDrugs, getTemplates, precheckPrescription } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
+import { DEBOUNCE_PRECheck_MS } from '@/constants/timing';
 import styles from './PrescriptionFormModal.module.less';
+import { PAGE_SIZE_50 } from '@/constants/pageSize';
+import { STATUS_APPROVED, STATUS_ENABLED, STATUS_SUBMITTED } from '@/constants/businessStatus';
 
 /** 单行药品明细表单值（对齐 PrescriptionSubmitRequest.ItemDTO） */
 interface PrescriptionItemFormValue {
@@ -188,7 +191,7 @@ export default function PrescriptionFormModal({
     try {
       const res = await getTemplates({
         page: 1,
-        size: 50,
+        size: PAGE_SIZE_50,
         deptId: doctorDeptId ?? undefined,
       });
       setTemplates(res.list ?? []);
@@ -209,7 +212,7 @@ export default function PrescriptionFormModal({
       setSummaryWarnings([]);
       // 预拉一页启用药品供下拉首屏使用
       if (drugOptions.length === 0) {
-        getDrugs({ page: 1, size: 50, status: 'ENABLED' })
+        getDrugs({ page: 1, size: PAGE_SIZE_50, status: STATUS_ENABLED })
           .then((res) => setDrugOptions(toDrugOptions(res.list ?? [])))
           .catch(() => {});
       }
@@ -227,7 +230,7 @@ export default function PrescriptionFormModal({
     if (precheckTimerRef.current) window.clearTimeout(precheckTimerRef.current);
     precheckTimerRef.current = window.setTimeout(() => {
       runPrecheck(itemsWatch ?? []);
-    }, 400);
+    }, DEBOUNCE_PRECheck_MS);
     return () => {
       if (precheckTimerRef.current) window.clearTimeout(precheckTimerRef.current);
     };
@@ -240,8 +243,8 @@ export default function PrescriptionFormModal({
     try {
       const res = await getDrugs({
         page: 1,
-        size: 50,
-        status: 'ENABLED',
+        size: PAGE_SIZE_50,
+        status: STATUS_ENABLED,
         name: keyword || undefined,
       });
       setDrugOptions(toDrugOptions(res.list ?? []));
@@ -488,10 +491,10 @@ export default function PrescriptionFormModal({
               <Space direction="vertical" size={2}>
                 <span>
                   处方已提交 ·{' '}
-                  <Tag color={result.status === 'APPROVED' ? 'green' : 'orange'}>
-                    {result.status === 'APPROVED'
+                  <Tag color={result.status === STATUS_APPROVED ? 'green' : 'orange'}>
+                    {result.status === STATUS_APPROVED
                       ? '已生效'
-                      : result.status === 'SUBMITTED'
+                      : result.status === STATUS_SUBMITTED
                         ? '待审核'
                         : result.status}
                   </Tag>

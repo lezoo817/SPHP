@@ -14,6 +14,9 @@ import java.util.List;
  *
  * <p>基于 Sa-Token 解析当前请求 accessToken，组装出 Agent 所需的最小用户身份上下文；
  * 医生 / 科室维度由 {@code doctor_id} 联查 doctor 表补全。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @Data
 @Builder

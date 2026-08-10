@@ -22,6 +22,9 @@ import org.springframework.web.bind.annotation.RestController;
  * B 端认证接口：登录、刷新令牌、Token 解析（供 Agent）、退出登录。
  *
  * <p>请求路径：{@code /b/auth/**}（外部 URL 由 {@code server.servlet.context-path=/api} 前缀补全）。
+ *
+ * @author lezoo17
+ * @since 2026-08-10
  */
 @RestController
 @RequestMapping("/b/auth")
