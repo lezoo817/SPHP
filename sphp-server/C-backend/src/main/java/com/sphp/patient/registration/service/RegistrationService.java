@@ -27,7 +27,7 @@ public interface RegistrationService {
      * @param hospitalId 医院 ID
      * @param keyword 可选科室名称关键字
      * @return 可选科室列表
-     * @throwsCAuthException 医院不存在或已停用时抛出
+     * @throws CAuthException 资源不可用或医院链路不匹配时抛出
      */
     List<DepartmentListVO> listDepartments(Long hospitalId, String keyword);
 

@@ -268,10 +268,12 @@ public class ConsultationServiceImpl implements ConsultationService {
                 .eq(ConsultationMessage::getConsultationId, consultationId)
                 .isNull(ConsultationMessage::getDeletedAt);
         if (afterId != null) {
-            query.gt(ConsultationMessage::getId, afterId).orderByAsc(ConsultationMessage::getId);
+            query.gt(ConsultationMessage::getId, afterId)
+                    .orderByAsc(ConsultationMessage::getId);
             return buildMessagePage(consultationMessageMapper.selectList(query.last("LIMIT " + (limit + 1))), limit);
         }
-        query.lt(beforeId != null, ConsultationMessage::getId, beforeId).orderByDesc(ConsultationMessage::getId);
+        query.lt(beforeId != null, ConsultationMessage::getId, beforeId)
+                .orderByDesc(ConsultationMessage::getId);
         List<ConsultationMessage> records = consultationMessageMapper.selectList(query.last("LIMIT " + (limit + 1)));
         boolean hasMore = records.size() > limit;
         if (hasMore) {
@@ -280,8 +282,11 @@ public class ConsultationServiceImpl implements ConsultationService {
         java.util.Collections.reverse(records);
         return ConsultationMessagePageVO.builder()
                 .messages(records.stream().map(message -> ConsultationDetailVO.Message.builder()
-                        .id(message.getId()).senderType(message.getSenderType()).content(message.getContent())
-                        .createdAt(message.getCreatedAt()).build()).toList())
+                        .id(message.getId())
+                        .senderType(message.getSenderType())
+                        .content(message.getContent())
+                        .createdAt(message.getCreatedAt())
+                        .build()).toList())
                 .hasMore(hasMore).build();
     }
 
@@ -311,7 +316,7 @@ public class ConsultationServiceImpl implements ConsultationService {
         return ConsultationPrescriptionPageVO.builder()
                 .pageNo(resolvedPageNo)
                 .pageSize(resolvedPageSize)
-                .total(consultationDataMapper.countApprovedPrescriptionList(targetPatientId))
+                .total(consultationDataMapper.countApprovedPrescriptionList(targetPatientId)) // 总数
                 .records(records)
                 .build();
     }
@@ -460,8 +465,11 @@ public class ConsultationServiceImpl implements ConsultationService {
         }
         List<ConsultationDetailVO.Message> messages = records.stream()
                 .map(message -> ConsultationDetailVO.Message.builder()
-                        .id(message.getId()).senderType(message.getSenderType())
-                        .content(message.getContent()).createdAt(message.getCreatedAt()).build())
+                        .id(message.getId())
+                        .senderType(message.getSenderType())
+                        .content(message.getContent())
+                        .createdAt(message.getCreatedAt())
+                        .build())
                 .toList();
         return ConsultationMessagePageVO.builder().messages(messages).hasMore(hasMore).build();
     }

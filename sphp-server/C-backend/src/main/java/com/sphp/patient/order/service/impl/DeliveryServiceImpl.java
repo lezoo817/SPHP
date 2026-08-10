@@ -181,6 +181,7 @@ public class DeliveryServiceImpl implements DeliveryService {
         if (hasLegacyAddress) {
             return legacyDeliveryAddress.trim();
         }
+        // 新版地址不存在时使用
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, deliveryCurrentUserId());
         return deliveryBuildOrderAddressSnapshot(address);
     }
@@ -217,6 +218,7 @@ public class DeliveryServiceImpl implements DeliveryService {
             userProvince = DeliveryProvinceEnum.valueOf(address.getProvince());
             detailAddress = address.getDetailAddress();
         }
+        // 配送省市
         DeliveryProvinceEnum hospitalProvince = deliveryRequireHospitalProvince(hospitalId);
         double coefficient = deliveryProperties.deliveryProvinceCoefficient(userProvince, hospitalProvince);
         // 使用与药房推荐完全相同的哈希参数，确保选中同一药房时前后展示一致。

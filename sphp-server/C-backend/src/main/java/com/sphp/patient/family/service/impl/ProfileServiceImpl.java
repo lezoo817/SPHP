@@ -29,7 +29,7 @@ import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
 @Service
 @RequiredArgsConstructor
 public class ProfileServiceImpl implements ProfileService {
-
+    // 个人资料数据访问层
     private final ProfileMapper profileMapper;
 
     /**
@@ -41,6 +41,7 @@ public class ProfileServiceImpl implements ProfileService {
     @Override
     public ProfileVO getProfile() {
         Long userId = CUserContext.getRequired().userId();
+        // 读取当前用户有效 SELF 关系的本人资料
         ProfileRecord profile = requireSelfProfile(userId);
         return ProfileVO.builder()
                 .id(profile.getPatientId())

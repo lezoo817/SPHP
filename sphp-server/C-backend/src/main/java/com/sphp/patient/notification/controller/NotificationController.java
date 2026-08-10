@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import static com.sphp.patient.common.constant.NotificationConstant.READ_PATH_PREFIX;
 import static com.sphp.shared.common.constant.HeaderConstant.IDEMPOTENCY_KEY;
 import static com.sphp.shared.common.enums.ErrorCodeEnum.INVALID_PARAMETER;
 
@@ -104,7 +105,7 @@ public class NotificationController {
         // 幂等
         IdempotencyPayload<NotificationReadVO> payload = idempotencyService.execute(
                 userId,
-                NotificationConstant.READ_PATH_PREFIX + notificationId + "/read",
+                READ_PATH_PREFIX + notificationId + "/read",
                 idempotencyKey,
                 notificationId,
                 NotificationReadVO.class,

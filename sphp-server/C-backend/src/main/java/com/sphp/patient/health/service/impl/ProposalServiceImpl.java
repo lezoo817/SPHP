@@ -434,6 +434,7 @@ public class ProposalServiceImpl implements ProposalService {
      * @throws CAuthException 报告不存在、未完成、无正文或无权访问时抛出
      */
     private ConsultationReportRecord proposalRequireConsultationReport(Long reportId) {
+        // 读取报告
         ConsultationReportRecord report = dataMapper.proposalSelectConsultationReport(reportId);
         if (report == null) {
             throw proposalNotFound("医生病历报告不存在");
@@ -503,10 +504,10 @@ public class ProposalServiceImpl implements ProposalService {
         return ProposalMedicationPlanVO.builder()
                 .id(medication.id())
                 .drugName(medication.drugName())
-                .dosage(medication.dosage())
-                .frequency(medication.frequency())
-                .nextReminderAt(nextReminderAt)
-                .reminderEnabled(reminderEnabled)
+                .dosage(medication.dosage()) // 剂量
+                .frequency(medication.frequency()) // 频率
+                .nextReminderAt(nextReminderAt) // 下次提醒时间
+                .reminderEnabled(reminderEnabled) // 提醒开关
                 .reminderTimes(reminderTimesJson == null || reminderTimesJson.isBlank() ? List.of()
                         : proposalParseReminderTimes(reminderTimesJson).stream().map(LocalTime::toString).toList())
                 .status(status)

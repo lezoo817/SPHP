@@ -5,6 +5,8 @@ import com.sphp.patient.common.enums.NotificationTypeEnum;
 import java.io.Serializable;
 import java.time.OffsetDateTime;
 
+import static com.sphp.patient.common.enums.NotificationTypeEnum.MEDICATION_REMINDER;
+
 /**
  * 到期用药提醒消息，携带推进下一次提醒所需的时间边界。
  *
@@ -28,7 +30,7 @@ public record MedicationReminderEvent(String eventId, Long planId, Long userId, 
      */
     public NotificationCreateEvent toNotificationCreateEvent() {
         return new NotificationCreateEvent(eventId, "MEDICATION_REMINDER_DUE", planId, userId, patientId,
-                patientName, NotificationTypeEnum.MEDICATION_REMINDER.name(), "用药提醒",
+                patientName, MEDICATION_REMINDER.name(), "用药提醒",
                 "您有一项用药计划需要按时完成。", "{}", occurredAt);
     }
 }

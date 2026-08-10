@@ -13,7 +13,10 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.util.function.Supplier;
 
+import static com.sphp.patient.common.constant.CIdempotencyConstant.PROCESSING_PREFIX;
 import static com.sphp.shared.common.enums.ErrorCodeEnum.DUPLICATE_REQUEST;
+import static com.sphp.patient.common.constant.CIdempotencyConstant.IDEMPOTENCY_KEY_PREFIX;
+
 
 /**
  * C端状态变更接口的 Redis 幂等处理服务。
@@ -22,10 +25,7 @@ import static com.sphp.shared.common.enums.ErrorCodeEnum.DUPLICATE_REQUEST;
 @RequiredArgsConstructor
 public class CIdempotencyService {
 
-    /** 幂等 Redis 键前缀 */
-    private static final String IDEMPOTENCY_KEY_PREFIX = "cend:idempotency:";
-    /** 处理中缓存值前缀 */
-    private static final String PROCESSING_PREFIX = "PENDING|";
+
 
     private final StringRedisTemplate redisTemplate;
     // JSON 序列化, 用于序列化缓存结果

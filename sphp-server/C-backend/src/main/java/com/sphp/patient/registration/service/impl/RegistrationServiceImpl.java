@@ -130,7 +130,7 @@ public class RegistrationServiceImpl implements RegistrationService {
         }
         OffsetDateTime now = OffsetDateTime.now(BUSINESS_ZONE_ID);
         return resourceMapper.selectPublishedSlots(doctorId, date, now).stream()
-                .map(slot -> toAppointmentSlotVO(slot, date))
+                .map(slot -> toAppointmentSlotVO(slot, date)) // 转换预约时段
                 .toList();
     }
 
@@ -234,9 +234,9 @@ public class RegistrationServiceImpl implements RegistrationService {
                 .id(record.id())
                 .name(record.name())
                 .title(record.title())
-                .specialty(record.specialty())
-                .registrationFeeCent(record.registrationFeeCent())
-                .availableCount(record.availableCount())
+                .specialty(record.specialty()) // 专业
+                .registrationFeeCent(record.registrationFeeCent()) // 就诊费用
+                .availableCount(record.availableCount()) // 可预约数量
                 .build();
     }
 
@@ -252,9 +252,9 @@ public class RegistrationServiceImpl implements RegistrationService {
                 .slotId(record.slotId())
                 .startTime(toBusinessOffsetDateTime(date, record.startTime()))
                 .endTime(toBusinessOffsetDateTime(date, record.endTime()))
-                .feeCent(record.feeCent())
-                .availableCount(resolveAvailableCount(record))
-                .scheduleStatus(record.scheduleStatus())
+                .feeCent(record.feeCent()) // 就诊费用
+                .availableCount(resolveAvailableCount(record)) // 可预约数量
+                .scheduleStatus(record.scheduleStatus()) // 排班状态
                 .build();
     }
 
@@ -279,6 +279,6 @@ public class RegistrationServiceImpl implements RegistrationService {
      * @return 东八区偏移时间
      */
     private OffsetDateTime toBusinessOffsetDateTime(LocalDate date, java.time.LocalTime time) {
-        return date.atTime(time).atZone(BUSINESS_ZONE_ID).toOffsetDateTime();
+        return date.atTime(time).atZone(BUSINESS_ZONE_ID).toOffsetDateTime(); // 组合日期和时段时间
     }
 }

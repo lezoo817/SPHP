@@ -26,7 +26,7 @@ import static com.sphp.shared.common.enums.ErrorCodeEnum.*;
 @Service
 @RequiredArgsConstructor
 public class NotificationServiceImpl implements NotificationService {
-
+    // 通知数据访问器
     private final NotificationMapper notificationMapper;
 
     /**
@@ -57,7 +57,7 @@ public class NotificationServiceImpl implements NotificationService {
         return NotificationPageVO.builder()
                 .pageNo(resolvedPageNo)
                 .pageSize(resolvedPageSize)
-                .total(notificationMapper.countNotifications(userId, patientId, read, resolvedType))
+                .total(notificationMapper.countNotifications(userId, patientId, read, resolvedType)) // 通知总数
                 .records(records)
                 .build();
     }

@@ -12,6 +12,7 @@ import static com.sphp.patient.common.constant.NotificationConstant.FOLLOW_UP_QU
 @Component
 @RequiredArgsConstructor
 public class FollowUpReminderConsumer {
+    // 通知创建消费者
     private final NotificationCreateConsumer notificationCreateConsumer;
 
     /**

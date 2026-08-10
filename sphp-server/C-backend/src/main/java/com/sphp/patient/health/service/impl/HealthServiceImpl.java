@@ -185,7 +185,10 @@ public class HealthServiceImpl implements HealthService {
         if (affected != 1) {
             throw notFound("过敏史不存在或已删除");
         }
-        return HealthRecordDeleteVO.builder().id(allergyId).deletedAt(now).build();
+        return HealthRecordDeleteVO.builder()
+                .id(allergyId)
+                .deletedAt(now)
+                .build();
     }
 
     /**
@@ -203,7 +206,7 @@ public class HealthServiceImpl implements HealthService {
         PatientMedicalHistory history = new PatientMedicalHistory();
         history.setPatientId(targetPatientId);
         history.setContent(request.getContent());
-        history.setOccurredAt(request.getOccurredAt());
+        history.setOccurredAt(request.getOccurredAt()); // 既往史发生时间
         // 插入结果必须为一条，避免数据库异常被包装为伪成功响应
         if (historyMapper.insert(history) != 1) {
             throw new CAuthException(SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, "既往史保存失败");
@@ -225,6 +228,7 @@ public class HealthServiceImpl implements HealthService {
      */
     @Override
     public MedicalHistoryUpdateVO updateMedicalHistory(Long historyId, MedicalHistoryUpdateRequest request) {
+        // 查询当前账号可访问的既往史
         PatientMedicalHistory existing = historyMapper.selectOne(Wrappers.<PatientMedicalHistory>lambdaQuery()
                 .eq(PatientMedicalHistory::getId, historyId)
                 .isNull(PatientMedicalHistory::getDeletedAt));
@@ -266,6 +270,7 @@ public class HealthServiceImpl implements HealthService {
      */
     @Override
     public HealthRecordDeleteVO deleteMedicalHistory(Long historyId) {
+        // 查询当前账号可访问的既往史
         PatientMedicalHistory existing = historyMapper.selectOne(Wrappers.<PatientMedicalHistory>lambdaQuery()
                 .eq(PatientMedicalHistory::getId, historyId)
                 .isNull(PatientMedicalHistory::getDeletedAt));
@@ -293,6 +298,7 @@ public class HealthServiceImpl implements HealthService {
     private Long resolveAccessiblePatientId(Long patientId) {
         Long userId = CUserContext.getRequired().userId();
         if (patientId == null) {
+            // 查询当前账号的本人就诊人
             Long selfPatientId = healthPatientMapper.selectSelfPatientId(userId);
             if (selfPatientId == null) {
                 throw notFound("当前账号未找到有效本人就诊人");

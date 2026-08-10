@@ -10,6 +10,9 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
+
+import static com.sphp.patient.common.enums.NotificationTypeEnum.APPOINTMENT;
+
 /** 挂号支付超时消费者。 */
 @Component @RequiredArgsConstructor
 public class RegisteringAppointmentTimeoutConsumer {
@@ -43,7 +46,7 @@ public class RegisteringAppointmentTimeoutConsumer {
             }
             // 仅在条件取消成功后创建超时通知，避免已支付订单被误通知。
             notificationEventProducer.publishNotification("APPOINTMENT_TIMEOUT", r.id(), event.userId(), r.patientId(),
-                    NotificationTypeEnum.APPOINTMENT, "挂号订单已超时", "订单未在规定时间内支付，已自动取消。");
+                    APPOINTMENT, "挂号订单已超时", "订单未在规定时间内支付，已自动取消。");
         }
     }
 }

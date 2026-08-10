@@ -62,6 +62,7 @@ public class ProfileController {
             @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "幂等键不能为空") String idempotencyKey,
             @Valid @RequestBody ProfileUpdateRequest request) {
         Long userId = CUserContext.getRequired().userId();
+        // 执行幂等操作
         IdempotencyPayload<ProfileUpdateVO> payload = idempotencyService.execute(
                 userId,
                 "/c/v1/profile",

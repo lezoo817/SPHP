@@ -53,14 +53,17 @@ public class NotificationCreateConsumer {
      */
     public void dispatchNotificationEvent(Object event) {
         if (event instanceof NotificationCreateEvent notificationEvent) {
+            // 保存通知
             persistNotification(notificationEvent);
             return;
         }
         if (event instanceof OnlineConsultationRepliedEvent repliedEvent) {
+            // 保存在线问诊回复通知
             persistOnlineConsultationNotifications(repliedEvent);
             return;
         }
         if (event instanceof ConsultationMessageCreatedEvent messageEvent && "DOCTOR".equals(messageEvent.senderType())) {
+            // 保存在线问诊消息通知
             persistOnlineConsultationMessageNotifications(messageEvent);
             return;
         }

@@ -53,7 +53,7 @@ public class NotificationReminderScheduler {
     }
 
     /** 扫描到期随访计划并发送提醒消息。 */
-    @Scheduled(fixedDelayString = "${sphp.notification.scan-interval-millis}")
+    @Scheduled(fixedDelayString = "${sphp.notification.scan-interval-millis}") // 间隔毫秒数
     public void scanFollowUpReminders() {
         OffsetDateTime now = OffsetDateTime.now();
         notificationMapper.selectDueFollowUpReminders(now).forEach(record ->

@@ -15,7 +15,9 @@ import static com.sphp.patient.common.constant.NotificationConstant.REMINDER_QUE
 @Component
 @RequiredArgsConstructor
 public class MedicationReminderConsumer {
+    // 通知创建消费者
     private final NotificationCreateConsumer notificationCreateConsumer;
+    // 通知Mapper
     private final NotificationMapper notificationMapper;
 
     /**
