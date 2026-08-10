@@ -6,7 +6,7 @@
 import { Button, Tooltip, Typography } from 'antd';
 import { PlayCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import styles from './index.module.less';
+import styles from './StartConsultArea.module.less';
 
 const { Text } = Typography;
 
@@ -48,11 +48,11 @@ export default function StartConsultArea({
           开始接诊
         </Button>
       </Tooltip>
-      <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginTop: 8 }}>
+      <Text type="secondary" className={styles.hint}>
         {slotInfo ? `预约时段：${slotInfo}` : '未配置号源时段'}
         {slotInfo && !withinSlot ? '（当前不在接诊时间内）' : ''}
       </Text>
-      <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginTop: 4 }}>
+      <Text type="secondary" className={styles.hintSecondary}>
         点击后开始接诊，将进入接诊中状态
       </Text>
     </div>

@@ -21,14 +21,7 @@ export default function ConsultQueuePage() {
 
   if (consult.isAdmin) {
     return (
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: 300,
-        }}
-      >
+      <div className={styles.adminEmpty}>
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={<Text type="secondary">管理员不参与接诊，无需使用接诊台</Text>}

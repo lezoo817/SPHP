@@ -24,6 +24,7 @@ import {
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { getDrugs, getTemplates, precheckPrescription } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
+import styles from './PrescriptionFormModal.module.less';
 
 /** 单行药品明细表单值（对齐 PrescriptionSubmitRequest.ItemDTO） */
 interface PrescriptionItemFormValue {
@@ -315,7 +316,7 @@ export default function PrescriptionFormModal({
     >
       <Spin spinning={submitting}>
         {/* 处方模板带入入口（可编辑后提交） */}
-        <div style={{ marginBottom: 12 }}>
+        <div className={styles.templateArea}>
           <Space>
             <Select
               allowClear
@@ -335,14 +336,14 @@ export default function PrescriptionFormModal({
         {/* 跨药品风险（重复用药）：涉及两行，置顶汇总 */}
         {!result && summaryWarnings.length > 0 && (
           <Alert
-            style={{ marginBottom: 12 }}
+            className={styles.summaryAlert}
             type="warning"
             showIcon
             message="重复用药提示"
             description={
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
+              <ul className={styles.summaryList}>
                 {summaryWarnings.map((w, i) => (
-                  <li key={i} style={{ fontSize: 12 }}>
+                  <li key={i} className={styles.summaryItem}>
                     {w.message}
                   </li>
                 ))}
@@ -365,103 +366,103 @@ export default function PrescriptionFormModal({
                       ? warningsByDrug[rowDrugId]
                       : undefined;
                   return (
-                    <div
-                      key={field.key}
-                      style={{
-                        border: '1px solid #f0f0f0',
-                        borderRadius: 4,
-                        padding: '8px 12px 0',
-                        marginBottom: 8,
-                      }}
-                    >
-                    <Space style={{ display: 'flex', marginBottom: 8 }} align="baseline" wrap>
-                      <Form.Item
-                        name={[field.name, 'drugId']}
-                        rules={[{ required: true, message: '请选择药品' }]}
-                        style={{ marginBottom: 8 }}
+                    <div key={field.key} className={styles.itemRow}>
+                      <Space
+                        className={styles.itemLine}
+                        align="baseline"
+                        wrap
                       >
-                        <Select
-                          showSearch
-                          placeholder="搜索药品名称"
-                          style={{ width: 260 }}
-                          options={drugOptions}
-                          onSearch={handleDrugSearch}
-                          filterOption={(input, option) =>
-                            String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                          }
-                        />
-                      </Form.Item>
-                      <Form.Item
-                        name={[field.name, 'usageMethod']}
-                        rules={[{ required: true, message: '用法必填' }]}
-                        style={{ marginBottom: 8 }}
-                      >
-                        <Select
-                          placeholder="用法"
-                          style={{ width: 90 }}
-                          options={USAGE_METHODS}
-                        />
-                      </Form.Item>
-                      <Form.Item name={[field.name, 'days']} rules={[{ required: true, message: '天数必填' }]} style={{ marginBottom: 8 }}>
-                        <InputNumber addonAfter="天" min={1} placeholder="天数" style={{ width: 100 }} />
-                      </Form.Item>
-                      <Form.Item
-                        name={[field.name, 'quantity']}
-                        rules={[{ required: true, message: '数量必填' }]}
-                        style={{ marginBottom: 8 }}
-                      >
-                        <InputNumber addonAfter="盒/瓶" min={1} placeholder="数量" style={{ width: 120 }} />
-                      </Form.Item>
-                      {fields.length > 1 && (
-                        <MinusCircleOutlined onClick={() => remove(field.name)} />
-                      )}
-                    </Space>
-                    <Space style={{ display: 'flex', marginBottom: 8 }} align="baseline" wrap>
-                      <Form.Item
-                        name={[field.name, 'dosage']}
-                        rules={[{ required: true, message: '用量必填' }]}
-                        style={{ marginBottom: 8 }}
-                      >
-                        <Input placeholder="用量（如 1片 / 5ml）" style={{ width: 160 }} />
-                      </Form.Item>
-                      <Form.Item
-                        name={[field.name, 'frequency']}
-                        rules={[{ required: true, message: '频次必填' }]}
-                        style={{ marginBottom: 8 }}
-                      >
-                        <Input placeholder="频次（如 每日3次 / QD）" style={{ width: 200 }} />
-                      </Form.Item>
-                    </Space>
-                    {/* 单药规则实时预警：过敏/禁忌（ERROR 红）/ 高危药品（AUDIT 橙），附命中来源 */}
-                    {!result && rowWarnings && rowWarnings.length > 0 && (
-                      <div style={{ marginBottom: 8 }}>
-                        {rowWarnings.map((w, wi) => (
-                          <Alert
-                            key={wi}
-                            type={
-                              w.level === 'ERROR'
-                                ? 'error'
-                                : w.level === 'AUDIT'
-                                  ? 'warning'
-                                  : 'info'
-                            }
-                            showIcon
-                            style={{ marginTop: 4, padding: '4px 12px' }}
-                            message={
-                              <span style={{ fontSize: 12 }}>
-                                {w.message}
-                                {w.source ? (
-                                  <span style={{ color: 'rgba(0,0,0,0.45)' }}>
-                                    （{w.source}）
-                                  </span>
-                                ) : null}
-                              </span>
+                        <Form.Item
+                          name={[field.name, 'drugId']}
+                          rules={[{ required: true, message: '请选择药品' }]}
+                          className={styles.formItem}
+                        >
+                          <Select
+                            showSearch
+                            placeholder="搜索药品名称"
+                            style={{ width: 260 }}
+                            options={drugOptions}
+                            onSearch={handleDrugSearch}
+                            filterOption={(input, option) =>
+                              String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                             }
                           />
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                        </Form.Item>
+                        <Form.Item
+                          name={[field.name, 'usageMethod']}
+                          rules={[{ required: true, message: '用法必填' }]}
+                          className={styles.formItem}
+                        >
+                          <Select
+                            placeholder="用法"
+                            style={{ width: 90 }}
+                            options={USAGE_METHODS}
+                          />
+                        </Form.Item>
+                        <Form.Item
+                          name={[field.name, 'days']}
+                          rules={[{ required: true, message: '天数必填' }]}
+                          className={styles.formItem}
+                        >
+                          <InputNumber addonAfter="天" min={1} placeholder="天数" style={{ width: 100 }} />
+                        </Form.Item>
+                        <Form.Item
+                          name={[field.name, 'quantity']}
+                          rules={[{ required: true, message: '数量必填' }]}
+                          className={styles.formItem}
+                        >
+                          <InputNumber addonAfter="盒/瓶" min={1} placeholder="数量" style={{ width: 120 }} />
+                        </Form.Item>
+                        {fields.length > 1 && (
+                          <MinusCircleOutlined onClick={() => remove(field.name)} />
+                        )}
+                      </Space>
+                      <Space className={styles.itemLine} align="baseline" wrap>
+                        <Form.Item
+                          name={[field.name, 'dosage']}
+                          rules={[{ required: true, message: '用量必填' }]}
+                          className={styles.formItem}
+                        >
+                          <Input placeholder="用量（如 1片 / 5ml）" style={{ width: 160 }} />
+                        </Form.Item>
+                        <Form.Item
+                          name={[field.name, 'frequency']}
+                          rules={[{ required: true, message: '频次必填' }]}
+                          className={styles.formItem}
+                        >
+                          <Input placeholder="频次（如 每日3次 / QD）" style={{ width: 200 }} />
+                        </Form.Item>
+                      </Space>
+                      {/* 单药规则实时预警：过敏/禁忌（ERROR 红）/ 高危药品（AUDIT 橙），附命中来源 */}
+                      {!result && rowWarnings && rowWarnings.length > 0 && (
+                        <div className={styles.rowWarnings}>
+                          {rowWarnings.map((w, wi) => (
+                            <Alert
+                              key={wi}
+                              type={
+                                w.level === 'ERROR'
+                                  ? 'error'
+                                  : w.level === 'AUDIT'
+                                    ? 'warning'
+                                    : 'info'
+                              }
+                              showIcon
+                              className={styles.rowWarning}
+                              message={
+                                <span className={styles.warningMessage}>
+                                  {w.message}
+                                  {w.source ? (
+                                    <span className={styles.warningSource}>
+                                      （{w.source}）
+                                    </span>
+                                  ) : null}
+                                </span>
+                              }
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
                 <Button
@@ -480,7 +481,7 @@ export default function PrescriptionFormModal({
 
         {result && (
           <Alert
-            style={{ marginTop: 12 }}
+            className={styles.resultAlert}
             type={result.riskWarnings.some((w) => w.level === 'ERROR') ? 'error' : 'success'}
             showIcon
             message={
@@ -498,7 +499,7 @@ export default function PrescriptionFormModal({
                 {result.riskWarnings.length > 0 && (
                   <Space direction="vertical" size={2} style={{ marginTop: 4 }}>
                     {result.riskWarnings.map((w, i) => (
-                      <div key={i} style={{ fontSize: 12 }}>
+                      <div key={i} className={styles.resultItem}>
                         {w.level === 'ERROR' ? '❌' : w.level === 'AUDIT' ? '⚠️ 待审核' : 'ℹ️'}{' '}
                         {w.message}
                       </div>

@@ -36,6 +36,9 @@ public class MedicationPlanVO {
     @Schema(description = "用法")
     private String usageMethod;
 
+    @Schema(description = "用药天数")
+    private Integer durationDays;
+
     @Schema(description = "状态：ACTIVE / PAUSED / COMPLETED")
     private String status;
 
