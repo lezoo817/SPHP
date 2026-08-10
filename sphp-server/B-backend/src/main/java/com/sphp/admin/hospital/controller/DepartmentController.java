@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/b/admin/departments")
-@Tag(name = "2-科室管理", description = "科室列表/详情/新增/编辑/启停（管理员）")
+@Tag(name = "科室管理", description = "科室列表/详情/新增/编辑/启停（管理员）")
 @RequiredArgsConstructor
 public class DepartmentController {
 
@@ -39,7 +39,7 @@ public class DepartmentController {
 
     /** 每页大小钳制到 [1, MAX_PAGE_SIZE] */
     private static int clampSize(int size) {
-        return Math.max(1, Math.min(size, MAX_PAGE_SIZE));
+        return Math.clamp(size, 1, MAX_PAGE_SIZE);
     }
 
     private final DepartmentService departmentService;
