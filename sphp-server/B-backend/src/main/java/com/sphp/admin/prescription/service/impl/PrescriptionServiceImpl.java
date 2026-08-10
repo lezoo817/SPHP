@@ -81,7 +81,6 @@ public class PrescriptionServiceImpl implements PrescriptionService {
 
     /** 处方状态 */
     private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
-    private static final String STATUS_DRAFT = "DRAFT";
     private static final String STATUS_SUBMITTED = "SUBMITTED";
     private static final String STATUS_APPROVED = "APPROVED";
     private static final String STATUS_REJECTED = "REJECTED";
@@ -125,7 +124,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
 
         // 2. 校验药品
         Set<Long> drugIds = items.stream().map(PrescriptionSubmitRequest.ItemDTO::getDrugId).collect(Collectors.toSet());
-        Map<Long, Drug> drugMap = drugMapper.selectBatchIds(drugIds).stream()
+        Map<Long, Drug> drugMap = drugMapper.selectByIds(drugIds).stream()
                 .filter(d -> d.getDeletedAt() == null)
                 .collect(Collectors.toMap(Drug::getId, d -> d, (a, b) -> a));
 
@@ -202,7 +201,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
         Set<Long> drugIds = items.stream()
                 .map(PrescriptionSubmitRequest.ItemDTO::getDrugId)
                 .collect(Collectors.toSet());
-        Map<Long, Drug> drugMap = drugMapper.selectBatchIds(drugIds).stream()
+        Map<Long, Drug> drugMap = drugMapper.selectByIds(drugIds).stream()
                 .filter(d -> d.getDeletedAt() == null)
                 .collect(Collectors.toMap(Drug::getId, d -> d, (a, b) -> a));
 
@@ -253,7 +252,7 @@ public class PrescriptionServiceImpl implements PrescriptionService {
         List<PrescriptionItem> items = prescriptionItemMapper.selectList(
                 Wrappers.<PrescriptionItem>lambdaQuery()
                         .eq(PrescriptionItem::getPrescriptionId, id));
-        Map<Long, Drug> drugMap = drugMapper.selectBatchIds(
+        Map<Long, Drug> drugMap = drugMapper.selectByIds(
                         items.stream().map(PrescriptionItem::getDrugId).toList()).stream()
                 .collect(Collectors.toMap(Drug::getId, d -> d, (a, b) -> a));
 
