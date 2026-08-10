@@ -297,7 +297,8 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
 
     @Override
     public PatientDetailVO getPatientDetail(Long consultId) {
-        ConsultRecord record = getConsultInScope(consultId);
+        // 医院级只读校验：接诊历史跨医生可见，患者详情随之放开到本院边界（写操作仍走严格 getConsultInScope）
+        ConsultRecord record = getConsultInHospitalScope(consultId);
         Patient patient = patientMapper.selectById(record.getPatientId());
         if (patient == null || patient.getDeletedAt() != null) {
             throw new BusinessException(ERR_PATIENT_NOT_FOUND, "患者不存在");
@@ -363,6 +364,10 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
     public Long addPatientAllergy(Long consultId, AllergyCreateRequest request) {
         // 复用问诊归属校验：存在 + 未软删 + 医生属本院 + 角色边界（医生本人/科室主任本室/管理员全院）
         ConsultRecord record = getConsultInScope(consultId);
+        // 仅接诊中可补录：结束后患者档案进入只读态，禁止再修改过敏史（前端同步按状态隐藏入口）
+        if (!STATUS_IN_PROGRESS.equals(record.getStatus())) {
+            throw new BusinessException(ERR_CONSULT_NOT_IN_PROGRESS, "仅接诊中可补录过敏史");
+        }
         Patient patient = patientMapper.selectById(record.getPatientId());
         if (patient == null || patient.getDeletedAt() != null) {
             throw new BusinessException(ERR_PATIENT_NOT_FOUND, "患者不存在");
@@ -553,7 +558,8 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
 
     @Override
     public ConsultHistoryDetailVO getHistoryDetail(Long consultId) {
-        ConsultRecord record = getConsultInScope(consultId);
+        // 医院级只读校验：与 pageHistory 的全院历史列表可见范围保持一致（跨医生协同查看）
+        ConsultRecord record = getConsultInHospitalScope(consultId);
         Doctor doctor = doctorMapper.selectById(record.getDoctorId());
         String doctorName = (doctor != null && doctor.getDeletedAt() == null) ? doctor.getName() : null;
         List<Prescription> prescriptions = prescriptionMapper.selectList(
@@ -621,6 +627,31 @@ public class DoctorConsultServiceImpl implements DoctorConsultService {
             if (consultDoctor == null || !consultDoctor.getDeptId().equals(scope.deptId())) {
                 throw new BusinessException(ERR_NO_PERMISSION, "无权查看该患者");
             }
+        }
+        return record;
+    }
+
+    /**
+     * 获取问诊记录并仅校验当前用户所在医院边界（不限制医生 / 科室）。
+     *
+     * <p>用于接诊历史 / 患者详情的只读场景：历史列表本就按本院全部医生展示（跨医生协同查看），
+     * 详情只读校验到医院一级与 {@link #pageHistory} 的可见范围保持一致。
+     * 写操作仍走 {@link #getConsultInScope} 的严格角色校验。
+     *
+     * @param consultId 问诊记录 ID
+     * @return 问诊记录实体
+     * @throws BusinessException 记录不存在 / 已软删 / 问诊医生不属于当前医院时抛出
+     */
+    private ConsultRecord getConsultInHospitalScope(Long consultId) {
+        ConsultRecord record = consultRecordMapper.selectById(consultId);
+        if (record == null || record.getDeletedAt() != null) {
+            throw new BusinessException(ErrorCodeEnum.INVALID_USER_INPUT, "问诊记录不存在");
+        }
+        DataScope scope = currentUserService.getCurrentDataScope();
+        Doctor doctor = doctorMapper.selectById(record.getDoctorId());
+        if (doctor == null || doctor.getDeletedAt() != null
+                || !doctor.getHospitalId().equals(scope.hospitalId())) {
+            throw new BusinessException(ERR_NO_PERMISSION, "无权查看该患者");
         }
         return record;
     }

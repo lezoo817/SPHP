@@ -44,6 +44,8 @@ interface PatientInfoBarProps {
   selectedConsultId: number | null;
   detailLoading: boolean;
   patientDetail: API.PatientDetail | undefined;
+  /** 是否允许补录过敏史（仅接诊中 IN_PROGRESS 为 true，历史只读） */
+  canEditAllergy: boolean;
   /** 补录过敏史（父层负责刷新患者详情缓存） */
   onAddAllergy: (data: API.AllergyCreateReq) => Promise<void>;
 }
@@ -79,6 +81,7 @@ export default function PatientInfoBar({
   selectedConsultId,
   detailLoading,
   patientDetail,
+  canEditAllergy,
   onAddAllergy,
 }: PatientInfoBarProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -159,16 +162,18 @@ export default function PatientInfoBar({
           ) : (
             <Tag style={{ marginInlineEnd: 0 }}>无过敏</Tag>
           )}
-          {/* 接诊中随时补录：医生发现患者过敏可立即录入，下次开方即参与拦截 */}
-          <Button
-            type="link"
-            size="small"
-            icon={<PlusOutlined />}
-            style={{ paddingInline: 4 }}
-            onClick={openAllergyModal}
-          >
-            过敏
-          </Button>
+          {/* 仅接诊中可补录：医生发现患者过敏可立即录入，下次开方即参与拦截；历史/待接诊只读 */}
+          {canEditAllergy && (
+            <Button
+              type="link"
+              size="small"
+              icon={<PlusOutlined />}
+              style={{ paddingInline: 4 }}
+              onClick={openAllergyModal}
+            >
+              过敏
+            </Button>
+          )}
         </Space>
         <Button
           type="link"
@@ -229,14 +234,16 @@ export default function PatientInfoBar({
               </>
             }
             extra={
-              <Button
-                type="link"
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={openAllergyModal}
-              >
-                添加
-              </Button>
+              canEditAllergy ? (
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<PlusOutlined />}
+                  onClick={openAllergyModal}
+                >
+                  添加
+                </Button>
+              ) : null
             }
           >
             {allergies.length > 0 ? (

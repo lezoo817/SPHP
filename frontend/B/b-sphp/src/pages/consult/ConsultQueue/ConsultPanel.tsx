@@ -111,6 +111,7 @@ export default function ConsultPanel({
           selectedConsultId={selectedConsultId}
           detailLoading={detailLoading}
           patientDetail={patientDetail}
+          canEditAllergy={selectedStatus === 'IN_PROGRESS'}
           onAddAllergy={handleAddAllergy}
         />
       </div>
