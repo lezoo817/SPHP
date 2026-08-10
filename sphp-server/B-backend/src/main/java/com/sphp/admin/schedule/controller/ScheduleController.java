@@ -87,7 +87,7 @@ public class ScheduleController {
     }
 
     @PutMapping("/schedules/{id}/publish")
-    @Operation(summary = "发布排班", description = "仅 ADMIN；DRAFT→PUBLISHED，初始化 Redis 号源缓存 slot:remain:{slotId}")
+    @Operation(summary = "发布排班", description = "仅 ADMIN；DRAFT→PUBLISHED，初始化 Redis 号源缓存 cend:slot:remain:{slotId}")
     public Result<SchedulePublishVO> publish(@PathVariable Long id) {
         return Result.success("发布成功", scheduleService.publish(id));
     }
