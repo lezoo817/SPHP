@@ -431,13 +431,42 @@ export interface AgentHistoryMessage {
  *
  * ``anchor`` 为该卡片产生轮次结束时可见消息（user/assistant）总数，前端据此
  * 把卡片插回对话中对应消息之后（而非全部堆到末尾）；``confirmed`` 标识 L2
- * 确认卡是否已被用户确认成功（历史重放据此渲染"已完成"态）。
+ * 确认卡是否已被用户确认成功；``selected``/``selection`` 标识选医生卡与记录
+ * 选择卡是否已被用户选择过及选中内容（历史重放据此渲染"已选"态）。
  */
 export type AgentHistoryCard =
-  | { event: 'card'; payload: AgentCardEvent; anchor: number; confirmed: boolean }
-  | { event: 'action_card'; payload: AgentActionCardEvent; anchor: number; confirmed: boolean }
-  | { event: 'record_picker'; payload: AgentRecordPickerEvent; anchor: number; confirmed: boolean }
-  | { event: 'options'; payload: AgentOptionsEvent; anchor: number; confirmed: boolean };
+  | {
+      event: 'card';
+      payload: AgentCardEvent;
+      anchor: number;
+      confirmed: boolean;
+      selected: boolean;
+      selection: Record<string, unknown> | null;
+    }
+  | {
+      event: 'action_card';
+      payload: AgentActionCardEvent;
+      anchor: number;
+      confirmed: boolean;
+      selected: boolean;
+      selection: Record<string, unknown> | null;
+    }
+  | {
+      event: 'record_picker';
+      payload: AgentRecordPickerEvent;
+      anchor: number;
+      confirmed: boolean;
+      selected: boolean;
+      selection: Record<string, unknown> | null;
+    }
+  | {
+      event: 'options';
+      payload: AgentOptionsEvent;
+      anchor: number;
+      confirmed: boolean;
+      selected: boolean;
+      selection: Record<string, unknown> | null;
+    };
 
 /** 历史会话消息响应（GET /api/chat/sessions/{id}/messages）。 */
 export interface AgentSessionHistory {

@@ -106,17 +106,30 @@ function buildHistoryCardEntries(cards: AgentHistoryCard[]): AgentEntry[] {
         },
       });
     } else if (card.event === 'record_picker') {
+      // 已选择过（后端 preset 确认后标记）-> 渲染为"已确认"，不再可交互
+      const recordSelected = card.selected === true;
+      const rawRecordId = card.selection?.record_id;
+      const selectedRecordId =
+        recordSelected && typeof rawRecordId === 'number' && Number.isFinite(rawRecordId)
+          ? rawRecordId
+          : undefined;
       entries.push({
         kind: 'record_picker',
         data: {
           ...card.payload,
           id: genId('record-picker'),
-          status: 'pending' as const,
+          ...(selectedRecordId !== undefined ? { selectedId: selectedRecordId } : {}),
+          status: (recordSelected ? 'confirmed' : 'pending') as AgentRecordPickerCard['status'],
           createdAt: Date.now(),
         },
       });
     } else if (card.event === 'options') {
       const p = card.payload;
+      // 已选择过（后端 tool_caller 匹配点选后标记）-> 恢复选中项，不再可点选
+      const optionSelected = card.selected === true;
+      const rawDoctorId = card.selection?.doctor_id;
+      const selectedId =
+        optionSelected && rawDoctorId != null ? String(rawDoctorId) : undefined;
       entries.push({
         kind: 'select',
         data: {
@@ -125,6 +138,7 @@ function buildHistoryCardEntries(cards: AgentHistoryCard[]): AgentEntry[] {
           items: p.items,
           prompt: p.prompt,
           replyTemplate: p.reply_template || '我选择{label}',
+          ...(selectedId !== undefined ? { selectedId } : {}),
           createdAt: Date.now(),
         },
       });
