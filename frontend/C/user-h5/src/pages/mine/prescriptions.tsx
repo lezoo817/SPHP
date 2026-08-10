@@ -8,6 +8,7 @@ import { getPrescriptions } from '../../services/consultation';
 import { getFamilyMembers } from '../../services/family';
 import type { FamilyMember, Prescription } from '../../typings/api';
 import { getApiErrorMessage } from '../../utils/form';
+import { buildPharmacyHomePath } from '../../utils/pharmacy';
 import { buildMinePrescriptionDetailPath, filterPrescriptionsByDate, formatPrescriptionIssuedAt, getPrescriptionDisplayNumber, getRecentPrescriptionRange, isPrescriptionDateRangeValid, mergePrescriptionPages, type PrescriptionDateRange } from '../../utils/prescription';
 
 const PRESCRIPTION_PAGE_SIZE = 100;
@@ -17,6 +18,7 @@ export default function MinePrescriptionsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const query = new URLSearchParams(location.search);
+  const entrySource = query.get('entrySource') === 'pharmacy' ? 'pharmacy' : undefined;
   const initialRange = useMemo(() => ({
     startDate: query.get('startDate') || getRecentPrescriptionRange(30).startDate,
     endDate: query.get('endDate') || getRecentPrescriptionRange(30).endDate,
@@ -95,14 +97,17 @@ export default function MinePrescriptionsPage() {
 
   /** 携带当前筛选条件进入既有处方详情，详情返回时可还原列表上下文。 */
   function openPrescription(prescription: Prescription) {
-    navigate(buildMinePrescriptionDetailPath(prescription.id, patientId, range, prescription.issuedAt));
+    navigate(buildMinePrescriptionDetailPath(prescription.id, patientId, range, prescription.issuedAt, entrySource));
   }
 
   const currentPatient = members.find((member) => member.patientId === patientId);
   const filteredPrescriptions = filterPrescriptionsByDate(prescriptions, range);
   const hasMore = prescriptions.length < total;
 
-  return <main className="subpage report-page prescription-query-page"><PageHeader title="我的处方" backPath="/mine" /><section className="subpage-content">
+  // 仅从购药进入时回到购药；“我的”入口仍保持原有返回逻辑。
+  const backPath = entrySource === 'pharmacy' ? buildPharmacyHomePath(patientId) : '/mine';
+
+  return <main className="subpage report-page prescription-query-page"><PageHeader title="我的处方" backPath={backPath} /><section className="subpage-content">
     <button className="assistant-patient mine-prescription-patient" type="button" onClick={() => setPatientOpen(true)}>就诊人 <b>{currentPatient?.name || '未选择'}</b><span>{currentPatient?.phone || ''}</span><b>切换 <RefreshCw size={18} /></b></button>
     <section className="report-filter-card"><div className="report-filter-card__title"><CalendarDays size={21} /><h2>全部处方</h2></div><div className="report-date-row"><label>开始日期<input aria-label="处方开始日期" type="date" value={range.startDate} onChange={(event) => changeRange({ ...range, startDate: event.target.value })} /></label><label>结束日期<input aria-label="处方结束日期" type="date" value={range.endDate} onChange={(event) => changeRange({ ...range, endDate: event.target.value })} /></label></div><div className="report-quick-ranges">{[30, 90, 180].map((days) => <button className={range.startDate === getRecentPrescriptionRange(days).startDate && range.endDate === getRecentPrescriptionRange(days).endDate ? 'active' : ''} key={days} type="button" onClick={() => selectRecentRange(days)}>最近{days}天</button>)}</div>{rangeNotice && <p className="form-error">{rangeNotice}</p>}</section>
     {loading && !prescriptions.length && <p className="empty-state">正在读取处方...</p>}

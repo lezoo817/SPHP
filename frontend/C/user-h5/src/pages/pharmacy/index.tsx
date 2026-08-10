@@ -64,7 +64,8 @@ export default function PharmacyPage() {
       setNotice('暂未获取到就诊人信息');
       return;
     }
-    nav(`/mine/prescriptions?patientId=${patientId}`);
+    // 标记从购药页进入，处方页返回时才能恢复当前购药就诊人与入口页面。
+    nav(`/mine/prescriptions?patientId=${patientId}&entrySource=pharmacy`);
   }
 
   /**

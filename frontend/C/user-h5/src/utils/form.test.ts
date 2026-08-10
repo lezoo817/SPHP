@@ -489,6 +489,11 @@ describe('我的处方查询规则', () => {
     expect(buildAssistantPrescriptionDetailPath(1001, 2001, '2026-08-05T10:00:00+08:00', 801)).toBe('/assistant/prescription/1001?source=consultation&patientId=2001&issuedAt=2026-08-05T10%3A00%3A00%2B08%3A00&consultationId=801');
   });
 
+  it('从购药进入我的处方时保留逐级返回来源', () => {
+    const path = buildMinePrescriptionDetailPath(1001, 2001, { startDate: '2026-07-01', endDate: '2026-08-05' }, '2026-08-05T10:00:00+08:00', 'pharmacy');
+    expect(buildMinePrescriptionListPath(new URLSearchParams(path.split('?')[1]))).toBe('/mine/prescriptions?patientId=2001&startDate=2026-07-01&endDate=2026-08-05&entrySource=pharmacy');
+  });
+
   it('处方展示编号使用开具时间戳和四位随机尾号', () => {
     expect(createPrescriptionDisplayNumber('2026-08-05T10:00:00+08:00', 7)).toBe(`${Date.parse('2026-08-05T10:00:00+08:00')}0007`);
     expect(createPrescriptionDisplayNumber('2026-08-05T10:00:00+08:00', 12345)).toBe(`${Date.parse('2026-08-05T10:00:00+08:00')}9999`);
@@ -568,20 +573,15 @@ describe('健康待办、提醒与通知规则', () => {
     expect(todos[1].departmentLocation).toBeUndefined();
   });
 
-  it('仅将已完成在线问诊聚合为首页待办', () => {
+  it('不将已完成在线问诊聚合为首页待办', () => {
     const todos = buildHealthTodos([{
       patientId: 1,
       patientName: '张三',
       appointments: [],
-      consultations: [
-        { id: 801, doctorName: '刘医生', status: 'COMPLETED', updatedAt: '2026-08-09T21:51:00+08:00' },
-        { id: 802, doctorName: '王医生', status: 'PENDING', updatedAt: '2026-08-09T22:00:00+08:00' },
-      ],
       medicationPlans: [],
       followUps: [],
     }]);
-    expect(todos).toHaveLength(1);
-    expect(todos[0]).toMatchObject({ id: 801, type: 'CONSULTATION', patientId: 1, detail: '问诊已完成' });
+    expect(todos).toHaveLength(0);
   });
 
   it('挂号开始后但结束前仍保持待就诊状态', () => {

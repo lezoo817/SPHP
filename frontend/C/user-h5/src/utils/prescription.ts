@@ -33,6 +33,9 @@ export interface PrescriptionDateRange {
   endDate: string;
 }
 
+/** “我的处方”列表的进入来源，用于逐级返回到正确的一级页面。 */
+export type MinePrescriptionEntrySource = 'pharmacy';
+
 /**
  * 生成以指定日期为结束的最近处方查询范围。
  * @param days 最近天数
@@ -130,12 +133,21 @@ export function formatPrescriptionIssuedAt(issuedAt?: string): string {
  * @param patientId 当前页面选择的就诊人编号
  * @param range 当前日期筛选范围
  * @param issuedAt 处方列表返回的开具时间
+ * @param entrySource 列表最初的进入来源，用于详情逐级返回
  * @returns 既有处方详情的完整跳转路径
  */
-export function buildMinePrescriptionDetailPath(prescriptionId: number, patientId: number | undefined, range: PrescriptionDateRange, issuedAt?: string): string {
+export function buildMinePrescriptionDetailPath(
+  prescriptionId: number,
+  patientId: number | undefined,
+  range: PrescriptionDateRange,
+  issuedAt?: string,
+  entrySource?: MinePrescriptionEntrySource,
+): string {
   const search = new URLSearchParams({ source: 'mine-prescriptions', startDate: range.startDate, endDate: range.endDate });
   if (patientId && patientId > 0) search.set('patientId', String(patientId));
   if (issuedAt) search.set('issuedAt', issuedAt);
+  // 详情返回列表后仍需识别最初入口，避免购药流程错误落到“我的”。
+  if (entrySource) search.set('entrySource', entrySource);
   return `/assistant/prescription/${prescriptionId}?${search.toString()}`;
 }
 
@@ -162,7 +174,7 @@ export function buildAssistantPrescriptionDetailPath(prescriptionId: number, pat
  */
 export function buildMinePrescriptionListPath(search: URLSearchParams): string {
   const params = new URLSearchParams();
-  ['patientId', 'startDate', 'endDate'].forEach((key) => {
+  ['patientId', 'startDate', 'endDate', 'entrySource'].forEach((key) => {
     const value = search.get(key);
     if (value) params.set(key, value);
   });
