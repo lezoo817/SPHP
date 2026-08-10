@@ -62,13 +62,13 @@ public interface ConsultationDataMapper {
     boolean existsConsultationAvailableDoctor(@Param("doctorId") Long doctorId);
 
     /**
-     * 查询同一患者和医生是否存在活动问诊。
+     * 查询同一患者和医生是否存在活动在线问诊。
      *
      * @param patientId 本人患者 ID
      * @param doctorId 接诊医生 ID
-     * @return 存在待接诊或进行中问诊时返回 true
+     * @return 存在无挂号关联的待接诊或进行中问诊时返回 true
      */
-    boolean existsConsultationActiveRecord(@Param("patientId") Long patientId, @Param("doctorId") Long doctorId);
+    boolean existsOnlineConsultationActiveRecord(@Param("patientId") Long patientId, @Param("doctorId") Long doctorId);
 
     /**
      * 查询本人有效过敏史，用于预问诊健康档案快照。

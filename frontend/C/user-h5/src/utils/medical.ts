@@ -37,8 +37,21 @@ export function getAppointmentStatusText(status: Appointment['status']): string 
   } as Record<Appointment['status'], string>)[status];
 }
 
-/** 计算支付到期时间剩余秒数，过期时返回零。 */
+/**
+ * 计算支付到期时间剩余秒数，过期时返回零。
+ * @param expireAt 服务端返回的支付到期时间
+ * @returns 向下取整后的剩余秒数
+ */
 export function getRemainingSeconds(expireAt?: string): number {
   return expireAt ? Math.max(0, Math.floor((new Date(expireAt).getTime() - Date.now()) / 1000)) : 0;
 }
-/** 按登录时间计算购药订单的演示预计送达时间。 */ export function getDemoArrival(loginAt:string):string{return new Date(new Date(loginAt).getTime()+22*3600*1000).toLocaleString('zh-CN',{hour:'2-digit',minute:'2-digit'});}
+
+/**
+ * 按登录时间计算购药订单的演示预计送达时间。
+ * @param loginAt 当前登录会话创建时间
+ * @returns 仅包含时分的演示送达时间
+ */
+export function getDemoArrival(loginAt: string): string {
+  const arriveAt = new Date(new Date(loginAt).getTime() + 22 * 3600 * 1000);
+  return arriveAt.toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}

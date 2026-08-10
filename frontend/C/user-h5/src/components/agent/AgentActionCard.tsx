@@ -2,6 +2,16 @@ import { Bell, MessageCircle, MapPinned } from 'lucide-react';
 import { useState } from 'react';
 import type { AgentActionCard } from '@/typings/agent';
 
+/** 受控业务交互卡片的渲染参数。 */
+interface AgentActionCardViewProps {
+  /** 后端或前端受控生成的业务动作信息。 */
+  card: AgentActionCard;
+  /** 流式响应期间禁用提交。 */
+  disabled?: boolean;
+  /** 患者确认执行动作后的回调。 */
+  onAction: (card: AgentActionCard) => void;
+}
+
 /**
  * 渲染不涉及写操作的受控业务交互卡。
  *
@@ -12,11 +22,7 @@ export function AgentActionCardView({
   card,
   disabled,
   onAction,
-}: {
-  card: AgentActionCard;
-  disabled?: boolean;
-  onAction: (card: AgentActionCard) => void;
-}) {
+}: AgentActionCardViewProps) {
   const [submitted, setSubmitted] = useState(false);
   const unavailable = disabled || submitted;
 

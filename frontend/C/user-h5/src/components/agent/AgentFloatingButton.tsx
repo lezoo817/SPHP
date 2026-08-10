@@ -51,6 +51,12 @@ function clampPos(pos: FloatPos, size = 56): FloatPos {
   };
 }
 
+/** AI 悬浮入口的渲染参数。 */
+interface AgentFloatingButtonProps {
+  /** 未发生拖动时打开 AI 助手的回调。 */
+  onClick: () => void;
+}
+
 /**
  * AI 助手悬浮球（可拖动）。
  *
@@ -58,7 +64,7 @@ function clampPos(pos: FloatPos, size = 56): FloatPos {
  * 拖动结束后水平贴边吸附（靠左贴左、靠右贴右），位置持久化到 localStorage。
  * 在 /agent 页与 /login 页不展示。
  */
-export function AgentFloatingButton({ onClick }: { onClick: () => void }) {
+export function AgentFloatingButton({ onClick }: AgentFloatingButtonProps) {
   const [pos, setPos] = useState<FloatPos>(() => loadPos() || (typeof window === 'undefined' ? { x: 0, y: 0 } : defaultPos()));
   const [dragging, setDragging] = useState(false);
 

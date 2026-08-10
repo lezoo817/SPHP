@@ -97,8 +97,8 @@ public class RegisteringServiceImpl implements RegisteringService {
         RegisteringSlotLockRecord slot = dataMapper.selectRegisteringSlotLockInfo(request.getHospitalId(), request.getSlotId());
         // 验证号源
         registeringValidateSlot(slot);
-        // 账号行锁与有效待就诊挂号检查必须先于 Redis 预扣，避免重复预约占用号源。
-        registeringEnsureUserCanBookDoctor(userId, slot.doctorId());
+        // 患者行锁与有效待就诊挂号检查必须先于 Redis 预扣，避免同一就诊人重复预约占用号源。
+        registeringEnsurePatientCanBookDoctor(patientId, slot.doctorId());
         long availableCount = dataMapper.countRegisteringAvailableSnapshots(slot.slotId());
         // 支付超时
         Duration ttl = Duration.ofSeconds(Math.max(registrationProperties.getPaymentTimeout(), 1));
@@ -196,16 +196,19 @@ public class RegisteringServiceImpl implements RegisteringService {
     }
 
     /**
-     * 查询当前账号是否已有任意就诊人的有效待就诊挂号。
+     * 查询当前就诊人是否已有指定医生的有效待就诊挂号。
      *
      * @param doctorId 医生 ID
-     * @return 当前账号的有效待就诊挂号状态
+     * @param patientId 可选就诊人 ID，未传时使用当前账号本人
+     * @return 当前就诊人的有效待就诊挂号状态
      */
     @Override
-    public RegisteringDoctorBookingStatusVO registeringGetDoctorBookingStatus(Long doctorId) {
+    public RegisteringDoctorBookingStatusVO registeringGetDoctorBookingStatus(Long doctorId, Long patientId) {
         Long userId = CUserContext.getRequired().userId();
+        // 先解析可访问就诊人，防止通过预约状态接口探测其他账号的患者挂号情况。
+        Long targetPatientId = registeringResolveAccessiblePatient(userId, patientId);
         // 与创建及支付链路复用同一有效挂号查询，保证前端展示规则与最终拦截规则一致。
-        boolean booked = dataMapper.existsRegisteringActiveDoctorAppointment(userId, doctorId);
+        boolean booked = dataMapper.existsRegisteringActivePatientDoctorAppointment(targetPatientId, doctorId);
         return RegisteringDoctorBookingStatusVO.builder()
                 .doctorId(doctorId)
                 .booked(booked)
@@ -397,8 +400,8 @@ public class RegisteringServiceImpl implements RegisteringService {
         if (!BCrypt.checkpw(request.getLoginPassword(), payment.passwordHash())) {
             throw new CAuthException(PASSWORD_VALIDATION_FAILED, HttpStatus.BAD_REQUEST, "支付密码校验失败");
         }
-        // 串行化同一账号的支付确认，防止多个待支付订单并发支付同一医生。
-        registeringEnsureUserCanBookDoctor(payment.payerUserId(), payment.doctorId());
+        // 串行化同一就诊人的支付确认，防止多个待支付订单并发支付同一医生。
+        registeringEnsurePatientCanBookDoctor(payment.patientId(), payment.doctorId());
         // 条件更新确保支付、超时消费者和主动取消只有一个请求能完成状态流转。
         if (dataMapper.registeringMarkPaymentSuccess(paymentId, now) != 1
                 || dataMapper.registeringMarkAppointmentPaid(payment.appointmentId(), now) != 1
@@ -510,20 +513,20 @@ public class RegisteringServiceImpl implements RegisteringService {
     }
 
     /**
-     * 串行校验当前账号是否已有指定医生的有效待就诊挂号。
+     * 串行校验当前就诊人是否已有指定医生的有效待就诊挂号。
      *
-     * @param userId C 端用户 ID
+     * @param patientId 就诊人 ID
      * @param doctorId 医生 ID
-     * @throws CAuthException 当前账号不存在或已有该医生待就诊挂号时抛出
+     * @throws CAuthException 就诊人不存在或已有该医生待就诊挂号时抛出
      */
-    private void registeringEnsureUserCanBookDoctor(Long userId, Long doctorId) {
-        // 锁定账号行，使挂号创建与支付确认在同一账号范围内串行执行。
-        if (dataMapper.registeringLockActiveUser(userId) == null) {
-            throw new CAuthException(UNAUTHORIZED, HttpStatus.UNAUTHORIZED, "登录状态已失效");
+    private void registeringEnsurePatientCanBookDoctor(Long patientId, Long doctorId) {
+        // 锁定患者行，使挂号创建与支付确认在同一就诊人范围内串行执行。
+        if (dataMapper.registeringLockActivePatient(patientId) == null) {
+            throw new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, "就诊人不存在或已停用");
         }
         // 已完成、未到诊、取消和时段结束的记录不会命中该查询，完成就诊后允许再次预约。
-        if (dataMapper.existsRegisteringActiveDoctorAppointment(userId, doctorId)) {
-            throw new CAuthException(DUPLICATE_REQUEST, HttpStatus.CONFLICT, "当前已有该医生待就诊挂号，不可重复预约");
+        if (dataMapper.existsRegisteringActivePatientDoctorAppointment(patientId, doctorId)) {
+            throw new CAuthException(DUPLICATE_REQUEST, HttpStatus.CONFLICT, "当前就诊人已有该医生待就诊挂号，不可重复预约");
         }
     }
 

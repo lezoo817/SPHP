@@ -46,10 +46,10 @@ import static org.mockito.Mockito.when;
 class RegisteringServiceImplTest {
 
     /**
-     * 验证预约状态查询按当前账号和医生 ID 读取有效待就诊挂号。
+     * 验证预约状态查询按当前本人就诊人和医生 ID 读取有效待就诊挂号。
      */
     @Test
-    void registeringGetDoctorBookingStatusUsesCurrentUserAndDoctorId() {
+    void registeringGetDoctorBookingStatusUsesSelfPatientAndDoctorId() {
         RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
         RegisteringServiceImpl service = new RegisteringServiceImpl(dataMapper,
                 mock(RegisteringAppointmentMapper.class), mock(RegisteringPaymentOrderMapper.class),
@@ -57,14 +57,64 @@ class RegisteringServiceImplTest {
                 mock(RegisteringWaitlistMapper.class), registrationProperties(), mock(ApplicationEventPublisher.class),
                 mock(NotificationEventProducer.class));
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
-        when(dataMapper.existsRegisteringActiveDoctorAppointment(10001L, 401L)).thenReturn(true);
+        when(dataMapper.selectRegisteringSelfPatientId(10001L)).thenReturn(20001L);
+        when(dataMapper.existsRegisteringActivePatient(20001L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(dataMapper.existsRegisteringActivePatientDoctorAppointment(20001L, 401L)).thenReturn(true);
 
         try {
-            RegisteringDoctorBookingStatusVO result = service.registeringGetDoctorBookingStatus(401L);
+            RegisteringDoctorBookingStatusVO result = service.registeringGetDoctorBookingStatus(401L, null);
 
             assertEquals(401L, result.getDoctorId());
             assertEquals(true, result.isBooked());
-            verify(dataMapper).existsRegisteringActiveDoctorAppointment(10001L, 401L);
+            verify(dataMapper).existsRegisteringActivePatientDoctorAppointment(20001L, 401L);
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证家庭成员预约状态只检查该成员，不复用当前账号其他就诊人的挂号结果。
+     */
+    @Test
+    void registeringGetDoctorBookingStatusUsesRequestedFamilyPatient() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), mock(RegisteringWaitlistPromotionService.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        when(dataMapper.existsRegisteringActivePatient(20002L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20002L)).thenReturn(true);
+        // 其他就诊人的既有挂号不参与本次患者维度查询。
+        when(dataMapper.existsRegisteringActivePatientDoctorAppointment(20002L, 401L)).thenReturn(false);
+
+        try {
+            RegisteringDoctorBookingStatusVO result = service.registeringGetDoctorBookingStatus(401L, 20002L);
+
+            assertEquals(false, result.isBooked());
+            verify(dataMapper).existsRegisteringActivePatientDoctorAppointment(20002L, 401L);
+        } finally {
+            CUserContext.clear();
+        }
+    }
+
+    /**
+     * 验证预约状态查询拒绝访问其他账号的就诊人。
+     */
+    @Test
+    void registeringGetDoctorBookingStatusRejectsUnauthorizedPatient() {
+        RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
+        RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
+                mock(NotificationEventProducer.class), mock(RegisteringWaitlistPromotionService.class));
+        CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
+        when(dataMapper.existsRegisteringActivePatient(20002L)).thenReturn(true);
+        when(dataMapper.hasActivePatientRelation(10001L, 20002L)).thenReturn(false);
+
+        try {
+            CAuthException exception = assertThrows(CAuthException.class,
+                    () -> service.registeringGetDoctorBookingStatus(401L, 20002L));
+
+            assertEquals("A0301", exception.getCode());
+            verify(dataMapper, never()).existsRegisteringActivePatientDoctorAppointment(any(), any());
         } finally {
             CUserContext.clear();
         }
@@ -124,8 +174,8 @@ class RegisteringServiceImplTest {
                 new com.sphp.patient.registration.mapper.RegisteringSlotLockRecord(
                         501L, 301L, 401L, 5000, LocalDate.now().plusDays(1),
                         LocalTime.of(9, 0), LocalTime.of(9, 30), "PUBLISHED", "ENABLED"));
-        when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
-        when(dataMapper.existsRegisteringActiveDoctorAppointment(10001L, 401L)).thenReturn(false);
+        when(dataMapper.registeringLockActivePatient(20001L)).thenReturn(20001L);
+        when(dataMapper.existsRegisteringActivePatientDoctorAppointment(20001L, 401L)).thenReturn(false);
         when(dataMapper.countRegisteringAvailableSnapshots(501L)).thenReturn(1L);
         when(slotLockService.registeringLock(eq(501L), eq(1L), any())).thenReturn(true);
         when(dataMapper.registeringLockOneSnapshot(eq(501L), eq(20001L), any())).thenReturn(9001L);
@@ -173,8 +223,8 @@ class RegisteringServiceImplTest {
                 new com.sphp.patient.registration.mapper.RegisteringSlotLockRecord(
                         501L, 301L, 401L, 5000, slotEndAt.toLocalDate(),
                         slotEndAt.toLocalTime().minusMinutes(10), slotEndAt.toLocalTime(), "PUBLISHED", "ENABLED"));
-        when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
-        when(dataMapper.existsRegisteringActiveDoctorAppointment(10001L, 401L)).thenReturn(false);
+        when(dataMapper.registeringLockActivePatient(20001L)).thenReturn(20001L);
+        when(dataMapper.existsRegisteringActivePatientDoctorAppointment(20001L, 401L)).thenReturn(false);
         when(dataMapper.countRegisteringAvailableSnapshots(501L)).thenReturn(1L);
         when(slotLockService.registeringLock(eq(501L), eq(1L), any())).thenReturn(true);
         when(dataMapper.registeringLockOneSnapshot(eq(501L), eq(20001L), any())).thenReturn(9001L);
@@ -247,10 +297,10 @@ class RegisteringServiceImplTest {
     }
 
     /**
-     * 验证同一登录账号已有同医生待就诊挂号时，不能再次创建挂号订单。
+     * 验证同一就诊人已有同医生待就诊挂号时，不能再次创建挂号订单。
      */
     @Test
-    void registeringCreateAppointmentRejectsUserWhoAlreadyPaidSameDoctorBeforeLockingSlot() {
+    void registeringCreateAppointmentRejectsPatientWhoAlreadyPaidSameDoctorBeforeLockingSlot() {
         RegisteringDataMapper dataMapper = mock(RegisteringDataMapper.class);
         RegisteringSlotLockService slotLockService = mock(RegisteringSlotLockService.class);
         when(dataMapper.existsRegisteringActivePatient(20002L)).thenReturn(true);
@@ -259,8 +309,8 @@ class RegisteringServiceImplTest {
                 new com.sphp.patient.registration.mapper.RegisteringSlotLockRecord(
                         501L, 301L, 401L, 5000, LocalDate.now().plusDays(1),
                         LocalTime.of(9, 0), LocalTime.of(9, 30), "PUBLISHED", "ENABLED"));
-        when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
-        when(dataMapper.existsRegisteringActiveDoctorAppointment(10001L, 401L)).thenReturn(true);
+        when(dataMapper.registeringLockActivePatient(20002L)).thenReturn(20002L);
+        when(dataMapper.existsRegisteringActivePatientDoctorAppointment(20002L, 401L)).thenReturn(true);
         RegisteringServiceImpl service = new RegisteringServiceImpl(dataMapper,
                 mock(RegisteringAppointmentMapper.class), mock(RegisteringPaymentOrderMapper.class),
                 slotLockService, mock(RegisteringWaitlistPromotionService.class), mock(RegisteringWaitlistMapper.class),
@@ -276,8 +326,8 @@ class RegisteringServiceImplTest {
                     () -> service.registeringCreateAppointment(request));
 
             assertEquals("A0506", exception.getCode());
-            verify(dataMapper).registeringLockActiveUser(10001L);
-            verify(dataMapper).existsRegisteringActiveDoctorAppointment(10001L, 401L);
+            verify(dataMapper).registeringLockActivePatient(20002L);
+            verify(dataMapper).existsRegisteringActivePatientDoctorAppointment(20002L, 401L);
             verify(slotLockService, never()).registeringLock(any(), any(Long.class), any());
         } finally {
             CUserContext.clear();
@@ -285,7 +335,7 @@ class RegisteringServiceImplTest {
     }
 
     /**
-     * 验证同一账号的另一笔待支付订单不能绕过限约规则完成支付。
+     * 验证同一就诊人的另一笔待支付订单不能绕过限约规则完成支付。
      */
     @Test
     void registeringSimulatePaymentRejectsSecondPaidAppointmentForSameDoctor() {
@@ -296,8 +346,8 @@ class RegisteringServiceImplTest {
         when(dataMapper.selectRegisteringPayment(8002L)).thenReturn(payment);
         when(dataMapper.existsRegisteringActivePatient(20002L)).thenReturn(true);
         when(dataMapper.hasActivePatientRelation(10001L, 20002L)).thenReturn(true);
-        when(dataMapper.registeringLockActiveUser(10001L)).thenReturn(10001L);
-        when(dataMapper.existsRegisteringActiveDoctorAppointment(10001L, 401L)).thenReturn(true);
+        when(dataMapper.registeringLockActivePatient(20002L)).thenReturn(20002L);
+        when(dataMapper.existsRegisteringActivePatientDoctorAppointment(20002L, 401L)).thenReturn(true);
         RegisteringServiceImpl service = service(dataMapper, mock(RegisteringWaitlistMapper.class),
                 mock(NotificationEventProducer.class), mock(RegisteringWaitlistPromotionService.class));
         CUserContext.set(new CUserPrincipal(10001L, "patient", OffsetDateTime.now().plusHours(1), "session"));
@@ -309,8 +359,8 @@ class RegisteringServiceImplTest {
                     () -> service.registeringSimulatePayment(8002L, request));
 
             assertEquals("A0506", exception.getCode());
-            verify(dataMapper).registeringLockActiveUser(10001L);
-            verify(dataMapper).existsRegisteringActiveDoctorAppointment(10001L, 401L);
+            verify(dataMapper).registeringLockActivePatient(20002L);
+            verify(dataMapper).existsRegisteringActivePatientDoctorAppointment(20002L, 401L);
             verify(dataMapper, never()).registeringMarkPaymentSuccess(any(), any());
             verify(dataMapper, never()).registeringMarkAppointmentPaid(any(), any());
             verify(dataMapper, never()).registeringMarkSnapshotSold(any(), any());

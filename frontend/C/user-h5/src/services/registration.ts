@@ -41,18 +41,22 @@ export function getAppointments(patientId?: number, status?: string, pageSize = 
 /**
  * 构建医生重复预约状态查询路径。
  * @param doctorId 医生 ID
- * @returns 当前账号预约状态接口路径
+ * @param patientId 当前就诊人 ID，未传时由服务端使用本人
+ * @returns 当前就诊人预约状态接口路径
  */
-export function buildDoctorBookingStatusPath(doctorId: number): string {
-  return `/c/v1/appointments/doctor-booking-status?doctorId=${doctorId}`;
+export function buildDoctorBookingStatusPath(doctorId: number, patientId?: number): string {
+  const params = new URLSearchParams({ doctorId: String(doctorId) });
+  if (patientId !== undefined) params.set('patientId', String(patientId));
+  return `/c/v1/appointments/doctor-booking-status?${params.toString()}`;
 }
 /**
- * 查询当前账号是否已成功预约指定医生。
+ * 查询当前就诊人是否已有指定医生的有效待就诊挂号。
  * @param doctorId 医生 ID
- * @returns 当前账号维度的成功预约状态
+ * @param patientId 当前就诊人 ID，未传时由服务端使用本人
+ * @returns 当前就诊人维度的有效待就诊挂号状态
  */
-export function getDoctorBookingStatus(doctorId: number): Promise<{ doctorId: number; booked: boolean }> {
-  return request(buildDoctorBookingStatusPath(doctorId), { method: 'GET' });
+export function getDoctorBookingStatus(doctorId: number, patientId?: number): Promise<{ doctorId: number; booked: boolean }> {
+  return request(buildDoctorBookingStatusPath(doctorId, patientId), { method: 'GET' });
 }
 /** 查询挂号订单详情。 */
 export function getAppointment(appointmentId: number): Promise<AppointmentDetail> { return request(`/c/v1/appointments/${appointmentId}`, { method: 'GET' }); }

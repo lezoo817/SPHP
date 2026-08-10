@@ -1,6 +1,12 @@
 import type { AgentMessage } from '../../typings/agent';
 import { AGENT_DISCLAIMER } from '../../constants/agent';
 
+/** 单条聊天气泡的渲染参数。 */
+interface AgentMessageBubbleProps {
+  /** 用户或 AI 消息及其流式状态。 */
+  message: AgentMessage;
+}
+
 /**
  * 清洗 AI 消息中的 Markdown 标记，让聊天气泡呈现更清爽。
  *
@@ -30,7 +36,7 @@ function cleanMarkdown(text: string): string {
 }
 
 /** 渲染单条对话消息（用户或 AI）。 */
-export function AgentMessageBubble({ message }: { message: AgentMessage }) {
+export function AgentMessageBubble({ message }: AgentMessageBubbleProps) {
   const isUser = message.role === 'user';
   // AI 消息：清洗 Markdown 标记并保留换行；用户消息按原样展示。
   const displayText = isUser

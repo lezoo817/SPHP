@@ -54,13 +54,15 @@
         )
     </select>
 
-    <select id="existsConsultationActiveRecord" resultType="boolean">
+    <select id="existsOnlineConsultationActiveRecord" resultType="boolean">
         SELECT EXISTS (
             SELECT 1
             FROM consult_record
             WHERE patient_id = #{patientId}
               AND doctor_id = #{doctorId}
               AND status IN ('PENDING', 'IN_PROGRESS')
+              <!-- 仅无挂号关联记录属于在线问诊，挂号接诊不阻止另行在线问诊。 -->
+              AND appointment_id IS NULL
               AND deleted_at IS NULL
         )
     </select>

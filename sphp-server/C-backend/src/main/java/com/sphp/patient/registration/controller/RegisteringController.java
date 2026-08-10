@@ -91,16 +91,18 @@ public class RegisteringController {
     }
 
     /**
-     * 查询当前账号对指定医生的成功预约状态。
+     * 查询当前就诊人对指定医生的成功预约状态。
      *
      * @param doctorId 医生 ID
-     * @return 是否已支付或完成预约
+     * @param patientId 可选就诊人 ID，未传时使用当前账号本人
+     * @return 是否存在有效待就诊预约
      */
     @GetMapping("/appointments/doctor-booking-status")
     @Operation(summary = "查询医生重复预约状态")
     public Result<RegisteringDoctorBookingStatusVO> registeringGetDoctorBookingStatus(
-            @RequestParam @Positive(message = "doctorId 必须为正数") Long doctorId) {
-        return Result.success("查询成功", registeringService.registeringGetDoctorBookingStatus(doctorId));
+            @RequestParam @Positive(message = "doctorId 必须为正数") Long doctorId,
+            @RequestParam(required = false) @Positive(message = "patientId 必须为正数") Long patientId) {
+        return Result.success("查询成功", registeringService.registeringGetDoctorBookingStatus(doctorId, patientId));
     }
 
     /**

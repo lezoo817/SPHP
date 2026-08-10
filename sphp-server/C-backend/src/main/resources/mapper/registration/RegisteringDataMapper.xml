@@ -13,12 +13,12 @@
         SELECT EXISTS(SELECT 1 FROM patient_user_relation
                       WHERE user_id = #{userId} AND patient_id = #{patientId} AND deleted_at IS NULL)
     </select>
-    <select id="registeringLockActiveUser" resultType="long">
-        SELECT id FROM c_user
-        WHERE id = #{userId} AND deleted_at IS NULL
+    <select id="registeringLockActivePatient" resultType="long">
+        SELECT id FROM patient
+        WHERE id = #{patientId} AND deleted_at IS NULL
         FOR UPDATE
     </select>
-    <select id="existsRegisteringActiveDoctorAppointment" resultType="boolean">
+    <select id="existsRegisteringActivePatientDoctorAppointment" resultType="boolean">
         SELECT EXISTS(
             SELECT 1
             FROM appointment a
@@ -27,7 +27,7 @@
                      INNER JOIN slot sl ON sl.id = ss.slot_id AND sl.deleted_at IS NULL
                      INNER JOIN schedule s ON s.id = sl.schedule_id AND s.deleted_at IS NULL
                      LEFT JOIN consult_record cr ON cr.appointment_id = a.id AND cr.deleted_at IS NULL
-            WHERE po.payer_user_id = #{userId}
+            WHERE a.patient_id = #{patientId}
               AND a.doctor_id = #{doctorId}
               AND a.status = 'PAID'
               AND po.status = 'SUCCESS'
