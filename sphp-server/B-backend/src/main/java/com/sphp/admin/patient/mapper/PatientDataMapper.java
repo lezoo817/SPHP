@@ -81,4 +81,23 @@ public interface PatientDataMapper {
             "</script>")
     Page<PatientPrescriptionVO> selectPrescriptionPage(Page<PatientPrescriptionVO> page,
                                                         @Param("patientId") Long patientId);
+
+    /**
+     * 判断指定患者是否在本院存在就诊关联（跨院数据隔离校验）。
+     *
+     * <p>镜像 {@link #selectPatientPage} 的医院隔离 join：经 consult_record → doctor.hospital_id
+     * 判定患者是否属于当前医院，防止凭患者 ID 越权访问跨院档案（水平越权）。
+     *
+     * @param patientId  患者 ID
+     * @param hospitalId 医院 ID（来自当前登录用户 DataScope）
+     * @return 存在本院就诊关联时返回 true
+     */
+    @Select("SELECT EXISTS(" +
+            "  SELECT 1 FROM consult_record cr " +
+            "  JOIN doctor d ON cr.doctor_id = d.id AND d.deleted_at IS NULL " +
+            "  WHERE cr.patient_id = #{patientId} " +
+            "    AND d.hospital_id = #{hospitalId} " +
+            "    AND cr.deleted_at IS NULL" +
+            ") AS existed")
+    boolean existsConsultInHospital(@Param("patientId") Long patientId, @Param("hospitalId") Long hospitalId);
 }
