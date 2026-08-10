@@ -37,7 +37,10 @@ public interface ConsultRecordMapper extends BaseMapper<ConsultRecord> {
      * @param consultId 问诊记录 ID
      * @return 已锁定记录，不存在时返回 null
      */
-    @Select("SELECT * FROM consult_record WHERE id = #{consultId} AND appointment_id IS NULL "
+    @Select("SELECT id, appointment_id, doctor_id, patient_id, status, ai_summary, doctor_note, "
+            + "chief_complaint, history_of_present_illness, pre_consultation_submitted_at, "
+            + "started_at, ended_at, doctor_replied_at, created_at, updated_at, deleted_at "
+            + "FROM consult_record WHERE id = #{consultId} AND appointment_id IS NULL "
             + "AND deleted_at IS NULL FOR UPDATE")
     ConsultRecord lockOnlineConsult(@Param("consultId") Long consultId);
 
