@@ -146,7 +146,8 @@ def route_by_intent(state: AgentState) -> str:
     """读 state.intent → 返回目标节点名（仅 C 端调用，M8-3）。
 
     业务意图路由到对应工具子图，qa 路由到 rag_node（知识检索），
-    chitchat 路由到 chitchat_node（不检索，仅日常回复）。
+    chitchat / out_of_scope 路由到 chitchat_node（不检索 RAG，仅清理上下文：
+    chitchat 日常寒暄、out_of_scope 由 reply_node 确定性拒绝）。
     """
     intent = state.get("intent") or "qa"
     routing = {
@@ -157,6 +158,7 @@ def route_by_intent(state: AgentState) -> str:
         "health": "health_graph",  # M8-2 健康档案场景五
         "qa": "qa_node",
         "chitchat": "chitchat_node",
+        "out_of_scope": "chitchat_node",  # 非医疗知识提问：不检索，reply 层拒绝
     }
     return routing.get(intent, "qa_node")
 
