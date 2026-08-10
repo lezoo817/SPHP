@@ -37,7 +37,8 @@ export default function NotificationsPage() {
   async function loadNotifications(targetPage = 1, append = false, targetCategory = category, targetReadFilter = readFilter) {
     setLoading(true);
     try {
-      const page = await getNotifications({ pageNo: targetPage, pageSize: PAGE_SIZE, read: targetReadFilter === 'READ', type: resolveNotificationListType(targetCategory) });
+      // 通知页以服务端最新消息为准，避免短期读缓存掩盖刚收到的医生回复。
+      const page = await getNotifications({ pageNo: targetPage, pageSize: PAGE_SIZE, read: targetReadFilter === 'READ', type: resolveNotificationListType(targetCategory) }, true);
       setNotifications((current) => append ? [...current, ...page.records] : page.records);
       setTotal(page.total);
       setPageNo(page.pageNo);
@@ -98,9 +99,9 @@ export default function NotificationsPage() {
     setMarkingAll(true);
     try {
       // 先完整读取未读快照，再执行写操作，避免标记过程中分页总数变化导致漏读。
-      const firstPage = await getNotifications({ read: false, pageNo: 1, pageSize: 100 });
+      const firstPage = await getNotifications({ read: false, pageNo: 1, pageSize: 100 }, true);
       const pageCount = Math.ceil(firstPage.total / 100);
-      const pages = await Promise.all(Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) => getNotifications({ read: false, pageNo: index + 2, pageSize: 100 })));
+      const pages = await Promise.all(Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) => getNotifications({ read: false, pageNo: index + 2, pageSize: 100 }, true)));
       const unreadIds = [...firstPage.records, ...pages.flatMap((page) => page.records)].map((item) => item.id).filter((id, index, ids) => ids.indexOf(id) === index);
       if (!unreadIds.length) {
         setNotice('暂无未读消息');

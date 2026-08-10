@@ -2,7 +2,7 @@ import type { LoginData, LoginUser, TokenPair } from '../typings/api';
 import { clearRequestCache } from '../query/request-cache';
 import { clearDismissedExpiredHealthTodos } from './expired-health-todo';
 import { clearMedicationHealthTodoStates } from './medication-health-todo';
-import { clearDismissedCompletedConsultationTodos } from './completed-consultation-health-todo';
+import { clearDismissedConsultationTodos } from './completed-consultation-health-todo';
 import { clearCompletedHealthTodos } from './completed-health-todo';
 import { clearSelection } from './selection';
 
@@ -57,8 +57,8 @@ export function clearSession(): void {
   clearDismissedExpiredHealthTodos();
   // 本地服药确认只属于当前账号会话，退出后不可由下一账号继承。
   clearMedicationHealthTodoStates();
-  // 已完成问诊首页待办仅属于当前登录会话，退出后不向下一账号继承。
-  clearDismissedCompletedConsultationTodos();
+  // 已查看在线问诊待办仅属于当前登录会话，退出后不向下一账号继承。
+  clearDismissedConsultationTodos();
   // 一键完成仅对当前登录会话生效，退出后不可由下一账号继承。
   clearCompletedHealthTodos();
   if (typeof window !== 'undefined') window.sessionStorage.removeItem(SESSION_KEY);
