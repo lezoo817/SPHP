@@ -1,4 +1,4 @@
-import { Bell, MapPinned } from 'lucide-react';
+import { Bell, MessageCircle, MapPinned } from 'lucide-react';
 import { useState } from 'react';
 import type { AgentActionCard } from '@/typings/agent';
 
@@ -28,12 +28,13 @@ export function AgentActionCardView({
   }
 
   const isReminderAction = card.actionType === 'authorize_drug_order_reminder_after_receipt';
+  const isConsultationRedirectAction = card.actionType === 'open_consultation_chat';
 
   return (
     <div className="agent-card agent-action-card">
       <div className="agent-card__header">
         <span className="agent-card__icon">
-          {isReminderAction ? <Bell size={16} /> : <MapPinned size={16} />}
+          {isReminderAction ? <Bell size={16} /> : isConsultationRedirectAction ? <MessageCircle size={16} /> : <MapPinned size={16} />}
         </span>
         <span className="agent-card__title">{card.title}</span>
       </div>

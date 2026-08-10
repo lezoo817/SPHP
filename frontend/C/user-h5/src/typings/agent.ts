@@ -169,6 +169,7 @@ export interface AgentActionCardEvent {
   action_type:
     | 'recommend_prescription_pharmacy'
     | 'authorize_drug_order_reminder_after_receipt'
+    | 'open_consultation_chat'
     | string;
   /** 卡片标题。 */
   title: string;
@@ -286,6 +287,14 @@ export interface AgentConfirmData {
 
 /** 支付页返回 AI 会话所需的最小路由状态。 */
 export interface DrugOrderAgentReturnState {
+  /** 需要恢复的既有 Agent 会话。 */
+  sessionId: string;
+  /** AI 页用于恢复页面上下文的来源路径。 */
+  from: string;
+}
+
+/** 在线问诊页返回 AI 会话所需的最小路由状态。 */
+export interface ConsultationAgentReturnState {
   /** 需要恢复的既有 Agent 会话。 */
   sessionId: string;
   /** AI 页用于恢复页面上下文的来源路径。 */

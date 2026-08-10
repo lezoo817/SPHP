@@ -10,6 +10,7 @@ import type { ConsultationDetail } from '../../typings/api';
 import { getApiErrorMessage } from '../../utils/form';
 import { formatConsultationMessageTime } from '../../utils/consultation';
 import { buildAssistantPrescriptionDetailPath } from '../../utils/prescription';
+import { resolveConsultationAgentReturnState } from '../../utils/agent-consultation';
 
 /** 展示在线问诊的预问诊、实时文字消息和已批准处方。 */
 export default function ConsultationPage() {
@@ -22,6 +23,7 @@ export default function ConsultationPage() {
   const [content, setContent] = useState('');
   const [sending, setSending] = useState(false);
   const patientIdFromUrl = Number(new URLSearchParams(location.search).get('patientId')) || undefined;
+  const returnToAgent = resolveConsultationAgentReturnState((location.state as { returnToAgent?: unknown } | null)?.returnToAgent);
 
   /** 读取问诊详情，通知跳转后可直接看到医生最新回复。 */
   async function load() {
@@ -70,7 +72,19 @@ export default function ConsultationPage() {
 
   const statusText = detail?.status === 'PENDING' ? '等待医生回复' : detail?.status === 'IN_PROGRESS' ? '医生接诊中' : detail?.status === 'COMPLETED' ? '问诊已完成' : '问诊已结束';
   const patientId = detail?.patientId || patientIdFromUrl || getSelection().patientId;
-  return <main className="subpage"><PageHeader title="在线问诊" backPath="/assistant" /><section className="subpage-content chat-page">
+  /** 从 AI 入口进入时恢复原会话，其余入口仍返回问诊记录页。 */
+  function returnFromConsultation() {
+    if (!returnToAgent) {
+      navigate('/assistant');
+      return;
+    }
+    navigate('/agent', {
+      replace: true,
+      state: { from: returnToAgent.from, resumeSessionId: returnToAgent.sessionId },
+    });
+  }
+
+  return <main className="subpage"><PageHeader title="在线问诊" onBack={returnFromConsultation} /><section className="subpage-content chat-page">
     <h2>{detail?.doctor.name || '在线问诊'}</h2>
     <p>{statusText}</p>
     {detail?.preConsultation && <section className="consultation-summary"><h3>就诊人：{patientName}</h3><div className="consultation-summary__table"><b>主诉</b><p>{detail.preConsultation.chiefComplaint}</p>{detail.preConsultation.historyOfPresentIllness && <><b>现病史</b><p>{detail.preConsultation.historyOfPresentIllness}</p></>}</div></section>}
