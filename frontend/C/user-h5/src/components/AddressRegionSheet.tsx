@@ -6,7 +6,14 @@ import { getDeliveryCities, getDeliveryProvinces, isSupportedDeliveryProvince, t
 export interface DeliveryRegionValue { province: string; provinceName: string; city: string; }
 
 /** 地区选择器的入参与关闭事件。 */
-interface AddressRegionSheetProps { value?: DeliveryRegionValue; onClose: () => void; onSelect: (value: DeliveryRegionValue) => void; }
+interface AddressRegionSheetProps {
+  /** 当前已选择的省、市，用于初始化选中状态。 */
+  value?: DeliveryRegionValue;
+  /** 关闭底部选择器的回调。 */
+  onClose: () => void;
+  /** 用户选择城市后回填两级地区结果的回调。 */
+  onSelect: (value: DeliveryRegionValue) => void;
+}
 
 /** 从底部展示全国省级地区和城市的两级选择器，不提供区县步骤。 */
 export function AddressRegionSheet({ value, onClose, onSelect }: AddressRegionSheetProps) {

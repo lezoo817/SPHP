@@ -8,8 +8,14 @@ const tabs = [
   { label: '我的', path: '/mine', icon: UserRound },
 ];
 
+/** 底部导航的回调参数。 */
+interface BottomTabProps {
+  /** 点击尚未开放的导航项时展示业务提示。 */
+  onUnavailable: () => void;
+}
+
 /** 展示 C 端四项底部导航，未实现页面保留提示。 */
-export function BottomTab({ onUnavailable }: { onUnavailable: () => void }) {
+export function BottomTab({ onUnavailable }: BottomTabProps) {
   const location = useLocation();
   const navigate = useNavigate();
   return <nav className="bottom-tab" aria-label="主导航">{tabs.map(({ label, path, icon: Icon }) => {

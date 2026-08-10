@@ -49,4 +49,11 @@ describe('全局当前就诊人选择', () => {
     clearSelection();
     expect(getMinePatientId()).toBeUndefined();
   });
+
+  it('损坏的会话选择会被清除，不阻断页面回退默认就诊人', () => {
+    globalThis.sessionStorage.setItem('sphp_c_selection', '{invalid-json');
+
+    expect(getSelection()).toEqual({});
+    expect(globalThis.sessionStorage.getItem('sphp_c_selection')).toBeNull();
+  });
 });

@@ -2,8 +2,14 @@ import { useState } from 'react';
 import { ChevronDown, Loader, Wrench } from 'lucide-react';
 import type { AgentToolCard } from '../../typings/agent';
 
+/** 工具调用卡片的渲染参数。 */
+interface AgentToolCardViewProps {
+  /** 已配对 action 与 observation 的工具调用状态。 */
+  card: AgentToolCard;
+}
+
 /** 工具调用卡片：action 与 observation 配对，展示 loading / 成功 / 失败。 */
-export function AgentToolCardView({ card }: { card: AgentToolCard }) {
+export function AgentToolCardView({ card }: AgentToolCardViewProps) {
   const [expanded, setExpanded] = useState(false);
   const hasArgs = card.arguments && Object.keys(card.arguments).length > 0;
   const hasResult = card.result !== undefined && card.result !== null;

@@ -1,8 +1,11 @@
 import type { PropsWithChildren } from 'react';
 import { X } from 'lucide-react';
 
+/** 通用弹层的标题、内容与关闭回调。 */
 interface DialogProps extends PropsWithChildren {
+  /** 弹层标题，同时用于无障碍标签。 */
   title: string;
+  /** 点击遮罩或关闭图标时执行的回调。 */
   onClose: () => void;
 }
 

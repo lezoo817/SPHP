@@ -3,6 +3,14 @@ import { CheckCircle2, ShieldAlert, XCircle } from 'lucide-react';
 import type { AgentConfirmCard } from '@/typings/agent';
 import { AGENT_CONFIRM_ERROR_TEXT } from '@/constants/agent';
 
+/** L2 确认卡片的渲染参数。 */
+interface AgentConfirmCardViewProps {
+  /** 含确认令牌与状态的受控写操作卡片。 */
+  card: AgentConfirmCard;
+  /** 确认操作的回调；已支付取消挂号时可附带登录密码。 */
+  onConfirm: (card: AgentConfirmCard, password?: string) => void;
+}
+
 /** 渲染 details 关键字段为可读键值对，并保留原始字段名供数值格式化。 */
 function renderDetails(details: Record<string, unknown> | undefined): { key: string; label: string; value: string }[] {
   if (!details) return [];
@@ -64,10 +72,7 @@ function formatDetailValue(value: string, key: string): string {
 export function AgentConfirmCardView({
   card,
   onConfirm,
-}: {
-  card: AgentConfirmCard;
-  onConfirm: (card: AgentConfirmCard, password?: string) => void;
-}) {
+}: AgentConfirmCardViewProps) {
   const [expanded, setExpanded] = useState(false);
   // 已支付挂号取消需登录密码：仅该卡片类型采集，确认时随回调透传给 Agent。
   const requiresPassword = card.cardType === 'confirm_cancel_appointment';

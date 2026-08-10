@@ -1,6 +1,16 @@
 import { Check, ListChecks } from 'lucide-react';
 import type { AgentSelectCard, AgentSelectItem } from '../../typings/agent';
 
+/** 可选项交互卡片的渲染参数。 */
+interface AgentSelectCardViewProps {
+  /** 后端生成的可选项及当前已选状态。 */
+  card: AgentSelectCard;
+  /** 流式响应期间禁用全部选择。 */
+  disabled?: boolean;
+  /** 用户选择单个选项后的回调。 */
+  onSelect: (item: AgentSelectItem) => void;
+}
+
 /**
  * 可选项卡片：单选点选，区别于 L2 "确认一个操作" 卡片。
  *
@@ -11,11 +21,7 @@ export function AgentSelectCardView({
   card,
   disabled,
   onSelect,
-}: {
-  card: AgentSelectCard;
-  disabled?: boolean;
-  onSelect: (item: AgentSelectItem) => void;
-}) {
+}: AgentSelectCardViewProps) {
   const locked = Boolean(card.selectedId) || Boolean(disabled);
   return (
     <div className={`agent-select${card.selectedId ? ' agent-select--selected' : ''}`}>
