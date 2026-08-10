@@ -64,8 +64,8 @@
         ) reply ON TRUE
         WHERE cr.id = #{consultationId}
           AND cr.appointment_id IS NULL
-          AND cr.status = 'COMPLETED'
-          AND cr.doctor_replied_at IS NOT NULL
+          <!-- 接诊中和已完成的在线问诊均可通知；医生消息存在性由上方 LATERAL 查询保证。 -->
+          AND cr.status IN ('IN_PROGRESS', 'COMPLETED')
           AND cr.deleted_at IS NULL
     </select>
 
