@@ -42,6 +42,14 @@ export default function ConsultationPage() {
   useEffect(() => { void load(); }, [consultationId]);
 
   useEffect(() => {
+    // WebSocket 为主通道；短轮询补偿移动网络切换或代理升级失败，避免患者手动刷新查看医生消息。
+    const timer = window.setInterval(() => {
+      if (detail?.status === 'IN_PROGRESS') void load();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [consultationId, detail?.status]);
+
+  useEffect(() => {
     const socket = createConsultationSocket((message) => {
       if (message.consultationId !== Number(consultationId)) return;
       setDetail((current) => {
