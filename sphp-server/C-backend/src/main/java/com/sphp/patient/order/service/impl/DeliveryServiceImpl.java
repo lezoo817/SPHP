@@ -29,9 +29,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
-import java.util.List;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static com.sphp.patient.common.constant.DeliveryConstant.MAX_ACTIVE_ADDRESS_COUNT;
@@ -62,6 +62,7 @@ public class DeliveryServiceImpl implements DeliveryService {
      */
     @Override
     public List<DeliveryAddressVO> deliveryListAddresses() {
+        // 地址列表只按当前登录账号查询，默认地址排序由 Mapper 的查询规则保证。
         return deliveryDataMapper.deliveryListAddresses(deliveryCurrentUserId()).stream()
                 .map(this::deliveryToVo)
                 .toList();
@@ -76,14 +77,14 @@ public class DeliveryServiceImpl implements DeliveryService {
     @Transactional(rollbackFor = Exception.class)
     public DeliveryAddressVO deliveryCreateAddress(DeliveryAddressCreateRequest request) {
         Long userId = deliveryCurrentUserId();
-        // 用户锁
+        // 锁定当前账号行，串行化地址数量、首地址默认值和后续默认地址切换。
         deliveryLockUser(userId);
         if (deliveryDataMapper.deliveryCountAddresses(userId) >= MAX_ACTIVE_ADDRESS_COUNT) {
             throw deliveryInvalidInput("收货地址数量不能超过20条");
         }
         DeliveryAddress address = new DeliveryAddress();
         address.setUserId(userId);
-        // 收货地址
+        // 仅复制请求白名单字段，防止客户端覆盖用户归属、默认标记和审计字段。
         deliveryApplyCreateRequest(address, request);
         // 首个有效地址自动成为默认地址，减少首次下单前的额外操作。
         address.setIsDefault(deliveryDataMapper.deliveryCountAddresses(userId) == 0);
@@ -103,11 +104,10 @@ public class DeliveryServiceImpl implements DeliveryService {
     @Transactional(rollbackFor = Exception.class)
     public DeliveryAddressVO deliveryUpdateAddress(Long addressId, DeliveryAddressUpdateRequest request) {
         Long userId = deliveryCurrentUserId();
-        // 用户锁
+        // 与默认地址写操作共用账号行锁，避免编辑与删除、设默认并发时观察到中间状态。
         deliveryLockUser(userId);
-        // 收货地址
+        // 先验证地址归属，再更新请求允许修改的字段。
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, userId);
-        // 更新
         deliveryApplyUpdateRequest(address, request);
         if (deliveryAddressMapper.updateById(address) != 1) {
             throw deliveryStatusConflict("收货地址状态已变化");
@@ -116,7 +116,7 @@ public class DeliveryServiceImpl implements DeliveryService {
     }
 
     /**
-     *  删除收货地址。
+     * 删除收货地址。
      * @param addressId 地址 ID
      * @return 删除收货地址。
      */
@@ -124,18 +124,18 @@ public class DeliveryServiceImpl implements DeliveryService {
     @Transactional(rollbackFor = Exception.class)
     public DeliveryAddressDeleteVO deliveryDeleteAddress(Long addressId) {
         Long userId = deliveryCurrentUserId();
-        // 用户锁
+        // 账号行锁保证删除默认地址与默认地址补位在一个串行临界区完成。
         deliveryLockUser(userId);
-        // 收货地址
+        // 删除前读取当前默认标记，用于决定是否需要为剩余地址补位。
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, userId);
         OffsetDateTime now = OffsetDateTime.now();
-        // 软删除
+        // 条件软删除避免重复请求覆盖已删除记录的审计时间。
         if (deliveryDataMapper.deliverySoftDeleteAddress(userId, addressId, now) != 1) {
             throw deliveryStatusConflict("收货地址状态已变化");
         }
         // 删除默认地址后为剩余最早地址补位，维持一个稳定默认地址。
         if (Boolean.TRUE.equals(address.getIsDefault())) {
-            // 获取剩余最早地址
+            // 选择最早创建的剩余有效地址作为稳定补位规则。
             DeliveryAddress fallback = deliveryDataMapper.deliverySelectFirstAddress(userId);
             if (fallback != null && deliveryDataMapper.deliverySetDefault(userId, fallback.getId(), now) != 1) {
                 throw deliveryStatusConflict("默认收货地址设置失败");
@@ -153,9 +153,9 @@ public class DeliveryServiceImpl implements DeliveryService {
     @Transactional(rollbackFor = Exception.class)
     public DeliveryAddressVO deliverySetDefaultAddress(Long addressId) {
         Long userId = deliveryCurrentUserId();
-        // 用户锁
+        // 账号行锁与部分唯一索引共同保证一个账号最多只有一个有效默认地址。
         deliveryLockUser(userId);
-        // 收货地址
+        // 地址必须属于当前账号且尚未被软删除。
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, userId);
         OffsetDateTime now = OffsetDateTime.now();
         // 先清空旧默认标记，再设置新默认标记以满足部分唯一索引约束。
@@ -176,12 +176,12 @@ public class DeliveryServiceImpl implements DeliveryService {
      */
     @Override
     public String deliveryResolveOrderAddress(Long addressId, String legacyDeliveryAddress) {
-        // 旧版地址存在时优先使用
+        // 先校验新旧入参互斥，再决定走兼容文本分支或地址簿快照分支。
         boolean hasLegacyAddress = deliveryValidateOrderAddressArguments(addressId, legacyDeliveryAddress);
         if (hasLegacyAddress) {
             return legacyDeliveryAddress.trim();
         }
-        // 新版地址不存在时使用
+        // 地址簿分支必须反查当前账号归属，避免使用其他账号的地址生成订单快照。
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, deliveryCurrentUserId());
         return deliveryBuildOrderAddressSnapshot(address);
     }
@@ -213,12 +213,12 @@ public class DeliveryServiceImpl implements DeliveryService {
             detailAddress = snapshot;
         } else {
             DeliveryAddress address = deliveryRequireOwnedAddress(addressId, deliveryCurrentUserId());
-            // 新版地址结构化字段
+            // 地址簿的结构化省市字段用于稳定配送模拟，不再从整段文本猜测。
             snapshot = deliveryBuildOrderAddressSnapshot(address);
             userProvince = DeliveryProvinceEnum.valueOf(address.getProvince());
             detailAddress = address.getDetailAddress();
         }
-        // 配送省市
+        // 医院省市与用户省市共同决定跨省模拟系数。
         DeliveryProvinceEnum hospitalProvince = deliveryRequireHospitalProvince(hospitalId);
         double coefficient = deliveryProperties.deliveryProvinceCoefficient(userProvince, hospitalProvince);
         // 使用与药房推荐完全相同的哈希参数，确保选中同一药房时前后展示一致。
@@ -239,37 +239,36 @@ public class DeliveryServiceImpl implements DeliveryService {
     @Override
     public List<DeliveryPharmacyRecommendationVO> deliveryRecommendPharmacies(Long patientId, Long prescriptionId, Long addressId, String sort) {
         Long userId = deliveryCurrentUserId();
-        // 处方
+        // 处方校验同时确认患者归属、已批准状态和所属医院，作为推荐库存筛选边界。
         OrderPrescriptionRecord prescription = deliveryRequireAccessibleApprovedPrescription(userId, patientId, prescriptionId);
-        //用户地址
+        // 推荐必须基于当前账号已保存地址，不能接受客户端传入距离或配送时间。
         DeliveryAddress address = deliveryRequireOwnedAddress(addressId, userId);
-        //医院地址
+        // 医院地址是院内药房配送模拟的固定地理来源。
         String hospitalAddress = deliveryDataMapper.deliverySelectHospitalAddress(prescription.hospitalId());
-        // 配送省市
         DeliveryProvinceEnum hospitalProvince = DeliveryProvinceEnum.resolveFromAddress(hospitalAddress);
 
         if (hospitalProvince == null) {
             // 医院地址未声明省市时拒绝生成虚假推荐，等待基础医院数据修正。
             throw deliverySystemError("医院地址缺少配送省市信息");
         }
-        // 用户地址
+        // 用户结构化省市字段与医院省市共同计算跨省系数。
         DeliveryProvinceEnum userProvince = DeliveryProvinceEnum.valueOf(address.getProvince());
-        // 跨省系数
         double coefficient = deliveryProperties.deliveryProvinceCoefficient(userProvince, hospitalProvince);
-        // 排序参数
+        // 排序参数仅决定展示顺序，价格、数量、距离和时效始终由服务端读取或计算。
         DeliverySortEnum sortEnum = deliveryResolveSort(sort);
         Map<Long, Integer> quantities = new LinkedHashMap<>();
+        // 处方数量是药房库存足量过滤与总价计算的唯一数量来源。
         for (OrderPrescriptionItemRecord item : orderDataMapper.selectOrderPrescriptionItems(prescriptionId)) {
             quantities.put(item.drugId(), item.quantity());
         }
-        // 库存
+        // Mapper 已过滤医院内启用药房及处方全部药品足量库存，再按药房聚合构建候选项。
         Map<Long, List<OrderPharmacyStockRecord>> pharmacyStocks = new LinkedHashMap<>();
         for (OrderPharmacyStockRecord stock : orderDataMapper.selectOrderPharmacyInventory(prescriptionId, prescription.hospitalId())) {
             pharmacyStocks.computeIfAbsent(stock.pharmacyId(), ignored -> new java.util.ArrayList<>()).add(stock);
         }
-        // 候选
+        // 每个候选项使用稳定哈希配送模拟与数据库真实单价，最终排序不信任前端参数。
         List<DeliveryRecommendationCandidate> candidates = pharmacyStocks.values().stream()
-                .map(stocks -> deliveryBuildRecommendationCandidate(address, hospitalProvince, coefficient, quantities, stocks)) // 构建推荐候选
+                .map(stocks -> deliveryBuildRecommendationCandidate(address, hospitalProvince, coefficient, quantities, stocks))
                 .toList();
         return deliverySortCandidates(candidates, sortEnum).stream()
                 .map(candidate -> deliveryToRecommendationVo(candidate, candidates))
@@ -434,16 +433,16 @@ public class DeliveryServiceImpl implements DeliveryService {
      */
     private OrderPrescriptionRecord deliveryRequireAccessibleApprovedPrescription(Long userId, Long requestedPatientId, Long prescriptionId) {
         OrderPrescriptionRecord prescription = orderDataMapper.selectOrderPrescription(prescriptionId);
-        //若处方不存在或状态非已批准，则返回错误
+        // 处方不存在或非已批准时统一隐藏，避免暴露其他状态的医疗数据。
         if (prescription == null || !"APPROVED".equals(prescription.status())) {
             throw deliveryNotFound("处方不存在");
         }
         Long targetPatientId = requestedPatientId == null ? orderDataMapper.selectOrderSelfPatientId(userId) : requestedPatientId;
-        //若就诊人不存在或状态非正常，则返回错误
+        // 未传患者时使用本人；指定患者必须保持有效状态。
         if (targetPatientId == null || !orderDataMapper.existsOrderActivePatient(targetPatientId)) {
             throw deliveryNotFound("就诊人不存在");
         }
-        //若当前账号与处方关联就诊人不一致，则返回错误
+        // 患者关系与处方归属均需匹配，避免家庭成员之间越权读取处方和推荐结果。
         if (!orderDataMapper.hasOrderActivePatientRelation(userId, targetPatientId) || !targetPatientId.equals(prescription.patientId())) {
             throw deliveryForbidden("无权访问该处方");
         }
@@ -452,7 +451,7 @@ public class DeliveryServiceImpl implements DeliveryService {
 
     /**
      * 根据单个药房的真实库存与稳定模拟结果创建候选项。
-     * 价格（45%）、距离（30%）、时间（25%)
+     * 综合排序权重为价格 45%、距离 30%、配送时效 25%。
      * @param address 当前账号地址
      * @param hospitalProvince 医院省市
      * @param coefficient 跨省系数
@@ -463,15 +462,15 @@ public class DeliveryServiceImpl implements DeliveryService {
     private DeliveryRecommendationCandidate deliveryBuildRecommendationCandidate(DeliveryAddress address, DeliveryProvinceEnum hospitalProvince,
                                                                                    double coefficient, Map<Long, Integer> quantities,
                                                                                    List<OrderPharmacyStockRecord> stocks) {
-        //获取单个药房的 simulations
+        // 药房 ID 参与模拟种子，在同一医院内产生稳定且受控的药房级差异。
         OrderPharmacyStockRecord first = stocks.getFirst();
         DeliverySimulationResult simulation = deliverySimulationCalculator.deliveryCalculate(
-                DeliveryProvinceEnum.valueOf(address.getProvince()),  // 省
-                        address.getDetailAddress(), // 详细地址
-                        first.hospitalId(),
-                        first.pharmacyId(),
-                        hospitalProvince, // 医院省市
-                        coefficient // 省系数
+                DeliveryProvinceEnum.valueOf(address.getProvince()),
+                address.getDetailAddress(),
+                first.hospitalId(),
+                first.pharmacyId(),
+                hospitalProvince,
+                coefficient
         );
         int amountCent = stocks.stream()
                 .mapToInt(stock -> stock.unitPriceCent() * quantities.getOrDefault(stock.drugId(),
@@ -480,9 +479,9 @@ public class DeliveryServiceImpl implements DeliveryService {
         List<DeliveryPharmacyRecommendationVO.Item> items = stocks.stream()
                 .map(stock -> DeliveryPharmacyRecommendationVO.Item.builder()
                         .drugId(stock.drugId())
-                        .quantity(quantities.get(stock.drugId())) // 数量
-                        .availableCount(stock.availableCount()) // 库存数量
-                        .unitPriceCent(stock.unitPriceCent()) // 单价
+                        .quantity(quantities.get(stock.drugId()))
+                        .availableCount(stock.availableCount())
+                        .unitPriceCent(stock.unitPriceCent())
                         .build())
                 .toList();
         return new DeliveryRecommendationCandidate(first, simulation, amountCent, items);
@@ -514,26 +513,27 @@ public class DeliveryServiceImpl implements DeliveryService {
      */
     private double deliveryScore(DeliveryRecommendationCandidate candidate, List<DeliveryRecommendationCandidate> candidates) {
         int minAmount = candidates.stream()
-                .mapToInt(DeliveryRecommendationCandidate::amountCent).min() // 最小总价
+                .mapToInt(DeliveryRecommendationCandidate::amountCent)
+                .min()
                 .orElse(0);
         int maxAmount = candidates.stream()
-                .mapToInt(DeliveryRecommendationCandidate::amountCent) // 最大总价
+                .mapToInt(DeliveryRecommendationCandidate::amountCent)
                 .max()
                 .orElse(0);
         long minDistance = candidates.stream()
-                .mapToLong(item -> item.simulation().distanceMeters()) // 最小距离
+                .mapToLong(item -> item.simulation().distanceMeters())
                 .min()
                 .orElse(0L);
         long maxDistance = candidates.stream()
-                .mapToLong(item -> item.simulation().distanceMeters()) // 最大距离
+                .mapToLong(item -> item.simulation().distanceMeters())
                 .max()
                 .orElse(0L);
         int minMinutes = candidates.stream()
-                .mapToInt(item -> item.simulation().estimatedDeliveryMinutes()) // 最小配送时长
+                .mapToInt(item -> item.simulation().estimatedDeliveryMinutes())
                 .min()
                 .orElse(0);
         int maxMinutes = candidates.stream()
-                .mapToInt(item -> item.simulation().estimatedDeliveryMinutes()) // 最大配送时长
+                .mapToInt(item -> item.simulation().estimatedDeliveryMinutes())
                 .max()
                 .orElse(0);
         return 45D * deliveryNormalizeScore(candidate.amountCent(), minAmount, maxAmount)
@@ -583,12 +583,12 @@ public class DeliveryServiceImpl implements DeliveryService {
      * @return 有效排序枚举
      */
     private DeliverySortEnum deliveryResolveSort(String sort) {
-        // 未指定排序
+        // 未传排序参数时使用综合推荐，保证默认结果同时考虑价格、距离和时效。
         if (sort == null || sort.isBlank()) {
             return RECOMMENDED;
         }
         try {
-            return DeliverySortEnum.valueOf(sort.trim()); // 排序参数
+            return DeliverySortEnum.valueOf(sort.trim());
         } catch (IllegalArgumentException exception) {
             throw deliveryInvalidInput("sort 不在允许范围内");
         }
@@ -606,23 +606,48 @@ public class DeliveryServiceImpl implements DeliveryService {
                                                    int amountCent, List<DeliveryPharmacyRecommendationVO.Item> items) {
     }
 
-    /** 创建参数错误异常。 */
+    /**
+     * 创建参数错误异常。
+     *
+     * @param message 面向客户端的参数错误说明
+     * @return 参数错误业务异常
+     */
     private CAuthException deliveryInvalidInput(String message) {
         return new CAuthException(INVALID_PARAMETER, HttpStatus.BAD_REQUEST, message);
     }
-    /** 创建资源不存在异常。 */
+    /**
+     * 创建资源不存在异常。
+     *
+     * @param message 面向客户端的资源不存在说明
+     * @return 资源不存在业务异常
+     */
     private CAuthException deliveryNotFound(String message) {
         return new CAuthException(INVALID_USER_INPUT, HttpStatus.NOT_FOUND, message);
     }
-    /** 创建资源越权异常。 */
+    /**
+     * 创建资源越权异常。
+     *
+     * @param message 面向客户端的权限错误说明
+     * @return 权限错误业务异常
+     */
     private CAuthException deliveryForbidden(String message) {
         return new CAuthException(UNAUTHORIZED, HttpStatus.FORBIDDEN, message);
     }
-    /** 创建状态冲突异常。 */
+    /**
+     * 创建状态冲突异常。
+     *
+     * @param message 面向客户端的状态冲突说明
+     * @return 状态冲突业务异常
+     */
     private CAuthException deliveryStatusConflict(String message) {
         return new CAuthException(BUSINESS_STATUS_CONFLICT, HttpStatus.CONFLICT, message);
     }
-    /** 创建系统异常。 */
+    /**
+     * 创建系统异常。
+     *
+     * @param message 面向客户端的通用错误说明
+     * @return 通用系统业务异常
+     */
     private CAuthException deliverySystemError(String message) {
         return new CAuthException(SYSTEM_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, message);
     }
