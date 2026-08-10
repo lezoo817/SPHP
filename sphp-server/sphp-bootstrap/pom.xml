@@ -32,6 +32,12 @@
             <groupId>com.sphp</groupId>
             <artifactId>C-backend</artifactId>
         </dependency>
+
+        <!-- 统一启动模块注册 STOMP WebSocket 配置 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
