@@ -42,6 +42,14 @@ REPLY_SYSTEM_PROMPT = """你是一个医疗健康助手，正在为用户提供�
   井号标题、反引号等标记语法。需要强调的内容用自然语言表述即可。
 """
 
+# 非医疗知识提问的职责边界拒绝话术（确定性回复，不走 LLM 生成，避免模型兜底回答）
+OUT_OF_SCOPE_MESSAGE = (
+    "我是智愈先锋的AI医疗健康助手，专注提供医疗健康相关服务"
+    "（分诊导诊、挂号预约、在线问诊、购药、健康档案管理、医疗知识咨询等）。"
+    "您咨询的内容不在我的职责范围内，我无法为您解答。"
+    "如您有健康方面的疑问，欢迎随时向我咨询。"
+)
+
 # 处方解读来源标识，与 MCP 处方工具返回的数据契约一致。
 _OFFICIAL_READY_SOURCE = "OFFICIAL_READY"
 _AI_FALLBACK_SOURCE = "AI_FALLBACK"
@@ -542,6 +550,31 @@ def _build_emotional_guide(state: AgentState) -> str | None:
     return None
 
 
+def _build_chitchat_guide(state: AgentState) -> str | None:
+    """构造闲聊寒暄的职责边界引导（2026-08-10）。
+
+    intent 分类把非医疗话题拆为 chitchat（社交寒暄）与 out_of_scope（知识/任务
+    类提问，reply_node 已确定性拒绝）。但 LLM 意图分类可能把知识/任务类提问误判
+    为 chitchat，此处注入软约束兜底：寒暄正常回应；知识/任务类非医疗请求说明
+    职责边界不予回答。
+
+    Args:
+        state: 当前图状态，含 intent 字段。
+
+    Returns:
+        str | None: 闲聊边界引导；非 chitchat 意图时返回 None。
+    """
+    if state.get("intent") != "chitchat":
+        return None
+    return (
+        "当前场景为闲聊寒暄。若用户只是打招呼、感谢、告别、寒暄等社交性表达，"
+        "请简短、礼貌、友好地回应即可。若用户是在提问与医疗健康无关的知识或要求"
+        "完成非医疗任务（如写作、翻译、编程、时事评论、天气、娱乐等），"
+        "请说明你是医疗健康助手、职责仅限医疗健康相关服务，不予回答此类问题，"
+        "并引导用户咨询医疗健康相关问题。"
+    )
+
+
 def _build_doctor_recommendation_guide(state: AgentState) -> str | None:
     """构造导诊医生推荐的可解释理由引导（方向 B 可解释推荐）。
 
@@ -851,6 +884,11 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         无：生成失败时返回降级话术。
     """
     try:
+        if state.get("intent") == "out_of_scope":
+            # 非医疗知识提问：确定性说明职责边界并拒绝，不交给 LLM 生成
+            # （避免模型兜底回答、编造非医疗内容，符合"能查不能断"边界）。
+            return {"messages": [{"role": "assistant", "content": OUT_OF_SCOPE_MESSAGE}]}
+
         preset_error = state.get("preset_error")
         if isinstance(preset_error, str) and preset_error.strip():
             # 受控预设的校验和推荐失败由服务端直接说明，避免模型自行推断原因。
@@ -933,6 +971,12 @@ async def reply_node(state: AgentState) -> dict[str, Any]:
         emotional_guide = _build_emotional_guide(state)
         if emotional_guide:
             llm_messages.append({"role": "system", "content": emotional_guide})
+
+        # 闲聊职责边界兜底（2026-08-10）：chitchat 场景区分社交寒暄与知识/任务类
+        # 非医疗提问（后者由 out_of_scope 确定性拒绝，此处兜底防意图误判）。
+        chitchat_guide = _build_chitchat_guide(state)
+        if chitchat_guide:
+            llm_messages.append({"role": "system", "content": chitchat_guide})
 
         # 档案来源降级提示（2026-08-07）：前端会话残留了他账号的就诊人 ID 时，
         # query_health_record 被 Java 数据隔离拒绝后降级为查当前账号本人档案
