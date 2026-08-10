@@ -168,7 +168,7 @@ export function useConsultQueue() {
   const handleAddAllergy = useCallback(async (data: API.AllergyCreateReq) => {
     if (!selectedConsultId) return;
     await addPatientAllergy(selectedConsultId, data);
-    queryClient.invalidateQueries({
+    await queryClient.invalidateQueries({
       queryKey: QUERY_KEYS.patientDetail(selectedConsultId),
     });
   }, [selectedConsultId, queryClient]);
@@ -241,8 +241,8 @@ export function useConsultQueue() {
       const end = dayjs(selectedItem.slotEndTime, 'HH:mm');
       const currentTime = dayjs(`${now.format('HH:mm')}`, 'HH:mm');
       if (currentTime.isBefore(start) || currentTime.isAfter(end)) {
-        message.warning(
-          `当前不在接诊时间内（${selectedItem.slotStartTime}~${selectedItem.slotEndTime}）`,
+        await message.warning(
+            `当前不在接诊时间内（${selectedItem.slotStartTime}~${selectedItem.slotEndTime}）`,
         );
         return;
       }
@@ -251,14 +251,14 @@ export function useConsultQueue() {
     setStartingConsult(true);
     try {
       await startConsult(selectedConsultId);
-      message.success('开始接诊');
+      await message.success('开始接诊');
       setSelectedStatus(STATUS_IN_PROGRESS);
       setSelectedConsultId(null);
       refreshQueues();
       // 开始接诊后重置选中，AI 上下文随之清除；医生从接诊中队列重新选中时再写入
       clearConsultContext();
     } catch (err: unknown) {
-      message.error(getErrorMessage(err, '开始接诊失败'));
+      await message.error(getErrorMessage(err, '开始接诊失败'));
     } finally {
       setStartingConsult(false);
     }
@@ -275,14 +275,14 @@ export function useConsultQueue() {
         setEndingConsult(true);
         try {
           await endConsult(selectedConsultId);
-          message.success('问诊已结束');
+          await message.success('问诊已结束');
           setSelectedStatus(STATUS_COMPLETED);
           setSelectedConsultId(null);
           refreshQueues();
           // 结束问诊清除当前接诊上下文，AI 助手不再关联已结束的患者
           clearConsultContext();
         } catch (err: unknown) {
-          message.error(getErrorMessage(err, '结束问诊失败'));
+          await message.error(getErrorMessage(err, '结束问诊失败'));
         } finally {
           setEndingConsult(false);
         }
@@ -295,7 +295,7 @@ export function useConsultQueue() {
   const handleSaveNote = useCallback(async () => {
     if (!selectedConsultId) return;
     if (!reportChiefComplaint.trim() && !reportDiagnosis.trim()) {
-      message.warning('请至少填写主诉或诊断');
+      await message.warning('请至少填写主诉或诊断');
       return;
     }
     // 拼接为纯文本（按"字段名：值"换行分隔），不再使用 JSON 格式
@@ -309,11 +309,11 @@ export function useConsultQueue() {
     setSavingNote(true);
     try {
       await saveNote(selectedConsultId, { doctorNote: noteText });
-      message.success('病历已保存');
+      await message.success('病历已保存');
       setNoteChanged(false);
       setReportGeneratedAt(dayjs().format('YYYY-MM-DD HH:mm'));
     } catch (err: unknown) {
-      message.error(getErrorMessage(err, '保存病历失败'));
+      await message.error(getErrorMessage(err, '保存病历失败'));
     } finally {
       setSavingNote(false);
     }
@@ -349,7 +349,7 @@ export function useConsultQueue() {
       const data = await getPrescriptionDetail(id);
       setPrescriptionDetailData(data);
     } catch (err: unknown) {
-      message.error(getErrorMessage(err, '加载处方详情失败'));
+      await message.error(getErrorMessage(err, '加载处方详情失败'));
       setPrescriptionDetailOpen(false);
     } finally {
       setPrescriptionDetailLoading(false);
@@ -378,7 +378,7 @@ export function useConsultQueue() {
       setPrescriptionPrefill(items);
       setPrescriptionModalOpen(true);
     } catch (err: unknown) {
-      message.error(getErrorMessage(err, '加载处方失败，无法重新开方'));
+      await message.error(getErrorMessage(err, '加载处方失败，无法重新开方'));
     }
   }, []);
 
@@ -399,7 +399,7 @@ export function useConsultQueue() {
       setSubmittingPrescription(true);
       try {
         const result = await submitPrescription({ consultId: selectedConsultId, items });
-        queryClient.invalidateQueries({
+        await queryClient.invalidateQueries({
           queryKey: QUERY_KEYS.consultPrescriptions(selectedConsultId),
         });
         return result;

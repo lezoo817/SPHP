@@ -46,7 +46,7 @@ import { POLL_INTERVAL_CONSULT } from '@/constants/timing';
 import { getErrorMessage } from '@/utils/error';
 import { createIdempotencyKey } from '@/utils/idempotency';
 import PrescriptionItemsForm from '@/components/prescription/PrescriptionItemsForm';
-import styles from './index.module.less';
+import styles from './less/index.module.less';
 import { PAGE_SIZE_100, PAGE_SIZE_50 } from '@/constants/pageSize';
 import { GENDER_FEMALE, GENDER_MALE, SENDER_DOCTOR, STATUS_APPROVED, STATUS_COMPLETED, STATUS_IN_PROGRESS, STATUS_PENDING } from '@/constants/businessStatus';
 

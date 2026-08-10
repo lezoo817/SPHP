@@ -35,7 +35,7 @@ import {
 } from 'antd';
 import { useState } from 'react';
 import dayjs from 'dayjs';
-import styles from './PatientInfoBar.module.less';
+import styles from './less/PatientInfoBar.module.less';
 import { STATUS_MAP } from './constants';
 import { getErrorMessage } from '@/utils/error';
 import { GENDER_FEMALE, GENDER_MALE } from '@/constants/businessStatus';

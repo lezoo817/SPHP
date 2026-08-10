@@ -82,7 +82,7 @@ export default function DoctorList() {
     setSubmitting(true);
     try {
       await createDoctor(values);
-      message.success('医生新增成功');
+      await message.success('医生新增成功');
       setAddModalOpen(false);
       actionRef.current?.reload();
     } catch (err: unknown) {

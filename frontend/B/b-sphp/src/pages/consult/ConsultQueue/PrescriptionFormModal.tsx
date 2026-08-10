@@ -16,7 +16,7 @@ import PrescriptionItemsForm, {
   type PrescriptionItemFormValue,
   type PrescriptionPrefillItem,
 } from '@/components/prescription/PrescriptionItemsForm';
-import styles from './PrescriptionFormModal.module.less';
+import styles from './less/PrescriptionFormModal.module.less';
 import { PAGE_SIZE_50 } from '@/constants/pageSize';
 import { STATUS_APPROVED, STATUS_SUBMITTED } from '@/constants/businessStatus';
 

@@ -6,7 +6,7 @@
  */
 import { Button, Input, Typography } from 'antd';
 import { FileTextOutlined, SaveOutlined } from '@ant-design/icons';
-import styles from './NoteForm.module.less';
+import styles from './less/NoteForm.module.less';
 
 const { Text } = Typography;
 const { TextArea } = Input;

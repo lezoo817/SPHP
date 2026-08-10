@@ -7,7 +7,7 @@
  */
 import { Button, Empty, Typography } from 'antd';
 import { MedicineBoxOutlined, StopOutlined } from '@ant-design/icons';
-import styles from './ConsultPanel.module.less';
+import styles from './less/ConsultPanel.module.less';
 import type { SelectedStatus } from './constants';
 import type { NoteField } from './NoteForm';
 import PatientInfoBar from './PatientInfoBar';
