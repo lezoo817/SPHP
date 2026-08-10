@@ -108,7 +108,7 @@ export function chatStream(
         body: JSON.stringify(body),
         signal: controller.signal,
       });
-    } catch (err) {
+    } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError') return;
       onError('网络连接失败，请稍后重试', 'NETWORK_ERROR');
       return;
@@ -129,7 +129,7 @@ export function chatStream(
 
     try {
       await readSseStream(response.body, onEvent);
-    } catch (err) {
+    } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError') return;
       onError('对话连接中断，请重试', 'STREAM_ERROR');
     }
