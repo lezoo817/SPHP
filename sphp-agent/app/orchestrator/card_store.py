@@ -41,6 +41,9 @@ class CardRecord(TypedDict):
     # 卡片锚点（2026-08-10）：该卡片产生轮次结束时可见消息（user/assistant）
     # 总数，历史接口据此把卡片插回对话中对应位置（而非堆到末尾）。
     anchor: int
+    # L2 确认卡是否已被用户确认成功（2026-08-10）：confirm 端点成功回调后置 True，
+    # 历史重放据此把确认过的卡片渲染为"已完成"而非"待确认"。
+    confirmed: bool
 
 
 class CardStore(Protocol):
@@ -83,6 +86,20 @@ class CardStore(Protocol):
 
         Returns:
             list[CardRecord]: 历史卡片记录列表。
+        """
+
+    async def mark_confirmed(
+        self, user_id: int | None, session_id: str, confirm_token: str
+    ) -> bool:
+        """把指定 L2 确认卡标记为已确认（confirm 端点成功后调用）。
+
+        Args:
+            user_id: 用户 ID（按 user_id 隔离；匿名为 None，PG 下匹配不到无副作用）。
+            session_id: 会话 ID。
+            confirm_token: 卡片 payload 的 confirm_token（与确认请求一致）。
+
+        Returns:
+            bool: 是否命中并更新了卡片（未命中/非 L2 卡返回 False，不阻塞）。
         """
 
     async def delete(self, user_id: int, session_id: str) -> bool:
@@ -129,6 +146,7 @@ class MemoryCardStore:
                     "payload": payload,
                     "created_at": now,
                     "anchor": anchor,
+                    "confirmed": False,
                 }
             )
 
@@ -143,9 +161,30 @@ class MemoryCardStore:
                 "payload": r["payload"],
                 "created_at": r["created_at"],
                 "anchor": r["anchor"],
+                "confirmed": r.get("confirmed", False),
             }
             for r in records
         ]
+
+    async def mark_confirmed(
+        self, user_id: int | None, session_id: str, confirm_token: str
+    ) -> bool:
+        """把指定 L2 确认卡标记为已确认（内存实现，开发/测试）。
+
+        Args:
+            user_id: 用户 ID（按 user_id 隔离）。
+            session_id: 会话 ID。
+            confirm_token: 卡片 payload 的 confirm_token。
+
+        Returns:
+            bool: 是否命中并更新了卡片。
+        """
+        for r in self._records.get((user_id, session_id), []):
+            payload = r.get("payload") or {}
+            if payload.get("confirm_token") == confirm_token:
+                r["confirmed"] = True
+                return True
+        return False
 
     async def delete(self, user_id: int, session_id: str) -> bool:
         """删除会话全部卡片（内存实现，开发/测试）。
@@ -176,6 +215,7 @@ class PostgresCardStore:
             event       TEXT         NOT NULL,
             payload     JSONB        NOT NULL,
             anchor      INTEGER      NOT NULL DEFAULT 0,
+            confirmed   BOOLEAN      NOT NULL DEFAULT false,
             created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
             PRIMARY KEY (user_id, session_id, seq)
         )
@@ -191,10 +231,14 @@ class PostgresCardStore:
             return
         async with self._pool.connection() as conn:
             await conn.execute(self._DDL)
-            # 2026-08-10 新增 anchor 列：对已存在的表（旧 DDL 无此列）做幂等迁移
+            # 2026-08-10 新列幂等迁移：对已存在的表（旧 DDL 无这些列）追加
             await conn.execute(
                 "ALTER TABLE agent_cards "
                 "ADD COLUMN IF NOT EXISTS anchor INTEGER NOT NULL DEFAULT 0"
+            )
+            await conn.execute(
+                "ALTER TABLE agent_cards "
+                "ADD COLUMN IF NOT EXISTS confirmed BOOLEAN NOT NULL DEFAULT false"
             )
         logger.info("PG 卡片历史表 agent_cards 已就绪")
 
@@ -232,7 +276,7 @@ class PostgresCardStore:
             return []
         async with self._pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT seq, event, payload, anchor, created_at FROM agent_cards "
+                "SELECT seq, event, payload, anchor, confirmed, created_at FROM agent_cards "
                 "WHERE user_id = %s AND session_id = %s ORDER BY seq ASC",
                 (user_id, session_id),
             )
@@ -243,10 +287,35 @@ class PostgresCardStore:
                 "event": r["event"],
                 "payload": r["payload"],
                 "anchor": r["anchor"],
+                "confirmed": r["confirmed"],
                 "created_at": (r["created_at"].isoformat() if r["created_at"] is not None else ""),
             }
             for r in rows
         ]
+
+    async def mark_confirmed(
+        self, user_id: int | None, session_id: str, confirm_token: str
+    ) -> bool:
+        """把指定 L2 确认卡标记为已确认（PG 持久化，生产）。
+
+        Args:
+            user_id: 用户 ID（WHERE 过滤，跨用户不可改他人会话；None 匹配不到）。
+            session_id: 会话 ID。
+            confirm_token: 卡片 payload 的 confirm_token。
+
+        Returns:
+            bool: 是否命中并更新了卡片（rowcount > 0）。
+        """
+        if self._pool is None:
+            return False
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "UPDATE agent_cards SET confirmed = true "
+                "WHERE user_id = %s AND session_id = %s "
+                "AND payload->>'confirm_token' = %s",
+                (user_id, session_id, confirm_token),
+            )
+            return cur.rowcount > 0
 
     async def delete(self, user_id: int, session_id: str) -> bool:
         """删除会话全部卡片（PG 持久化，生产）。

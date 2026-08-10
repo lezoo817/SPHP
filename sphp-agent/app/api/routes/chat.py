@@ -1314,6 +1314,16 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
     except Exception:
         logger.warning("删除 confirm_token 失败: token=%s", req.confirm_token)
 
+    # 2026-08-10 卡片确认状态持久化：确认成功后把对应 L2 确认卡标记为已完成，
+    # 历史重放时前端可渲染"已完成"而非"待确认"（支付返回/历史回看场景）。
+    # 失败仅 log，不阻塞确认主流程（卡片未命中时返回 False 亦无副作用）。
+    try:
+        await get_card_store().mark_confirmed(
+            getattr(request.state, "user_id", None), req.session_id, req.confirm_token
+        )
+    except Exception:
+        logger.warning("标记卡片已确认失败: token=%s", req.confirm_token)
+
     # M5-T4（T-M3-L1）：写入确认成功回执，供下一轮对话引用（此操作是独立
     # HTTP 请求，结果不进 graph 状态；Redis 回执 + 下轮注入保证对话连续）
     # P2 安全：写入归属 user_id，供下一轮消费时按归属过滤。
