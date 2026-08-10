@@ -5,8 +5,8 @@ import com.sphp.admin.auth.entity.Doctor;
 import com.sphp.admin.auth.mapper.DoctorMapper;
 import com.sphp.admin.common.CurrentUserService;
 import com.sphp.admin.common.DataScope;
-import com.sphp.admin.doctor.dto.OnlineConsultationReplyRequest;
-import com.sphp.admin.doctor.dto.OnlineConsultationReplyVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationMessageSendRequest;
+import com.sphp.admin.doctor.dto.MessageVO;
 import com.sphp.admin.doctor.entity.ConsultRecord;
 import com.sphp.admin.doctor.entity.ConsultationMessage;
 import com.sphp.admin.doctor.mapper.BAppointmentMapper;
@@ -18,7 +18,7 @@ import com.sphp.admin.doctor.mapper.ConsultRecordMapper;
 import com.sphp.admin.prescription.mapper.PrescriptionItemMapper;
 import com.sphp.admin.prescription.mapper.PrescriptionMapper;
 import com.sphp.admin.prescription.service.PrescriptionService;
-import com.sphp.shared.event.OnlineConsultationRepliedEvent;
+import com.sphp.shared.event.ConsultationMessageCreatedEvent;
 import com.sphp.shared.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
@@ -38,36 +38,39 @@ import static org.mockito.Mockito.when;
 class DoctorConsultServiceImplTest {
 
     /**
-     * 验证状态条件更新成功后仅写入一条医生回复并发布安全事件。
+     * 验证医生消息保存成功后发布不含正文的实时事件。
      */
     @Test
-    void replyOnlineConsultCompletesOnceAndPublishesEvent() {
+    void sendOnlineConsultationMessagePublishesEvent() {
         Fixture fixture = fixture();
-        when(fixture.consultRecordMapper.completeOnlineConsult(any(), any(), any())).thenReturn(1);
         doAnswer(invocation -> {
             ConsultationMessage message = invocation.getArgument(0);
             message.setId(12001L);
             return 1;
         }).when(fixture.messageMapper).insert(any(ConsultationMessage.class));
 
-        OnlineConsultationReplyVO result = fixture.service.replyOnlineConsult(11001L, replyRequest());
+        MessageVO result = fixture.service.sendOnlineConsultationMessage(11001L, messageRequest());
 
-        assertEquals("COMPLETED", result.getStatus());
         assertEquals(12001L, result.getMessageId());
         verify(fixture.messageMapper).insert(any(ConsultationMessage.class));
-        verify(fixture.eventPublisher).publishEvent(any(OnlineConsultationRepliedEvent.class));
+        verify(fixture.eventPublisher).publishEvent(any(ConsultationMessageCreatedEvent.class));
     }
 
     /**
-     * 验证并发请求未抢到状态更新时不写入第二条医生回复。
+     * 验证已结束问诊不会再次写入医生消息。
      */
     @Test
-    void replyOnlineConsultRejectsWhenConditionalUpdateLosesRace() {
+    void sendOnlineConsultationMessageRejectsWhenCompleted() {
         Fixture fixture = fixture();
-        when(fixture.consultRecordMapper.completeOnlineConsult(any(), any(), any())).thenReturn(0);
+        ConsultRecord completed = new ConsultRecord();
+        completed.setId(11001L);
+        completed.setDoctorId(30001L);
+        completed.setPatientId(20001L);
+        completed.setStatus("COMPLETED");
+        when(fixture.consultRecordMapper.lockOnlineConsult(11001L)).thenReturn(completed);
 
         BusinessException exception = assertThrows(BusinessException.class,
-                () -> fixture.service.replyOnlineConsult(11001L, replyRequest()));
+                () -> fixture.service.sendOnlineConsultationMessage(11001L, messageRequest()));
 
         assertEquals("3011", exception.getCode());
         verify(fixture.messageMapper, never()).insert(any(ConsultationMessage.class));
@@ -94,7 +97,8 @@ class DoctorConsultServiceImplTest {
         doctor.setId(30001L);
         doctor.setHospitalId(40001L);
         when(consultRecordMapper.selectById(11001L)).thenReturn(record);
-        when(messageMapper.selectCount(any())).thenReturn(0L);
+        when(consultRecordMapper.lockOnlineConsult(11001L)).thenReturn(record);
+        when(messageMapper.selectOne(any())).thenReturn(null);
         when(doctorMapper.selectById(30001L)).thenReturn(doctor);
         when(currentUserService.getCurrentDataScope())
                 .thenReturn(new DataScope("DOCTOR", 40001L, 50001L, 30001L));
@@ -116,13 +120,14 @@ class DoctorConsultServiceImplTest {
     }
 
     /**
-     * 创建合法医生回复请求。
+     * 创建合法医生消息请求。
      *
      * @return 回复请求
      */
-    private OnlineConsultationReplyRequest replyRequest() {
-        OnlineConsultationReplyRequest request = new OnlineConsultationReplyRequest();
+    private OnlineConsultationMessageSendRequest messageRequest() {
+        OnlineConsultationMessageSendRequest request = new OnlineConsultationMessageSendRequest();
         request.setContent("请按处方用药，症状加重时及时线下就诊");
+        request.setClientMessageId("doctor-message-1");
         return request;
     }
 

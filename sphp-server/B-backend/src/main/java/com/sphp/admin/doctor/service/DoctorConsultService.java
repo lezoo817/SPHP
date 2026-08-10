@@ -12,8 +12,8 @@ import com.sphp.admin.doctor.dto.ConsultHistoryVO;
 import com.sphp.admin.doctor.dto.QueueItemVO;
 import com.sphp.admin.doctor.dto.OnlineConsultationDetailVO;
 import com.sphp.admin.doctor.dto.OnlineConsultationItemVO;
-import com.sphp.admin.doctor.dto.OnlineConsultationReplyRequest;
-import com.sphp.admin.doctor.dto.OnlineConsultationReplyVO;
+import com.sphp.admin.doctor.dto.OnlineConsultationMessageSendRequest;
+import com.sphp.admin.doctor.dto.OnlineConsultationMessagePageVO;
 
 /**
  * 接诊台服务接口。
@@ -39,7 +39,7 @@ public interface DoctorConsultService {
     OnlineConsultationDetailVO getOnlineConsultationDetail(Long consultId);
 
     /**
-     * 开始编辑在线问诊回复。
+     * 开始在线问诊。
      *
      * @param consultId 问诊记录 ID
      * @return 状态变更结果
@@ -47,13 +47,32 @@ public interface DoctorConsultService {
     ConsultStartVO startOnlineConsult(Long consultId);
 
     /**
-     * 提交一次性医生回复并完成在线问诊。
+     * 发送在线问诊医生文字消息。
      *
      * @param consultId 问诊记录 ID
-     * @param request 回复内容
-     * @return 回复结果
+     * @param request 消息内容和客户端幂等标识
+     * @return 已保存消息
      */
-    OnlineConsultationReplyVO replyOnlineConsult(Long consultId, OnlineConsultationReplyRequest request);
+    MessageVO sendOnlineConsultationMessage(Long consultId, OnlineConsultationMessageSendRequest request);
+
+    /**
+     * 结束在线问诊。
+     *
+     * @param consultId 问诊记录 ID
+     * @return 结束结果
+     */
+    ConsultEndVO endOnlineConsult(Long consultId);
+
+    /**
+     * 游标查询在线问诊消息。
+     *
+     * @param consultId 问诊记录 ID
+     * @param afterId 向后补拉游标
+     * @param beforeId 向前加载游标
+     * @param size 每页数量
+     * @return 消息游标分页结果
+     */
+    OnlineConsultationMessagePageVO pageOnlineConsultationMessages(Long consultId, Long afterId, Long beforeId, int size);
 
     /**
      * 分页查询待接诊列表。
