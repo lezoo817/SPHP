@@ -32,7 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/b/admin/doctors")
-@Tag(name = "2-医生管理", description = "医生列表/新增/编辑/启停/改账号/重置密码（管理员）")
+@Tag(name = "医生管理", description = "医生列表/新增/编辑/启停/改账号/重置密码（管理员）")
 @RequiredArgsConstructor
 public class DoctorController {
 

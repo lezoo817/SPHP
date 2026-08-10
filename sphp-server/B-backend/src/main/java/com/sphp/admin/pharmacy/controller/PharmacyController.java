@@ -20,7 +20,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/b/admin/pharmacies")
-@Tag(name = "6-药房管理", description = "药房列表查询（管理员）")
+@Tag(name = "药房管理", description = "药房列表查询（管理员）")
 @RequiredArgsConstructor
 public class PharmacyController {
 
