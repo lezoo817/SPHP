@@ -4,7 +4,7 @@
  * - 所有角色可访问（数据权限由后端控制）
  * - 点击行跳转患者详情页
  */
-import { Tag, message } from 'antd';
+import { Tag, Typography, message } from 'antd';
 import { ProTable } from '@ant-design/pro-components';
 import { useRef } from 'react';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
@@ -35,6 +35,8 @@ export default function PatientList() {
       dataIndex: 'name',
       width: 140,
       ellipsis: true,
+      // 整行可点击跳转详情（onRow.onClick），列头提示避免用户不知道可点击
+      tooltip: '点击行可查看患者详情',
     },
     {
       title: '性别',
@@ -65,6 +67,14 @@ export default function PatientList() {
       actionRef={actionRef}
       rowKey="id"
       columns={columns}
+      headerTitle={
+        <span>
+          患者列表{' '}
+          <Typography.Text type="secondary" style={{ fontWeight: 'normal', fontSize: 13 }}>
+            （点击患者行可查看详情）
+          </Typography.Text>
+        </span>
+      }
       request={async (params) => {
         const { current, pageSize, ...rest } = params;
         try {

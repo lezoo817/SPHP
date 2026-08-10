@@ -1,11 +1,14 @@
 package com.sphp.admin.patient.mapper;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.sphp.admin.patient.vo.MedicationPlanVO;
 import com.sphp.admin.patient.vo.PatientListVO;
 import com.sphp.admin.patient.vo.PatientPrescriptionVO;
 import com.sphp.admin.patient.vo.PatientVisitVO;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
 
 /**
  * 患者管理数据查询 Mapper（复杂多表联查）。
@@ -100,4 +103,28 @@ public interface PatientDataMapper {
             "    AND cr.deleted_at IS NULL" +
             ") AS existed")
     boolean existsConsultInHospital(@Param("patientId") Long patientId, @Param("hospitalId") Long hospitalId);
+
+    /**
+     * 查询患者当前在用的用药明细（从已审核处方派生，按疗程时间窗过滤）。
+     *
+     * <p>「当前」口径：以处方生成时间（{@code created_at}）为起点，每味药在
+     * {@code created_at + days} 天内视为在用，天数不同的药到期时间不同；
+     * 仅取 APPROVED 处方，与「历史处方」Tab 的全量展示区分。
+     * 不依赖 C 端购药（{@code medication_plan} 仅在购药订单支付后写入）。
+     *
+     * @param patientId 患者 ID
+     * @return 当前在用的用药明细（按处方时间倒序）
+     */
+    @Select("SELECT pi.id, d.name AS drugName, pi.dosage, pi.frequency, pi.usage_method AS usageMethod, "
+            + "pi.days AS durationDays, 'ACTIVE' AS status, NULL AS nextRemindAt, "
+            + "p.created_at AS createdAt "
+            + "FROM prescription p "
+            + "JOIN prescription_item pi ON pi.prescription_id = p.id "
+            + "JOIN drug d ON pi.drug_id = d.id AND d.deleted_at IS NULL "
+            + "WHERE p.patient_id = #{patientId} "
+            + "  AND p.status = 'APPROVED' "
+            + "  AND p.deleted_at IS NULL "
+            + "  AND p.created_at + (pi.days * INTERVAL '1 day') >= CURRENT_TIMESTAMP "
+            + "ORDER BY p.created_at DESC, pi.id ASC")
+    List<MedicationPlanVO> selectCurrentMedications(@Param("patientId") Long patientId);
 }
