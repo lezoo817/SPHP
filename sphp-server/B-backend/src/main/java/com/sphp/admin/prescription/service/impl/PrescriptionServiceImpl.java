@@ -81,7 +81,6 @@ public class PrescriptionServiceImpl implements PrescriptionService {
 
     /** 处方状态 */
     private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
-    private static final String STATUS_DRAFT = "DRAFT";
     private static final String STATUS_SUBMITTED = "SUBMITTED";
     private static final String STATUS_APPROVED = "APPROVED";
     private static final String STATUS_REJECTED = "REJECTED";
