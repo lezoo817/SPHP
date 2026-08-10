@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { buildAgentContext } from './agent';
 import { getMinePatientId, resolveMinePatientId, saveMinePatientId } from './mine-patient';
 import { clearSelection, getSelection, saveSelection } from './selection';
 
@@ -38,6 +39,7 @@ describe('全局当前就诊人选择', () => {
     expect(getMinePatientId()).toBe(2001);
     saveMinePatientId(2002);
     expect(getSelection()).toEqual({ hospitalId: 3, patientId: 2002 });
+    expect(buildAgentContext('/agent')).toMatchObject({ page: 'triage', hospital_id: 3, patient_id: 2002 });
   });
 
   it('全局选择无效时统一回退本人，并在退出时清除', () => {
