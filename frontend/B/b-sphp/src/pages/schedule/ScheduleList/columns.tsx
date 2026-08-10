@@ -8,6 +8,7 @@ import { Tag, Button, Tooltip, Space, Select } from 'antd';
 import type { ProColumns } from '@ant-design/pro-components';
 import { getDepartments, getDoctors } from '@/services/admin';
 import { PAGE_SIZE_100, PAGE_SIZE_200 } from '@/constants/pageSize';
+import { STATUS_DRAFT, STATUS_ENABLED, STATUS_PUBLISHED } from '@/constants/businessStatus';
 import {
   STATUS_OPTIONS,
   PUBLISHED_LOCK_TOOLTIP,
@@ -39,7 +40,7 @@ async function fetchDoctors(keyword?: string) {
   try {
     const res = await getDoctors({
       name: keyword || undefined,
-      status: 'ENABLED',
+      status: STATUS_ENABLED,
       page: 1,
       size: PAGE_SIZE_100,
     });
@@ -149,8 +150,8 @@ export function getColumns(deps: ColumnsDeps): ProColumns<API.Schedule>[] {
       width: 280,
       hideInSearch: true,
       render: (_, record) => {
-        const published = record.status === 'PUBLISHED';
-        const draft = record.status === 'DRAFT';
+        const published = record.status === STATUS_PUBLISHED;
+        const draft = record.status === STATUS_DRAFT;
         return (
           <Space size={0} wrap>
             <Button type="link" size="small" onClick={() => onGoDetail(record)}>

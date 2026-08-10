@@ -16,6 +16,7 @@ import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 import useCountdown from '@/hooks/useCountdown';
 import dayjs from 'dayjs';
 import { PAGE_SIZE_200, PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
+import { ROLE_ADMIN } from '@/constants/businessStatus';
 
 /** 锁定剩余时间倒计时组件 */
 function RemainCountdown({ expireAt }: { expireAt?: string }) {
@@ -38,7 +39,7 @@ function RemainCountdown({ expireAt }: { expireAt?: string }) {
 }
 
 export default function LockedSlotsBoard() {
-  const isAdmin = useHasRole('ADMIN');
+  const isAdmin = useHasRole(ROLE_ADMIN);
   const actionRef = useRef<ActionType>();
 
   const [query, setQuery] = useState<{ date: string; deptId?: number }>({

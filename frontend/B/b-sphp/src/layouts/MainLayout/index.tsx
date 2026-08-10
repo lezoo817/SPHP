@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AgentFloatingButton } from '@/components/agent/AgentFloatingButton';
 import { AiPanel } from '@/components/agent/AiPanel';
 import { buildAgentContext } from '@/models/agent';
+import { ROLE_ADMIN, ROLE_DEPT_HEAD } from '@/constants/businessStatus';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -26,8 +27,8 @@ const { Text } = Typography;
  * 侧边栏菜单渲染 - 根据角色数组动态过滤
  */
 function buildMenuItems(roles: string[]): MenuProps['items'] {
-  const isAdmin = roles.includes('ADMIN');
-  const canAudit = isAdmin || roles.includes('DEPT_HEAD');
+  const isAdmin = roles.includes(ROLE_ADMIN);
+  const canAudit = isAdmin || roles.includes(ROLE_DEPT_HEAD);
 
   return [
     ...(isAdmin
@@ -155,7 +156,7 @@ export default function MainLayout() {
         return;
       }
       // ADMIN 无接诊台权限，登录后默认跳转排班列表
-      const isAdmin = roles.includes('ADMIN');
+      const isAdmin = roles.includes(ROLE_ADMIN);
       const path = location.pathname;
       if (isAdmin && (path === '/' || path.startsWith('/consult'))) {
         navigate('/schedule/list', { replace: true });

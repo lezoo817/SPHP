@@ -36,6 +36,7 @@ import {
 import { getErrorMessage } from '@/utils/error';
 import { getShiftConfig, getStatusConfig } from '../constants';
 import { PAGE_SIZE_100, PAGE_SIZE_200, PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
+import { STATUS_DRAFT, STATUS_ENABLED } from '@/constants/businessStatus';
 
 interface FilterValues {
   dateRange?: [Dayjs, Dayjs];
@@ -91,7 +92,7 @@ export default function BatchPublishModal({ open, onCancel, onPublished }: Props
       const res = await getDoctors({
         deptId,
         name: keyword || undefined,
-        status: 'ENABLED',
+        status: STATUS_ENABLED,
         page: 1,
         size: PAGE_SIZE_100,
       });
@@ -116,7 +117,7 @@ export default function BatchPublishModal({ open, onCancel, onPublished }: Props
         date: v.dateRange?.[0]?.format('YYYY-MM-DD'),
         deptId: v.deptId,
         doctorId: v.doctorId,
-        status: 'DRAFT',
+        status: STATUS_DRAFT,
       });
       const inRange = v.dateRange
         ? res.list.filter((row) => {

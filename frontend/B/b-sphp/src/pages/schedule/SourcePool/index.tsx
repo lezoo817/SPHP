@@ -16,9 +16,10 @@ import { getShiftConfig } from '../constants';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import { PAGE_SIZE_100, PAGE_SIZE_200, PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
+import { ROLE_ADMIN, STATUS_ENABLED } from '@/constants/businessStatus';
 
 export default function SourcePool() {
-  const isAdmin = useHasRole('ADMIN');
+  const isAdmin = useHasRole(ROLE_ADMIN);
 
   /** 日期参数归一化：ProTable 可能传入 dayjs 或字符串 */
   const toDateParam = (v: unknown): string | undefined => {
@@ -42,7 +43,7 @@ export default function SourcePool() {
     try {
       const res = await getDoctors({
         name: keyword || undefined,
-        status: 'ENABLED',
+        status: STATUS_ENABLED,
         page: 1,
         size: PAGE_SIZE_100,
       });

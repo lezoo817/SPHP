@@ -11,6 +11,7 @@ import { useState } from 'react';
 import dayjs from 'dayjs';
 import styles from './MessageBoard.module.less';
 import { SENDER_LABEL } from './constants';
+import { SENDER_DOCTOR } from '@/constants/businessStatus';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -62,7 +63,7 @@ export default function MessageBoard({
                   <div
                     key={msg.messageId}
                     className={`${styles.messageItem} ${
-                      msg.senderType === 'DOCTOR'
+                      msg.senderType === SENDER_DOCTOR
                         ? styles.messageRight
                         : styles.messageLeft
                     }`}

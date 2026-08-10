@@ -21,6 +21,7 @@ import { getHospitalInfo, updateHospital } from '@/services/admin';
 import { useHasRole } from '@/hooks/useCurrentUser';
 import { getErrorMessage } from '@/utils/error';
 import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
+import { ROLE_ADMIN, STATUS_DISABLED, STATUS_ENABLED } from '@/constants/businessStatus';
 
 /** 医院等级选项 */
 const HOSPITAL_LEVELS = [
@@ -37,7 +38,7 @@ const HOSPITAL_LEVELS = [
 ];
 
 export default function HospitalInfo() {
-  const isAdmin = useHasRole('ADMIN');
+  const isAdmin = useHasRole(ROLE_ADMIN);
   const queryClient = useQueryClient();
   const [editModalOpen, setEditModalOpen] = useState(false);
 
@@ -71,8 +72,8 @@ export default function HospitalInfo() {
 
   /** 状态标签 */
   const statusTag = (status?: string) => {
-    if (status === 'ENABLED') return <Tag color="green">启用</Tag>;
-    if (status === 'DISABLED') return <Tag color="red">停用</Tag>;
+    if (status === STATUS_ENABLED) return <Tag color="green">启用</Tag>;
+    if (status === STATUS_DISABLED) return <Tag color="red">停用</Tag>;
     return <Tag>未知</Tag>;
   };
 

@@ -36,6 +36,7 @@ import type { SelectedStatus } from './constants';
 import type { NoteField } from './NoteForm';
 import type { PrescriptionPrefillItem } from './PrescriptionFormModal';
 import { PAGE_SIZE_100, PAGE_SIZE_20 } from '@/constants/pageSize';
+import { ROLE_ADMIN, STATUS_COMPLETED, STATUS_IN_PROGRESS, STATUS_PENDING } from '@/constants/businessStatus';
 
 /** 待接诊 / 接诊中队列每页条数 */
 const QUEUE_PAGE_SIZE = 10;
@@ -46,7 +47,7 @@ const EMPTY_ARRAY: never[] = [];
 
 export function useConsultQueue() {
   const currentUser = useCurrentUser();
-  const isAdmin = useHasRole('ADMIN');
+  const isAdmin = useHasRole(ROLE_ADMIN);
   const queryClient = useQueryClient();
   // 全局接诊上下文：选中患者时写入 patient_id，供 MainLayout 悬浮 AI 抽屉
   // 构建对话上下文携带，避免 AI 反问"患者是谁"（后端 5 个 B 端工具必填 patient_id）
@@ -56,9 +57,9 @@ export function useConsultQueue() {
 
   const [pendingPage, setPendingPage] = useState(1);
   const { data: pendingRes, isLoading: pendingLoading } = useQuery({
-    queryKey: [...QUERY_KEYS.consultQueue('PENDING'), pendingPage] as const,
+    queryKey: [...QUERY_KEYS.consultQueue(STATUS_PENDING), pendingPage] as const,
     queryFn: () =>
-      getQueue({ status: 'PENDING', page: pendingPage, size: QUEUE_PAGE_SIZE }),
+      getQueue({ status: STATUS_PENDING, page: pendingPage, size: QUEUE_PAGE_SIZE }),
     refetchInterval: POLL_INTERVAL_CONSULT,
   });
   const pendingItems = pendingRes?.list ?? EMPTY_ARRAY;
@@ -68,9 +69,9 @@ export function useConsultQueue() {
 
   const [inProgressPage, setInProgressPage] = useState(1);
   const { data: inProgressRes, isLoading: inProgressLoading } = useQuery({
-    queryKey: [...QUERY_KEYS.consultQueue('IN_PROGRESS'), inProgressPage] as const,
+    queryKey: [...QUERY_KEYS.consultQueue(STATUS_IN_PROGRESS), inProgressPage] as const,
     queryFn: () =>
-      getQueue({ status: 'IN_PROGRESS', page: inProgressPage, size: QUEUE_PAGE_SIZE }),
+      getQueue({ status: STATUS_IN_PROGRESS, page: inProgressPage, size: QUEUE_PAGE_SIZE }),
     refetchInterval: POLL_INTERVAL_CONSULT,
   });
   const inProgressItems = inProgressRes?.list ?? EMPTY_ARRAY;
@@ -104,7 +105,7 @@ export function useConsultQueue() {
   const { data: historyDetail, isLoading: historyDetailLoading } = useQuery({
     queryKey: QUERY_KEYS.consultHistoryDetail(selectedConsultId ?? -1),
     queryFn: () => getConsultHistoryDetail(selectedConsultId as number),
-    enabled: Boolean(selectedConsultId) && selectedStatus === 'COMPLETED',
+    enabled: Boolean(selectedConsultId) && selectedStatus === STATUS_COMPLETED,
   });
 
   /** 留言板消息（仅接诊中加载） */
@@ -114,7 +115,7 @@ export function useConsultQueue() {
       getMessages(selectedConsultId as number, { page: 1, size: PAGE_SIZE_100 }).then(
         (res) => res.list ?? [],
       ),
-    enabled: Boolean(selectedConsultId) && selectedStatus === 'IN_PROGRESS',
+    enabled: Boolean(selectedConsultId) && selectedStatus === STATUS_IN_PROGRESS,
   });
 
   /** 当前问诊的处方列表 */
@@ -248,8 +249,8 @@ export function useConsultQueue() {
 
   /** 刷新三块队列（开始/结束接诊后患者状态迁移，列表需同步） */
   const refreshQueues = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.consultQueue('PENDING') });
-    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.consultQueue('IN_PROGRESS') });
+    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.consultQueue(STATUS_PENDING) });
+    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.consultQueue(STATUS_IN_PROGRESS) });
     queryClient.invalidateQueries({ queryKey: QUERY_KEYS.consultHistory });
   }, [queryClient]);
 
@@ -275,7 +276,7 @@ export function useConsultQueue() {
     try {
       await startConsult(selectedConsultId);
       message.success('开始接诊');
-      setSelectedStatus('IN_PROGRESS');
+      setSelectedStatus(STATUS_IN_PROGRESS);
       setSelectedConsultId(null);
       refreshQueues();
       // 开始接诊后重置选中，AI 上下文随之清除；医生从接诊中队列重新选中时再写入
@@ -299,7 +300,7 @@ export function useConsultQueue() {
         try {
           await endConsult(selectedConsultId);
           message.success('问诊已结束');
-          setSelectedStatus('COMPLETED');
+          setSelectedStatus(STATUS_COMPLETED);
           setSelectedConsultId(null);
           refreshQueues();
           // 结束问诊清除当前接诊上下文，AI 助手不再关联已结束的患者

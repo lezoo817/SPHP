@@ -20,6 +20,7 @@ import TemplateDetailModal from './TemplateDetailModal';
 import TemplateCreateModal from './TemplateCreateModal';
 import TemplateEditModal from './TemplateEditModal';
 import { PAGE_SIZE_200, PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
+import { ROLE_ADMIN, ROLE_DEPT_HEAD } from '@/constants/businessStatus';
 
 export default function PrescriptionTemplates() {
   const currentUser = useCurrentUser();
@@ -48,9 +49,9 @@ export default function PrescriptionTemplates() {
   );
 
   // 角色与数据权限：非 ADMIN 收敛到本人科室（后端同时强制，前端仅收敛可选项与筛选，避免误导）
-  const isAdmin = useMemo(() => currentUser?.roles?.includes('ADMIN') ?? false, [currentUser]);
+  const isAdmin = useMemo(() => currentUser?.roles?.includes(ROLE_ADMIN) ?? false, [currentUser]);
   const isDeptHead = useMemo(
-    () => currentUser?.roles?.includes('DEPT_HEAD') ?? false,
+    () => currentUser?.roles?.includes(ROLE_DEPT_HEAD) ?? false,
     [currentUser],
   );
   const ownDeptId = currentUser?.deptId;

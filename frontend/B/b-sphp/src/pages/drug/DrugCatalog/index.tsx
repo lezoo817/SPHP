@@ -14,9 +14,10 @@ import { getErrorMessage } from '@/utils/error';
 import { getColumns } from './columns';
 import DrugFormModal from './DrugFormModal';
 import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
+import { ROLE_ADMIN, STATUS_DISABLED, STATUS_ENABLED } from '@/constants/businessStatus';
 
 export default function DrugCatalog() {
-  const isAdmin = useHasRole('ADMIN');
+  const isAdmin = useHasRole(ROLE_ADMIN);
   const actionRef = useRef<ActionType>();
   const formRef = useRef<ProFormInstance>();
   const searchParamsRef = useRef<Partial<API.DrugListParams>>({});
@@ -59,8 +60,8 @@ export default function DrugCatalog() {
 
   /** 切换药品状态（启用/停用二次确认） */
   const handleToggleStatus = (record: API.Drug) => {
-    const newStatus = record.status === 'ENABLED' ? 'DISABLED' : 'ENABLED';
-    const actionLabel = newStatus === 'ENABLED' ? '启用' : '停用';
+    const newStatus = record.status === STATUS_ENABLED ? STATUS_DISABLED : STATUS_ENABLED;
+    const actionLabel = newStatus === STATUS_ENABLED ? '启用' : '停用';
 
     Modal.confirm({
       title: `${actionLabel}药品`,

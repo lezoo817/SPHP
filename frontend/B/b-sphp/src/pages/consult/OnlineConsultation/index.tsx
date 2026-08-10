@@ -49,6 +49,7 @@ import { POLL_INTERVAL_CONSULT } from '@/constants/timing';
 import { getErrorMessage } from '@/utils/error';
 import styles from './index.module.less';
 import { PAGE_SIZE_100, PAGE_SIZE_50 } from '@/constants/pageSize';
+import { GENDER_FEMALE, GENDER_MALE, SENDER_DOCTOR, STATUS_APPROVED, STATUS_COMPLETED, STATUS_ENABLED, STATUS_IN_PROGRESS, STATUS_PENDING } from '@/constants/businessStatus';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -80,8 +81,8 @@ interface MedicalHistorySummaryItem {
 
 /** 将后端性别枚举转换为 B 端展示文案。 */
 function formatGender(gender?: string): string {
-  if (gender === 'MALE' || gender === '男') return '男';
-  if (gender === 'FEMALE' || gender === '女') return '女';
+  if (gender === GENDER_MALE || gender === '男') return '男';
+  if (gender === GENDER_FEMALE || gender === '女') return '女';
   return '未知';
 }
 
@@ -116,7 +117,7 @@ const CONSULT_MESSAGE_MAX = 2000;
 /** 在线问诊工作台页面。 */
 export default function OnlineConsultationPage() {
   const queryClient = useQueryClient();
-  const [status, setStatus] = useState<OnlineStatus>('PENDING');
+  const [status, setStatus] = useState<OnlineStatus>(STATUS_PENDING);
   const [selectedId, setSelectedId] = useState<number>();
   const [replyContent, setReplyContent] = useState('');
   const [starting, setStarting] = useState(false);
@@ -159,11 +160,11 @@ export default function OnlineConsultationPage() {
     queryKey: ['drug', 'online-consultation-options', drugKeyword],
     queryFn: () => getDoctorDrugs({
       name: drugKeyword.trim() || undefined,
-      status: 'ENABLED',
+      status: STATUS_ENABLED,
       page: 1,
       size: PAGE_SIZE_100,
     }),
-    enabled: detail?.status === 'IN_PROGRESS',
+    enabled: detail?.status === STATUS_IN_PROGRESS,
     staleTime: STALE_TIME.onlineConsultDrugs,
   });
 
@@ -287,7 +288,7 @@ export default function OnlineConsultationPage() {
         try {
           await endOnlineConsultation(selectedId);
           message.success('在线问诊已结束');
-          setStatus('COMPLETED');
+          setStatus(STATUS_COMPLETED);
           await refreshAll();
         } catch (error: unknown) {
           message.error(getErrorMessage(error, '结束问诊失败'));
@@ -421,7 +422,7 @@ export default function OnlineConsultationPage() {
               </div>
             </section>
 
-            {detail.status === 'PENDING' && (
+            {detail.status === STATUS_PENDING && (
               <section className={styles.actionSection}>
                 <Button type="primary" icon={<MessageOutlined />} loading={starting} onClick={startReply}>
                   回复
@@ -429,7 +430,7 @@ export default function OnlineConsultationPage() {
               </section>
             )}
 
-            {detail.status === 'IN_PROGRESS' && (
+            {detail.status === STATUS_IN_PROGRESS && (
               <>
                 <section className={styles.section}>
                   <div className={styles.sectionHeading}>
@@ -502,7 +503,7 @@ export default function OnlineConsultationPage() {
                     size="small"
                     dataSource={detail.messages}
                     locale={{ emptyText: '暂无消息' }}
-                    renderItem={(item) => <List.Item><Text strong>{item.senderType === 'DOCTOR' ? '医生' : '患者'}：</Text>{item.content}<Text type="secondary">{item.createdAt ? dayjs(item.createdAt).format('MM-DD HH:mm') : ''}</Text></List.Item>}
+                    renderItem={(item) => <List.Item><Text strong>{item.senderType === SENDER_DOCTOR ? '医生' : '患者'}：</Text>{item.content}<Text type="secondary">{item.createdAt ? dayjs(item.createdAt).format('MM-DD HH:mm') : ''}</Text></List.Item>}
                   />
                   <TextArea
                     rows={5}
@@ -525,7 +526,7 @@ export default function OnlineConsultationPage() {
                 <Title level={5}>已开处方</Title>
                 <Space wrap>
                   {detail.prescriptions.map((item) => (
-                    <Tag key={item.id} color={item.status === 'APPROVED' ? 'green' : 'gold'}>
+                    <Tag key={item.id} color={item.status === STATUS_APPROVED ? 'green' : 'gold'}>
                       #{item.id} · {item.status} · {item.itemCount} 项
                     </Tag>
                   ))}
@@ -533,12 +534,12 @@ export default function OnlineConsultationPage() {
               </section>
             )}
 
-            {detail.status === 'COMPLETED' && (
+            {detail.status === STATUS_COMPLETED && (
               <Alert
                 type="success"
                 showIcon
                 message="本次在线问诊已完成"
-                description={detail.messages.find((item) => item.senderType === 'DOCTOR')?.content || '医生已回复'}
+                description={detail.messages.find((item) => item.senderType === SENDER_DOCTOR)?.content || '医生已回复'}
               />
             )}
           </div>

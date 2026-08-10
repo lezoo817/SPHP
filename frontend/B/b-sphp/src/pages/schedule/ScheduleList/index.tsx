@@ -25,9 +25,10 @@ import BatchScheduleModal from './BatchScheduleModal';
 import BatchPublishModal from './BatchPublishModal';
 import type { Dayjs } from 'dayjs';
 import { PAGE_SIZE_5 } from '@/constants/pageSize';
+import { ROLE_ADMIN } from '@/constants/businessStatus';
 
 export default function ScheduleList() {
-  const isAdmin = useHasRole('ADMIN');
+  const isAdmin = useHasRole(ROLE_ADMIN);
   const navigate = useNavigate();
   const actionRef = useRef<ActionType>();
 

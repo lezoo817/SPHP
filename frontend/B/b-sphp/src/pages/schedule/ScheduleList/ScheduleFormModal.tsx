@@ -20,6 +20,7 @@ import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import { getShiftWindow } from '../constants';
 import { PAGE_SIZE_100, PAGE_SIZE_200 } from '@/constants/pageSize';
+import { STATUS_ENABLED } from '@/constants/businessStatus';
 
 /** 新增排班表单值（scheduleDate 兼容 Dayjs 与字符串；deptId 仅 UI 联动状态，不参与提交） */
 interface CreateScheduleFormValues {
@@ -124,7 +125,7 @@ export default function ScheduleFormModal({
       const res = await getDoctors({
         deptId,
         name: keyword || undefined,
-        status: 'ENABLED',
+        status: STATUS_ENABLED,
         page: 1,
         size: PAGE_SIZE_100,
       });

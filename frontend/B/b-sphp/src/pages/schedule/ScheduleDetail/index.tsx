@@ -28,11 +28,12 @@ import { getShiftConfig, getStatusConfig } from '../constants';
 import { getSlotColumns } from './columns';
 import SaveBar from './SaveBar';
 import SlotFormModal from './SlotFormModal';
+import { ROLE_ADMIN, STATUS_DRAFT, STATUS_PUBLISHED } from '@/constants/businessStatus';
 
 export default function ScheduleDetail() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
-  const isAdmin = useHasRole('ADMIN');
+  const isAdmin = useHasRole(ROLE_ADMIN);
   const navigate = useNavigate();
   const scheduleId = Number(id);
 
@@ -43,8 +44,8 @@ export default function ScheduleDetail() {
   const shift = searchParams.get('shift') ?? '';
   const totalSlots = Number(searchParams.get('totalSlots') ?? 0);
 
-  const isPublished = status === 'PUBLISHED';
-  const canEdit = isAdmin && !isPublished && status === 'DRAFT';
+  const isPublished = status === STATUS_PUBLISHED;
+  const canEdit = isAdmin && !isPublished && status === STATUS_DRAFT;
 
   /** 时段接口数据：React Query 拉取；本地增删改在保存时统一提交 */
   const { data: serverSlots, isLoading, refetch } = useQuery({

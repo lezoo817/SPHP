@@ -5,6 +5,7 @@
  * 直接用 Record<Shift, ...> 索引会因类型不匹配报错，统一经 getShiftConfig / getStatusConfig 收窄。
  */
 import dayjs from 'dayjs';
+import { STATUS_CANCELLED, STATUS_DRAFT, STATUS_PUBLISHED } from '@/constants/businessStatus';
 
 /** 班次类型（取自全局 API 命名空间） */
 type Shift = API.Schedule['shift'];
@@ -32,9 +33,9 @@ export const STATUS_MAP: Record<ScheduleStatus, { text: string; color: string }>
 
 /** 状态筛选选项（EXPIRED 为虚拟查询值，DB 无此状态；后端识别后改写为 PUBLISHED+日期<今天） */
 export const STATUS_OPTIONS: { label: string; value: ScheduleStatus | 'EXPIRED' }[] = [
-  { label: '草稿', value: 'DRAFT' },
-  { label: '已发布', value: 'PUBLISHED' },
-  { label: '已作废', value: 'CANCELLED' },
+  { label: '草稿', value: STATUS_DRAFT },
+  { label: '已发布', value: STATUS_PUBLISHED },
+  { label: '已作废', value: STATUS_CANCELLED },
   { label: '已过期', value: 'EXPIRED' },
 ];
 
@@ -101,7 +102,7 @@ export function getShiftWindow(shift: string): { start: number; end: number } | 
 export function getStatusConfig(
   status: string,
 ): { text: string; color: string } | undefined {
-  if (status === 'DRAFT' || status === 'PUBLISHED' || status === 'CANCELLED') {
+  if (status === STATUS_DRAFT || status === STATUS_PUBLISHED || status === STATUS_CANCELLED) {
     return STATUS_MAP[status];
   }
   return undefined;
@@ -109,6 +110,6 @@ export function getStatusConfig(
 
 /** 判断排班是否已过期：PUBLISHED 且排班日期 < 今天 */
 export function isScheduleExpired(record: { status: string; scheduleDate: string }): boolean {
-  if (record.status !== 'PUBLISHED') return false;
+  if (record.status !== STATUS_PUBLISHED) return false;
   return record.scheduleDate < dayjs().format('YYYY-MM-DD');
 }

@@ -3,6 +3,7 @@
  */
 import { getDepartments } from '@/services/admin';
 import { PAGE_SIZE_200 } from '@/constants/pageSize';
+import { STATUS_DISABLED, STATUS_ENABLED, STATUS_SUSPENDED } from '@/constants/businessStatus';
 
 /** 医生状态联合类型（与 API.Doctor.status 保持一致）。 */
 export type DoctorStatus = API.Doctor['status'];
@@ -16,9 +17,9 @@ export const STATUS_MAP: Record<DoctorStatus, { text: string; color: string }> =
 
 /** 医生状态下拉选项（切换状态弹窗用）。 */
 export const STATUS_OPTIONS: { label: string; value: DoctorStatus }[] = [
-  { label: '启用', value: 'ENABLED' },
-  { label: '停用', value: 'DISABLED' },
-  { label: '暂停', value: 'SUSPENDED' },
+  { label: '启用', value: STATUS_ENABLED },
+  { label: '停用', value: STATUS_DISABLED },
+  { label: '暂停', value: STATUS_SUSPENDED },
 ];
 
 /** 医生职称选项。 */

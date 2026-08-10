@@ -8,6 +8,7 @@ import { Button, Empty, List, Space, Tag, Tooltip, Typography } from 'antd';
 import { MedicineBoxOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import styles from './ConsultPanel.module.less';
+import { STATUS_APPROVED, STATUS_REJECTED, STATUS_SUBMITTED } from '@/constants/businessStatus';
 
 const { Text } = Typography;
 
@@ -23,9 +24,9 @@ interface PrescriptionPanelProps {
 
 /** 处方状态文案 */
 function statusText(status: string): string {
-  if (status === 'APPROVED') return '已通过';
-  if (status === 'SUBMITTED') return '待审核';
-  if (status === 'REJECTED') return '已驳回';
+  if (status === STATUS_APPROVED) return '已通过';
+  if (status === STATUS_SUBMITTED) return '待审核';
+  if (status === STATUS_REJECTED) return '已驳回';
   return status;
 }
 
@@ -73,7 +74,7 @@ export default function PrescriptionPanel({
               >
                 查看
               </Button>,
-              ...(p.status === 'REJECTED'
+              ...(p.status === STATUS_REJECTED
                 ? [
                     <Button
                       key="reopen"

@@ -31,6 +31,7 @@ import { deleteKnowledge, ingestKnowledge, listKnowledge } from '@/services/agen
 import { useHasRole } from '@/hooks/useCurrentUser';
 import { getErrorMessage } from '@/utils/error';
 import { PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
+import { ROLE_ADMIN } from '@/constants/businessStatus';
 import type {
   KnowledgeCategory,
   KnowledgeDocument,
@@ -59,7 +60,7 @@ function normFile(e: unknown): UploadFile[] | undefined {
 }
 
 export default function KnowledgePage() {
-  const isAdmin = useHasRole('ADMIN');
+  const isAdmin = useHasRole(ROLE_ADMIN);
   const queryClient = useQueryClient();
   const [form] = Form.useForm<{ title: string; category: KnowledgeCategory; source?: string; file?: UploadFile[] }>();
   const [result, setResult] = useState<KnowledgeIngestResult | null>(null);

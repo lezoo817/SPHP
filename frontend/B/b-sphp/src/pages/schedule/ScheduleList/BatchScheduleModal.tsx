@@ -32,6 +32,7 @@ import {
 } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
 import { PAGE_SIZE_100, PAGE_SIZE_200, PAGE_SIZE_DEFAULT } from '@/constants/pageSize';
+import { STATUS_ENABLED } from '@/constants/businessStatus';
 import {
   getShiftConfig,
   getBatchActionConfig,
@@ -151,7 +152,7 @@ export default function BatchScheduleModal({ open, onCancel, onCreated }: Props)
       const res = await getDoctors({
         deptId,
         name: keyword || undefined,
-        status: 'ENABLED',
+        status: STATUS_ENABLED,
         page: 1,
         size: PAGE_SIZE_100,
       });
