@@ -129,6 +129,47 @@ function buildHistoryCardEntries(cards: AgentHistoryCard[]): AgentEntry[] {
   return entries;
 }
 
+/** 把历史卡片按 anchor 交错回消息流中对应位置（2026-08-10）。
+ *
+ * 后端落库时为每张卡片记录 ``anchor``（该卡片产生轮次结束时可见消息总数，
+ * 即卡片应插到第 ``anchor`` 条消息之后）。这里遍历消息，在对应位置插入卡片，
+ * 使历史会话与实时流的"先消息、后卡片"顺序一致，而非卡片全部堆到末尾。
+ *
+ * @param messageEntries 历史消息还原的纯文本条目（有序）
+ * @param cards 后端返回的持久化卡片（含 anchor）
+ * @returns 消息与卡片按位置交错的条目列表
+ */
+function interleaveHistoryEntries(
+  messageEntries: AgentEntry[],
+  cards: AgentHistoryCard[],
+): AgentEntry[] {
+  if (cards.length === 0) return messageEntries;
+  // 按 anchor 分组（同 anchor 的多张卡保持到达顺序）
+  const groups = new Map<number, AgentEntry[]>();
+  for (const card of cards) {
+    const key = card.anchor;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(...buildHistoryCardEntries([card]));
+  }
+  const anchors = [...groups.keys()].sort((a, b) => a - b);
+  const result: AgentEntry[] = [];
+  let gi = 0;
+  for (let i = 0; i < messageEntries.length; i += 1) {
+    result.push(messageEntries[i]);
+    const at = i + 1; // 已处理第 at 条消息
+    while (gi < anchors.length && anchors[gi] <= at) {
+      result.push(...groups.get(anchors[gi])!);
+      gi += 1;
+    }
+  }
+  // anchor 超出消息总数的卡片（异常/兜底）追加到末尾
+  while (gi < anchors.length) {
+    result.push(...groups.get(anchors[gi])!);
+    gi += 1;
+  }
+  return result;
+}
+
 /** Hook 返回值。 */
 export interface UseAgentStream {
   /** 会话条目（消息、思考、工具卡片、确认卡片），按顺序渲染 */
@@ -762,10 +803,9 @@ export function useAgentStream(): UseAgentStream {
           },
         }));
 
-        // 历史卡片按类型还原（消息在前、卡片在后），复用实时渲染组件
-        const cardEntries = buildHistoryCardEntries(cards);
-
-        setEntries([...messageEntries, ...cardEntries]);
+        // 历史卡片按 anchor 交错回对应消息之后（复用实时渲染组件），
+        // 保持与实时流"先消息、后卡片"一致的顺序，而非全部堆到末尾。
+        setEntries(interleaveHistoryEntries(messageEntries, cards));
         setConnection('idle');
       } catch (err) {
         setConnection('error');
