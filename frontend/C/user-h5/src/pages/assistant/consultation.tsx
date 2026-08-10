@@ -7,7 +7,7 @@ import { getConsultation, sendConsultationMessage } from '../../services/consult
 import { createConsultationSocket } from '../../services/consultation-socket';
 import { getFamilyMembers } from '../../services/family';
 import type { ConsultationDetail } from '../../typings/api';
-import { getApiErrorMessage } from '../../utils/form';
+import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { formatConsultationMessageTime } from '../../utils/consultation';
 import { buildAssistantPrescriptionDetailPath } from '../../utils/prescription';
 import { resolveConsultationAgentReturnState } from '../../utils/agent-consultation';
@@ -57,7 +57,7 @@ export default function ConsultationPage() {
     if (!content.trim() || sending || detail?.status !== 'IN_PROGRESS') return;
     setSending(true);
     try {
-      const result = await sendConsultationMessage(Number(consultationId), content.trim(), crypto.randomUUID());
+      const result = await sendConsultationMessage(Number(consultationId), content.trim(), createIdempotencyKey());
       setDetail((current) => current && current.messages.some((item) => item.id === result.messageId) ? current : current ? {
         ...current,
         messages: [...current.messages, { id: result.messageId, senderType: 'PATIENT', content: result.content, createdAt: result.createdAt }],
