@@ -84,7 +84,13 @@ async def tool_executor(state: AgentState) -> dict[str, Any]:
         else:
             tasks.append(execute_mcp_tool(tool_name, arguments, state))
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # 2026-08-10 优雅停止：前端点"停止"（AbortController）后，SSE 生成器被取消、
+    # CancelledError 传播到图执行。本轮的原子性工具调用（Java/MCP 请求已发出）
+    # 必须**完成**而非被中断——中断会造成"Java 已执行但 Python 侧无结果"的
+    # 不一致。asyncio.shield 隔离取消：客户端断开时 gather 继续完成，但外层
+    # await 收到 CancelledError，tool_executor 不返回、图执行终止（后续节点
+    # 不再执行）。未断开时 shield 无副作用（await 正常返回）。
+    results = await asyncio.shield(asyncio.gather(*tasks, return_exceptions=True))
 
     # 包装异常为错误结果
     formatted: list[dict[str, Any]] = []
