@@ -73,12 +73,14 @@ export default function PharmacyPage() {
         就诊人 <b>{current?.name || '未选择'}</b><span>{current?.phone || ''}</span><b>切换 <RefreshCw size={18} /></b>
       </button>
       <button className="pharmacy-section-link" type="button" onClick={openMinePrescriptions}><span>我的处方</span><ChevronRight size={22} /></button>
-      {prescriptions.map((prescription) => {
-        const purchasedOrder = findPurchasedDrugOrder(orders, prescription.id);
-        return <button className="record-card" key={prescription.id} type="button" onClick={() => patientId && nav(buildPharmacyPrescriptionPath(prescription.id, patientId, prescription.issuedAt, purchasedOrder?.id))}>
-          <Package size={25} /><div className="pharmacy-prescription-summary"><b>{prescription.doctorName}电子处方</b><span>已批准</span><small>开具时间：{formatPrescriptionIssuedAt(prescription.issuedAt)}</small></div><em>{purchasedOrder ? '已购买' : '待购药'}</em>
-        </button>;
-      })}
+      {prescriptions.length > 0 && <section className="pharmacy-prescription-list" aria-label="我的处方列表">
+        {prescriptions.map((prescription) => {
+          const purchasedOrder = findPurchasedDrugOrder(orders, prescription.id);
+          return <button className="record-card" key={prescription.id} type="button" onClick={() => patientId && nav(buildPharmacyPrescriptionPath(prescription.id, patientId, prescription.issuedAt, purchasedOrder?.id))}>
+            <Package size={25} /><div className="pharmacy-prescription-summary"><b>{prescription.doctorName}电子处方</b><span>已批准</span><small>开具时间：{formatPrescriptionIssuedAt(prescription.issuedAt)}</small></div><em>{purchasedOrder ? '已购买' : '待购药'}</em>
+          </button>;
+        })}
+      </section>}
       {!prescriptions.length && <p className="empty-state">暂无可购药处方</p>}
       <section className="logistics-card">
         <h2>我的物流</h2>
