@@ -429,14 +429,44 @@ export interface AgentHistoryMessage {
 
 /** 历史卡片条目：后端持久化的卡片事件，payload 结构与 SSE 实时事件一致。
  *
- * 前端可据此复用实时渲染组件还原历史会话中的交互卡片（L2 确认卡 /
- * 受控交互卡 / 记录选择卡 / 选医生选项卡）。
+ * ``anchor`` 为该卡片产生轮次结束时可见消息（user/assistant）总数，前端据此
+ * 把卡片插回对话中对应消息之后（而非全部堆到末尾）；``confirmed`` 标识 L2
+ * 确认卡是否已被用户确认成功；``selected``/``selection`` 标识选医生卡与记录
+ * 选择卡是否已被用户选择过及选中内容（历史重放据此渲染"已选"态）。
  */
 export type AgentHistoryCard =
-  | { event: 'card'; payload: AgentCardEvent }
-  | { event: 'action_card'; payload: AgentActionCardEvent }
-  | { event: 'record_picker'; payload: AgentRecordPickerEvent }
-  | { event: 'options'; payload: AgentOptionsEvent };
+  | {
+      event: 'card';
+      payload: AgentCardEvent;
+      anchor: number;
+      confirmed: boolean;
+      selected: boolean;
+      selection: Record<string, unknown> | null;
+    }
+  | {
+      event: 'action_card';
+      payload: AgentActionCardEvent;
+      anchor: number;
+      confirmed: boolean;
+      selected: boolean;
+      selection: Record<string, unknown> | null;
+    }
+  | {
+      event: 'record_picker';
+      payload: AgentRecordPickerEvent;
+      anchor: number;
+      confirmed: boolean;
+      selected: boolean;
+      selection: Record<string, unknown> | null;
+    }
+  | {
+      event: 'options';
+      payload: AgentOptionsEvent;
+      anchor: number;
+      confirmed: boolean;
+      selected: boolean;
+      selection: Record<string, unknown> | null;
+    };
 
 /** 历史会话消息响应（GET /api/chat/sessions/{id}/messages）。 */
 export interface AgentSessionHistory {

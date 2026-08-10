@@ -18,6 +18,7 @@ from app.engine.llm.factory import build_llm
 from app.engine.memory.buffer import truncate_messages
 from app.engine.tools.schema_registry import SecurityLevel, ToolRegistry, ToolScope
 from app.infrastructure.config.settings import get_settings
+from app.orchestrator.card_store import get_card_store
 from app.orchestrator.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -821,6 +822,20 @@ async def tool_caller(
                 selected_choice.get("name"),
                 selected_choice.get("doctor_id"),
             )
+            # 2026-08-10：用户从选医生卡点选 -> 标记对应 options 卡为已选，
+            # 历史重放显示"已选"态而非初始未选择态。失败仅 log，不阻塞主流程。
+            try:
+                await get_card_store().mark_selected(
+                    state.get("user_id"),
+                    state.get("session_id"),
+                    "options",
+                    {
+                        "doctor_id": selected_choice.get("doctor_id"),
+                        "name": selected_choice.get("name", ""),
+                    },
+                )
+            except Exception:
+                logger.warning("标记选医生卡已选失败")
         else:
             # 用户消息含选择意图但未匹配候选（如输入了候选外的医生名）：
             # 保留 pending 不清空，LLM 可基于场景提示词重新列医生让用户再选。

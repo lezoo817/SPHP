@@ -643,7 +643,21 @@ async def _sse_generator(
             # 会话锁仍持有（finally 才释放），同会话串行、seq 无竞争。失败仅 log，
             # 不阻塞 done（与 _record_session 同降级口径）。
             try:
-                await _record_cards(initial_state, session_id, deferred)
+                # anchor：本轮结束时可见消息（user/assistant）总数，历史重放据此把
+                # 卡片插回对话对应位置（卡片在本轮消息之后，实时流即如此）。
+                # astream 已结束、checkpoint 已写入本轮最终 state，aget_state 可取到
+                # 完整消息；失败退回 0（历史卡片堆末尾的兜底，不阻塞落库）。
+                card_anchor = 0
+                try:
+                    final_snapshot = await graph.aget_state(config)
+                    card_anchor = len(
+                        _serialize_session_messages(
+                            (final_snapshot.values or {}).get("messages", [])
+                        )
+                    )
+                except Exception:
+                    logger.warning("卡片 anchor 计算失败, session_id=%s", session_id)
+                await _record_cards(initial_state, session_id, deferred, card_anchor)
             except Exception:
                 logger.exception("会话卡片落库失败, session_id=%s", session_id)
 
@@ -951,6 +965,7 @@ async def _record_cards(
     initial_state: AgentState,
     session_id: str | None,
     cards: list[tuple[str, dict[str, Any]]],
+    anchor: int,
 ) -> None:
     """落库本轮四类交互卡片（2026-08-10 卡片持久化）。
 
@@ -958,18 +973,21 @@ async def _record_cards(
     ``cards`` 即 ``_sse_generator`` 的 deferred 缓冲内容（options / card /
     action_card / record_picker，M8-6 先回复再弹卡的完整一轮），payload 与
     SSE 实时推送完全一致，前端历史重放可复用同一渲染组件。
+    ``anchor`` 为本轮结束时可见消息（user/assistant）总数，历史接口据此把
+    卡片插回对话对应位置（而非堆到末尾）。
 
     Args:
         initial_state: ``_build_initial_state`` 构造的初始状态（取 user_id）。
         session_id: 本轮会话 ID（原始，非内部 thread_key）；None 时跳过落库。
         cards: 本轮产生的卡片事件列表，顺序即前端展示顺序。
+        anchor: 本轮结束时可见消息总数（卡片应插到第 anchor 条消息之后）。
 
     Raises:
         Exception: 存储层失败时上抛，由调用方 try/except 包裹（不阻塞 done）。
     """
     if not session_id or not cards:
         return
-    await get_card_store().append_batch(initial_state.get("user_id"), session_id, cards)
+    await get_card_store().append_batch(initial_state.get("user_id"), session_id, cards, anchor)
 
 
 def _build_action(result: dict[str, Any], *, from_call: bool = False) -> dict[str, Any]:
@@ -1295,6 +1313,16 @@ async def chat_confirm(req: ConfirmRequest, request: Request) -> ConfirmResponse
         )
     except Exception:
         logger.warning("删除 confirm_token 失败: token=%s", req.confirm_token)
+
+    # 2026-08-10 卡片确认状态持久化：确认成功后把对应 L2 确认卡标记为已完成，
+    # 历史重放时前端可渲染"已完成"而非"待确认"（支付返回/历史回看场景）。
+    # 失败仅 log，不阻塞确认主流程（卡片未命中时返回 False 亦无副作用）。
+    try:
+        await get_card_store().mark_confirmed(
+            getattr(request.state, "user_id", None), req.session_id, req.confirm_token
+        )
+    except Exception:
+        logger.warning("标记卡片已确认失败: token=%s", req.confirm_token)
 
     # M5-T4（T-M3-L1）：写入确认成功回执，供下一轮对话引用（此操作是独立
     # HTTP 请求，结果不进 graph 状态；Redis 回执 + 下轮注入保证对话连续）
