@@ -284,6 +284,7 @@ export default function OnlineConsultationPage() {
       title: '结束在线问诊',
       content: '结束后双方均不能继续发送消息，已开处方不受影响。',
       okText: '确认结束',
+      cancelText: '取消',
       onOk: async () => {
         setEnding(true);
         try {
@@ -376,11 +377,6 @@ export default function OnlineConsultationPage() {
 
             <section className={styles.section}>
               <Title level={5}>AI 预问诊摘要</Title>
-              <Descriptions size="small" column={1}>
-                <Descriptions.Item label="现病史">
-                  {detail.historyOfPresentIllness || '-'}
-                </Descriptions.Item>
-              </Descriptions>
               <div className={styles.summaryTables}>
                 <Title level={5}>主诉</Title>
                 <div className={styles.complaintBox}>
