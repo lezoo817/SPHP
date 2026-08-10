@@ -21,7 +21,9 @@ public enum BUserStatusEnum {
     /** 启用：允许登录 / 出现在业务可选列表 */
     ENABLED("ENABLED"),
     /** 停用：禁止登录 / 不出现在业务可选列表（保留历史关联） */
-    DISABLED("DISABLED");
+    DISABLED("DISABLED"),
+    /** 暂停：医生状态机扩展项（b_user 无此状态，账号联动时降级为 DISABLED） */
+    SUSPENDED("SUSPENDED");
 
     /** 数据库存储值 */
     private final String code;
