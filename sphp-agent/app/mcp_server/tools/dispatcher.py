@@ -129,6 +129,8 @@ _MCP_TOOL_FUNCS: dict[str, tuple[str, str]] = {
     "query_health_record": ("health", "query_health_record"),
     "manage_allergy": ("health", "manage_allergy"),
     "manage_medical_history": ("health", "manage_medical_history"),
+    "delete_allergy": ("health", "delete_allergy"),
+    "delete_medical_history": ("health", "delete_medical_history"),
     "query_reports": ("health", "query_reports"),
     "create_report": ("health", "create_report"),
     "query_medication_plans": ("health", "query_medication_plans"),

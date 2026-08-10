@@ -136,6 +136,8 @@ def _map_card_type(tool_name: str) -> str:
         "join_waitlist": "confirm_waitlist",
         "manage_allergy": "confirm_allergy",
         "manage_medical_history": "confirm_medical_history",
+        "delete_allergy": "confirm_allergy",
+        "delete_medical_history": "confirm_medical_history",
         "create_report": "confirm_report",
         "update_medication_plan": "confirm_medication_plan",
         "confirm_follow_up": "confirm_follow_up",

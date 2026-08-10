@@ -137,6 +137,11 @@ JAVA_API_MAP: dict[str, dict[str, str]] = {
         "path": "/api/c/v1/health-record/allergies/{allergy_id}",
         "scope": "c_end",
     },
+    "manage_allergy:delete": {
+        "method": "DELETE",
+        "path": "/api/c/v1/health-record/allergies/{allergy_id}",
+        "scope": "c_end",
+    },
     "manage_medical_history:create": {
         "method": "POST",
         "path": "/api/c/v1/health-record/histories",
@@ -144,6 +149,11 @@ JAVA_API_MAP: dict[str, dict[str, str]] = {
     },
     "manage_medical_history:update": {
         "method": "PUT",
+        "path": "/api/c/v1/health-record/histories/{history_id}",
+        "scope": "c_end",
+    },
+    "manage_medical_history:delete": {
+        "method": "DELETE",
         "path": "/api/c/v1/health-record/histories/{history_id}",
         "scope": "c_end",
     },

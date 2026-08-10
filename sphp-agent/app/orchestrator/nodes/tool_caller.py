@@ -373,6 +373,30 @@ def _health_record_cached(state: AgentState) -> bool:
     return cached_patient == state.get("patient_id")
 
 
+# 健康档案查询关键词：用户明确要求查看/确认健康档案时，放行 query_health_record，
+# 不因会话内缓存（_health_record_cached）拦截——覆盖"再次明确要看档案"与
+# "修改/新增过敏史、病史后确认生效"场景（2026-08-10）。
+_HEALTH_RECORD_QUERY_KEYWORDS = ("健康档案", "过敏史", "既往史", "病史", "档案")
+
+
+def _user_asks_health_record(messages: list[Any]) -> bool:
+    """用户最新消息是否明确要求查看健康档案。
+
+    健康档案会话内复用（_health_record_cached）会在首次查询后过滤
+    query_health_record，导致用户再次明确要看档案、或修改过敏史/病史后想
+    确认生效时仍被拦截。此处按关键词识别"明确要求查看"的请求，放行重查
+    最新数据（L1 读操作，多余查询无害）。
+
+    Args:
+        messages: 当前消息历史（取最新一条 user 文本）。
+
+    Returns:
+        bool: 用户明确要求查看健康档案时返回 True。
+    """
+    text = _latest_user_text(messages)
+    return any(kw in text for kw in _HEALTH_RECORD_QUERY_KEYWORDS)
+
+
 def _build_preconsult_progress_prompt(
     state: AgentState, allowed_tools: list[str] | None
 ) -> str | None:
@@ -858,7 +882,10 @@ async def tool_caller(
     # 档案，健康档案会话内变化频率低，加载后跨轮复用。就诊人切换（patient_id
     # 变化）后 _health_record_cached 返回 False，放行重查新患者档案。
     # M8-8 已选医生的场景本就被滤成仅 save_pre_consultation，此处不重复生效。
-    if _health_record_cached(state):
+    # 2026-08-10：用户明确要求查看健康档案时放行（不过滤），否则会话内缓存复用。
+    if _health_record_cached(state) and not _user_asks_health_record(
+        state.get("messages") or []
+    ):
         subgraph_tools = [t for t in subgraph_tools if t.name != "query_health_record"]
     # M8-8 硬约束：用户已选医生时，本轮只暴露 save_pre_consultation，
     # 让 LLM 无法重跑查询（query_health_record / query_departments / query_doctors
@@ -948,7 +975,10 @@ async def tool_caller(
     # 缓存摘要，禁止重复调用 query_health_record——工具绑定已确定性过滤，此处提示
     # 让 LLM 直接基于摘要决策（如禁忌核对、病情参考），不因看不到 query_health_record
     # 而困惑或改调其他查询工具。摘要为 None（档案为空）时仍注入"已加载"约束。
-    if _health_record_cached(state):
+    # 2026-08-10：用户明确要求查看健康档案时不注入"勿重复调用"提示（放行重查）。
+    if _health_record_cached(state) and not _user_asks_health_record(
+        state.get("messages") or []
+    ):
         cached_summary = state.get("health_record_summary")
         notice = "健康档案已在本会话中加载，请勿重复调用 query_health_record。"
         if cached_summary:
@@ -974,7 +1004,9 @@ async def tool_caller(
         # （LLM 不应看到该工具），但 LLM 可能从 tool_results 摘要/场景提示词记忆
         # 工具名仍尝试调用——此处确定性剔除，杜绝每轮重复 Java 往返（绑定过滤是
         # 主约束，这里是防幻觉兜底，与 _health_record_cached 口径一致）。
-        if _health_record_cached(state):
+        if _health_record_cached(state) and not _user_asks_health_record(
+            state.get("messages") or []
+        ):
             tool_calls = [tc for tc in tool_calls if tc["name"] != "query_health_record"]
         # 导诊首轮拦截评估（2026-08-07）：首轮强制剔除 create_triage_assessment，
         # 保证"最少两轮症状追问"（原始需求）。LLM 首轮仍可调 query_health_record
