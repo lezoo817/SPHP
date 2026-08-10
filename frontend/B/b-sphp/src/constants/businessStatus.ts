@@ -46,9 +46,5 @@ export const ROLE_DEPT_HEAD = 'DEPT_HEAD' as const;
 /** 角色：普通医生 */
 export const ROLE_DOCTOR = 'DOCTOR' as const;
 
-/** 消息发送方：患者 */
-export const SENDER_PATIENT = 'PATIENT' as const;
-/** 消息发送方：医生 */
+/** 消息发送方：医生（在线问诊消息渲染用） */
 export const SENDER_DOCTOR = 'DOCTOR' as const;
-/** 消息发送方：系统 */
-export const SENDER_SYSTEM = 'SYSTEM' as const;

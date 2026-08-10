@@ -7,7 +7,7 @@
 import { Button, Empty, List, Space, Tag, Tooltip, Typography } from 'antd';
 import { MedicineBoxOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import styles from './ConsultPanel.module.less';
+import styles from './less/ConsultPanel.module.less';
 import { STATUS_APPROVED, STATUS_REJECTED, STATUS_SUBMITTED } from '@/constants/businessStatus';
 
 const { Text } = Typography;

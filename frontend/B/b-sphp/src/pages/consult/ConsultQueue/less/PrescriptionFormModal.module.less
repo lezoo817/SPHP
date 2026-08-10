@@ -1,0 +1,42 @@
+/**
+ * 开处方弹窗样式：跨药风险汇总 + 单行预警 + 提交结果。
+ * （模板区与 Form.List 药品明细样式已移至公共组件 PrescriptionItemsForm.module.less）
+ */
+@import '../../../../styles/variables.less';
+
+/** 跨药品风险汇总（重复用药置顶） */
+.summaryAlert {
+  margin-bottom: @spacing-md;
+}
+
+.summaryList {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.summaryItem {
+  font-size: 12px;
+}
+
+/** 单药规则预警行 */
+.rowWarning {
+  margin-top: @spacing-xs;
+  padding: @spacing-xs @spacing-md;
+}
+
+.warningMessage {
+  font-size: 12px;
+}
+
+.warningSource {
+  color: @color-text-tertiary;
+}
+
+/** 提交结果区块 */
+.resultAlert {
+  margin-top: @spacing-md;
+}
+
+.resultItem {
+  font-size: 12px;
+}

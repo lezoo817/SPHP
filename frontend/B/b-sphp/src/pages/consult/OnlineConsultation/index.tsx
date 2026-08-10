@@ -11,10 +11,8 @@ import {
   Empty,
   Form,
   Input,
-  InputNumber,
   List,
   Modal,
-  Select,
   Space,
   Spin,
   Table,
@@ -26,7 +24,6 @@ import {
 import {
   MedicineBoxOutlined,
   MessageOutlined,
-  PlusOutlined,
   SendOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -49,9 +46,13 @@ import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
 import { POLL_INTERVAL_CONSULT } from '@/constants/timing';
 import { getErrorMessage } from '@/utils/error';
 import { createIdempotencyKey } from '@/utils/idempotency';
-import styles from './index.module.less';
+import PrescriptionItemsForm, {
+  toPrescriptionItemsPayload,
+  type PrescriptionItemFormValue,
+} from '@/components/prescription/PrescriptionItemsForm';
+import styles from './less/index.module.less';
 import { PAGE_SIZE_100, PAGE_SIZE_50 } from '@/constants/pageSize';
-import { GENDER_FEMALE, GENDER_MALE, SENDER_DOCTOR, STATUS_APPROVED, STATUS_COMPLETED, STATUS_ENABLED, STATUS_IN_PROGRESS, STATUS_PENDING } from '@/constants/businessStatus';
+import { GENDER_FEMALE, GENDER_MALE, SENDER_DOCTOR, STATUS_COMPLETED, STATUS_IN_PROGRESS, STATUS_PENDING } from '@/constants/businessStatus';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -59,14 +60,7 @@ const { TextArea } = Input;
 type OnlineStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
 
 interface PrescriptionFormValues {
-  items: Array<{
-    drugId: number;
-    dosage: string;
-    frequency: string;
-    usageMethod: string;
-    days: number;
-    quantity: number;
-  }>;
+  items: PrescriptionItemFormValue[];
 }
 
 interface AllergySummaryItem {
@@ -154,7 +148,6 @@ export default function OnlineConsultationPage() {
   const [ending, setEnding] = useState(false);
   const [submittingPrescription, setSubmittingPrescription] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
-  const [drugKeyword, setDrugKeyword] = useState('');
   const [form] = Form.useForm<PrescriptionFormValues>();
 
   // 保持最新选中问诊 ID 的 ref：WebSocket 回调读取它，选中切换时避免 socket 反复 teardown/reconnect
@@ -204,40 +197,15 @@ export default function OnlineConsultationPage() {
     queryKey: ['prescription', 'templates', 'online-consultation'],
     queryFn: () => getTemplates({ page: 1, size: PAGE_SIZE_100 }),
   });
-  const drugsQuery = useQuery({
-    queryKey: ['drug', 'online-consultation-options', drugKeyword],
-    queryFn: () => getDoctorDrugs({
-      name: drugKeyword.trim() || undefined,
-      status: STATUS_ENABLED,
-      page: 1,
-      size: PAGE_SIZE_100,
-    }),
-    enabled: detail?.status === STATUS_IN_PROGRESS,
-    staleTime: STALE_TIME.onlineConsultDrugs,
-  });
-
   // 空数组兜底用 useMemo 固定引用，否则每次渲染生成新数组会让下方 useMemo 依赖失效
   const templates = useMemo(
     () => templatesQuery.data?.list ?? [],
     [templatesQuery.data],
   );
-  // 固定引用：避免每次 render 重建，破坏下方 Select 内部 memoization
-  const drugOptions = useMemo(
-    () =>
-      (drugsQuery.data?.list ?? []).map((drug) => ({
-        value: drug.id,
-        label: `${drug.name}${drug.specification ? `（${drug.specification}）` : ''}`,
-      })),
-    [drugsQuery.data],
-  );
   const patient = detail?.patientDetail.patient;
   const aiSummary = detail?.patientDetail.aiSummary;
   const allergyRows = readSummaryArray<AllergySummaryItem>(aiSummary, 'allergies');
   const medicalHistoryRows = readSummaryArray<MedicalHistorySummaryItem>(aiSummary, 'medicalHistories');
-  const selectedTemplateOptions = useMemo(
-    () => templates.map((item) => ({ value: item.id, label: item.name })),
-    [templates],
-  );
 
   /** 刷新当前详情和三个状态列表。 */
   async function refreshAll() {
@@ -263,29 +231,13 @@ export default function OnlineConsultationPage() {
     setStarting(true);
     try {
       await startOnlineConsultation(selectedId);
-      message.success('已进入回复状态');
+      await message.success('已进入回复状态');
       await refreshAll();
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '开始回复失败'));
+      await message.error(getErrorMessage(error, '开始回复失败'));
     } finally {
       setStarting(false);
     }
-  }
-
-  /** 使用处方模板覆盖当前处方编辑项。 */
-  function applyTemplate(templateId: number) {
-    const template = templates.find((item) => item.id === templateId);
-    if (!template) return;
-    form.setFieldsValue({
-      items: template.items.map((item) => ({
-        drugId: item.drugId,
-        dosage: item.dosage,
-        frequency: item.frequency || '',
-        usageMethod: item.usageMethod,
-        days: item.days,
-        quantity: item.quantity,
-      })),
-    });
   }
 
   /** 提交当前在线问诊处方。 */
@@ -294,11 +246,14 @@ export default function OnlineConsultationPage() {
     try {
       const values = await form.validateFields();
       setSubmittingPrescription(true);
-      const result = await submitPrescription({ consultId: selectedId, items: values.items });
+      const result = await submitPrescription({
+        consultId: selectedId,
+        items: toPrescriptionItemsPayload(values.items ?? []),
+      });
       if (result.auditRequired) {
-        message.warning('处方已提交审核，审核通过后患者可见');
+        await message.warning('处方已提交审核，审核通过后患者可见');
       } else {
-        message.success('处方已开具，患者端已可查询');
+        await message.success('处方已开具，患者端已可查询');
       }
       form.resetFields();
       await refreshAll();
@@ -319,7 +274,7 @@ export default function OnlineConsultationPage() {
       setReplyContent('');
       await refreshAll();
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '发送消息失败'));
+      await message.error(getErrorMessage(error, '发送消息失败'));
     } finally {
       setReplying(false);
     }
@@ -337,11 +292,11 @@ export default function OnlineConsultationPage() {
         setEnding(true);
         try {
           await endOnlineConsultation(selectedId);
-          message.success('在线问诊已结束');
+          await message.success('在线问诊已结束');
           setStatus(STATUS_COMPLETED);
           await refreshAll();
         } catch (error: unknown) {
-          message.error(getErrorMessage(error, '结束问诊失败'));
+          await message.error(getErrorMessage(error, '结束问诊失败'));
         } finally {
           setEnding(false);
         }
@@ -480,65 +435,22 @@ export default function OnlineConsultationPage() {
                 <section className={styles.section}>
                   <div className={styles.sectionHeading}>
                     <Title level={5}><MedicineBoxOutlined /> 开具处方</Title>
-                    <Select
-                      allowClear
-                      placeholder="应用处方模板"
-                      options={selectedTemplateOptions}
-                      onChange={applyTemplate}
-                      style={{ width: 220 }}
-                    />
                   </div>
-                  <Form form={form} layout="vertical" initialValues={{ items: [{}] }}>
-                    <Form.List name="items">
-                      {(fields, { add, remove }) => (
-                        <>
-                          {fields.map((field) => (
-                            <div className={styles.prescriptionRow} key={field.key}>
-                              <Form.Item name={[field.name, 'drugId']} label="药品名称" rules={[{ required: true, message: '请选择药品' }]}> 
-                                <Select
-                                  showSearch
-                                  allowClear
-                                  placeholder="输入药品名称搜索"
-                                  options={drugOptions}
-                                  loading={drugsQuery.isFetching}
-                                  filterOption={false}
-                                  onSearch={setDrugKeyword}
-                                  onClear={() => setDrugKeyword('')}
-                                  notFoundContent={drugKeyword ? '未找到匹配药品' : '暂无可用药品'}
-                                />
-                              </Form.Item>
-                              <Form.Item name={[field.name, 'dosage']} label="单次用量" rules={[{ required: true }]}> 
-                                <Input placeholder="如 1 片" />
-                              </Form.Item>
-                              <Form.Item name={[field.name, 'frequency']} label="频次" rules={[{ required: true }]}> 
-                                <Input placeholder="如 每日3次" />
-                              </Form.Item>
-                              <Form.Item name={[field.name, 'usageMethod']} label="用法" rules={[{ required: true }]}> 
-                                <Input placeholder="如 口服" />
-                              </Form.Item>
-                              <Form.Item name={[field.name, 'days']} label="天数" rules={[{ required: true }]}> 
-                                <InputNumber min={1} />
-                              </Form.Item>
-                              <Form.Item name={[field.name, 'quantity']} label="数量" rules={[{ required: true }]}> 
-                                <InputNumber min={1} />
-                              </Form.Item>
-                              {fields.length > 1 && <Button danger type="link" onClick={() => remove(field.name)}>删除</Button>}
-                            </div>
-                          ))}
-                          <Space>
-                            <Button icon={<PlusOutlined />} onClick={() => add()}>添加药品</Button>
-                            <Button
-                              type="primary"
-                              loading={submittingPrescription}
-                              onClick={() => void submitCurrentPrescription()}
-                            >
-                              提交处方
-                            </Button>
-                          </Space>
-                        </>
-                      )}
-                    </Form.List>
-                  </Form>
+                  <PrescriptionItemsForm
+                    form={form}
+                    fetchDrugs={getDoctorDrugs}
+                    templates={templates}
+                    templateLoading={templatesQuery.isLoading}
+                    initialValues={{ items: [{}] }}
+                  />
+                  <Button
+                    type="primary"
+                    className={styles.prescriptionSubmit}
+                    loading={submittingPrescription}
+                    onClick={() => void submitCurrentPrescription()}
+                  >
+                    提交处方
+                  </Button>
                 </section>
 
                 <Divider />

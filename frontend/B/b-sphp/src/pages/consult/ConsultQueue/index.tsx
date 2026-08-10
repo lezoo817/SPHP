@@ -12,7 +12,7 @@ import QueuePanel from './QueuePanel';
 import ConsultPanel from './ConsultPanel';
 import PrescriptionFormModal from './PrescriptionFormModal';
 import PrescriptionDetailModal from '@/pages/prescription/PrescriptionList/PrescriptionDetailModal';
-import styles from './index.module.less';
+import styles from './less/index.module.less';
 
 const { Text } = Typography;
 

@@ -522,11 +522,6 @@ declare global {
       updatedAt: string;
     }
 
-    /** 发送消息请求 */
-    interface MessageSendReq {
-      content: string;
-    }
-
     /** 消息 VO */
     interface MessageVO {
       messageId: number;

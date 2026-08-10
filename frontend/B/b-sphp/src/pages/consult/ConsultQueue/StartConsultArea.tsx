@@ -6,7 +6,7 @@
 import { Button, Tooltip, Typography } from 'antd';
 import { PlayCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import styles from './StartConsultArea.module.less';
+import styles from './less/StartConsultArea.module.less';
 
 const { Text } = Typography;
 

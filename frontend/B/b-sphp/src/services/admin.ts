@@ -335,28 +335,6 @@ export function saveNote(
   });
 }
 
-/** 查询消息历史 */
-export function getMessages(
-  consultationId: number,
-  params?: { page?: number; size?: number },
-): Promise<API.PageResult<API.MessageVO>> {
-  return requestData<API.PageResult<API.MessageVO>>(
-    `/api/b/doctor/consult/${consultationId}/messages`,
-    { params },
-  );
-}
-
-/** 发送问诊消息（B端代理） */
-export function sendMessage(
-  consultationId: number,
-  data: API.MessageSendReq,
-): Promise<API.MessageVO> {
-  return requestData<API.MessageVO>(
-    `/api/b/doctor/consult/${consultationId}/message`,
-    { method: 'POST', data },
-  );
-}
-
 // ===================== 接诊历史 =====================
 
 /** 查询当前医生的历史接诊记录 */

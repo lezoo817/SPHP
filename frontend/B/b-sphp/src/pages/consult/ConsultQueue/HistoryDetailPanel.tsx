@@ -6,7 +6,7 @@
 import { Divider, Empty, List, Space, Spin, Tag, Typography } from 'antd';
 import { MedicineBoxOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import styles from './HistoryDetailPanel.module.less';
+import styles from './less/HistoryDetailPanel.module.less';
 import { STATUS_APPROVED } from '@/constants/businessStatus';
 
 const { Text } = Typography;

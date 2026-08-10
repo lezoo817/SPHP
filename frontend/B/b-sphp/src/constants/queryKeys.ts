@@ -24,8 +24,6 @@ export const QUERY_KEYS = {
   /** 接诊历史详情（30s） */
   consultHistoryDetail: (consultId: number) =>
     ['consult', 'history-detail', consultId] as const,
-  /** 问诊消息（60s） */
-  consultMessages: (consultId: number) => ['consult', 'messages', consultId] as const,
   /** 当前问诊的处方列表（30s） */
   consultPrescriptions: (consultId: number) =>
     ['consult', 'prescriptions', consultId] as const,
@@ -66,7 +64,6 @@ export const STALE_TIME = {
   patientDetail: 60_000,
   consultHistory: 30_000,
   consultHistoryDetail: 30_000,
-  consultMessages: 60_000,
   consultPrescriptions: 30_000,
   schedules: 30_000,
   scheduleSlots: 30_000,

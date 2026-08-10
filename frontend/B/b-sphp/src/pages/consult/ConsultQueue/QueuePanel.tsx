@@ -12,7 +12,7 @@ import {
   OrderedListOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import styles from './QueuePanel.module.less';
+import styles from './less/QueuePanel.module.less';
 import { GENDER_MAP, STATUS_MAP } from './constants';
 import { STATUS_COMPLETED } from '@/constants/businessStatus';
 
