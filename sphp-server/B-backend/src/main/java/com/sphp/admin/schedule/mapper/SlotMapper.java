@@ -79,7 +79,7 @@ public interface SlotMapper extends BaseMapper<Slot> {
             "       dp.name AS deptName, d.name AS doctorName, " +
             "       sch.total_slots AS totalSlots, " +
             // 沿用排班列表 EXPIRED 口径，避免前后端判别不一致；SQL 中 < 必须转义为 &lt;，否则 MyBatis <script> 解析为 XML 时报错
-            "       CASE WHEN sch.schedule_date &lt; CURRENT_DATE THEN true ELSE false END AS isExpired, " +
+            "       CASE WHEN sch.schedule_date &lt; CURRENT_DATE THEN true ELSE false END AS expired, " +
             "       COALESCE(stat.remainTotal, 0) AS remainSlots, " +
             "       COALESCE(stat.soldTotal, 0) AS soldSlots, " +
             "       COALESCE(stat.lockedTotal, 0) AS lockedSlots " +
