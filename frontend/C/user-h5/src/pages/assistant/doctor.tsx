@@ -90,13 +90,13 @@ export default function DoctorBookingPage() {
     }
   }
 
-  /** 在展示可点击号源前核验账号维度的同医生待就诊挂号。 */
+  /** 在展示可点击号源前核验当前就诊人的同医生待就诊挂号。 */
   async function loadDoctorBookingStatus(currentDoctor: Doctor) {
     setCheckingBookingStatus(true);
     setDuplicateBookingBlocked(false);
     try {
-      const status = await getDoctorBookingStatus(currentDoctor.id);
-      // 后端按支付账号和医生 ID 查询有效待就诊挂号，覆盖本人及所有家庭成员。
+      const status = await getDoctorBookingStatus(currentDoctor.id, selection.patientId);
+      // 后端按当前就诊人和医生 ID 查询有效待就诊挂号，不影响其他家庭成员预约。
       setDuplicateBookingBlocked(status.booked);
     } catch (error) {
       // 查询失败时不伪造已预约状态，仍由创建接口完成最终并发校验。
@@ -138,7 +138,7 @@ export default function DoctorBookingPage() {
   /** 创建挂号订单或对无余量时段发起候补登记。 */
   async function chooseSlot(slot: AppointmentSlot) {
     if (isDuplicateBookingBlocked) {
-      showTransientNotice('当前账号下已有就诊人预约过该医生，不能再次预约');
+      showTransientNotice('当前就诊人已有该医生待就诊挂号，不能再次预约');
       return;
     }
     if (!selection.hospitalId) {
@@ -162,7 +162,7 @@ export default function DoctorBookingPage() {
         // 明确业务拒绝不应复用幂等键，后续仅允许用户查看已有挂号或取消待支付订单。
         operationKey.current = undefined;
         setDuplicateBookingBlocked(true);
-        showTransientNotice('当前账号已有该医生待就诊挂号，暂不能再次预约');
+        showTransientNotice('当前就诊人已有该医生待就诊挂号，暂不能再次预约');
         return;
       }
       // 网络失败保留幂等键，重复点击可安全重试同一业务请求。
@@ -172,7 +172,7 @@ export default function DoctorBookingPage() {
 
   return <main className="subpage doctor-page"><PageHeader title="医生主页" backPath="/home/departments" /><section className="subpage-content">
     {loadingDoctor && <p className="empty-state">正在读取医生资料...</p>}
-    {!loadingDoctor && doctor && <><section className="doctor-profile-card"><span className="doctor-profile-avatar">{doctor.name.slice(0, 1)}</span><div><h2>{doctor.name} <small>{doctor.title || '医生'}</small></h2><p>{doctor.departmentName || '所属科室待确认'}</p><p>{doctor.specialty || '暂无专长说明'}</p><strong>挂号费 {formatAmount(doctor.registrationFeeCent)}</strong></div></section><section className="doctor-service-card"><CalendarPlus size={26} /><div><h2>预约挂号</h2></div></section>{isDuplicateBookingBlocked && <section className="duplicate-appointment-notice"><b>已有待就诊挂号</b><p>当前账号已有就诊人正在等待该医生接诊，完成、取消或失效后可再次预约。</p><button className="secondary-button" type="button" onClick={() => navigate('/assistant')}>查看挂号记录</button></section>}<section className="doctor-schedule"><h2>{doctor.departmentName || '门诊'}号源</h2>{loadingSchedule && <p className="empty-state">号源加载中...</p>}{!loadingSchedule && <ScheduleTable dates={dates} selectedDate={selectedDate} slotsByDate={slotsByDate} loadingDates={loadingDates} isDuplicateBookingBlocked={isDuplicateBookingBlocked} isCheckingBookingStatus={checkingBookingStatus} onSelectDate={selectDate} onChooseSlot={chooseSlot} />}</section></>}
+    {!loadingDoctor && doctor && <><section className="doctor-profile-card"><span className="doctor-profile-avatar">{doctor.name.slice(0, 1)}</span><div><h2>{doctor.name} <small>{doctor.title || '医生'}</small></h2><p>{doctor.departmentName || '所属科室待确认'}</p><p>{doctor.specialty || '暂无专长说明'}</p><strong>挂号费 {formatAmount(doctor.registrationFeeCent)}</strong></div></section><section className="doctor-service-card"><CalendarPlus size={26} /><div><h2>预约挂号</h2></div></section>{isDuplicateBookingBlocked && <section className="duplicate-appointment-notice"><b>已有待就诊挂号</b><p>当前就诊人正在等待该医生接诊，完成、取消或失效后可再次预约。</p><button className="secondary-button" type="button" onClick={() => navigate('/assistant')}>查看挂号记录</button></section>}<section className="doctor-schedule"><h2>{doctor.departmentName || '门诊'}号源</h2>{loadingSchedule && <p className="empty-state">号源加载中...</p>}{!loadingSchedule && <ScheduleTable dates={dates} selectedDate={selectedDate} slotsByDate={slotsByDate} loadingDates={loadingDates} isDuplicateBookingBlocked={isDuplicateBookingBlocked} isCheckingBookingStatus={checkingBookingStatus} onSelectDate={selectDate} onChooseSlot={chooseSlot} />}</section></>}
     {!loadingDoctor && !doctor && <p className="empty-state">暂无可展示的医生资料</p>}
   </section>{notice && <div className="toast" role="status" onClick={() => setNotice('')}>{notice}</div>}</main>;
 }

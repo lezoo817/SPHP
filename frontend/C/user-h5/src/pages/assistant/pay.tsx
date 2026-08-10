@@ -72,7 +72,7 @@ export default function PaymentPage() {
         // 服务端已拒绝本笔重复支付，清除幂等键并保留取消订单入口释放号源。
         key.current = undefined;
         setDuplicatePaymentBlocked(true);
-        setNotice('该账号已有同医生待就诊挂号，本笔订单不可继续支付');
+        setNotice('该就诊人已有同医生待就诊挂号，本笔订单不可继续支付');
         await loadPayment();
         return;
       }
@@ -122,7 +122,7 @@ export default function PaymentPage() {
       {isPending && <p>剩余支付时间：{String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</p>}
       {isPending && <>
         <label>登录密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-        {isDuplicatePaymentBlocked && <p className="duplicate-payment-notice">该账号已有同医生待就诊挂号，请取消本笔订单释放号源。</p>}
+        {isDuplicatePaymentBlocked && <p className="duplicate-payment-notice">该就诊人已有同医生待就诊挂号，请取消本笔订单释放号源。</p>}
         <button className="primary-button" type="button" disabled={!canPay} onClick={() => void pay()}>确认支付</button>
         <button className="secondary-button" type="button" onClick={() => void cancel()}>取消挂号</button>
       </>}
