@@ -17,9 +17,14 @@ export function buildNotificationsPath(query: NotificationListQuery = {}): strin
   return `/c/v1/notifications?${params.toString()}`;
 }
 
-/** 查询当前账号的站内通知分页数据。 */
-export function getNotifications(query: NotificationListQuery = {}): Promise<PageData<NotificationItem>> {
-  return request(buildNotificationsPath(query), { method: 'GET' });
+/**
+ * 查询当前账号的站内通知分页数据。
+ * @param query 通知筛选与分页条件
+ * @param forceRefresh 是否绕过读缓存以读取最新通知
+ * @returns 站内通知分页数据
+ */
+export function getNotifications(query: NotificationListQuery = {}, forceRefresh = false): Promise<PageData<NotificationItem>> {
+  return request(buildNotificationsPath(query), { method: 'GET', skipCache: forceRefresh });
 }
 
 /** 标记当前账号的一条通知已读。 */

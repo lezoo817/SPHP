@@ -13,6 +13,7 @@ import com.sphp.patient.notification.mq.scheduler.NotificationReminderScheduler;
 import com.sphp.patient.notification.mapper.NotificationReminderRecord;
 import com.sphp.patient.notification.mapper.OnlineConsultationNotificationRecord;
 import com.sphp.shared.event.OnlineConsultationRepliedEvent;
+import com.sphp.shared.event.ConsultationMessageCreatedEvent;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.MessageProperties;
@@ -134,6 +135,33 @@ class NotificationMqTest {
                 "CONSULTATION".equals(notification.getType())
                         && event.eventId().equals(notification.getEventId())
                         && notification.getPayload().contains("\"consultationId\":11001")
+                        && "请进入在线问诊查看医生消息".equals(notification.getContent())));
+    }
+
+    /**
+     * 验证接诊中的普通医生消息无需开处方也会创建问诊通知。
+     */
+    @Test
+    void doctorMessageCreatesConsultationNotificationDuringOnlineConsultation() {
+        NotificationMapper mapper = mock(NotificationMapper.class);
+        MessageConverter converter = messageConverter();
+        NotificationCreateConsumer consumer = new NotificationCreateConsumer(mapper, converter);
+        OnlineConsultationNotificationRecord record = new OnlineConsultationNotificationRecord();
+        record.setUserId(10001L);
+        record.setPatientId(20001L);
+        record.setPatientName("张三");
+        when(mapper.selectOnlineConsultationNotifications(11002L)).thenReturn(java.util.List.of(record));
+        ConsultationMessageCreatedEvent event = ConsultationMessageCreatedEvent.of(12002L, 11002L,
+                "DOCTOR", 30001L, 20001L, OffsetDateTime.now());
+
+        // 消费医生消息事件时仅写入安全提示和问诊定位信息，不保存聊天正文。
+        consumer.consumeNotificationCreate(converter.toMessage(event, new MessageProperties()));
+
+        verify(mapper).insertNotificationIfAbsent(org.mockito.ArgumentMatchers.argThat(notification ->
+                "CONSULTATION".equals(notification.getType())
+                        && event.eventId().equals(notification.getEventId())
+                        && notification.getPayload().contains("\"consultationId\":11002")
+                        && notification.getPayload().contains("\"messageId\":12002")
                         && "请进入在线问诊查看医生消息".equals(notification.getContent())));
     }
 

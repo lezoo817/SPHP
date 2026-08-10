@@ -48,10 +48,11 @@ export function savePreConsultation(payload: PreConsultationPayload, key: string
 /**
  * 查询当前就诊人的问诊记录。
  * @param patientId 当前就诊人 ID；未传时由后端按本人处理
+ * @param forceRefresh 是否绕过读缓存以获取最新问诊状态
  * @returns 第一页问诊记录
  */
-export function getConsultations(patientId?: number): Promise<PageData<Consultation>> {
-  return request(`/c/v1/consultations?patientId=${patientId || ''}&pageNo=1&pageSize=20`, { method: 'GET' });
+export function getConsultations(patientId?: number, forceRefresh = false): Promise<PageData<Consultation>> {
+  return request(`/c/v1/consultations?patientId=${patientId || ''}&pageNo=1&pageSize=20`, { method: 'GET', skipCache: forceRefresh });
 }
 
 /**

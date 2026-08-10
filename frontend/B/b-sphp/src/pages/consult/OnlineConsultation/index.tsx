@@ -37,6 +37,7 @@ import {
   getOnlineConsultationDetail,
   getOnlineConsultations,
   getDoctorDrugs,
+  getPrescriptionDetail,
   getTemplates,
   endOnlineConsultation,
   sendOnlineConsultationMessage,
@@ -80,6 +81,11 @@ interface MedicalHistorySummaryItem {
   date?: string;
 }
 
+interface CompletedPrescriptionRow extends API.PrescriptionItem {
+  prescriptionId: number;
+  prescriptionStatus: API.Prescription['status'];
+}
+
 /** 将后端性别枚举转换为 B 端展示文案。 */
 function formatGender(gender?: string): string {
   if (gender === GENDER_MALE || gender === '男') return '男';
@@ -115,6 +121,28 @@ const STATUS_COLOR: Record<OnlineStatus, string> = {
 /** 医生回复消息最大长度（与后端 OnlineConsultationConstant.MAX_REPLY_LENGTH=2000 一致） */
 const CONSULT_MESSAGE_MAX = 2000;
 
+/**
+ * 展示在线问诊的只读聊天记录。
+ *
+ * @param props 历史消息
+ * @returns 左右气泡消息区域
+ */
+function ConsultationMessageHistory({ messages }: { messages: API.MessageVO[] }) {
+  return <div className={styles.chatViewport}>
+    {messages.length === 0 ? (
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无消息" />
+    ) : messages.map((item) => {
+      const isDoctor = item.senderType === SENDER_DOCTOR;
+      return <article className={`${styles.chatMessage} ${isDoctor ? styles.doctorMessage : styles.patientMessage}`} key={item.messageId}>
+        <div className={styles.messageBubble}>
+          <small>{isDoctor ? '医生' : '患者'} · {item.createdAt ? dayjs(item.createdAt).format('YYYY/MM/DD HH:mm') : '-'}</small>
+          <p>{item.content}</p>
+        </div>
+      </article>;
+    })}
+  </div>;
+}
+
 /** 在线问诊工作台页面。 */
 export default function OnlineConsultationPage() {
   const queryClient = useQueryClient();
@@ -125,6 +153,7 @@ export default function OnlineConsultationPage() {
   const [replying, setReplying] = useState(false);
   const [ending, setEnding] = useState(false);
   const [submittingPrescription, setSubmittingPrescription] = useState(false);
+  const [historyVisible, setHistoryVisible] = useState(false);
   const [drugKeyword, setDrugKeyword] = useState('');
   const [form] = Form.useForm<PrescriptionFormValues>();
 
@@ -143,6 +172,24 @@ export default function OnlineConsultationPage() {
     enabled: Boolean(selectedId),
   });
   const detail = detailQuery.data;
+  const completedPrescriptionIds = useMemo(
+    () => detail?.status === STATUS_COMPLETED ? detail.prescriptions.map((item) => item.id) ?? [] : [],
+    [detail?.prescriptions, detail?.status],
+  );
+  const completedPrescriptionDetailsQuery = useQuery({
+    queryKey: ['consult', 'online-prescription-details', selectedId, completedPrescriptionIds],
+    queryFn: () => Promise.all(completedPrescriptionIds.map((id) => getPrescriptionDetail(id))),
+    enabled: completedPrescriptionIds.length > 0,
+    staleTime: STALE_TIME.consultPrescriptions,
+  });
+  const completedPrescriptionRows = useMemo<CompletedPrescriptionRow[]>(
+    () => (completedPrescriptionDetailsQuery.data ?? []).flatMap((prescription) => prescription.items.map((item) => ({
+      ...item,
+      prescriptionId: prescription.id,
+      prescriptionStatus: prescription.status,
+    }))),
+    [completedPrescriptionDetailsQuery.data],
+  );
 
   useEffect(() => {
     const socket = createConsultationSocket((event) => {
@@ -206,6 +253,7 @@ export default function OnlineConsultationPage() {
   function selectConsultation(item: API.OnlineConsultationItem) {
     setSelectedId(item.consultId);
     setReplyContent('');
+    setHistoryVisible(false);
     form.resetFields();
   }
 
@@ -496,19 +544,7 @@ export default function OnlineConsultationPage() {
                 <Divider />
                 <section className={styles.section}>
                   <Title level={5}>问诊消息</Title>
-                  <div className={styles.chatViewport}>
-                    {detail.messages.length === 0 ? (
-                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无消息" />
-                    ) : detail.messages.map((item) => {
-                      const isDoctor = item.senderType === SENDER_DOCTOR;
-                      return <article className={`${styles.chatMessage} ${isDoctor ? styles.doctorMessage : styles.patientMessage}`} key={item.messageId}>
-                        <div className={styles.messageBubble}>
-                          <small>{isDoctor ? '医生' : '患者'} · {item.createdAt ? dayjs(item.createdAt).format('YYYY/MM/DD HH:mm') : '-'}</small>
-                          <p>{item.content}</p>
-                        </div>
-                      </article>;
-                    })}
-                  </div>
+                  <ConsultationMessageHistory messages={detail.messages} />
                   <TextArea
                     rows={5}
                     maxLength={CONSULT_MESSAGE_MAX}
@@ -525,26 +561,50 @@ export default function OnlineConsultationPage() {
               </>
             )}
 
-            {detail.prescriptions.length > 0 && (
+            {detail.status === STATUS_COMPLETED && detail.prescriptions.length > 0 && (
               <section className={styles.section}>
                 <Title level={5}>已开处方</Title>
-                <Space wrap>
-                  {detail.prescriptions.map((item) => (
-                    <Tag key={item.id} color={item.status === STATUS_APPROVED ? 'green' : 'gold'}>
-                      #{item.id} · {item.status} · {item.itemCount} 项
-                    </Tag>
-                  ))}
-                </Space>
+                <Spin spinning={completedPrescriptionDetailsQuery.isLoading}>
+                  <Table<CompletedPrescriptionRow>
+                    size="small"
+                    bordered
+                    pagination={false}
+                    rowKey={(row) => `${row.prescriptionId}-${row.id}`}
+                    dataSource={completedPrescriptionRows}
+                    locale={{ emptyText: '暂无处方明细' }}
+                    columns={[
+                      { title: '药品名称', dataIndex: 'drugName', key: 'drugName', render: (value) => value || '-' },
+                      { title: '单次用量', dataIndex: 'dosage', key: 'dosage', render: (value) => value || '-' },
+                      { title: '频次', dataIndex: 'frequency', key: 'frequency', render: (value) => value || '-' },
+                      { title: '用法', dataIndex: 'usageMethod', key: 'usageMethod', render: (value) => value || '-' },
+                      { title: '天数', dataIndex: 'days', key: 'days', render: (value) => value ?? '-' },
+                      { title: '数量', dataIndex: 'quantity', key: 'quantity', render: (value) => value ?? '-' },
+                    ]}
+                  />
+                </Spin>
               </section>
             )}
 
             {detail.status === STATUS_COMPLETED && (
-              <Alert
-                type="success"
-                showIcon
-                message="本次在线问诊已完成"
-                description={detail.messages.find((item) => item.senderType === SENDER_DOCTOR)?.content || '医生已回复'}
-              />
+              <>
+                <Alert
+                  className={styles.completedConsultationCard}
+                  type="success"
+                  showIcon
+                  message="本次在线问诊已完成"
+                  description={detail.messages.find((item) => item.senderType === SENDER_DOCTOR)?.content || '医生已回复'}
+                  onClick={() => setHistoryVisible(true)}
+                />
+                <Modal
+                  title="问诊聊天记录"
+                  open={historyVisible}
+                  footer={null}
+                  width={760}
+                  onCancel={() => setHistoryVisible(false)}
+                >
+                  <ConsultationMessageHistory messages={detail.messages} />
+                </Modal>
+              </>
             )}
           </div>
         )}
