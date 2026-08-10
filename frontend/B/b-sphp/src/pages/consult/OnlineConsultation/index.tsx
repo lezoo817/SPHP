@@ -1,7 +1,7 @@
 /**
  * B 端无挂号在线问诊工作台。
  *
- * 医生从待回复列表进入编辑状态，可先提交处方，最后发送唯一一条文字回复并完成问诊。
+ * 医生从待回复列表进入接诊状态，在问诊期间与患者实时双向文字沟通。
  */
 import {
   Alert,
@@ -30,7 +30,7 @@ import {
   SendOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import {
@@ -38,10 +38,12 @@ import {
   getOnlineConsultations,
   getDoctorDrugs,
   getTemplates,
-  replyOnlineConsultation,
+  endOnlineConsultation,
+  sendOnlineConsultationMessage,
   startOnlineConsultation,
   submitPrescription,
 } from '@/services/admin';
+import { createConsultationSocket } from '@/services/consultationSocket';
 import { QUERY_KEYS } from '@/constants/queryKeys';
 import { getErrorMessage } from '@/utils/error';
 import styles from './index.module.less';
@@ -114,6 +116,7 @@ export default function OnlineConsultationPage() {
   const [replyContent, setReplyContent] = useState('');
   const [starting, setStarting] = useState(false);
   const [replying, setReplying] = useState(false);
+  const [ending, setEnding] = useState(false);
   const [submittingPrescription, setSubmittingPrescription] = useState(false);
   const [drugKeyword, setDrugKeyword] = useState('');
   const [form] = Form.useForm<PrescriptionFormValues>();
@@ -129,6 +132,16 @@ export default function OnlineConsultationPage() {
     enabled: Boolean(selectedId),
   });
   const detail = detailQuery.data;
+
+  useEffect(() => {
+    const socket = createConsultationSocket((event) => {
+      if (event.consultationId === selectedId) {
+        void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.onlineConsultationDetail(event.consultationId) });
+      }
+      void queryClient.invalidateQueries({ queryKey: ['consult', 'online'] });
+    });
+    return () => { void socket?.deactivate(); };
+  }, [queryClient, selectedId]);
   const templatesQuery = useQuery({
     queryKey: ['prescription', 'templates', 'online-consultation'],
     queryFn: () => getTemplates({ page: 1, size: 100 }),
@@ -233,25 +246,39 @@ export default function OnlineConsultationPage() {
     }
   }
 
-  /** 发送唯一医生回复并结束在线问诊。 */
-  function finishReply() {
+  /** 发送医生文字消息，最终状态仍由独立结束操作控制。 */
+  async function sendMessage() {
     if (!selectedId || !replyContent.trim() || replying) return;
+    setReplying(true);
+    try {
+      await sendOnlineConsultationMessage(selectedId, replyContent.trim(), crypto.randomUUID());
+      setReplyContent('');
+      await refreshAll();
+    } catch (error) {
+      message.error(getErrorMessage(error, '发送消息失败'));
+    } finally {
+      setReplying(false);
+    }
+  }
+
+  /** 医生主动结束实时在线问诊。 */
+  function finishConsultation() {
+    if (!selectedId || ending) return;
     Modal.confirm({
-      title: '发送回复并完成问诊',
-      content: '回复发送后本次在线问诊立即结束，不能再次回复或补开处方。',
-      okText: '确认发送',
+      title: '结束在线问诊',
+      content: '结束后双方均不能继续发送消息，已开处方不受影响。',
+      okText: '确认结束',
       onOk: async () => {
-        setReplying(true);
+        setEnding(true);
         try {
-          await replyOnlineConsultation(selectedId, replyContent.trim());
-          message.success('回复已发送，在线问诊已完成');
-          setReplyContent('');
+          await endOnlineConsultation(selectedId);
+          message.success('在线问诊已结束');
           setStatus('COMPLETED');
           await refreshAll();
         } catch (error) {
-          message.error(getErrorMessage(error, '发送回复失败'));
+          message.error(getErrorMessage(error, '结束问诊失败'));
         } finally {
-          setReplying(false);
+          setEnding(false);
         }
       },
     });
@@ -456,25 +483,25 @@ export default function OnlineConsultationPage() {
 
                 <Divider />
                 <section className={styles.section}>
-                  <Title level={5}>医生回复</Title>
+                  <Title level={5}>问诊消息</Title>
+                  <List
+                    size="small"
+                    dataSource={detail.messages}
+                    locale={{ emptyText: '暂无消息' }}
+                    renderItem={(item) => <List.Item><Text strong>{item.senderType === 'DOCTOR' ? '医生' : '患者'}：</Text>{item.content}<Text type="secondary">{item.createdAt ? dayjs(item.createdAt).format('MM-DD HH:mm') : ''}</Text></List.Item>}
+                  />
                   <TextArea
                     rows={5}
                     maxLength={2000}
                     showCount
                     value={replyContent}
-                    placeholder="输入本次在线问诊的最终回复"
+                    placeholder="输入发送给患者的文字消息"
                     onChange={(event) => setReplyContent(event.target.value)}
                   />
-                  <Button
-                    type="primary"
-                    icon={<SendOutlined />}
-                    loading={replying}
-                    disabled={!replyContent.trim()}
-                    onClick={finishReply}
-                    className={styles.finishButton}
-                  >
-                    发送回复并完成
-                  </Button>
+                  <Space className={styles.finishButton}>
+                    <Button type="primary" icon={<SendOutlined />} loading={replying} disabled={!replyContent.trim()} onClick={() => void sendMessage()}>发送消息</Button>
+                    <Button danger loading={ending} onClick={finishConsultation}>结束问诊</Button>
+                  </Space>
                 </section>
               </>
             )}

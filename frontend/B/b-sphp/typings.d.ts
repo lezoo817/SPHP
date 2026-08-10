@@ -460,6 +460,12 @@ declare global {
       repliedAt: string;
     }
 
+    /** 在线问诊消息游标分页结果 */
+    interface OnlineConsultationMessagePage {
+      messages: MessageVO[];
+      hasMore: boolean;
+    }
+
     /** 过敏史 */
     interface AllergyInfo {
       id: number;
