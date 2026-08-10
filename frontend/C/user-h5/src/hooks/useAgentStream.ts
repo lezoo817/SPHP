@@ -248,6 +248,19 @@ export function useAgentStream(): UseAgentStream {
   // 保存最后一条用户消息，用于重试
   const lastUserMessageRef = useRef<string>('');
   const lastContextRef = useRef<AgentChatContext | undefined>(undefined);
+  // entries 镜像（ref 同步）：send 记录本轮起始 / cancel 回滚时读取最新列表，
+  // 避免依赖 useCallback 闭包中过期的 entries state。
+  const entriesRef = useRef<AgentEntry[]>([]);
+  useEffect(() => { entriesRef.current = entries; }, [entries]);
+  // 本轮起始索引（append 用户消息之后）：cancel 时清除本轮中间产物（工具卡片、
+  // AI 回复、思考等），保留用户消息——用户点停止后前端立即回到干净状态，
+  // 后端即使继续执行也不在前端残留任何执行痕迹（2026-08-10 后悔即撤销）。
+  const roundStartRef = useRef<number>(-1);
+  // 本轮结束（连接回 idle，如 done / 流式结束）时重置 roundStart，避免"已完成
+  // 轮次后点停止"误删既有对话——roundStart 仅在一次 send 到该轮结束间有效。
+  useEffect(() => {
+    if (connection === 'idle') roundStartRef.current = -1;
+  }, [connection]);
 
   /** 中断当前流式请求并释放读取器。 */
   const cancel = useCallback(() => {
@@ -255,9 +268,15 @@ export function useAgentStream(): UseAgentStream {
       handleRef.current.abort();
       handleRef.current = null;
     }
-    // 标记当前 AI 消息与思考为非流式状态
-    finalizeStreaming();
-    // 重置连接状态为 idle，允许用户继续发送消息
+    // 2026-08-10 后悔即撤销：清除本轮（自用户消息起）的中间产物——进行中的
+    // 工具卡片、AI 回复、思考、确认卡等，保留用户消息。后端即使继续执行查询，
+    // 前端也不残留任何执行痕迹（"输入对前端感受无影响"）。
+    if (roundStartRef.current >= 0) {
+      setEntries((prev) => prev.slice(0, roundStartRef.current));
+      roundStartRef.current = -1;
+    }
+    currentMessageIdRef.current = null;
+    currentThoughtIdRef.current = null;
     setConnection('idle');
   }, []);
 
@@ -372,12 +391,18 @@ export function useAgentStream(): UseAgentStream {
         clearAgentSessionId();
         setSessionId(undefined);
         setEntries([]);
+        entriesRef.current = []; // 同步镜像，保证下方 roundStart 基于清空后的长度
       }
 
       // 保存最后一条用户消息，用于重试
       lastUserMessageRef.current = text;
       lastContextRef.current = context;
 
+      // 记录本轮起始索引（用户消息之后）：cancel 时据此清除本轮中间产物而保留
+      // 用户消息。hideUserMessage（预设快捷入口）无用户消息，起始即当前长度。
+      roundStartRef.current = options.hideUserMessage
+        ? entriesRef.current.length
+        : entriesRef.current.length + 1;
       // 受控快捷入口仅用于触发固定业务流程，不向对话区伪造用户输入。
       if (!options.hideUserMessage) {
         const userMessage: AgentMessage = {
