@@ -56,7 +56,7 @@ class ConsultationServiceImplTest {
     }
 
     /**
-     * 验证当前用户无需挂号即可提交本人预问诊，并保存健康档案快照。
+     * 验证挂号关联问诊不阻止当前用户提交独立在线问诊，并保存健康档案快照。
      */
     @Test
     void savePreConsultationCreatesPendingRecordForSelfPatient() {
@@ -68,7 +68,8 @@ class ConsultationServiceImplTest {
         when(dataMapper.selectConsultationSelfPatientId(10001L)).thenReturn(20001L);
         when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
         when(dataMapper.existsConsultationAvailableDoctor(30001L)).thenReturn(true);
-        when(dataMapper.existsConsultationActiveRecord(20001L, 30001L)).thenReturn(false);
+        // 挂号关联记录由 Mapper 的 appointment_id IS NULL 条件排除，不阻止在线问诊创建。
+        when(dataMapper.existsOnlineConsultationActiveRecord(20001L, 30001L)).thenReturn(false);
         when(dataMapper.selectConsultationAllergySnapshots(20001L))
                 .thenReturn(List.of(new ConsultationAllergySnapshotRecord("青霉素", "皮疹")));
         when(dataMapper.selectConsultationMedicalHistorySnapshots(20001L))
@@ -95,7 +96,7 @@ class ConsultationServiceImplTest {
     }
 
     /**
-     * 验证同一医生存在待接诊预问诊时不能再次提交。
+     * 验证同一医生存在待接诊在线问诊时不能再次提交。
      */
     @Test
     void savePreConsultationRejectsWhenSameDoctorHasPendingRecord() {
@@ -106,12 +107,13 @@ class ConsultationServiceImplTest {
         when(dataMapper.selectConsultationSelfPatientId(10001L)).thenReturn(20001L);
         when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
         when(dataMapper.existsConsultationAvailableDoctor(30001L)).thenReturn(true);
-        when(dataMapper.existsConsultationActiveRecord(20001L, 30001L)).thenReturn(true);
+        when(dataMapper.existsOnlineConsultationActiveRecord(20001L, 30001L)).thenReturn(true);
 
         CAuthException exception = assertThrows(CAuthException.class,
                 () -> service.savePreConsultation(request()));
 
         assertEquals("A0443", exception.getCode());
+        assertEquals("当前医生仍有进行中的在线问诊，请等待问诊结束后再提交", exception.getMessage());
         verify(dataMapper, never()).insertConsultationRecord(any());
     }
 
