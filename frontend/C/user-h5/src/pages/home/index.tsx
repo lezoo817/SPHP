@@ -5,7 +5,6 @@ import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
 import { HOME_CONSULTATION_MESSAGE, HOME_TRIAGE_MESSAGE } from '../../constants/agent';
 import { completeAllHealthTodos, getCompletedHealthTodoIds, isHealthTodoCompleted } from '../../models/completed-health-todo';
-import { dismissConsultationTodo, getDismissedConsultationTodoIds, isConsultationTodoDismissed } from '../../models/completed-consultation-health-todo';
 import { dismissExpiredHealthTodo, getDismissedExpiredHealthTodoIds, isExpiredHealthTodoDismissed } from '../../models/expired-health-todo';
 import { dismissMedicationHealthTodo, getMedicationHealthTodoState, getMedicationHealthTodoStates, isMedicationHealthTodoDismissed, markMedicationHealthTodoTaken, type MedicationHealthTodoState } from '../../models/medication-health-todo';
 import { getSelection, resolveSelectedPatientId, saveSelection } from '../../models/selection';
@@ -26,6 +25,8 @@ const homeBanners = [
   { image: consultationBanner, label: '在线问诊服务', action: '/assistant' },
 ];
 const circularHomeBanners = [homeBanners[homeBanners.length - 1], ...homeBanners, homeBanners[0]];
+/** 首页待办状态刷新周期，确保在线问诊结束后自动移除对应卡片。 */
+const HEALTH_TODO_REFRESH_INTERVAL_MILLIS = 15_000;
 
 /** 展示医院入口、就诊人、快捷服务和全账号健康待办的首页。 */
 export default function HomePage() {
@@ -58,6 +59,28 @@ export default function HomePage() {
     return { patientId: member.patientId, patientName: member.name, appointments: appointmentPage.records, consultations: consultationPage.records, medicationPlans, followUps };
   }
 
+  /**
+   * 聚合最新健康待办，并保留过期挂号、已服药和一键完成等既有本地状态。
+   * @param targetMembers 当前账号可访问的本人及家属列表
+   * @returns 待办刷新完成后的 Promise
+   */
+  async function refreshHealthTodos(targetMembers: FamilyMember[]): Promise<void> {
+    const healthResults = await Promise.allSettled(targetMembers.map(loadPatientHealthSource));
+    const sources = healthResults.filter((item): item is PromiseFulfilledResult<PatientHealthSource> => item.status === 'fulfilled').map((item) => item.value);
+    const nextTodos = buildHealthTodos(sources);
+    // 已被患者关闭的过期订单在同一登录会话内不再因页面重新加载而重复出现。
+    const dismissedTodoIds = getDismissedExpiredHealthTodoIds();
+    const nextMedicationTodoStates = getMedicationHealthTodoStates();
+    const nextCompletedTodoIds = getCompletedHealthTodoIds();
+    setMedicationTodoStates(nextMedicationTodoStates);
+    setTodos(nextTodos.filter((todo) => (!todo.isExpired || !isExpiredHealthTodoDismissed(todo, dismissedTodoIds))
+      // 仅已开启提醒的用药待办支持本地关闭，其他用药卡片保持原跳转行为。
+      && !(todo.type === 'MEDICATION' && todo.reminderEnabled && isMedicationHealthTodoDismissed(todo, nextMedicationTodoStates))
+      // 一键完成只影响当前会话中的首页提示，刷新数据时继续过滤已完成卡片。
+      && !isHealthTodoCompleted(todo, nextCompletedTodoIds)));
+    if (healthResults.some((item) => item.status === 'rejected')) setNotice('部分健康待办加载失败，请稍后重试');
+  }
+
   /** 初始化医院、当前就诊人和账号全部健康待办。 */
   async function loadHome() {
     try {
@@ -73,35 +96,26 @@ export default function HomePage() {
       };
       saveSelection(next);
       setSelected(next);
-      const healthResultsPromise = Promise.allSettled(nextMembers.map(loadPatientHealthSource));
+      const healthRefreshPromise = refreshHealthTodos(nextMembers);
       const notificationPage = await notificationPromise;
       if (notificationPage) {
         setWaitlistNotification(findLatestWaitlistPromotionNotification(notificationPage.records));
       }
       // 后端按患者隔离待办，首页需要汇总本人和家属后才能展示账号全部待办。
-      const healthResults = await healthResultsPromise;
-      const sources = healthResults.filter((item): item is PromiseFulfilledResult<PatientHealthSource> => item.status === 'fulfilled').map((item) => item.value);
-      const nextTodos = buildHealthTodos(sources);
-      // 已被患者关闭的过期订单在同一登录会话内不再因页面重新加载而重复出现。
-      const dismissedTodoIds = getDismissedExpiredHealthTodoIds();
-      const dismissedConsultationTodoIds = getDismissedConsultationTodoIds();
-      const nextMedicationTodoStates = getMedicationHealthTodoStates();
-      const nextCompletedTodoIds = getCompletedHealthTodoIds();
-      setMedicationTodoStates(nextMedicationTodoStates);
-      setTodos(nextTodos.filter((todo) => (!todo.isExpired || !isExpiredHealthTodoDismissed(todo, dismissedTodoIds))
-        // 仅已开启提醒的用药待办支持本地关闭，其他用药卡片保持原跳转行为。
-        && !(todo.type === 'MEDICATION' && todo.reminderEnabled && isMedicationHealthTodoDismissed(todo, nextMedicationTodoStates))
-        // 已进入详情查看的接诊中问诊在当前登录会话内不再重复占用待办区。
-        && !(todo.type === 'CONSULTATION' && isConsultationTodoDismissed(todo, dismissedConsultationTodoIds))
-        // 一键完成只影响当前会话中的首页提示，刷新数据时继续过滤已完成卡片。
-        && !isHealthTodoCompleted(todo, nextCompletedTodoIds)));
-      if (healthResults.some((item) => item.status === 'rejected')) setNotice('部分健康待办加载失败，请稍后重试');
+      await healthRefreshPromise;
     } catch (error: unknown) {
       setNotice(error instanceof Error ? error.message : '首页数据加载失败');
     }
   }
 
   useEffect(() => { void loadHome(); }, []);
+
+  useEffect(() => {
+    if (!members.length) return undefined;
+    // 仅刷新待办数据，不重复请求医院和通知；问诊完成后会由聚合规则自动移除卡片。
+    const timer = window.setInterval(() => { void refreshHealthTodos(members); }, HEALTH_TODO_REFRESH_INTERVAL_MILLIS);
+    return () => window.clearInterval(timer);
+  }, [members]);
 
   useEffect(() => {
     if (!waitlistNotification) return undefined;
@@ -155,9 +169,7 @@ export default function HomePage() {
       return;
     }
     if (todo.type === 'CONSULTATION') {
-      // 先持久化已查看状态再跳转，避免用户返回首页时同一待办重新出现。
-      const dismissedIds = dismissConsultationTodo(todo);
-      setTodos((current) => current.filter((item) => item.type !== 'CONSULTATION' || !isConsultationTodoDismissed(item, dismissedIds)));
+      // 接诊中问诊可多次进入详情；仅在服务端状态变为 COMPLETED 后由刷新聚合自动移除。
       navigate(buildConsultationDetailPath(todo.id, todo.patientId));
       return;
     }
