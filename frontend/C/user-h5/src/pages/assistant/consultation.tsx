@@ -42,6 +42,13 @@ export default function ConsultationPage() {
   useEffect(() => { void load(); }, [consultationId]);
 
   useEffect(() => {
+    if (detail?.status !== 'PENDING') return undefined;
+    // AI 跳转进入时问诊仍在等待医生接诊，定时绕过缓存同步状态；进入 IN_PROGRESS 后立即停止。
+    const timer = window.setInterval(() => { void load(true); }, 3000);
+    return () => window.clearInterval(timer);
+  }, [consultationId, detail?.status]);
+
+  useEffect(() => {
     // WebSocket 为主通道；补偿请求绕过 30 秒读缓存，避免患者手动刷新查看医生消息。
     const timer = window.setInterval(() => {
       if (detail?.status === 'IN_PROGRESS') void load(true);
