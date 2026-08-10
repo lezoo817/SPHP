@@ -50,7 +50,7 @@ public interface PatientDataMapper {
     @Select("<script>" +
             "SELECT cr.id AS consultId, cr.created_at::date AS visitDate, " +
             "       d.name AS doctorName, dp.name AS deptName, " +
-            "       COALESCE(cr.doctor_note, cr.ai_summary) AS summary, " +
+            "       cr.doctor_note AS summary, " +
             "       cr.status, cr.created_at AS createdAt " +
             "FROM consult_record cr " +
             "JOIN doctor d ON cr.doctor_id = d.id AND d.deleted_at IS NULL " +
