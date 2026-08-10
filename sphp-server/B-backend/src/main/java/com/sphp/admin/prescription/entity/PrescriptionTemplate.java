@@ -1,11 +1,12 @@
 package com.sphp.admin.prescription.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import com.sphp.admin.prescription.dto.TemplateItemDTO;
+import com.sphp.admin.prescription.handler.PgJsonbTypeHandler;
 import lombok.Data;
 
 import java.time.OffsetDateTime;
@@ -27,7 +28,12 @@ public class PrescriptionTemplate {
     /** 所属医院 */
     private Long hospitalId;
 
-    /** 关联科室，NULL 表示全院通用 */
+    /**
+     * 关联科室，NULL 表示全院通用。
+     * <p>updateStrategy=ALWAYS：编辑时清空科室（改为全院通用）需写入 NULL，
+     * MyBatis-Plus updateById 默认跳过 null 字段会导致清空不生效。
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long deptId;
 
     /** 模板名称 */
@@ -40,7 +46,7 @@ public class PrescriptionTemplate {
     private Long updatedBy;
 
     /** 药品明细 JSON */
-    @TableField(typeHandler = JacksonTypeHandler.class)
+    @TableField(typeHandler = PgJsonbTypeHandler.class)
     private List<TemplateItemDTO> items;
 
     /** 状态：ENABLED / DISABLED */

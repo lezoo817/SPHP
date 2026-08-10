@@ -46,6 +46,13 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!-- PostgreSQL 驱动（编译期引用 PGobject，用于 jsonb 类型处理器 PgJsonbTypeHandler） -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>compile</scope>
+        </dependency>
+
         <!-- 在线问诊回复完成后投递 C 端站内通知事件 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
