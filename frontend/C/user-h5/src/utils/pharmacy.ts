@@ -3,13 +3,21 @@ import type { DrugOrder } from '../typings/api';
 /** 购药订单页面可切换的物流分类。 */
 export type DrugOrderTab = 'ALL' | 'TRANSIT' | 'TO_RECEIVE' | 'RECEIVED' | 'INVALID';
 
+/** 物流分类按钮的展示配置。 */
+export interface DrugOrderTabOption {
+  /** 分类编码。 */
+  key: DrugOrderTab;
+  /** 面向患者的分类名称。 */
+  label: string;
+}
+
 /** 物流分类的页面展示信息。 */
-export const drugOrderTabs:{ key:DrugOrderTab; label:string }[]=[
-  { key:'ALL',label:'全部订单' },
-  { key:'TRANSIT',label:'运输中' },
-  { key:'TO_RECEIVE',label:'待收货' },
-  { key:'RECEIVED',label:'已收货' },
-  { key:'INVALID',label:'已失效' },
+export const drugOrderTabs: DrugOrderTabOption[] = [
+  { key: 'ALL', label: '全部订单' },
+  { key: 'TRANSIT', label: '运输中' },
+  { key: 'TO_RECEIVE', label: '待收货' },
+  { key: 'RECEIVED', label: '已收货' },
+  { key: 'INVALID', label: '已失效' },
 ];
 
 /**
@@ -18,14 +26,14 @@ export const drugOrderTabs:{ key:DrugOrderTab; label:string }[]=[
  * @param tab 页面当前分类
  * @returns 是否应在当前 Tab 展示
  */
-export function matchesDrugOrderTab(order:DrugOrder,tab:DrugOrderTab):boolean{
-  if(tab==='ALL') return true;
+export function matchesDrugOrderTab(order: DrugOrder, tab: DrugOrderTab): boolean {
+  if (tab === 'ALL') return true;
   // 已取消和已超时订单不再按遗留物流状态混入正常配送分类。
-  if(tab==='INVALID') return order.status==='CANCELLED'||order.status==='EXPIRED';
-  if(order.status==='CANCELLED'||order.status==='EXPIRED') return false;
-  if(tab==='TRANSIT') return order.logisticsStatus==='SHIPPED'||order.logisticsStatus==='IN_TRANSIT';
-  if(tab==='TO_RECEIVE') return order.logisticsStatus==='TO_RECEIVE';
-  return order.logisticsStatus==='RECEIVED';
+  if (tab === 'INVALID') return order.status === 'CANCELLED' || order.status === 'EXPIRED';
+  if (order.status === 'CANCELLED' || order.status === 'EXPIRED') return false;
+  if (tab === 'TRANSIT') return order.logisticsStatus === 'SHIPPED' || order.logisticsStatus === 'IN_TRANSIT';
+  if (tab === 'TO_RECEIVE') return order.logisticsStatus === 'TO_RECEIVE';
+  return order.logisticsStatus === 'RECEIVED';
 }
 
 /**
@@ -51,7 +59,16 @@ export function getDrugOrderCardStatusText(order: DrugOrder): string {
  * @param logisticsStatus 后端物流状态编码
  * @returns 页面显示文案
  */
-export function getLogisticsStatusText(logisticsStatus?:string):string{return ({PENDING_SHIPMENT:'待发货',SHIPPED:'已发货',IN_TRANSIT:'运输中',TO_RECEIVE:'待收货',RECEIVED:'已收货'} as Record<string,string>)[logisticsStatus||'']||'物流待更新';}
+export function getLogisticsStatusText(logisticsStatus?: string): string {
+  const statusTexts: Record<string, string> = {
+    PENDING_SHIPMENT: '待发货',
+    SHIPPED: '已发货',
+    IN_TRANSIT: '运输中',
+    TO_RECEIVE: '待收货',
+    RECEIVED: '已收货',
+  };
+  return statusTexts[logisticsStatus || ''] || '物流待更新';
+}
 
 /**
  * 从购药页面查询参数中解析有效就诊人 ID。
@@ -64,8 +81,8 @@ export function resolvePharmacyPatientId(patientIdText: string | null): number |
 }
 
 /**
- * 构建购药首页路径，并保留该模块独立选择的就诊人。
- * @param patientId 当前购药页本地就诊人 ID
+ * 构建购药首页路径，并保留当前全局就诊人。
+ * @param patientId 当前全局就诊人 ID
  * @returns 带可选就诊人上下文的购药首页路径
  */
 export function buildPharmacyHomePath(patientId?: number): string {
@@ -75,7 +92,7 @@ export function buildPharmacyHomePath(patientId?: number): string {
 /**
  * 构建购药处方详情页面路径。
  * @param prescriptionId 处方 ID
- * @param patientId 当前购药页本地就诊人 ID
+ * @param patientId 当前全局就诊人 ID
  * @param issuedAt 可选的处方开具时间，用于详情接口缺字段时展示
  * @param drugOrderId 已购买订单 ID，用于处方详情跳转物流
  * @returns 携带就诊人与开具时间上下文的处方详情路径
@@ -90,7 +107,7 @@ export function buildPharmacyPrescriptionPath(prescriptionId: number, patientId:
 /**
  * 构建附近有货药店页面路径。
  * @param prescriptionId 处方 ID
- * @param patientId 当前购药页本地就诊人 ID
+ * @param patientId 当前全局就诊人 ID
  * @param issuedAt 可选的处方开具时间，用于库存页返回详情时恢复展示
  * @returns 携带就诊人与开具时间上下文的库存页面路径
  */

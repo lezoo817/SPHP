@@ -1,6 +1,20 @@
 import { Check, FileText, Pill } from 'lucide-react';
 import type { AgentRecordPickerCard } from '../../typings/agent';
 
+/** 解读记录选择卡片的渲染参数。 */
+interface AgentRecordPickerCardViewProps {
+  /** 待选择的处方或病历列表。 */
+  card: AgentRecordPickerCard;
+  /** 流式响应期间禁用选择与确认操作。 */
+  disabled?: boolean;
+  /** 选择单条记录后的回调。 */
+  onSelect: (recordId: number) => void;
+  /** 确认已选记录并发起解读的回调。 */
+  onConfirm: (card: AgentRecordPickerCard) => void;
+  /** 取消本次记录选择的回调。 */
+  onCancel: (card: AgentRecordPickerCard) => void;
+}
+
 /**
  * 解读记录选择卡：用户选中病历或处方后必须确认才会触发 AI 解读。
  */
@@ -10,13 +24,7 @@ export function AgentRecordPickerCardView({
   onSelect,
   onConfirm,
   onCancel,
-}: {
-  card: AgentRecordPickerCard;
-  disabled?: boolean;
-  onSelect: (recordId: number) => void;
-  onConfirm: (card: AgentRecordPickerCard) => void;
-  onCancel: (card: AgentRecordPickerCard) => void;
-}) {
+}: AgentRecordPickerCardViewProps) {
   const locked = disabled || card.status !== 'pending';
   const Icon = card.picker_type === 'prescription' ? Pill : FileText;
   return (

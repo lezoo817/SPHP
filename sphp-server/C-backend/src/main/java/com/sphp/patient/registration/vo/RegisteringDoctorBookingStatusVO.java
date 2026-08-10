@@ -13,6 +13,6 @@ public class RegisteringDoctorBookingStatusVO {
     /** 医生 ID。 */
     private final Long doctorId;
 
-    /** 当前账号任意有效就诊人是否已支付或完成预约。 */
+    /** 当前就诊人是否存在有效待就诊预约。 */
     private final boolean booked;
 }

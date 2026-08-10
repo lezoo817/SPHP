@@ -7,4 +7,57 @@ import { createIdempotencyKey, getApiErrorMessage } from '../../utils/form';
 import { buildConsultationDetailPath } from '../../utils/consultation';
 
 /** 向路由指定医生提交无挂号在线预问诊。 */
-export default function PreConsultationPage() { const { doctorId: doctorIdText } = useParams(); const navigate = useNavigate(); const [chiefComplaint, setChiefComplaint] = useState(''); const [history, setHistory] = useState(''); const [notice, setNotice] = useState(''); const [submitting, setSubmitting] = useState(false); const key = useRef<string>(); async function submit() { const doctorId = Number(doctorIdText); if (!Number.isInteger(doctorId) || doctorId <= 0) return setNotice('医生信息无效'); if (!chiefComplaint.trim()) return setNotice('请填写主诉'); setSubmitting(true); try { const result = await savePreConsultation({ doctorId, chiefComplaint: chiefComplaint.trim(), historyOfPresentIllness: history.trim() || undefined }, key.current || (key.current = createIdempotencyKey())); key.current = undefined; navigate(buildConsultationDetailPath(result.consultationId, getSelection().patientId)); } catch (error) { setNotice(getApiErrorMessage(error)); } finally { setSubmitting(false); } } return <main className="subpage"><PageHeader title="预问诊" backPath="/assistant" /><section className="subpage-content"><div className="form-stack"><label>主诉<textarea rows={4} maxLength={1000} value={chiefComplaint} placeholder="请描述主要不适" onChange={(event) => setChiefComplaint(event.target.value)} /></label><label>现病史<textarea rows={5} maxLength={10000} value={history} placeholder="可选，补充症状发生时间和变化" onChange={(event) => setHistory(event.target.value)} /></label><button className="primary-button" disabled={submitting} type="button" onClick={() => void submit()}>{submitting ? '提交中...' : '提交预问诊'}</button></div></section>{notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}</main>; }
+export default function PreConsultationPage() {
+  const { doctorId: doctorIdText } = useParams();
+  const navigate = useNavigate();
+  const [chiefComplaint, setChiefComplaint] = useState('');
+  const [history, setHistory] = useState('');
+  const [notice, setNotice] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  // 同一次提交的网络重试复用幂等键，服务端可安全返回首次创建结果。
+  const key = useRef<string>();
+
+  /**
+   * 校验预问诊内容并创建在线问诊记录。
+   * @returns 无返回值
+   */
+  async function submit(): Promise<void> {
+    const doctorId = Number(doctorIdText);
+    if (!Number.isInteger(doctorId) || doctorId <= 0) {
+      setNotice('医生信息无效');
+      return;
+    }
+    if (!chiefComplaint.trim()) {
+      setNotice('请填写主诉');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const result = await savePreConsultation({
+        doctorId,
+        chiefComplaint: chiefComplaint.trim(),
+        historyOfPresentIllness: history.trim() || undefined,
+      }, key.current || (key.current = createIdempotencyKey()));
+      // 创建成功后丢弃幂等键，下一次独立预问诊生成新的请求身份。
+      key.current = undefined;
+      navigate(buildConsultationDetailPath(result.consultationId, getSelection().patientId));
+    } catch (error) {
+      setNotice(getApiErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return <main className="subpage">
+    <PageHeader title="预问诊" backPath="/assistant" />
+    <section className="subpage-content">
+      <div className="form-stack">
+        <label>主诉<textarea rows={4} maxLength={1000} value={chiefComplaint} placeholder="请描述主要不适" onChange={(event) => setChiefComplaint(event.target.value)} /></label>
+        <label>现病史<textarea rows={5} maxLength={10000} value={history} placeholder="可选，补充症状发生时间和变化" onChange={(event) => setHistory(event.target.value)} /></label>
+        <button className="primary-button" disabled={submitting} type="button" onClick={() => void submit()}>{submitting ? '提交中...' : '提交预问诊'}</button>
+      </div>
+    </section>
+    {notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}
+  </main>;
+}

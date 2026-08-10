@@ -39,12 +39,13 @@ public interface RegisteringService {
     RegisteringAppointmentListVO registeringListAppointments(Long patientId, String status, Integer pageNo, Integer pageSize);
 
     /**
-     * 查询当前账号是否已成功预约指定医生。
+     * 查询当前就诊人是否存在指定医生的有效待就诊挂号。
      *
      * @param doctorId 医生 ID
-     * @return 当前账号的成功预约状态
+     * @param patientId 可选就诊人 ID，未传时使用当前账号本人
+     * @return 当前就诊人的成功预约状态
      */
-    RegisteringDoctorBookingStatusVO registeringGetDoctorBookingStatus(Long doctorId);
+    RegisteringDoctorBookingStatusVO registeringGetDoctorBookingStatus(Long doctorId, Long patientId);
 
     /**
      * 查询挂号订单详情。

@@ -99,20 +99,22 @@ class RegisteringControllerTest {
     }
 
     /**
-     * 验证医生主页可查询当前账号的重复预约状态。
+     * 验证医生主页可按指定就诊人查询重复预约状态。
      *
      * @throws Exception MockMvc 调用失败时抛出
      */
     @Test
-    void registeringGetDoctorBookingStatusReturnsAccountLevelBookedFlag() throws Exception {
+    void registeringGetDoctorBookingStatusReturnsPatientLevelBookedFlag() throws Exception {
         RegisteringService registeringService = mock(RegisteringService.class);
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new RegisteringController(registeringService, mock(CIdempotencyService.class)))
                 .setControllerAdvice(new RegisteringExceptionHandler())
                 .build();
-        when(registeringService.registeringGetDoctorBookingStatus(401L))
+        when(registeringService.registeringGetDoctorBookingStatus(401L, 20001L))
                 .thenReturn(RegisteringDoctorBookingStatusVO.builder().doctorId(401L).booked(true).build());
 
-        mockMvc.perform(get("/c/v1/appointments/doctor-booking-status").param("doctorId", "401"))
+        mockMvc.perform(get("/c/v1/appointments/doctor-booking-status")
+                        .param("doctorId", "401")
+                        .param("patientId", "20001"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.doctorId").value(401))
                 .andExpect(jsonPath("$.data.booked").value(true));

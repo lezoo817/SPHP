@@ -88,9 +88,9 @@ public class ConsultationServiceImpl implements ConsultationService {
         if (!consultationDataMapper.existsConsultationAvailableDoctor(request.getDoctorId())) {
             throw notFound("医生不存在或已停用");
         }
-        // 同一医生存在待接诊或进行中的问诊时，禁止再次提交新的总结。
-        if (consultationDataMapper.existsConsultationActiveRecord(patientId, request.getDoctorId())) {
-            throw statusConflict("当前医生仍有进行中的预问诊，请等待问诊结束后再提交");
+        // 仅无挂号关联的在线问诊参与防重，挂号接诊记录不阻止发起独立在线问诊。
+        if (consultationDataMapper.existsOnlineConsultationActiveRecord(patientId, request.getDoctorId())) {
+            throw statusConflict("当前医生仍有进行中的在线问诊，请等待问诊结束后再提交");
         }
         OffsetDateTime now = OffsetDateTime.now();
         // 使用 JSONB 存储附件信息，避免 JSON 字符串长度超出数据库字段限制。
