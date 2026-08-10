@@ -24,6 +24,7 @@ import {
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { getDrugs, getTemplates, precheckPrescription } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
+import { DEBOUNCE_PRECheck_MS } from '@/constants/timing';
 import styles from './PrescriptionFormModal.module.less';
 
 /** 单行药品明细表单值（对齐 PrescriptionSubmitRequest.ItemDTO） */
@@ -227,7 +228,7 @@ export default function PrescriptionFormModal({
     if (precheckTimerRef.current) window.clearTimeout(precheckTimerRef.current);
     precheckTimerRef.current = window.setTimeout(() => {
       runPrecheck(itemsWatch ?? []);
-    }, 400);
+    }, DEBOUNCE_PRECheck_MS);
     return () => {
       if (precheckTimerRef.current) window.clearTimeout(precheckTimerRef.current);
     };

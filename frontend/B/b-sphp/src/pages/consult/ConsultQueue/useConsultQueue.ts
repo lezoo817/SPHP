@@ -30,6 +30,7 @@ import {
 import { getErrorMessage } from '@/utils/error';
 import { useCurrentUser, useHasRole } from '@/hooks/useCurrentUser';
 import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
+import { POLL_INTERVAL_CONSULT } from '@/constants/timing';
 import dayjs from 'dayjs';
 import type { SelectedStatus } from './constants';
 import type { NoteField } from './NoteForm';
@@ -57,7 +58,7 @@ export function useConsultQueue() {
     queryKey: [...QUERY_KEYS.consultQueue('PENDING'), pendingPage] as const,
     queryFn: () =>
       getQueue({ status: 'PENDING', page: pendingPage, size: QUEUE_PAGE_SIZE }),
-    refetchInterval: 15_000,
+    refetchInterval: POLL_INTERVAL_CONSULT,
   });
   const pendingItems = pendingRes?.list ?? EMPTY_ARRAY;
   const pendingTotal = pendingRes?.total ?? 0;
@@ -69,7 +70,7 @@ export function useConsultQueue() {
     queryKey: [...QUERY_KEYS.consultQueue('IN_PROGRESS'), inProgressPage] as const,
     queryFn: () =>
       getQueue({ status: 'IN_PROGRESS', page: inProgressPage, size: QUEUE_PAGE_SIZE }),
-    refetchInterval: 15_000,
+    refetchInterval: POLL_INTERVAL_CONSULT,
   });
   const inProgressItems = inProgressRes?.list ?? EMPTY_ARRAY;
   const inProgressTotal = inProgressRes?.total ?? 0;

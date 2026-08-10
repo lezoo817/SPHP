@@ -45,6 +45,7 @@ import {
 } from '@/services/admin';
 import { createConsultationSocket } from '@/services/consultationSocket';
 import { QUERY_KEYS, STALE_TIME } from '@/constants/queryKeys';
+import { POLL_INTERVAL_CONSULT } from '@/constants/timing';
 import { getErrorMessage } from '@/utils/error';
 import styles from './index.module.less';
 
@@ -131,7 +132,7 @@ export default function OnlineConsultationPage() {
   const listQuery = useQuery({
     queryKey: QUERY_KEYS.onlineConsultations(status),
     queryFn: () => getOnlineConsultations({ status, page: 1, size: 50 }),
-    refetchInterval: 15_000,
+    refetchInterval: POLL_INTERVAL_CONSULT,
   });
   const detailQuery = useQuery({
     queryKey: QUERY_KEYS.onlineConsultationDetail(selectedId ?? -1),
