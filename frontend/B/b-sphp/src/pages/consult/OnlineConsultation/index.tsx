@@ -89,7 +89,7 @@ function formatHistoryDate(value?: string): string {
 }
 
 /** 读取 AI 摘要中的数组字段，兼容接口返回空值或旧格式。 */
-function readSummaryArray<T>(summary: Record<string, any> | undefined, key: string): T[] {
+function readSummaryArray<T>(summary: Record<string, unknown> | undefined, key: string): T[] {
   const value = summary?.[key];
   return Array.isArray(value) ? (value as T[]) : [];
 }

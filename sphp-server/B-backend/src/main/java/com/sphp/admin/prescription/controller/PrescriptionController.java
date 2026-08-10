@@ -4,6 +4,7 @@ import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.prescription.dto.AuditRequest;
 import com.sphp.admin.prescription.dto.PrescriptionDetailVO;
 import com.sphp.admin.prescription.dto.PrescriptionListVO;
+import com.sphp.admin.prescription.dto.PrescriptionPrecheckVO;
 import com.sphp.admin.prescription.dto.PrescriptionSubmitRequest;
 import com.sphp.admin.prescription.dto.PrescriptionSubmitVO;
 import com.sphp.admin.prescription.service.PrescriptionService;
@@ -51,6 +52,13 @@ public class PrescriptionController {
     @Operation(summary = "提交处方", description = "含风险拦截，根据命中级别决定 APPROVED 或 SUBMITTED")
     public Result<PrescriptionSubmitVO> submit(@Valid @RequestBody PrescriptionSubmitRequest request) {
         return Result.success("提交成功", prescriptionService.submit(request));
+    }
+
+    @PostMapping("/prescriptions/precheck")
+    @Operation(summary = "处方风险预检", description = "开方过程实时返回四类风险预警（过敏/禁忌/重复用药/高危药品），只读不落库、不拦截")
+    public Result<PrescriptionPrecheckVO> precheck(@Valid @RequestBody PrescriptionSubmitRequest request) {
+        return Result.success("查询成功",
+                prescriptionService.precheck(request.getConsultId(), request.getItems()));
     }
 
     @GetMapping("/prescriptions")

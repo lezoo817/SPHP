@@ -4,6 +4,7 @@ import com.sphp.admin.common.vo.PageResult;
 import com.sphp.admin.prescription.dto.AuditRequest;
 import com.sphp.admin.prescription.dto.PrescriptionDetailVO;
 import com.sphp.admin.prescription.dto.PrescriptionListVO;
+import com.sphp.admin.prescription.dto.PrescriptionPrecheckVO;
 import com.sphp.admin.prescription.dto.PrescriptionSubmitRequest;
 import com.sphp.admin.prescription.dto.PrescriptionSubmitVO;
 
@@ -41,6 +42,19 @@ public interface PrescriptionService {
      * @throws com.sphp.shared.exception.BusinessException 问诊无效/越权/药品停用/红线
      */
     PrescriptionSubmitVO createFromItems(Long consultId, List<PrescriptionSubmitRequest.ItemDTO> items);
+
+    /**
+     * 处方风险预检（开方过程实时调用，只读不落库）。
+     *
+     * <p>对当前明细跑过敏/禁忌/重复用药/高危药品四类规则，返回带归属与来源的
+     * 命中清单供前端实时展示；**不抛红线**、不产生任何写操作。
+     *
+     * @param consultId 问诊记录 ID
+     * @param items     当前处方明细
+     * @return 命中风险清单
+     * @throws com.sphp.shared.exception.BusinessException 无医生身份/问诊不存在或越权
+     */
+    PrescriptionPrecheckVO precheck(Long consultId, List<PrescriptionSubmitRequest.ItemDTO> items);
 
     /**
      * 分页查询处方列表。
