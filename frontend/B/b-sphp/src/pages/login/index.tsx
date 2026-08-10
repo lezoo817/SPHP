@@ -3,6 +3,7 @@ import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { request } from '@umijs/max';
 import { useState } from 'react';
 import { getErrorMessage } from '@/utils/error';
+import { API_URLS } from '@/constants/urls';
 
 const { Title } = Typography;
 
@@ -15,7 +16,7 @@ export default function LoginPage() {
       const res = await request<{
         code: string;
         data: { accessToken: string };
-      }>('/api/b/auth/login', {
+      }>(API_URLS.AUTH_LOGIN, {
         method: 'POST',
         data: values,
       });

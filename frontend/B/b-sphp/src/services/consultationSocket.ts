@@ -1,4 +1,5 @@
 import { WS_HEARTBEAT_INTERVAL_MS, WS_RECONNECT_BASE_MS, WS_RECONNECT_MAX_MS } from '../constants/timing';
+import { API_URLS } from '@/constants/urls';
 
 /** 在线问诊实时消息载荷。 */
 export interface ConsultationSocketMessage {
@@ -30,7 +31,7 @@ function parseMessage(raw: string): ConsultationSocketMessage | undefined {
 
 /** 获取统一后端 WebSocket 地址。 */
 function resolveSocketUrl(): string {
-  const url = new URL('/api/ws/consultation', window.location.origin);
+  const url = new URL(API_URLS.WS_CONSULTATION, window.location.origin);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   return url.toString();
 }

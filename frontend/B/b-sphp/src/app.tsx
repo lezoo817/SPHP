@@ -5,6 +5,7 @@ import { ConfigProvider } from 'antd';
 import type { ReactNode } from 'react';
 import { RESULT_CODE_SUCCESS } from '@/constants/resultCode';
 import { REQUEST_TIMEOUT_MS } from '@/constants/timing';
+import { API_URLS } from '@/constants/urls';
 
 /**
  * 全局 React Query 客户端。
@@ -93,7 +94,7 @@ export async function getInitialState(): Promise<{
 
   try {
     const res = await umiRequest<{ code: string; data: API.TokenParseVO }>(
-      '/api/b/auth/token/parse',
+      API_URLS.AUTH_TOKEN_PARSE,
       { timeout: REQUEST_TIMEOUT_MS },
     );
     const data = res?.data;

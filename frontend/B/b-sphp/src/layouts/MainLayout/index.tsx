@@ -19,6 +19,7 @@ import { AgentFloatingButton } from '@/components/agent/AgentFloatingButton';
 import { AiPanel } from '@/components/agent/AiPanel';
 import { buildAgentContext } from '@/models/agent';
 import { ROLE_ADMIN, ROLE_DEPT_HEAD } from '@/constants/businessStatus';
+import { API_URLS } from '@/constants/urls';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -179,7 +180,7 @@ export default function MainLayout() {
   /** 退出登录 */
   const handleLogout = useCallback(async () => {
     try {
-      await request('/api/b/auth/logout', { method: 'POST' });
+      await request(API_URLS.AUTH_LOGOUT, { method: 'POST' });
     } catch {
       // 即使接口失败也清理本地状态
     }
