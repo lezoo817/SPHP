@@ -37,6 +37,14 @@ public class ConsultationMessage {
     @TableField("content")
     private String content;
 
+    /** 客户端消息幂等标识 */
+    @TableField("client_message_id")
+    private String clientMessageId;
+
+    /** 消息类型，首期固定为 TEXT */
+    @TableField("message_type")
+    private String messageType;
+
     /** 创建时间 */
     @TableField(value = "created_at", fill = FieldFill.INSERT)
     private OffsetDateTime createdAt;

@@ -3,6 +3,7 @@ package com.sphp.patient.consultation.service.impl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.sphp.patient.auth.exception.CAuthException;
 import com.sphp.patient.auth.support.context.CUserContext;
 import com.sphp.patient.common.enums.ConsultationPrescriptionStatusEnum;
@@ -11,7 +12,6 @@ import com.sphp.patient.consultation.dto.ConsultationMessageSendRequest;
 import com.sphp.patient.consultation.dto.PreConsultationSaveRequest;
 import com.sphp.patient.consultation.entity.ConsultationMessage;
 import com.sphp.patient.consultation.entity.ConsultationRecord;
-import com.sphp.patient.consultation.event.ConsultationMessageSentEvent;
 import com.sphp.patient.consultation.mapper.ConsultationAllergySnapshotRecord;
 import com.sphp.patient.consultation.mapper.ConsultationDataMapper;
 import com.sphp.patient.consultation.mapper.ConsultationListRecord;
@@ -29,9 +29,11 @@ import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.ConsultationAttachmentVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.consultation.vo.ConsultationMessageSendVO;
+import com.sphp.patient.consultation.vo.ConsultationMessagePageVO;
 import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
 import com.sphp.patient.consultation.vo.ConsultationPrescriptionDetailVO;
 import lombok.RequiredArgsConstructor;
+import com.sphp.shared.event.ConsultationMessageCreatedEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -204,12 +206,23 @@ public class ConsultationServiceImpl implements ConsultationService {
         }
         // 检查问诊状态
         resolveAccessiblePatient(userId, consultation.patientId());
-        if (consultation.appointmentId() == null) {
-            throw statusConflict("在线问诊仅支持医生单向回复，患者不能发送消息");
-        }
-        //若状态不是进行中，则不能发送问诊消息
+        // 在线与挂号问诊均在医生开始后允许患者发送文字消息。
         if (!IN_PROGRESS.name().equals(consultation.status())) {
             throw messageStatusConflict(consultation.status());
+        }
+
+        ConsultationMessage existing = consultationMessageMapper.selectOne(
+                Wrappers.<ConsultationMessage>lambdaQuery()
+                        .eq(ConsultationMessage::getConsultationId, consultationId)
+                        .eq(ConsultationMessage::getClientMessageId, request.getClientMessageId())
+                        .isNull(ConsultationMessage::getDeletedAt));
+        if (existing != null) {
+            // 同一客户端消息只能按原内容、原发送方重放，避免幂等键被错误复用。
+            if (!PATIENT.name().equals(existing.getSenderType())
+                    || !request.getContent().trim().equals(existing.getContent())) {
+                throw statusConflict("clientMessageId 已用于其他消息");
+            }
+            return toMessageSendVO(existing);
         }
 
         OffsetDateTime now = OffsetDateTime.now();
@@ -217,21 +230,59 @@ public class ConsultationServiceImpl implements ConsultationService {
         ConsultationMessage message = new ConsultationMessage();
         message.setConsultationId(consultationId);
         message.setSenderType(PATIENT.name());
-        message.setContent(request.getContent());
+        message.setContent(request.getContent().trim());
+        message.setClientMessageId(request.getClientMessageId());
+        message.setMessageType("TEXT");
         message.setCreatedAt(now);
         if (consultationMessageMapper.insert(message) != 1) {
             throw systemError("问诊消息发送失败");
         }
-        // 事务提交后再将不含文本内容的业务事件转发给医生端订阅方。
-        eventPublisher.publishEvent(ConsultationMessageSentEvent.of(
-                consultationId, consultation.doctorId(), consultation.patientId(), userId));
-        return ConsultationMessageSendVO.builder()
-                .messageId(message.getId())
-                .consultationId(consultationId)
-                .senderType(message.getSenderType())
-                .content(message.getContent())
-                .createdAt(now)
-                .build();
+        // 事务提交后再触发推送，消息正文不会进入事件或消息队列。
+        eventPublisher.publishEvent(ConsultationMessageCreatedEvent.of(message.getId(), consultationId,
+                message.getSenderType(), consultation.doctorId(), consultation.patientId(), now));
+        return toMessageSendVO(message);
+    }
+
+    /**
+     * 游标查询当前账号有权访问问诊的消息，避免长会话详情一次读取全部历史。
+     *
+     * @param consultationId 问诊记录 ID
+     * @param afterId 向后补拉游标
+     * @param beforeId 向前加载游标
+     * @param size 每页数量
+     * @return 消息游标分页结果
+     */
+    @Override
+    public ConsultationMessagePageVO listConsultationMessages(Long consultationId, Long afterId,
+                                                               Long beforeId, Integer size) {
+        if (afterId != null && beforeId != null) {
+            throw parameterOutOfRange("afterId 与 beforeId 不能同时传递");
+        }
+        ConsultationDetailRecord consultation = consultationDataMapper.selectConsultationDetail(consultationId);
+        if (consultation == null) {
+            throw notFound("问诊记录不存在");
+        }
+        resolveAccessiblePatient(CUserContext.getRequired().userId(), consultation.patientId());
+        int limit = size == null ? 50 : Math.min(size, MAX_PAGE_SIZE);
+        var query = Wrappers.<ConsultationMessage>lambdaQuery()
+                .eq(ConsultationMessage::getConsultationId, consultationId)
+                .isNull(ConsultationMessage::getDeletedAt);
+        if (afterId != null) {
+            query.gt(ConsultationMessage::getId, afterId).orderByAsc(ConsultationMessage::getId);
+            return buildMessagePage(consultationMessageMapper.selectList(query.last("LIMIT " + (limit + 1))), limit);
+        }
+        query.lt(beforeId != null, ConsultationMessage::getId, beforeId).orderByDesc(ConsultationMessage::getId);
+        List<ConsultationMessage> records = consultationMessageMapper.selectList(query.last("LIMIT " + (limit + 1)));
+        boolean hasMore = records.size() > limit;
+        if (hasMore) {
+            records = records.subList(0, limit);
+        }
+        java.util.Collections.reverse(records);
+        return ConsultationMessagePageVO.builder()
+                .messages(records.stream().map(message -> ConsultationDetailVO.Message.builder()
+                        .id(message.getId()).senderType(message.getSenderType()).content(message.getContent())
+                        .createdAt(message.getCreatedAt()).build()).toList())
+                .hasMore(hasMore).build();
     }
 
     /**
@@ -377,6 +428,42 @@ public class ConsultationServiceImpl implements ConsultationService {
                 .content(record.content())
                 .createdAt(record.createdAt())
                 .build();
+    }
+
+    /**
+     * 将消息实体转换为发送结果。
+     *
+     * @param message 已持久化消息
+     * @return 发送结果
+     */
+    private ConsultationMessageSendVO toMessageSendVO(ConsultationMessage message) {
+        return ConsultationMessageSendVO.builder()
+                .messageId(message.getId())
+                .consultationId(message.getConsultationId())
+                .senderType(message.getSenderType())
+                .content(message.getContent())
+                .createdAt(message.getCreatedAt())
+                .build();
+    }
+
+    /**
+     * 从多取一条的消息结果计算游标分页状态。
+     *
+     * @param records 消息实体列表
+     * @param limit 请求页大小
+     * @return 按时间正序的分页结果
+     */
+    private ConsultationMessagePageVO buildMessagePage(List<ConsultationMessage> records, int limit) {
+        boolean hasMore = records.size() > limit;
+        if (hasMore) {
+            records = records.subList(0, limit);
+        }
+        List<ConsultationDetailVO.Message> messages = records.stream()
+                .map(message -> ConsultationDetailVO.Message.builder()
+                        .id(message.getId()).senderType(message.getSenderType())
+                        .content(message.getContent()).createdAt(message.getCreatedAt()).build())
+                .toList();
+        return ConsultationMessagePageVO.builder().messages(messages).hasMore(hasMore).build();
     }
 
     /**

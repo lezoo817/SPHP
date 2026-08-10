@@ -69,6 +69,12 @@
             <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>
 
+        <!-- 在线问诊实时消息推送 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
         <!-- Bean Validation bean属性合法性检查-->
         <dependency>
             <groupId>org.springframework.boot</groupId>

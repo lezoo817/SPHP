@@ -38,6 +38,14 @@ public interface ConsultationDataMapper {
     boolean hasConsultationActivePatientRelation(@Param("userId") Long userId, @Param("patientId") Long patientId);
 
     /**
+     * 查询拥有有效就诊人关系的 C 端账号，用于向其推送医生消息。
+     *
+     * @param patientId 就诊人 ID
+     * @return C端账号 ID 列表
+     */
+    List<Long> selectConsultationPatientUserIds(@Param("patientId") Long patientId);
+
+    /**
      * 锁定当前 C 端账号，串行化同一账号的预问诊提交。
      *
      * @param userId C 端用户 ID

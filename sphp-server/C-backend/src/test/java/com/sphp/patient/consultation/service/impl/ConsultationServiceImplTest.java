@@ -22,7 +22,7 @@ import com.sphp.patient.consultation.vo.ConsultationPageVO;
 import com.sphp.patient.consultation.vo.ConsultationDetailVO;
 import com.sphp.patient.consultation.dto.ConsultationMessageSendRequest;
 import com.sphp.patient.consultation.entity.ConsultationMessage;
-import com.sphp.patient.consultation.event.ConsultationMessageSentEvent;
+import com.sphp.shared.event.ConsultationMessageCreatedEvent;
 import com.sphp.patient.consultation.vo.ConsultationPrescriptionPageVO;
 import com.sphp.patient.consultation.vo.ConsultationPrescriptionDetailVO;
 import org.junit.jupiter.api.AfterEach;
@@ -184,26 +184,28 @@ class ConsultationServiceImplTest {
         }).when(messageMapper).insert(any(ConsultationMessage.class));
         ConsultationMessageSendRequest request = new ConsultationMessageSendRequest();
         request.setContent("最高体温38.5度");
+        request.setClientMessageId("patient-message-1");
+        when(messageMapper.selectOne(any())).thenReturn(null);
 
         com.sphp.patient.consultation.vo.ConsultationMessageSendVO result = service.sendConsultationMessage(11001L, request);
 
         assertEquals(12001L, result.getMessageId());
         assertEquals("PATIENT", result.getSenderType());
         verify(eventPublisher).publishEvent(org.mockito.ArgumentMatchers.<Object>argThat(event -> {
-            if (!(event instanceof ConsultationMessageSentEvent sentEvent)) {
+            if (!(event instanceof ConsultationMessageCreatedEvent sentEvent)) {
                 return false;
             }
             return sentEvent.consultationId().equals(11001L)
                     && sentEvent.patientId().equals(20001L)
-                    && sentEvent.userId().equals(10001L);
+                    && sentEvent.messageId().equals(12001L);
         }));
     }
 
     /**
-     * 验证无挂号在线问诊拒绝患者发送消息，保持医生单向回复。
+     * 验证无挂号在线问诊接诊中允许患者发送消息。
      */
     @Test
-    void sendConsultationMessageRejectsOnlineConsultation() {
+    void sendConsultationMessageAllowsOnlineConsultation() {
         ConsultationDataMapper dataMapper = mock(ConsultationDataMapper.class);
         ConsultationMessageMapper messageMapper = mock(ConsultationMessageMapper.class);
         ConsultationServiceImpl service = new ConsultationServiceImpl(dataMapper, messageMapper, new ObjectMapper(),
@@ -214,14 +216,15 @@ class ConsultationServiceImplTest {
                 null, "[]", OffsetDateTime.now(), OffsetDateTime.now()));
         when(dataMapper.existsConsultationActivePatient(20001L)).thenReturn(true);
         when(dataMapper.hasConsultationActivePatientRelation(10001L, 20001L)).thenReturn(true);
+        when(messageMapper.selectOne(any())).thenReturn(null);
+        doAnswer(invocation -> { invocation.<ConsultationMessage>getArgument(0).setId(12002L); return 1; })
+                .when(messageMapper).insert(any(ConsultationMessage.class));
         ConsultationMessageSendRequest request = new ConsultationMessageSendRequest();
         request.setContent("患者尝试回复");
+        request.setClientMessageId("patient-message-2");
 
-        CAuthException exception = assertThrows(CAuthException.class,
-                () -> service.sendConsultationMessage(11001L, request));
-
-        assertEquals("A0443", exception.getCode());
-        verify(messageMapper, never()).insert(any(ConsultationMessage.class));
+        assertEquals(12002L, service.sendConsultationMessage(11001L, request).getMessageId());
+        verify(messageMapper).insert(any(ConsultationMessage.class));
     }
 
     /**
