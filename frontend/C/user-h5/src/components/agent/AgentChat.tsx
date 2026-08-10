@@ -95,6 +95,14 @@ export function AgentChat({
   // recommend_pharmacies 工具因缺必填参数不敢调用，回复"我不知道您所在的具体位置"。
   const contextReady = context !== undefined;
 
+  // 从主页悬浮球等“全新进入”场景（既无预设动作、也无待恢复会话）下，主动切断
+  // sessionStorage 中残留的上次会话 ID，确保用户看到的是新对话窗口，而不是把首条
+  // 消息接到旧会话上下文、出现“接着上次继续”的现象。带预设动作或恢复会话的入口
+  // （快捷消息、处方/病历解读、支付回跳）各自走下方对应 effect，不在此列。
+  useEffect(() => {
+    if (presetAction || resumeSessionId) return;
+    reset();
+  }, [presetAction, resumeSessionId, reset]);
 
   useEffect(() => {
     if (!resumeSessionId || restoredSessionRef.current === resumeSessionId) return;
