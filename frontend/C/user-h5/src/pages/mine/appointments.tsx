@@ -3,8 +3,7 @@ import { CalendarDays, FileSearch, RefreshCw } from 'lucide-react';
 import { useLocation } from 'umi';
 import { Dialog } from '../../components/Dialog';
 import { PageHeader } from '../../components/PageHeader';
-import { getMinePatientId } from '../../models/mine-patient';
-import { resolveSelfPatientId } from '../../models/selection';
+import { getMinePatientId, resolveMinePatientId, saveMinePatientId } from '../../models/mine-patient';
 import { getFamilyMembers } from '../../services/family';
 import { getAppointments } from '../../services/registration';
 import type { Appointment, FamilyMember } from '../../typings/api';
@@ -53,22 +52,21 @@ export default function MineAppointmentsPage() {
     }
   }
 
-  /** 恢复“我的”当前就诊人；页面内临时切换不改写专属会话选择。 */
+  /** 恢复项目全局当前就诊人，深链接参数仅在未设置全局选择时作为回退。 */
   async function initializeAppointments() {
     setLoading(true);
     try {
       const nextMembers = await getFamilyMembers();
       setMembers(nextMembers);
       const patientIdFromUrl = Number(query.get('patientId')) || undefined;
-      const preferredPatientId = patientIdFromUrl || getMinePatientId();
-      const nextPatientId = nextMembers.some((member) => member.patientId === preferredPatientId)
-        ? preferredPatientId
-        : resolveSelfPatientId(nextMembers);
+      const nextPatientId = resolveMinePatientId(nextMembers, getMinePatientId() || patientIdFromUrl);
       if (!nextPatientId) {
         setNotice('暂无可查询的就诊人');
         setLoading(false);
         return;
       }
+      // 进入记录页时同步全局选择，返回首页、助手和购药后保持同一就诊人。
+      saveMinePatientId(nextPatientId);
       setPatientId(nextPatientId);
       await loadAppointments(nextPatientId);
     } catch (requestError) {
@@ -91,8 +89,9 @@ export default function MineAppointmentsPage() {
     setRangeNotice(isAppointmentRecordDateRangeValid(nextRange) ? '' : '开始日期不能晚于结束日期');
   }
 
-  /** 切换就诊人后从第一页重新读取，避免短暂混合不同患者的记录。 */
+  /** 切换全局就诊人后从第一页重新读取，避免短暂混合不同患者的记录。 */
   function selectPatient(nextPatientId: number) {
+    saveMinePatientId(nextPatientId);
     setPatientId(nextPatientId);
     setPatientOpen(false);
     setAppointments([]);

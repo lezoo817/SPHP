@@ -31,7 +31,7 @@ export default function MedicationPlansPage() {
   const backPath = queryParams.get('source') === 'home' ? '/home' : '/mine';
   const displayedPlans = useMemo(() => filterMedicationPlansByTab(plans, planTab), [plans, planTab]);
 
-  /** 依据页面选择、健康待办来源或“我的”专属选择读取用药计划。 */
+  /** 依据页面选择、健康待办来源或全局当前就诊人读取用药计划。 */
   async function loadPlans(preferredPatientId?: number) {
     setLoading(true);
     try {
@@ -46,7 +46,7 @@ export default function MedicationPlansPage() {
         setNotice('暂无可查询的就诊人');
         return;
       }
-      // 切换后同步“我的”专属选择，其他业务页面选择不受影响。
+      // 切换后写入全局选择，首页、就诊助手和购药进入时展示同一就诊人。
       saveMinePatientId(resolvedPatientId);
       const selectedMember = nextMembers.find((item) => item.patientId === resolvedPatientId);
       setPatientId(resolvedPatientId);

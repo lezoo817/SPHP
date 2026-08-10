@@ -21,7 +21,7 @@ export default function FollowUpsPage() {
   const [notice, setNotice] = useState('');
   const confirmKeys = useRef<Record<number, string>>({});
 
-  /** 依据“我的”专属就诊人选择读取随访计划。 */
+  /** 依据项目全局当前就诊人选择读取随访计划。 */
   async function loadPlans() {
     setLoading(true);
     try {

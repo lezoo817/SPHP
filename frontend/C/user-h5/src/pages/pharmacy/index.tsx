@@ -3,7 +3,7 @@ import { ChevronRight, CircleX, ClipboardList, Package, PackageCheck, PackageOpe
 import { useLocation, useNavigate } from 'umi';
 import { BottomTab } from '../../components/BottomTab';
 import { Dialog } from '../../components/Dialog';
-import { resolveSelfPatientId } from '../../models/selection';
+import { getSelection, resolveSelectedPatientId, saveSelection } from '../../models/selection';
 import { getFamilyMembers } from '../../services/family';
 import { getPrescriptions } from '../../services/consultation';
 import { getDrugOrders } from '../../services/pharmacy';
@@ -30,10 +30,11 @@ export default function PharmacyPage() {
     try {
       const next = await getFamilyMembers();
       setMembers(next);
-      // 处方详情返回时优先恢复购药模块此前选择的就诊人，不影响其他页面选择。
-      const target = patientId || (next.some((member) => member.patientId === patientIdFromUrl) ? patientIdFromUrl : undefined) || resolveSelfPatientId(next);
+      // 全局选择优先于购药路由参数；仅无全局选择的深链接才使用地址栏患者参数。
+      const target = resolveSelectedPatientId(next, getSelection().patientId ?? patientIdFromUrl);
       if (!target) return;
-      if (!patientId) setPatientId(target);
+      saveSelection({ patientId: target });
+      if (patientId !== target) setPatientId(target);
       // 处方和订单并行读取，确保支付完成后首页能立即切换为已购买。
       const [prescriptionPage, orderPage] = await Promise.all([
         getPrescriptions({ patientId: target }),
@@ -64,6 +65,18 @@ export default function PharmacyPage() {
       return;
     }
     nav(`/mine/prescriptions?patientId=${patientId}`);
+  }
+
+  /**
+   * 切换项目全局就诊人，并刷新购药页对应的处方与订单。
+   * @param nextPatientId 新选择的本人或家属 ID
+   * @returns 无返回值
+   */
+  function selectPatient(nextPatientId: number) {
+    // 写入全局会话，首页、就诊助手和“我的”会读取相同患者。
+    saveSelection({ patientId: nextPatientId });
+    setPatientId(nextPatientId);
+    setOpen(false);
   }
 
   return <main className="assistant-page">
@@ -97,7 +110,7 @@ export default function PharmacyPage() {
       </section>
     </section>
     {open && <Dialog title="切换就诊人" onClose={() => setOpen(false)}>
-      {members.map((member) => <button className="choice-row" key={member.patientId} type="button" onClick={() => { setPatientId(member.patientId); setOpen(false); }}>{member.name}<small>{member.relationName || member.relation}</small></button>)}
+      {members.map((member) => <button className="choice-row" key={member.patientId} type="button" onClick={() => selectPatient(member.patientId)}>{member.name}<small>{member.relationName || member.relation}</small></button>)}
       {members.filter((member) => member.relation !== 'SELF').length === 0 && <p className="empty-state">当前用户未绑定亲属</p>}
     </Dialog>}
     {notice && <div className="toast" onClick={() => setNotice('')}>{notice}</div>}
