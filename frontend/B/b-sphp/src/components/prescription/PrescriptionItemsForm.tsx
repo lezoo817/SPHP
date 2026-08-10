@@ -4,17 +4,19 @@
  * 接诊挂号（PrescriptionFormModal）与在线问诊（OnlineConsultation）复用的开方明细编辑区：
  * - 顶部「处方模板」下拉：带入模板明细到表单，医生可增删改后提交；
  * - Form.List 两行式药品明细：一行 = 药品搜索下拉 + 用法下拉 + 天数 + 数量（带单位后缀），
- *   二行 = 用量 + 频次，删除行用 MinusCircleOutlined；
+ *   二行 = 用量（数值+单位下拉） + 频次（每日 X 次），删除行用 MinusCircleOutlined；
+ * - 数字字段（天数/数量/用量/频次）统一限制为阿拉伯数字正数整数，用法下拉不做数字校验；
  * - 药品搜索接口经 {@code fetchDrugs} 注入，区分通用药品目录（getDrugs）与
  *   医生开方可用药品（getDoctorDrugs）；
  * - {@code onItemsChange} 对外上报明细变化（接诊挂号用于实时风险预检），
- *   {@code renderRowWarnings} 提供单行预警渲染槽（预检命中按 drugId 归属到对应药品行下方）。
+ *   {@code renderRowWarnings} 提供单行预警渲染槽（预检命中按 drugId 归属到对应药品行下方）；
+ * - {@link toPrescriptionItemsPayload} 负责将表单数字明细拼接为后端字符串
+ *   （"2粒" / "每日3次"），提交入口与风险预检统一复用。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
   Form,
-  Input,
   InputNumber,
   Select,
   Space,
@@ -30,8 +32,12 @@ import styles from './PrescriptionItemsForm.module.less';
 /** 单行药品明细表单值（对齐 API.PrescriptionSubmitReq['items']，录入中字段可为空） */
 export interface PrescriptionItemFormValue {
   drugId?: number;
-  dosage?: string;
-  frequency?: string;
+  /** 用量数值（正整数，如 2 表示 2 粒） */
+  dosage?: number;
+  /** 用量单位（粒/克/剂/毫升） */
+  dosageUnit?: string;
+  /** 每日次数（正整数，如 3 表示每日 3 次） */
+  frequency?: number;
   usageMethod?: string;
   days?: number;
   quantity?: number;
@@ -41,7 +47,9 @@ export interface PrescriptionItemFormValue {
 export interface PrescriptionPrefillItem {
   drugId: number;
   drugName?: string;
+  /** 用量文本（如 "2粒"），带入时反解析为数值+单位 */
   dosage: string;
+  /** 频次文本（如 "每日3次"），带入时反解析为每日次数 */
   frequency?: string;
   usageMethod: string;
   days: number;
@@ -58,6 +66,53 @@ const USAGE_METHODS = [
   { value: '注射', label: '注射' },
   { value: '含服', label: '含服' },
 ];
+
+/** 用量单位选项 */
+const DOSAGE_UNITS = [
+  { value: '粒', label: '粒' },
+  { value: '克', label: '克' },
+  { value: '剂', label: '剂' },
+  { value: '毫升', label: '毫升' },
+];
+
+/**
+ * 将表单数字明细转换为后端提交/预检载荷：用量拼成 "2粒"、频次拼成 "每日3次"。
+ * 数值为空时用量返回空字符串、频次返回空字符串，避免写入 "undefined"。
+ */
+export function toPrescriptionItemsPayload(
+  items: PrescriptionItemFormValue[],
+): API.PrescriptionSubmitReq['items'] {
+  return items.map((it) => ({
+    drugId: it.drugId as number,
+    dosage: it.dosage !== null && it.dosage !== undefined ? `${it.dosage}${it.dosageUnit ?? ''}` : '',
+    frequency:
+      it.frequency !== null && it.frequency !== undefined ? `每日${it.frequency}次` : '',
+    usageMethod: (it.usageMethod ?? '').trim(),
+    days: it.days as number,
+    quantity: it.quantity as number,
+  }));
+}
+
+/** 从用量文本解析数值，如 "2粒" → 2，无法解析返回 undefined */
+function parseDosageNum(dosage?: string): number | undefined {
+  if (!dosage) return undefined;
+  const m = /^(\d+(?:\.\d+)?)/.exec(dosage);
+  return m ? Number(m[1]) : undefined;
+}
+
+/** 从用量文本解析单位，如 "2粒" → "粒"，无法解析返回 undefined */
+function parseDosageUnit(dosage?: string): string | undefined {
+  if (!dosage) return undefined;
+  const m = /^\d+(?:\.\d+)?(.+)$/.exec(dosage);
+  return m ? m[1] : undefined;
+}
+
+/** 从频次文本解析每日次数，如 "每日3次" → 3，无法解析返回 undefined */
+function parseFrequencyNum(frequency?: string): number | undefined {
+  if (!frequency) return undefined;
+  const m = /(\d+)/.exec(frequency);
+  return m ? Number(m[1]) : undefined;
+}
 
 /** 搜索结果行转为 Select 选项（label 带规格，便于医生区分同名药品） */
 function toDrugOptions(list: API.Drug[]): { label: string; value: number }[] {
@@ -136,8 +191,9 @@ export default function PrescriptionItemsForm({
     (items: PrescriptionPrefillItem[]) => {
       const rows: PrescriptionItemFormValue[] = items.map((it) => ({
         drugId: it.drugId,
-        dosage: it.dosage ?? '',
-        frequency: it.frequency ?? '',
+        dosage: parseDosageNum(it.dosage),
+        dosageUnit: parseDosageUnit(it.dosage) ?? '粒',
+        frequency: parseFrequencyNum(it.frequency),
         usageMethod: it.usageMethod ?? '',
         days: it.days,
         quantity: it.quantity,
@@ -254,14 +310,26 @@ export default function PrescriptionItemsForm({
                       rules={[{ required: true, message: '天数必填' }]}
                       className={styles.formItem}
                     >
-                      <InputNumber addonAfter="天" min={1} placeholder="天数" style={{ width: 100 }} />
+                      <InputNumber
+                        addonAfter="天"
+                        min={1}
+                        precision={0}
+                        placeholder="天数"
+                        style={{ width: 100 }}
+                      />
                     </Form.Item>
                     <Form.Item
                       name={[field.name, 'quantity']}
                       rules={[{ required: true, message: '数量必填' }]}
                       className={styles.formItem}
                     >
-                      <InputNumber addonAfter="盒/瓶" min={1} placeholder="数量" style={{ width: 120 }} />
+                      <InputNumber
+                        addonAfter="盒/瓶"
+                        min={1}
+                        precision={0}
+                        placeholder="数量"
+                        style={{ width: 120 }}
+                      />
                     </Form.Item>
                     {fields.length > 1 && (
                       <MinusCircleOutlined onClick={() => remove(field.name)} />
@@ -273,14 +341,33 @@ export default function PrescriptionItemsForm({
                       rules={[{ required: true, message: '用量必填' }]}
                       className={styles.formItem}
                     >
-                      <Input placeholder="用量（如 1片 / 5ml）" style={{ width: 160 }} />
+                      <InputNumber
+                        min={1}
+                        precision={0}
+                        placeholder="用量"
+                        style={{ width: 90 }}
+                      />
+                    </Form.Item>
+                    <Form.Item
+                      name={[field.name, 'dosageUnit']}
+                      initialValue="粒"
+                      className={styles.formItem}
+                    >
+                      <Select style={{ width: 76 }} options={DOSAGE_UNITS} />
                     </Form.Item>
                     <Form.Item
                       name={[field.name, 'frequency']}
                       rules={[{ required: true, message: '频次必填' }]}
                       className={styles.formItem}
                     >
-                      <Input placeholder="频次（如 每日3次 / QD）" style={{ width: 200 }} />
+                      <InputNumber
+                        addonBefore="每日"
+                        addonAfter="次"
+                        min={1}
+                        precision={0}
+                        placeholder="次数"
+                        style={{ width: 140 }}
+                      />
                     </Form.Item>
                   </Space>
                   {/* 单药规则实时预警（过敏/禁忌 ERROR 红 / 高危 AUDIT 橙），由父级按行注入 */}

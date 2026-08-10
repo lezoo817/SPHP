@@ -13,6 +13,7 @@ import { getDrugs, getTemplates, precheckPrescription } from '@/services/admin';
 import { getErrorMessage } from '@/utils/error';
 import { DEBOUNCE_PRECheck_MS } from '@/constants/timing';
 import PrescriptionItemsForm, {
+  toPrescriptionItemsPayload,
   type PrescriptionItemFormValue,
   type PrescriptionPrefillItem,
 } from '@/components/prescription/PrescriptionItemsForm';
@@ -73,16 +74,10 @@ export default function PrescriptionFormModal({
         setSummaryWarnings([]);
         return;
       }
-      const validItems = (items ?? [])
-        .filter((it) => it.drugId !== undefined && it.drugId !== null)
-        .map((it) => ({
-          drugId: it.drugId as number,
-          dosage: (it.dosage ?? '').trim(),
-          frequency: (it.frequency ?? '').trim(),
-          usageMethod: (it.usageMethod ?? '').trim(),
-          days: it.days as number,
-          quantity: it.quantity as number,
-        }));
+      // 数字明细经公共拼接函数转后端字符串（"2粒"/"每日3次"），与提交载荷口径一致
+      const validItems = toPrescriptionItemsPayload(items ?? []).filter(
+        (it) => it.drugId !== undefined && it.drugId !== null,
+      );
       if (validItems.length === 0) {
         setWarningsByDrug({});
         setSummaryWarnings([]);
@@ -202,15 +197,7 @@ export default function PrescriptionFormModal({
     try {
       const values = await form.validateFields();
       const items = (values.items ?? []) as PrescriptionItemFormValue[];
-      const payload = items.map((it) => ({
-        drugId: it.drugId as number,
-        dosage: (it.dosage ?? '').trim(),
-        frequency: (it.frequency ?? '').trim(),
-        usageMethod: (it.usageMethod ?? '').trim(),
-        days: it.days as number,
-        quantity: it.quantity as number,
-      }));
-      const res = await onSubmit(payload);
+      const res = await onSubmit(toPrescriptionItemsPayload(items));
       setResult(res);
     } catch (err: unknown) {
       const errMsg = getErrorMessage(err, '');

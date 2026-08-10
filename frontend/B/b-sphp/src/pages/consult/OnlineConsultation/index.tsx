@@ -45,7 +45,10 @@ import { QUERY_KEYS } from '@/constants/queryKeys';
 import { POLL_INTERVAL_CONSULT } from '@/constants/timing';
 import { getErrorMessage } from '@/utils/error';
 import { createIdempotencyKey } from '@/utils/idempotency';
-import PrescriptionItemsForm from '@/components/prescription/PrescriptionItemsForm';
+import PrescriptionItemsForm, {
+  toPrescriptionItemsPayload,
+  type PrescriptionItemFormValue,
+} from '@/components/prescription/PrescriptionItemsForm';
 import styles from './less/index.module.less';
 import { PAGE_SIZE_100, PAGE_SIZE_50 } from '@/constants/pageSize';
 import { GENDER_FEMALE, GENDER_MALE, SENDER_DOCTOR, STATUS_APPROVED, STATUS_COMPLETED, STATUS_IN_PROGRESS, STATUS_PENDING } from '@/constants/businessStatus';
@@ -56,14 +59,7 @@ const { TextArea } = Input;
 type OnlineStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
 
 interface PrescriptionFormValues {
-  items: Array<{
-    drugId: number;
-    dosage: string;
-    frequency: string;
-    usageMethod: string;
-    days: number;
-    quantity: number;
-  }>;
+  items: PrescriptionItemFormValue[];
 }
 
 interface AllergySummaryItem {
@@ -202,7 +198,10 @@ export default function OnlineConsultationPage() {
     try {
       const values = await form.validateFields();
       setSubmittingPrescription(true);
-      const result = await submitPrescription({ consultId: selectedId, items: values.items });
+      const result = await submitPrescription({
+        consultId: selectedId,
+        items: toPrescriptionItemsPayload(values.items ?? []),
+      });
       if (result.auditRequired) {
         await message.warning('处方已提交审核，审核通过后患者可见');
       } else {
