@@ -193,6 +193,7 @@ export default function PrescriptionFormModal({
     };
   }, [itemsWatch, open, runPrecheck]);
 
+  /** 提交处方：校验表单后调上层 onSubmit，命中红线（后端 BusinessException 3004）时弹错误 */
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();

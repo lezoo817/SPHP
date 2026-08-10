@@ -230,6 +230,7 @@ export function useConsultQueue() {
     queryClient.invalidateQueries({ queryKey: QUERY_KEYS.consultHistory });
   }, [queryClient]);
 
+  /** 开始接诊：号源时段校验 + 状态迁移 PENDING→IN_PROGRESS + 清理 AI 上下文（医生从接诊中队列重选时再写入） */
   const handleStartConsult = useCallback(async () => {
     if (!selectedConsultId) return;
 
@@ -264,6 +265,7 @@ export function useConsultQueue() {
     }
   }, [selectedConsultId, pendingItems, refreshQueues, clearConsultContext]);
 
+  /** 结束接诊：Modal 二次确认后迁移 IN_PROGRESS→COMPLETED 并清理 AI 上下文 */
   const handleEndConsult = useCallback(() => {
     if (!selectedConsultId) return;
     Modal.confirm({
@@ -292,6 +294,7 @@ export function useConsultQueue() {
 
   // ==================== 病历保存 ====================
 
+  /** 保存病历：把 5 个字段按"字段名：值"换行拼成纯文本（与 patientDetail 回显解析对齐） */
   const handleSaveNote = useCallback(async () => {
     if (!selectedConsultId) return;
     if (!reportChiefComplaint.trim() && !reportDiagnosis.trim()) {
