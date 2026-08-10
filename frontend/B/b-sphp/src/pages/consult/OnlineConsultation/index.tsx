@@ -46,6 +46,7 @@ import {
 import { createConsultationSocket } from '@/services/consultationSocket';
 import { QUERY_KEYS } from '@/constants/queryKeys';
 import { getErrorMessage } from '@/utils/error';
+import { createIdempotencyKey } from '@/utils/idempotency';
 import styles from './index.module.less';
 
 const { Text, Title } = Typography;
@@ -251,7 +252,7 @@ export default function OnlineConsultationPage() {
     if (!selectedId || !replyContent.trim() || replying) return;
     setReplying(true);
     try {
-      await sendOnlineConsultationMessage(selectedId, replyContent.trim(), crypto.randomUUID());
+      await sendOnlineConsultationMessage(selectedId, replyContent.trim(), createIdempotencyKey());
       setReplyContent('');
       await refreshAll();
     } catch (error) {
