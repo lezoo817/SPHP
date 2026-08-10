@@ -534,6 +534,46 @@ def _register_health_record_tools() -> None:
         )
     )
 
+    # 健康档案删除（2026-08-10，Java HealthController 已实现 deleteAllergy/deleteMedicalHistory）：
+    # 删除是敏感写操作（L2，需确认卡）；ID 来自 query_health_record 结果列表。
+    ToolRegistry.register(
+        ToolSchema(
+            name="delete_allergy",
+            description="删除过敏史记录（需指定过敏史记录 ID，来自查询健康档案结果）",
+            parameters={
+                "properties": {
+                    "allergy_id": {
+                        "type": "integer",
+                        "description": "要删除的过敏史记录 ID",
+                    },
+                },
+                "required": ["allergy_id"],
+            },
+            scope=ToolScope.C_END,
+            security_level=SecurityLevel.L2,
+            executor="mcp",
+        )
+    )
+
+    ToolRegistry.register(
+        ToolSchema(
+            name="delete_medical_history",
+            description="删除既往史记录（需指定既往史记录 ID，来自查询健康档案结果）",
+            parameters={
+                "properties": {
+                    "history_id": {
+                        "type": "integer",
+                        "description": "要删除的既往史记录 ID",
+                    },
+                },
+                "required": ["history_id"],
+            },
+            scope=ToolScope.C_END,
+            security_level=SecurityLevel.L2,
+            executor="mcp",
+        )
+    )
+
 
 def _register_report_tools() -> None:
     """注册检查报告类工具（2 个）：报告查询与录入。"""

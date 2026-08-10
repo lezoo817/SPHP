@@ -120,6 +120,40 @@ async def manage_medical_history(
     return await call_java_api(api_name="manage_medical_history:create", body=body, user_id=user_id)
 
 
+async def delete_allergy(allergy_id: int, user_id: int | None = None) -> dict[str, Any]:
+    """删除过敏史记录（软删除，Java HealthController.deleteAllergy）。
+
+    Args:
+        allergy_id: 要删除的过敏史记录 ID（来自 query_health_record 结果）。
+        user_id: 当前用户 ID（MCP 分发器注入）。
+
+    Returns:
+        dict: Java 信封；成功返回 HealthRecordDeleteVO（软删除结果）。
+    """
+    return await call_java_api(
+        api_name="manage_allergy:delete",
+        path_params={"allergy_id": allergy_id},
+        user_id=user_id,
+    )
+
+
+async def delete_medical_history(history_id: int, user_id: int | None = None) -> dict[str, Any]:
+    """删除既往史记录（软删除，Java HealthController.deleteMedicalHistory）。
+
+    Args:
+        history_id: 要删除的既往史记录 ID（来自 query_health_record 结果）。
+        user_id: 当前用户 ID（MCP 分发器注入）。
+
+    Returns:
+        dict: Java 信封；成功返回 HealthRecordDeleteVO（软删除结果）。
+    """
+    return await call_java_api(
+        api_name="manage_medical_history:delete",
+        path_params={"history_id": history_id},
+        user_id=user_id,
+    )
+
+
 async def query_reports(report_id: int | None = None, user_id: int | None = None) -> dict[str, Any]:
     """查询检查报告列表或详情（带 report_id 时并行查详情+指标解读）。
 
