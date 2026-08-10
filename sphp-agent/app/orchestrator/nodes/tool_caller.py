@@ -499,13 +499,19 @@ def _normalize_doctor(raw: dict[str, Any]) -> dict[str, Any]:
 def _intercept_save_pre_consultation(
     tool_calls: list[dict[str, Any]],
     tool_results: list[dict[str, Any]],
+    messages: list[Any],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
-    """问诊场景拦截：同轮 query_doctors + save_pre_consultation -> 缓存候选、剔除后者。
+    """问诊场景拦截：同轮 query_doctors + save_pre_consultation。
 
     对应日志里的「查完医生就提交」同轮连跑：LLM 拿到 query_doctors 结果后，本应
     让用户挑选医生，却直接替用户选了 doctor 并调 save_pre_consultation（L2）。
-    此处确定性拦截 save_pre_consultation，改由 SSE 层发 options 选择卡让用户点选，
-    保证「列医生 -> 用户选」的人工决策点不丢。
+    此处**在用户未明确指定医生时**拦截 save_pre_consultation，改由 SSE 层发
+    options 选择卡让用户点选，保证「列医生 -> 用户选」的人工决策点不丢。
+
+    **用户已明确指定候选医生时（2026-08-10 修复）**：如导诊推荐医生后用户直接
+    说"我需要刘医生进行在线问诊"，此时按用户自然语言匹配刚解析出的候选医生。
+    命中则**不拦截**——保留 save_pre_consultation 并把 doctor_id 确定性设为
+    用户指定的医生，直接进入 L2 确认，避免用户已点名仍弹选医生卡。
 
     仅当本轮 tool_calls 同时含 query_doctors 与 save_pre_consultation 时拦截
     （精确匹配"查完即提交"场景）；用户已从卡片选择、本轮只有 save_pre_consultation
@@ -514,9 +520,10 @@ def _intercept_save_pre_consultation(
     Args:
         tool_calls: 本轮 LLM 选择的工具调用列表。
         tool_results: 本轮已执行工具结果（用于解析 query_doctors 返回的医生列表）。
+        messages: 当前消息历史（用于按用户自然语言匹配其指定的候选医生）。
 
     Returns:
-        tuple[list, list | None]: (过滤后的 tool_calls, 候选医生列表 or None)。
+        tuple[list, list | None]: (过滤/补全后的 tool_calls, 候选医生列表 or None)。
         候选为 None 表示未触发拦截（不写 pending_doctor_choices）。
     """
     has_query_doctors = any(tc.get("name") == "query_doctors" for tc in tool_calls)
@@ -529,6 +536,23 @@ def _intercept_save_pre_consultation(
         # 避免数据问题卡死整条链路；由 reply 兜底。
         logger.warning("query_doctors 未解析到候选医生，跳过选医生拦截")
         return tool_calls, None
+    # 用户已明确指定候选医生：不弹卡，直接放行提交（doctor_id 确定性补全）
+    matched = _match_doctor_choice(messages, candidates)
+    if matched is not None:
+        doctor_id = matched.get("doctor_id")
+        filtered: list[dict[str, Any]] = []
+        for tc in tool_calls:
+            if tc.get("name") == "save_pre_consultation" and doctor_id is not None:
+                args = dict(tc.get("arguments") or {})
+                args["doctor_id"] = doctor_id
+                tc = {**tc, "arguments": args}
+            filtered.append(tc)
+        logger.info(
+            "用户明确指定医生 %s(id=%s)，不弹选医生卡，直接提交预问诊",
+            matched.get("name"),
+            doctor_id,
+        )
+        return filtered, None
     filtered = [tc for tc in tool_calls if tc.get("name") != "save_pre_consultation"]
     logger.info("拦截 save_pre_consultation，改为选医生卡片（%d 位候选）", len(candidates))
     return filtered, candidates
@@ -1012,7 +1036,11 @@ async def tool_caller(
         # 仅问诊场景执行；挂号等场景不拦截（tool_calls 原样放行，LLM 继续
         # 查号源/创建挂号，不受"选医生发卡"干预）。
         tool_calls, intercepted_candidates = (
-            _intercept_save_pre_consultation(tool_calls, state.get("tool_results") or [])
+            _intercept_save_pre_consultation(
+                tool_calls,
+                state.get("tool_results") or [],
+                state.get("messages") or [],
+            )
             if is_consultation_scene
             else (tool_calls, None)
         )
@@ -1031,7 +1059,13 @@ async def tool_caller(
             )
         )
         if candidates:
-            result_extra["pending_doctor_choices"] = candidates
+            # 用户已明确指定候选医生（2026-08-10 修复）时不再发选择卡：拦截器已
+            # 放行 save_pre_consultation 直接提交；若 LLM 仅查医生未提交，也不弹
+            # 多余选择卡（用户已点名）。未指定医生时维持原发卡逻辑。
+            if _match_doctor_choice(state.get("messages") or [], candidates) is not None:
+                logger.info("用户已明确指定医生，不写 pending_doctor_choices（不发选医生卡）")
+            else:
+                result_extra["pending_doctor_choices"] = candidates
         logger.info(
             "工具决策: scope=%s, 选择 %d 个工具: %s",
             scope,
