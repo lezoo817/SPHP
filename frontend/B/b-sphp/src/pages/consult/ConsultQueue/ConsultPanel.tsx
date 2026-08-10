@@ -2,10 +2,9 @@
  * 接诊台右栏 - 接诊操作区。
  *
  * 顶部患者信息条（姓名/性别/年龄/过敏预警，点详情展开 Drawer）；
- * 接诊中主工作区：病历记录（左）与已开处方（右）左右分栏，留言板折叠在底部；
- * 按选中状态分支渲染：待接诊（开始接诊）/ 接诊中（病历+处方+留言板）/ 历史（详情）。
+ * 接诊中主工作区：病历记录（左）与已开处方（右）左右分栏；
+ * 按选中状态分支渲染：待接诊（开始接诊）/ 接诊中（病历+处方）/ 历史（详情）。
  */
-import type { KeyboardEvent } from 'react';
 import { Button, Empty, Typography } from 'antd';
 import { MedicineBoxOutlined, StopOutlined } from '@ant-design/icons';
 import styles from './ConsultPanel.module.less';
@@ -15,7 +14,6 @@ import PatientInfoBar from './PatientInfoBar';
 import StartConsultArea from './StartConsultArea';
 import NoteForm from './NoteForm';
 import PrescriptionPanel from './PrescriptionPanel';
-import MessageBoard from './MessageBoard';
 import HistoryDetailPanel from './HistoryDetailPanel';
 import { STATUS_COMPLETED, STATUS_IN_PROGRESS, STATUS_PENDING } from '@/constants/businessStatus';
 
@@ -53,15 +51,6 @@ interface ConsultPanelProps {
   onOpenPrescription: () => void;
   onViewPrescription: (id: number) => void;
   onReopenPrescription: (id: number) => void;
-  // 留言板
-  messages: API.MessageVO[];
-  messagesLoading: boolean;
-  messageInput: string;
-  sendingMessage: boolean;
-  messagesEndRef: React.RefObject<HTMLDivElement>;
-  setMessageInput: (value: string) => void;
-  handleSendMessage: () => void;
-  handleMessageKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
 }
 
 export default function ConsultPanel({
@@ -91,14 +80,6 @@ export default function ConsultPanel({
   onOpenPrescription,
   onViewPrescription,
   onReopenPrescription,
-  messages,
-  messagesLoading,
-  messageInput,
-  sendingMessage,
-  messagesEndRef,
-  setMessageInput,
-  handleSendMessage,
-  handleMessageKeyDown,
 }: ConsultPanelProps) {
   return (
     <div className={styles.panel}>
@@ -167,18 +148,6 @@ export default function ConsultPanel({
                 />
               </div>
             </div>
-
-            {/* 留言板：底部薄条，可折叠 */}
-            <MessageBoard
-              messages={messages}
-              loading={messagesLoading}
-              inputValue={messageInput}
-              sending={sendingMessage}
-              messagesEndRef={messagesEndRef}
-              onInputChange={setMessageInput}
-              onSend={handleSendMessage}
-              onKeyDown={handleMessageKeyDown}
-            />
           </div>
         ) : (
           <Empty description="问诊已结束" />

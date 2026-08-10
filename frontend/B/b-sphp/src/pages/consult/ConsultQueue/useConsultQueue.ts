@@ -4,11 +4,10 @@
  * 左栏三块队列（待接诊 / 接诊中 / 接诊历史）各自独立分页查询：
  * - PENDING / IN_PROGRESS 走 getQueue({ status, page, size })（15s 轮询）
  * - HISTORY 走 getConsultHistory({ page, size })
- * 患者详情 / 历史 / 消息 / 处方均经 React Query 拉取；
- * 开始/结束接诊、保存病历、发送消息、提交处方为写操作，成功后由查询键自动刷新或本地更新缓存。
+ * 患者详情 / 历史 / 处方均经 React Query 拉取；
+ * 开始/结束接诊、保存病历、提交处方为写操作，成功后由查询键自动刷新或本地更新缓存。
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Modal, message } from 'antd';
 import { useModel } from '@umijs/max';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,8 +18,6 @@ import {
   startConsult,
   endConsult,
   saveNote,
-  getMessages,
-  sendMessage,
   getConsultHistory,
   getConsultHistoryDetail,
   getPrescriptions,
@@ -34,8 +31,8 @@ import { POLL_INTERVAL_CONSULT } from '@/constants/timing';
 import dayjs from 'dayjs';
 import type { SelectedStatus } from './constants';
 import type { NoteField } from './NoteForm';
-import type { PrescriptionPrefillItem } from './PrescriptionFormModal';
-import { PAGE_SIZE_100, PAGE_SIZE_20 } from '@/constants/pageSize';
+import type { PrescriptionPrefillItem } from '@/components/prescription/PrescriptionItemsForm';
+import { PAGE_SIZE_20 } from '@/constants/pageSize';
 import { ROLE_ADMIN, STATUS_COMPLETED, STATUS_IN_PROGRESS, STATUS_PENDING } from '@/constants/businessStatus';
 
 /** 待接诊 / 接诊中队列每页条数 */
@@ -106,16 +103,6 @@ export function useConsultQueue() {
     queryKey: QUERY_KEYS.consultHistoryDetail(selectedConsultId ?? -1),
     queryFn: () => getConsultHistoryDetail(selectedConsultId as number),
     enabled: Boolean(selectedConsultId) && selectedStatus === STATUS_COMPLETED,
-  });
-
-  /** 留言板消息（仅接诊中加载） */
-  const { data: messages, isLoading: messagesLoading } = useQuery({
-    queryKey: QUERY_KEYS.consultMessages(selectedConsultId ?? -1),
-    queryFn: () =>
-      getMessages(selectedConsultId as number, { page: 1, size: PAGE_SIZE_100 }).then(
-        (res) => res.list ?? [],
-      ),
-    enabled: Boolean(selectedConsultId) && selectedStatus === STATUS_IN_PROGRESS,
   });
 
   /** 当前问诊的处方列表 */
@@ -207,17 +194,6 @@ export function useConsultQueue() {
         break;
     }
   }, []);
-
-  // ==================== 留言板 ====================
-
-  const [messageInput, setMessageInput] = useState('');
-  const [sendingMessage, setSendingMessage] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  /** 消息列表滚动到底部 */
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
 
   // 离开接诊页时清除全局接诊上下文：避免医生跳转他处后悬浮 AI 仍持有旧患者 ID
   useEffect(() => () => clearConsultContext(), [clearConsultContext]);
@@ -349,35 +325,6 @@ export function useConsultQueue() {
     reportDiagnosis,
     reportTreatmentPlan,
   ]);
-
-  // ==================== 留言板操作 ====================
-
-  const handleSendMessage = useCallback(async () => {
-    if (!selectedConsultId || !messageInput.trim()) return;
-    setSendingMessage(true);
-    try {
-      const msg = await sendMessage(selectedConsultId, {
-        content: messageInput.trim(),
-      });
-      // 追加到消息缓存，消息列表即时更新
-      queryClient.setQueryData<API.MessageVO[]>(
-        QUERY_KEYS.consultMessages(selectedConsultId),
-        (old) => [...(old ?? []), msg],
-      );
-      setMessageInput('');
-    } catch (err: unknown) {
-      message.error(getErrorMessage(err, '发送消息失败'));
-    } finally {
-      setSendingMessage(false);
-    }
-  }, [selectedConsultId, messageInput, queryClient]);
-
-  const handleMessageKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  }, [handleSendMessage]);
 
   // ==================== 开处方 ====================
 
@@ -511,15 +458,6 @@ export function useConsultQueue() {
     reportGeneratedAt,
     handleFieldChange,
     handleSaveNote,
-    // 留言板
-    messages: messages ?? EMPTY_ARRAY,
-    messagesLoading,
-    messageInput,
-    sendingMessage,
-    messagesEndRef,
-    setMessageInput,
-    handleSendMessage,
-    handleMessageKeyDown,
     // 处方
     consultPrescriptions: consultPrescriptions ?? EMPTY_ARRAY,
     /** 医生所属科室（模板列表过滤用） */
